@@ -1,0 +1,2591 @@
+{
+  "servos": [
+    {
+      "code": "1",
+      "description": "SERVO MBF-015",
+      "model": "MBF-015",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "1INV",
+      "description": "SERVO MBF-015 Invertido 028",
+      "model": "MBF-015 Invertido 028",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "1DESL",
+      "description": "SERVO MBF-015 Deslocado",
+      "model": "MBF-015 Deslocado",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "2",
+      "description": "SERVO MBF-025",
+      "model": "MBF-025",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "2INV",
+      "description": "SERVO MBF-025 Invertido 015/VF",
+      "model": "MBF-025 Invertido 015/VF",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "3",
+      "description": "SERVO CJ-015",
+      "model": "CJ-015",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "4",
+      "description": "SERVO BR-015",
+      "model": "BR-015",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "5",
+      "description": "SERVO MBF-040",
+      "model": "MBF-040",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "5INV015",
+      "description": "SERVO MBF-040 Invertido 015/VF",
+      "model": "MBF-040 Invertido 015/VF",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "5INV028",
+      "description": "SERVO MBF-040 Invertido 028",
+      "model": "MBF-040 Invertido 028",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "6",
+      "description": "SERVO VF-040",
+      "model": "VF-040",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "7",
+      "description": "SERVO BR-040",
+      "model": "BR-040",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "7INV015",
+      "description": "SERVO BR-040 Invertido 015/VF",
+      "model": "BR-040 Invertido 015/VF",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "7INV028",
+      "description": "SERVO BR-040 Invertido 028",
+      "model": "BR-040 Invertido 028",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "9",
+      "description": "SERVO MBF-032",
+      "model": "MBF-032",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "9INV",
+      "description": "SERVO MBF-032 Invertido 028",
+      "model": "MBF-032 Invertido 028",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "10",
+      "description": "SERVO MC-040",
+      "model": "MC-040",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "10RB",
+      "description": "SERVO MC-040 Rebaixado",
+      "model": "MC-040 Rebaixado",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "11",
+      "description": "SERVO AL-10",
+      "model": "AL-10",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "11INV",
+      "description": "SERVO AL-10 Invertido 028",
+      "model": "AL-10 Invertido 028",
+      "item_type": "SERVO",
+      "is_active": true
+    },
+    {
+      "code": "12",
+      "description": "SERVO SAF-040",
+      "model": "SAF-040",
+      "item_type": "SERVO",
+      "is_active": true
+    }
+  ],
+  "kits": [
+    {
+      "code": "KT-01",
+      "description": "Kit de instalação 1A",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "1A"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-02",
+      "description": "Kit de instalação 1B / 1D",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "1B",
+        "1D"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-03",
+      "description": "Kit de instalação 3C",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "3C"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-04",
+      "description": "Kit de instalação 1C",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "1C"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-05",
+      "description": "Kit de instalação 2F",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "2F"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-06",
+      "description": "Kit de instalação 1E",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "1E"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-07",
+      "description": "Kit de instalação 1F",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "1F"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-08",
+      "description": "Kit de instalação 4E",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "4E"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-09",
+      "description": "Kit de instalação 4B",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "4B"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-10",
+      "description": "Kit de instalação 4C",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "4C"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-11",
+      "description": "Kit de instalação 4F",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "4F"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-11E",
+      "description": "Kit de instalação 11E",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "11E"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-12",
+      "description": "Kit de instalação 7AC",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7AC"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-12A",
+      "description": "Kit de instalação 12A",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "12A"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-14",
+      "description": "Kit de instalação 3A",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "3A"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-15",
+      "description": "Kit de instalação 3B",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "3B"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-16",
+      "description": "Kit de instalação 7AD",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7AD"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-17",
+      "description": "Kit de instalação 6G",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6G"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-18",
+      "description": "Kit de instalação 2A",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "2A"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-19",
+      "description": "Kit de instalação 2B",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "2B"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-20",
+      "description": "Kit de instalação 5J",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5J"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-21",
+      "description": "Kit de instalação 2C",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "2C"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-22",
+      "description": "Kit de instalação 2E",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "2E"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-23",
+      "description": "Kit de instalação 11A",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "11A"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-24",
+      "description": "Kit de instalação 5B",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5B"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-25",
+      "description": "Kit de instalação 5C",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5C"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-26",
+      "description": "Kit de instalação 6H",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6H"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-27",
+      "description": "Kit de instalação 5E",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5E"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-28",
+      "description": "Kit de instalação 6J",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6J"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-29",
+      "description": "Kit de instalação 1H",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "1H"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-30",
+      "description": "Kit de instalação 5D",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5D"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-31",
+      "description": "Kit de instalação 9A / 9D",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "9A",
+        "9D"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-32",
+      "description": "Kit de instalação 5L",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5L"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-35",
+      "description": "Kit de instalação 7E",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7E"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-36",
+      "description": "Kit de instalação 7Q",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7Q"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-37",
+      "description": "Kit de instalação 7F",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7F"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-39",
+      "description": "Kit de instalação 7H",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7H"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-44",
+      "description": "Kit de instalação 7D",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7D"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-45",
+      "description": "Kit de instalação 6E / 6F",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6E",
+        "6F"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-47",
+      "description": "Kit de instalação 5W",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5W"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-48",
+      "description": "Kit de instalação 10A / 10C",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "10A",
+        "10C"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-49",
+      "description": "Kit de instalação 10E",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "10E"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-50",
+      "description": "Kit de instalação 6C / 6I",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6C",
+        "6I"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-51",
+      "description": "Kit de instalação 6A",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6A"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-52",
+      "description": "Kit de instalação 6B",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6B"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-53",
+      "description": "Kit de instalação 2D / 5M",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "2D",
+        "5M"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-56",
+      "description": "Kit de instalação 7R",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7R"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-57",
+      "description": "Kit de instalação 5H",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5H"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-58",
+      "description": "Kit de instalação 6L",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6L"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-59",
+      "description": "Kit de instalação 5Z",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5Z"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-5I",
+      "description": "Kit de instalação 5I",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5I"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-63",
+      "description": "Kit de instalação 6O",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6O"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-64",
+      "description": "Kit de instalação 6R",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6R"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-66",
+      "description": "Kit de instalação 7P",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7P"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-67",
+      "description": "Kit de instalação 5G",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5G"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-68",
+      "description": "Kit de instalação 7Y",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7Y"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-69",
+      "description": "Kit de instalação 9B",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "9B"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-70",
+      "description": "Kit de instalação 5F",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5F"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-71",
+      "description": "Kit de instalação 6P",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "6P"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-72",
+      "description": "Kit de instalação 7X",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7X"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-73",
+      "description": "Kit de instalação 7Z",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7Z"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-74",
+      "description": "Kit de instalação 9C",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "9C"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-75",
+      "description": "Kit de instalação 10B",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "10B"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-76",
+      "description": "Kit de instalação 10D",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "10D"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-79",
+      "description": "Kit de instalação 7N",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7N"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-83",
+      "description": "Kit de instalação 7A",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7A"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-84",
+      "description": "Kit de instalação 5P",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5P"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-85",
+      "description": "Kit de instalação 11C",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "11C"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-86",
+      "description": "Kit de instalação 11D",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "11D"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-88",
+      "description": "Kit de instalação 5X",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "5X"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-90",
+      "description": "Kit de instalação 7AB",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7AB"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-91",
+      "description": "Kit de instalação 2H",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "2H"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-92",
+      "description": "Kit de instalação 11B",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "11B"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "KT-94",
+      "description": "Kit de instalação 7AF",
+      "item_type": "INSTALLATION_KIT",
+      "commercial_codes": [
+        "7AF"
+      ],
+      "is_active": true
+    }
+  ],
+  "physical_configurations": [
+    {
+      "configuration_key": "1::KT-01",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015",
+      "kit_code": "KT-01",
+      "display_description": "SERVO MBF-015 + KT-01",
+      "commercial_codes": [
+        "1A"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "1::KT-02",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015",
+      "kit_code": "KT-02",
+      "display_description": "SERVO MBF-015 + KT-02",
+      "commercial_codes": [
+        "1B",
+        "1D"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "1::KT-04",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015",
+      "kit_code": "KT-04",
+      "display_description": "SERVO MBF-015 + KT-04",
+      "commercial_codes": [
+        "1C"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "1::KT-06",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015",
+      "kit_code": "KT-06",
+      "display_description": "SERVO MBF-015 + KT-06",
+      "commercial_codes": [
+        "1E"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "1INV::KT-07",
+      "servo_code": "1INV",
+      "servo_description": "SERVO MBF-015 Invertido 028",
+      "kit_code": "KT-07",
+      "display_description": "SERVO MBF-015 Invertido 028 + KT-07",
+      "commercial_codes": [
+        "1F"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "1DESL::KT-29",
+      "servo_code": "1DESL",
+      "servo_description": "SERVO MBF-015 Deslocado",
+      "kit_code": "KT-29",
+      "display_description": "SERVO MBF-015 Deslocado + KT-29",
+      "commercial_codes": [
+        "1H"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "2::KT-18",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-18",
+      "display_description": "SERVO MBF-025 + KT-18",
+      "commercial_codes": [
+        "2A"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "2::KT-19",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-19",
+      "display_description": "SERVO MBF-025 + KT-19",
+      "commercial_codes": [
+        "2B"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "2::KT-21",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-21",
+      "display_description": "SERVO MBF-025 + KT-21",
+      "commercial_codes": [
+        "2C"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "2::KT-53",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-53",
+      "display_description": "SERVO MBF-025 + KT-53",
+      "commercial_codes": [
+        "2D"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "2::KT-22",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-22",
+      "display_description": "SERVO MBF-025 + KT-22",
+      "commercial_codes": [
+        "2E"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "2INV::KT-05",
+      "servo_code": "2INV",
+      "servo_description": "SERVO MBF-025 Invertido 015/VF",
+      "kit_code": "KT-05",
+      "display_description": "SERVO MBF-025 Invertido 015/VF + KT-05",
+      "commercial_codes": [
+        "2F"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "2INV::KT-91",
+      "servo_code": "2INV",
+      "servo_description": "SERVO MBF-025 Invertido 015/VF",
+      "kit_code": "KT-91",
+      "display_description": "SERVO MBF-025 Invertido 015/VF + KT-91",
+      "commercial_codes": [
+        "2H"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "3::KT-14",
+      "servo_code": "3",
+      "servo_description": "SERVO CJ-015",
+      "kit_code": "KT-14",
+      "display_description": "SERVO CJ-015 + KT-14",
+      "commercial_codes": [
+        "3A"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "3::KT-15",
+      "servo_code": "3",
+      "servo_description": "SERVO CJ-015",
+      "kit_code": "KT-15",
+      "display_description": "SERVO CJ-015 + KT-15",
+      "commercial_codes": [
+        "3B"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "3::KT-03",
+      "servo_code": "3",
+      "servo_description": "SERVO CJ-015",
+      "kit_code": "KT-03",
+      "display_description": "SERVO CJ-015 + KT-03",
+      "commercial_codes": [
+        "3C"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "4::KT-09",
+      "servo_code": "4",
+      "servo_description": "SERVO BR-015",
+      "kit_code": "KT-09",
+      "display_description": "SERVO BR-015 + KT-09",
+      "commercial_codes": [
+        "4B"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "4::KT-10",
+      "servo_code": "4",
+      "servo_description": "SERVO BR-015",
+      "kit_code": "KT-10",
+      "display_description": "SERVO BR-015 + KT-10",
+      "commercial_codes": [
+        "4C"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "4::KT-08",
+      "servo_code": "4",
+      "servo_description": "SERVO BR-015",
+      "kit_code": "KT-08",
+      "display_description": "SERVO BR-015 + KT-08",
+      "commercial_codes": [
+        "4E"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "4::KT-11",
+      "servo_code": "4",
+      "servo_description": "SERVO BR-015",
+      "kit_code": "KT-11",
+      "display_description": "SERVO BR-015 + KT-11",
+      "commercial_codes": [
+        "4F"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-24",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-24",
+      "display_description": "SERVO MBF-040 + KT-24",
+      "commercial_codes": [
+        "5B"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5INV028::KT-25",
+      "servo_code": "5INV028",
+      "servo_description": "SERVO MBF-040 Invertido 028",
+      "kit_code": "KT-25",
+      "display_description": "SERVO MBF-040 Invertido 028 + KT-25",
+      "commercial_codes": [
+        "5C"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5INV015::KT-30",
+      "servo_code": "5INV015",
+      "servo_description": "SERVO MBF-040 Invertido 015/VF",
+      "kit_code": "KT-30",
+      "display_description": "SERVO MBF-040 Invertido 015/VF + KT-30",
+      "commercial_codes": [
+        "5D"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-27",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-27",
+      "display_description": "SERVO MBF-040 + KT-27",
+      "commercial_codes": [
+        "5E"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-70",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-70",
+      "display_description": "SERVO MBF-040 + KT-70",
+      "commercial_codes": [
+        "5F"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-67",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-67",
+      "display_description": "SERVO MBF-040 + KT-67",
+      "commercial_codes": [
+        "5G"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-57",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-57",
+      "display_description": "SERVO VF-040 + KT-57",
+      "commercial_codes": [
+        "5H"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-5I",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-5I",
+      "display_description": "SERVO MBF-040 + KT-5I",
+      "commercial_codes": [
+        "5I"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-20",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-20",
+      "display_description": "SERVO MBF-040 + KT-20",
+      "commercial_codes": [
+        "5J"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-32",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-32",
+      "display_description": "SERVO MBF-040 + KT-32",
+      "commercial_codes": [
+        "5L"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-53",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-53",
+      "display_description": "SERVO MBF-040 + KT-53",
+      "commercial_codes": [
+        "5M"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-84",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-84",
+      "display_description": "SERVO MBF-040 + KT-84",
+      "commercial_codes": [
+        "5P"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5INV028::KT-47",
+      "servo_code": "5INV028",
+      "servo_description": "SERVO MBF-040 Invertido 028",
+      "kit_code": "KT-47",
+      "display_description": "SERVO MBF-040 Invertido 028 + KT-47",
+      "commercial_codes": [
+        "5W"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-88",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-88",
+      "display_description": "SERVO MBF-040 + KT-88",
+      "commercial_codes": [
+        "5X"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "5::KT-59",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-59",
+      "display_description": "SERVO MBF-040 + KT-59",
+      "commercial_codes": [
+        "5Z"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-51",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-51",
+      "display_description": "SERVO VF-040 + KT-51",
+      "commercial_codes": [
+        "6A"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-52",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-52",
+      "display_description": "SERVO VF-040 + KT-52",
+      "commercial_codes": [
+        "6B"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-50",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-50",
+      "display_description": "SERVO VF-040 + KT-50",
+      "commercial_codes": [
+        "6C",
+        "6I"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-45",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-45",
+      "display_description": "SERVO VF-040 + KT-45",
+      "commercial_codes": [
+        "6E",
+        "6F"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-17",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-17",
+      "display_description": "SERVO VF-040 + KT-17",
+      "commercial_codes": [
+        "6G"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-26",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-26",
+      "display_description": "SERVO VF-040 + KT-26",
+      "commercial_codes": [
+        "6H"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-28",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-28",
+      "display_description": "SERVO VF-040 + KT-28",
+      "commercial_codes": [
+        "6J"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-58",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-58",
+      "display_description": "SERVO VF-040 + KT-58",
+      "commercial_codes": [
+        "6L"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-63",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-63",
+      "display_description": "SERVO VF-040 + KT-63",
+      "commercial_codes": [
+        "6O"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-71",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-71",
+      "display_description": "SERVO VF-040 + KT-71",
+      "commercial_codes": [
+        "6P"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "6::KT-64",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-64",
+      "display_description": "SERVO VF-040 + KT-64",
+      "commercial_codes": [
+        "6R"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7INV015::KT-83",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-83",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-83",
+      "commercial_codes": [
+        "7A"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7::KT-90",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-90",
+      "display_description": "SERVO BR-040 + KT-90",
+      "commercial_codes": [
+        "7AB"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7INV028::KT-12",
+      "servo_code": "7INV028",
+      "servo_description": "SERVO BR-040 Invertido 028",
+      "kit_code": "KT-12",
+      "display_description": "SERVO BR-040 Invertido 028 + KT-12",
+      "commercial_codes": [
+        "7AC"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7INV028::KT-16",
+      "servo_code": "7INV028",
+      "servo_description": "SERVO BR-040 Invertido 028",
+      "kit_code": "KT-16",
+      "display_description": "SERVO BR-040 Invertido 028 + KT-16",
+      "commercial_codes": [
+        "7AD"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7INV028::KT-94",
+      "servo_code": "7INV028",
+      "servo_description": "SERVO BR-040 Invertido 028",
+      "kit_code": "KT-94",
+      "display_description": "SERVO BR-040 Invertido 028 + KT-94",
+      "commercial_codes": [
+        "7AF"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7INV028::KT-44",
+      "servo_code": "7INV028",
+      "servo_description": "SERVO BR-040 Invertido 028",
+      "kit_code": "KT-44",
+      "display_description": "SERVO BR-040 Invertido 028 + KT-44",
+      "commercial_codes": [
+        "7D"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7::KT-35",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-35",
+      "display_description": "SERVO BR-040 + KT-35",
+      "commercial_codes": [
+        "7E"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7::KT-37",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-37",
+      "display_description": "SERVO BR-040 + KT-37",
+      "commercial_codes": [
+        "7F"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7::KT-39",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-39",
+      "display_description": "SERVO BR-040 + KT-39",
+      "commercial_codes": [
+        "7H"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7INV015::KT-79",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-79",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-79",
+      "commercial_codes": [
+        "7N"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7INV015::KT-66",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-66",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-66",
+      "commercial_codes": [
+        "7P"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7INV015::KT-36",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-36",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-36",
+      "commercial_codes": [
+        "7Q"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7::KT-56",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-56",
+      "display_description": "SERVO BR-040 + KT-56",
+      "commercial_codes": [
+        "7R"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7::KT-72",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-72",
+      "display_description": "SERVO BR-040 + KT-72",
+      "commercial_codes": [
+        "7X"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7INV015::KT-68",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-68",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-68",
+      "commercial_codes": [
+        "7Y"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "7::KT-73",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-73",
+      "display_description": "SERVO BR-040 + KT-73",
+      "commercial_codes": [
+        "7Z"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "9::KT-31",
+      "servo_code": "9",
+      "servo_description": "SERVO MBF-032",
+      "kit_code": "KT-31",
+      "display_description": "SERVO MBF-032 + KT-31",
+      "commercial_codes": [
+        "9A",
+        "9D"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "9::KT-69",
+      "servo_code": "9",
+      "servo_description": "SERVO MBF-032",
+      "kit_code": "KT-69",
+      "display_description": "SERVO MBF-032 + KT-69",
+      "commercial_codes": [
+        "9B"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "9INV::KT-74",
+      "servo_code": "9INV",
+      "servo_description": "SERVO MBF-032 Invertido 028",
+      "kit_code": "KT-74",
+      "display_description": "SERVO MBF-032 Invertido 028 + KT-74",
+      "commercial_codes": [
+        "9C"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "10::KT-48",
+      "servo_code": "10",
+      "servo_description": "SERVO MC-040",
+      "kit_code": "KT-48",
+      "display_description": "SERVO MC-040 + KT-48",
+      "commercial_codes": [
+        "10A"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "10::KT-75",
+      "servo_code": "10",
+      "servo_description": "SERVO MC-040",
+      "kit_code": "KT-75",
+      "display_description": "SERVO MC-040 + KT-75",
+      "commercial_codes": [
+        "10B"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "10RB::KT-48",
+      "servo_code": "10RB",
+      "servo_description": "SERVO MC-040 Rebaixado",
+      "kit_code": "KT-48",
+      "display_description": "SERVO MC-040 Rebaixado + KT-48",
+      "commercial_codes": [
+        "10C"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "10::KT-76",
+      "servo_code": "10",
+      "servo_description": "SERVO MC-040",
+      "kit_code": "KT-76",
+      "display_description": "SERVO MC-040 + KT-76",
+      "commercial_codes": [
+        "10D"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "10::KT-49",
+      "servo_code": "10",
+      "servo_description": "SERVO MC-040",
+      "kit_code": "KT-49",
+      "display_description": "SERVO MC-040 + KT-49",
+      "commercial_codes": [
+        "10E"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "11INV::KT-23",
+      "servo_code": "11INV",
+      "servo_description": "SERVO AL-10 Invertido 028",
+      "kit_code": "KT-23",
+      "display_description": "SERVO AL-10 Invertido 028 + KT-23",
+      "commercial_codes": [
+        "11A"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "11::KT-92",
+      "servo_code": "11",
+      "servo_description": "SERVO AL-10",
+      "kit_code": "KT-92",
+      "display_description": "SERVO AL-10 + KT-92",
+      "commercial_codes": [
+        "11B"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "11::KT-85",
+      "servo_code": "11",
+      "servo_description": "SERVO AL-10",
+      "kit_code": "KT-85",
+      "display_description": "SERVO AL-10 + KT-85",
+      "commercial_codes": [
+        "11C"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "11::KT-86",
+      "servo_code": "11",
+      "servo_description": "SERVO AL-10",
+      "kit_code": "KT-86",
+      "display_description": "SERVO AL-10 + KT-86",
+      "commercial_codes": [
+        "11D"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "11::KT-11E",
+      "servo_code": "11",
+      "servo_description": "SERVO AL-10",
+      "kit_code": "KT-11E",
+      "display_description": "SERVO AL-10 + KT-11E",
+      "commercial_codes": [
+        "11E"
+      ],
+      "is_active": true
+    },
+    {
+      "configuration_key": "12::KT-12A",
+      "servo_code": "12",
+      "servo_description": "SERVO SAF-040",
+      "kit_code": "KT-12A",
+      "display_description": "SERVO SAF-040 + KT-12A",
+      "commercial_codes": [
+        "12A"
+      ],
+      "is_active": true
+    }
+  ],
+  "commercial_codes": [
+    {
+      "code": "1A",
+      "configuration_key": "1::KT-01",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015",
+      "kit_code": "KT-01",
+      "display_description": "SERVO MBF-015 + KT-01",
+      "is_active": true
+    },
+    {
+      "code": "1B",
+      "configuration_key": "1::KT-02",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015",
+      "kit_code": "KT-02",
+      "display_description": "SERVO MBF-015 + KT-02",
+      "is_active": true
+    },
+    {
+      "code": "1C",
+      "configuration_key": "1::KT-04",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015",
+      "kit_code": "KT-04",
+      "display_description": "SERVO MBF-015 + KT-04",
+      "is_active": true
+    },
+    {
+      "code": "1D",
+      "configuration_key": "1::KT-02",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015",
+      "kit_code": "KT-02",
+      "display_description": "SERVO MBF-015 + KT-02",
+      "is_active": true
+    },
+    {
+      "code": "1E",
+      "configuration_key": "1::KT-06",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015",
+      "kit_code": "KT-06",
+      "display_description": "SERVO MBF-015 + KT-06",
+      "is_active": true
+    },
+    {
+      "code": "1F",
+      "configuration_key": "1INV::KT-07",
+      "servo_code": "1INV",
+      "servo_description": "SERVO MBF-015 Invertido 028",
+      "kit_code": "KT-07",
+      "display_description": "SERVO MBF-015 Invertido 028 + KT-07",
+      "is_active": true
+    },
+    {
+      "code": "1H",
+      "configuration_key": "1DESL::KT-29",
+      "servo_code": "1DESL",
+      "servo_description": "SERVO MBF-015 Deslocado",
+      "kit_code": "KT-29",
+      "display_description": "SERVO MBF-015 Deslocado + KT-29",
+      "is_active": true
+    },
+    {
+      "code": "2A",
+      "configuration_key": "2::KT-18",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-18",
+      "display_description": "SERVO MBF-025 + KT-18",
+      "is_active": true
+    },
+    {
+      "code": "2B",
+      "configuration_key": "2::KT-19",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-19",
+      "display_description": "SERVO MBF-025 + KT-19",
+      "is_active": true
+    },
+    {
+      "code": "2C",
+      "configuration_key": "2::KT-21",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-21",
+      "display_description": "SERVO MBF-025 + KT-21",
+      "is_active": true
+    },
+    {
+      "code": "2D",
+      "configuration_key": "2::KT-53",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-53",
+      "display_description": "SERVO MBF-025 + KT-53",
+      "is_active": true
+    },
+    {
+      "code": "2E",
+      "configuration_key": "2::KT-22",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025",
+      "kit_code": "KT-22",
+      "display_description": "SERVO MBF-025 + KT-22",
+      "is_active": true
+    },
+    {
+      "code": "2F",
+      "configuration_key": "2INV::KT-05",
+      "servo_code": "2INV",
+      "servo_description": "SERVO MBF-025 Invertido 015/VF",
+      "kit_code": "KT-05",
+      "display_description": "SERVO MBF-025 Invertido 015/VF + KT-05",
+      "is_active": true
+    },
+    {
+      "code": "2H",
+      "configuration_key": "2INV::KT-91",
+      "servo_code": "2INV",
+      "servo_description": "SERVO MBF-025 Invertido 015/VF",
+      "kit_code": "KT-91",
+      "display_description": "SERVO MBF-025 Invertido 015/VF + KT-91",
+      "is_active": true
+    },
+    {
+      "code": "3A",
+      "configuration_key": "3::KT-14",
+      "servo_code": "3",
+      "servo_description": "SERVO CJ-015",
+      "kit_code": "KT-14",
+      "display_description": "SERVO CJ-015 + KT-14",
+      "is_active": true
+    },
+    {
+      "code": "3B",
+      "configuration_key": "3::KT-15",
+      "servo_code": "3",
+      "servo_description": "SERVO CJ-015",
+      "kit_code": "KT-15",
+      "display_description": "SERVO CJ-015 + KT-15",
+      "is_active": true
+    },
+    {
+      "code": "3C",
+      "configuration_key": "3::KT-03",
+      "servo_code": "3",
+      "servo_description": "SERVO CJ-015",
+      "kit_code": "KT-03",
+      "display_description": "SERVO CJ-015 + KT-03",
+      "is_active": true
+    },
+    {
+      "code": "4B",
+      "configuration_key": "4::KT-09",
+      "servo_code": "4",
+      "servo_description": "SERVO BR-015",
+      "kit_code": "KT-09",
+      "display_description": "SERVO BR-015 + KT-09",
+      "is_active": true
+    },
+    {
+      "code": "4C",
+      "configuration_key": "4::KT-10",
+      "servo_code": "4",
+      "servo_description": "SERVO BR-015",
+      "kit_code": "KT-10",
+      "display_description": "SERVO BR-015 + KT-10",
+      "is_active": true
+    },
+    {
+      "code": "4E",
+      "configuration_key": "4::KT-08",
+      "servo_code": "4",
+      "servo_description": "SERVO BR-015",
+      "kit_code": "KT-08",
+      "display_description": "SERVO BR-015 + KT-08",
+      "is_active": true
+    },
+    {
+      "code": "4F",
+      "configuration_key": "4::KT-11",
+      "servo_code": "4",
+      "servo_description": "SERVO BR-015",
+      "kit_code": "KT-11",
+      "display_description": "SERVO BR-015 + KT-11",
+      "is_active": true
+    },
+    {
+      "code": "5B",
+      "configuration_key": "5::KT-24",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-24",
+      "display_description": "SERVO MBF-040 + KT-24",
+      "is_active": true
+    },
+    {
+      "code": "5C",
+      "configuration_key": "5INV028::KT-25",
+      "servo_code": "5INV028",
+      "servo_description": "SERVO MBF-040 Invertido 028",
+      "kit_code": "KT-25",
+      "display_description": "SERVO MBF-040 Invertido 028 + KT-25",
+      "is_active": true
+    },
+    {
+      "code": "5D",
+      "configuration_key": "5INV015::KT-30",
+      "servo_code": "5INV015",
+      "servo_description": "SERVO MBF-040 Invertido 015/VF",
+      "kit_code": "KT-30",
+      "display_description": "SERVO MBF-040 Invertido 015/VF + KT-30",
+      "is_active": true
+    },
+    {
+      "code": "5E",
+      "configuration_key": "5::KT-27",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-27",
+      "display_description": "SERVO MBF-040 + KT-27",
+      "is_active": true
+    },
+    {
+      "code": "5F",
+      "configuration_key": "5::KT-70",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-70",
+      "display_description": "SERVO MBF-040 + KT-70",
+      "is_active": true
+    },
+    {
+      "code": "5G",
+      "configuration_key": "5::KT-67",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-67",
+      "display_description": "SERVO MBF-040 + KT-67",
+      "is_active": true
+    },
+    {
+      "code": "5H",
+      "configuration_key": "6::KT-57",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-57",
+      "display_description": "SERVO VF-040 + KT-57",
+      "is_active": true
+    },
+    {
+      "code": "5I",
+      "configuration_key": "5::KT-5I",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-5I",
+      "display_description": "SERVO MBF-040 + KT-5I",
+      "is_active": true
+    },
+    {
+      "code": "5J",
+      "configuration_key": "5::KT-20",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-20",
+      "display_description": "SERVO MBF-040 + KT-20",
+      "is_active": true
+    },
+    {
+      "code": "5L",
+      "configuration_key": "5::KT-32",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-32",
+      "display_description": "SERVO MBF-040 + KT-32",
+      "is_active": true
+    },
+    {
+      "code": "5M",
+      "configuration_key": "5::KT-53",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-53",
+      "display_description": "SERVO MBF-040 + KT-53",
+      "is_active": true
+    },
+    {
+      "code": "5P",
+      "configuration_key": "5::KT-84",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-84",
+      "display_description": "SERVO MBF-040 + KT-84",
+      "is_active": true
+    },
+    {
+      "code": "5W",
+      "configuration_key": "5INV028::KT-47",
+      "servo_code": "5INV028",
+      "servo_description": "SERVO MBF-040 Invertido 028",
+      "kit_code": "KT-47",
+      "display_description": "SERVO MBF-040 Invertido 028 + KT-47",
+      "is_active": true
+    },
+    {
+      "code": "5X",
+      "configuration_key": "5::KT-88",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-88",
+      "display_description": "SERVO MBF-040 + KT-88",
+      "is_active": true
+    },
+    {
+      "code": "5Z",
+      "configuration_key": "5::KT-59",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040",
+      "kit_code": "KT-59",
+      "display_description": "SERVO MBF-040 + KT-59",
+      "is_active": true
+    },
+    {
+      "code": "6A",
+      "configuration_key": "6::KT-51",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-51",
+      "display_description": "SERVO VF-040 + KT-51",
+      "is_active": true
+    },
+    {
+      "code": "6B",
+      "configuration_key": "6::KT-52",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-52",
+      "display_description": "SERVO VF-040 + KT-52",
+      "is_active": true
+    },
+    {
+      "code": "6C",
+      "configuration_key": "6::KT-50",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-50",
+      "display_description": "SERVO VF-040 + KT-50",
+      "is_active": true
+    },
+    {
+      "code": "6E",
+      "configuration_key": "6::KT-45",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-45",
+      "display_description": "SERVO VF-040 + KT-45",
+      "is_active": true
+    },
+    {
+      "code": "6F",
+      "configuration_key": "6::KT-45",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-45",
+      "display_description": "SERVO VF-040 + KT-45",
+      "is_active": true
+    },
+    {
+      "code": "6G",
+      "configuration_key": "6::KT-17",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-17",
+      "display_description": "SERVO VF-040 + KT-17",
+      "is_active": true
+    },
+    {
+      "code": "6H",
+      "configuration_key": "6::KT-26",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-26",
+      "display_description": "SERVO VF-040 + KT-26",
+      "is_active": true
+    },
+    {
+      "code": "6I",
+      "configuration_key": "6::KT-50",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-50",
+      "display_description": "SERVO VF-040 + KT-50",
+      "is_active": true
+    },
+    {
+      "code": "6J",
+      "configuration_key": "6::KT-28",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-28",
+      "display_description": "SERVO VF-040 + KT-28",
+      "is_active": true
+    },
+    {
+      "code": "6L",
+      "configuration_key": "6::KT-58",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-58",
+      "display_description": "SERVO VF-040 + KT-58",
+      "is_active": true
+    },
+    {
+      "code": "6O",
+      "configuration_key": "6::KT-63",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-63",
+      "display_description": "SERVO VF-040 + KT-63",
+      "is_active": true
+    },
+    {
+      "code": "6P",
+      "configuration_key": "6::KT-71",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-71",
+      "display_description": "SERVO VF-040 + KT-71",
+      "is_active": true
+    },
+    {
+      "code": "6R",
+      "configuration_key": "6::KT-64",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040",
+      "kit_code": "KT-64",
+      "display_description": "SERVO VF-040 + KT-64",
+      "is_active": true
+    },
+    {
+      "code": "7A",
+      "configuration_key": "7INV015::KT-83",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-83",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-83",
+      "is_active": true
+    },
+    {
+      "code": "7AB",
+      "configuration_key": "7::KT-90",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-90",
+      "display_description": "SERVO BR-040 + KT-90",
+      "is_active": true
+    },
+    {
+      "code": "7AC",
+      "configuration_key": "7INV028::KT-12",
+      "servo_code": "7INV028",
+      "servo_description": "SERVO BR-040 Invertido 028",
+      "kit_code": "KT-12",
+      "display_description": "SERVO BR-040 Invertido 028 + KT-12",
+      "is_active": true
+    },
+    {
+      "code": "7AD",
+      "configuration_key": "7INV028::KT-16",
+      "servo_code": "7INV028",
+      "servo_description": "SERVO BR-040 Invertido 028",
+      "kit_code": "KT-16",
+      "display_description": "SERVO BR-040 Invertido 028 + KT-16",
+      "is_active": true
+    },
+    {
+      "code": "7AF",
+      "configuration_key": "7INV028::KT-94",
+      "servo_code": "7INV028",
+      "servo_description": "SERVO BR-040 Invertido 028",
+      "kit_code": "KT-94",
+      "display_description": "SERVO BR-040 Invertido 028 + KT-94",
+      "is_active": true
+    },
+    {
+      "code": "7D",
+      "configuration_key": "7INV028::KT-44",
+      "servo_code": "7INV028",
+      "servo_description": "SERVO BR-040 Invertido 028",
+      "kit_code": "KT-44",
+      "display_description": "SERVO BR-040 Invertido 028 + KT-44",
+      "is_active": true
+    },
+    {
+      "code": "7E",
+      "configuration_key": "7::KT-35",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-35",
+      "display_description": "SERVO BR-040 + KT-35",
+      "is_active": true
+    },
+    {
+      "code": "7F",
+      "configuration_key": "7::KT-37",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-37",
+      "display_description": "SERVO BR-040 + KT-37",
+      "is_active": true
+    },
+    {
+      "code": "7H",
+      "configuration_key": "7::KT-39",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-39",
+      "display_description": "SERVO BR-040 + KT-39",
+      "is_active": true
+    },
+    {
+      "code": "7N",
+      "configuration_key": "7INV015::KT-79",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-79",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-79",
+      "is_active": true
+    },
+    {
+      "code": "7P",
+      "configuration_key": "7INV015::KT-66",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-66",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-66",
+      "is_active": true
+    },
+    {
+      "code": "7Q",
+      "configuration_key": "7INV015::KT-36",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-36",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-36",
+      "is_active": true
+    },
+    {
+      "code": "7R",
+      "configuration_key": "7::KT-56",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-56",
+      "display_description": "SERVO BR-040 + KT-56",
+      "is_active": true
+    },
+    {
+      "code": "7X",
+      "configuration_key": "7::KT-72",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-72",
+      "display_description": "SERVO BR-040 + KT-72",
+      "is_active": true
+    },
+    {
+      "code": "7Y",
+      "configuration_key": "7INV015::KT-68",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF",
+      "kit_code": "KT-68",
+      "display_description": "SERVO BR-040 Invertido 015/VF + KT-68",
+      "is_active": true
+    },
+    {
+      "code": "7Z",
+      "configuration_key": "7::KT-73",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040",
+      "kit_code": "KT-73",
+      "display_description": "SERVO BR-040 + KT-73",
+      "is_active": true
+    },
+    {
+      "code": "9A",
+      "configuration_key": "9::KT-31",
+      "servo_code": "9",
+      "servo_description": "SERVO MBF-032",
+      "kit_code": "KT-31",
+      "display_description": "SERVO MBF-032 + KT-31",
+      "is_active": true
+    },
+    {
+      "code": "9B",
+      "configuration_key": "9::KT-69",
+      "servo_code": "9",
+      "servo_description": "SERVO MBF-032",
+      "kit_code": "KT-69",
+      "display_description": "SERVO MBF-032 + KT-69",
+      "is_active": true
+    },
+    {
+      "code": "9C",
+      "configuration_key": "9INV::KT-74",
+      "servo_code": "9INV",
+      "servo_description": "SERVO MBF-032 Invertido 028",
+      "kit_code": "KT-74",
+      "display_description": "SERVO MBF-032 Invertido 028 + KT-74",
+      "is_active": true
+    },
+    {
+      "code": "9D",
+      "configuration_key": "9::KT-31",
+      "servo_code": "9",
+      "servo_description": "SERVO MBF-032",
+      "kit_code": "KT-31",
+      "display_description": "SERVO MBF-032 + KT-31",
+      "is_active": true
+    },
+    {
+      "code": "10A",
+      "configuration_key": "10::KT-48",
+      "servo_code": "10",
+      "servo_description": "SERVO MC-040",
+      "kit_code": "KT-48",
+      "display_description": "SERVO MC-040 + KT-48",
+      "is_active": true
+    },
+    {
+      "code": "10B",
+      "configuration_key": "10::KT-75",
+      "servo_code": "10",
+      "servo_description": "SERVO MC-040",
+      "kit_code": "KT-75",
+      "display_description": "SERVO MC-040 + KT-75",
+      "is_active": true
+    },
+    {
+      "code": "10C",
+      "configuration_key": "10RB::KT-48",
+      "servo_code": "10RB",
+      "servo_description": "SERVO MC-040 Rebaixado",
+      "kit_code": "KT-48",
+      "display_description": "SERVO MC-040 Rebaixado + KT-48",
+      "is_active": true
+    },
+    {
+      "code": "10D",
+      "configuration_key": "10::KT-76",
+      "servo_code": "10",
+      "servo_description": "SERVO MC-040",
+      "kit_code": "KT-76",
+      "display_description": "SERVO MC-040 + KT-76",
+      "is_active": true
+    },
+    {
+      "code": "10E",
+      "configuration_key": "10::KT-49",
+      "servo_code": "10",
+      "servo_description": "SERVO MC-040",
+      "kit_code": "KT-49",
+      "display_description": "SERVO MC-040 + KT-49",
+      "is_active": true
+    },
+    {
+      "code": "11A",
+      "configuration_key": "11INV::KT-23",
+      "servo_code": "11INV",
+      "servo_description": "SERVO AL-10 Invertido 028",
+      "kit_code": "KT-23",
+      "display_description": "SERVO AL-10 Invertido 028 + KT-23",
+      "is_active": true
+    },
+    {
+      "code": "11B",
+      "configuration_key": "11::KT-92",
+      "servo_code": "11",
+      "servo_description": "SERVO AL-10",
+      "kit_code": "KT-92",
+      "display_description": "SERVO AL-10 + KT-92",
+      "is_active": true
+    },
+    {
+      "code": "11C",
+      "configuration_key": "11::KT-85",
+      "servo_code": "11",
+      "servo_description": "SERVO AL-10",
+      "kit_code": "KT-85",
+      "display_description": "SERVO AL-10 + KT-85",
+      "is_active": true
+    },
+    {
+      "code": "11D",
+      "configuration_key": "11::KT-86",
+      "servo_code": "11",
+      "servo_description": "SERVO AL-10",
+      "kit_code": "KT-86",
+      "display_description": "SERVO AL-10 + KT-86",
+      "is_active": true
+    },
+    {
+      "code": "11E",
+      "configuration_key": "11::KT-11E",
+      "servo_code": "11",
+      "servo_description": "SERVO AL-10",
+      "kit_code": "KT-11E",
+      "display_description": "SERVO AL-10 + KT-11E",
+      "is_active": true
+    },
+    {
+      "code": "12A",
+      "configuration_key": "12::KT-12A",
+      "servo_code": "12",
+      "servo_description": "SERVO SAF-040",
+      "kit_code": "KT-12A",
+      "display_description": "SERVO SAF-040 + KT-12A",
+      "is_active": true
+    }
+  ],
+  "repairs": [
+    {
+      "code": "R064",
+      "description": "JOGO DE REPARO 064",
+      "item_type": "REPAIR_KIT",
+      "base_models": [
+        "MBF-015",
+        "CJ-015",
+        "BR-015"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "R065",
+      "description": "JOGO DE REPARO 065",
+      "item_type": "REPAIR_KIT",
+      "base_models": [
+        "BR-040",
+        "MBF-025",
+        "MBF-040",
+        "AL-10"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "R066",
+      "description": "JOGO DE REPARO 066",
+      "item_type": "REPAIR_KIT",
+      "base_models": [
+        "VF-040"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "R067",
+      "description": "JOGO DE REPARO 067",
+      "item_type": "REPAIR_KIT",
+      "base_models": [
+        "MBF-032"
+      ],
+      "is_active": true
+    },
+    {
+      "code": "R068",
+      "description": "JOGO DE REPARO 068",
+      "item_type": "REPAIR_KIT",
+      "base_models": [
+        "MC-040",
+        "SAF-040"
+      ],
+      "is_active": true
+    }
+  ],
+  "repair_compatibility": [
+    {
+      "repair_code": "R064",
+      "repair_description": "JOGO DE REPARO 064",
+      "base_model": "MBF-015",
+      "servo_code": "1",
+      "servo_description": "SERVO MBF-015"
+    },
+    {
+      "repair_code": "R064",
+      "repair_description": "JOGO DE REPARO 064",
+      "base_model": "MBF-015",
+      "servo_code": "1INV",
+      "servo_description": "SERVO MBF-015 Invertido 028"
+    },
+    {
+      "repair_code": "R064",
+      "repair_description": "JOGO DE REPARO 064",
+      "base_model": "MBF-015",
+      "servo_code": "1DESL",
+      "servo_description": "SERVO MBF-015 Deslocado"
+    },
+    {
+      "repair_code": "R064",
+      "repair_description": "JOGO DE REPARO 064",
+      "base_model": "CJ-015",
+      "servo_code": "3",
+      "servo_description": "SERVO CJ-015"
+    },
+    {
+      "repair_code": "R064",
+      "repair_description": "JOGO DE REPARO 064",
+      "base_model": "BR-015",
+      "servo_code": "4",
+      "servo_description": "SERVO BR-015"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "BR-040",
+      "servo_code": "7",
+      "servo_description": "SERVO BR-040"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "BR-040",
+      "servo_code": "7INV015",
+      "servo_description": "SERVO BR-040 Invertido 015/VF"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "BR-040",
+      "servo_code": "7INV028",
+      "servo_description": "SERVO BR-040 Invertido 028"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "MBF-025",
+      "servo_code": "2",
+      "servo_description": "SERVO MBF-025"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "MBF-025",
+      "servo_code": "2INV",
+      "servo_description": "SERVO MBF-025 Invertido 015/VF"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "MBF-040",
+      "servo_code": "5",
+      "servo_description": "SERVO MBF-040"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "MBF-040",
+      "servo_code": "5INV015",
+      "servo_description": "SERVO MBF-040 Invertido 015/VF"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "MBF-040",
+      "servo_code": "5INV028",
+      "servo_description": "SERVO MBF-040 Invertido 028"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "AL-10",
+      "servo_code": "11",
+      "servo_description": "SERVO AL-10"
+    },
+    {
+      "repair_code": "R065",
+      "repair_description": "JOGO DE REPARO 065",
+      "base_model": "AL-10",
+      "servo_code": "11INV",
+      "servo_description": "SERVO AL-10 Invertido 028"
+    },
+    {
+      "repair_code": "R066",
+      "repair_description": "JOGO DE REPARO 066",
+      "base_model": "VF-040",
+      "servo_code": "6",
+      "servo_description": "SERVO VF-040"
+    },
+    {
+      "repair_code": "R067",
+      "repair_description": "JOGO DE REPARO 067",
+      "base_model": "MBF-032",
+      "servo_code": "9",
+      "servo_description": "SERVO MBF-032"
+    },
+    {
+      "repair_code": "R067",
+      "repair_description": "JOGO DE REPARO 067",
+      "base_model": "MBF-032",
+      "servo_code": "9INV",
+      "servo_description": "SERVO MBF-032 Invertido 028"
+    },
+    {
+      "repair_code": "R068",
+      "repair_description": "JOGO DE REPARO 068",
+      "base_model": "MC-040",
+      "servo_code": "10",
+      "servo_description": "SERVO MC-040"
+    },
+    {
+      "repair_code": "R068",
+      "repair_description": "JOGO DE REPARO 068",
+      "base_model": "MC-040",
+      "servo_code": "10RB",
+      "servo_description": "SERVO MC-040 Rebaixado"
+    },
+    {
+      "repair_code": "R068",
+      "repair_description": "JOGO DE REPARO 068",
+      "base_model": "SAF-040",
+      "servo_code": "12",
+      "servo_description": "SERVO SAF-040"
+    }
+  ]
+}
