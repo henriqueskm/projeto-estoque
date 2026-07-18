@@ -19,6 +19,7 @@ type ActionCard = {
   title: string;
   description: string;
   icon: ReactNode;
+  href?: string;
   cardClassName: string;
   iconClassName: string;
   labelClassName: string;
@@ -33,6 +34,7 @@ const actions: ActionCard[] = [
     title: "Entrada",
     description: "Adicionar itens ao estoque",
     icon: <InboundIcon className="size-7" />,
+    href: "/entrada",
     cardClassName: "border-emerald-200 bg-emerald-50/70 hover:border-emerald-300",
     iconClassName: "bg-emerald-700 text-white",
     labelClassName: "text-emerald-800",
@@ -362,35 +364,55 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               Ações rápidas
             </h2>
           </div>
-          <span className="text-xs font-semibold text-slate-500">Em breve</span>
+          <span className="text-xs font-semibold text-slate-500">
+            3 em breve
+          </span>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-          {actions.map((action) => (
-            <button
-              key={action.title}
-              type="button"
-              aria-label={`${action.title}. Funcionalidade em breve.`}
-              className={`group min-h-44 rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5 ${action.cardClassName}`}
-            >
-              <span
-                className={`flex size-12 items-center justify-center rounded-2xl shadow-sm ${action.iconClassName}`}
+          {actions.map((action) => {
+            const className = `group min-h-44 rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5 ${action.cardClassName}`;
+            const content = (
+              <>
+                <span
+                  className={`flex size-12 items-center justify-center rounded-2xl shadow-sm ${action.iconClassName}`}
+                >
+                  {action.icon}
+                </span>
+                <span className="mt-5 block text-base font-extrabold leading-tight text-slate-950 sm:text-lg">
+                  {action.title}
+                </span>
+                <span className="mt-2 hidden text-sm leading-5 text-slate-600 sm:block">
+                  {action.description}
+                </span>
+                <span
+                  className={`mt-3 block text-xs font-bold uppercase tracking-wide sm:hidden ${action.labelClassName}`}
+                >
+                  {action.href ? "Abrir" : "Em breve"}
+                </span>
+              </>
+            );
+
+            return action.href ? (
+              <Link
+                key={action.title}
+                href={action.href}
+                aria-label={`Abrir ${action.title}`}
+                className={className}
               >
-                {action.icon}
-              </span>
-              <span className="mt-5 block text-base font-extrabold leading-tight text-slate-950 sm:text-lg">
-                {action.title}
-              </span>
-              <span className="mt-2 hidden text-sm leading-5 text-slate-600 sm:block">
-                {action.description}
-              </span>
-              <span
-                className={`mt-3 block text-xs font-bold uppercase tracking-wide sm:hidden ${action.labelClassName}`}
+                {content}
+              </Link>
+            ) : (
+              <button
+                key={action.title}
+                type="button"
+                aria-label={`${action.title}. Funcionalidade em breve.`}
+                className={className}
               >
-                Em breve
-              </span>
-            </button>
-          ))}
+                {content}
+              </button>
+            );
+          })}
         </div>
       </section>
 

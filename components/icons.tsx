@@ -84,3 +84,36 @@ export function LogoutIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="m15 18-6-6 6-6M9 12h11" />
+    </svg>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13" />
+      <path d="M10 11v5m4-5v5" />
+    </svg>
+  );
+}
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  );
+}
