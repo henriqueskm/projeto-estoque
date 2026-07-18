@@ -467,12 +467,20 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         className="mt-10 pb-8"
         aria-labelledby="latest-movements-title"
       >
-        <h2
-          id="latest-movements-title"
-          className="text-xl font-bold tracking-tight text-text-primary"
-        >
-          Últimas movimentações
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2
+            id="latest-movements-title"
+            className="text-xl font-bold tracking-tight text-text-primary"
+          >
+            Últimas movimentações
+          </h2>
+          <Link
+            href="/historico"
+            className="nk-focus inline-flex min-h-11 items-center justify-center rounded-xl border border-border-neutral bg-surface px-4 text-sm font-bold text-text-primary transition hover:bg-app-background"
+          >
+            Ver histórico completo
+          </Link>
+        </div>
 
         {!homeData ? (
           <div className="mt-4 rounded-2xl border border-red-200 bg-surface px-5 py-8 text-center">
