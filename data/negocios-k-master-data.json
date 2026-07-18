@@ -78,6 +78,16 @@
       "is_active": true
     },
     {
+      "id": "7d65b2e0-d07c-466d-b920-ccd42b59a97f",
+      "code": "6RB",
+      "description": "SERVO VF-040 Rebaixado",
+      "model": "VF-040 Rebaixado",
+      "item_type": "SERVO",
+      "minimum_stock": 0,
+      "is_active": true,
+      "notes": "Servo rebaixado, flange de 42 mm, corpo zincado amarelo, referência 028/AG"
+    },
+    {
       "code": "7",
       "description": "SERVO BR-040",
       "model": "BR-040",
@@ -1199,11 +1209,12 @@
       "is_active": true
     },
     {
-      "configuration_key": "5::KT-59",
-      "servo_code": "5",
-      "servo_description": "SERVO MBF-040",
+      "id": "b6aebf6f-2dd4-4288-ab56-c54e3c96adb2",
+      "configuration_key": "5INV028::KT-59",
+      "servo_code": "5INV028",
+      "servo_description": "SERVO MBF-040 Invertido 028",
       "kit_code": "KT-59",
-      "display_description": "SERVO MBF-040 + KT-59",
+      "display_description": "SERVO MBF-040 Invertido 028 + KT-59",
       "commercial_codes": [
         "5Z"
       ],
@@ -1311,22 +1322,24 @@
       "is_active": true
     },
     {
-      "configuration_key": "6::KT-71",
-      "servo_code": "6",
-      "servo_description": "SERVO VF-040",
+      "id": "0837fec5-6a54-4c84-a6e6-e142b34a9e22",
+      "configuration_key": "6RB::KT-71",
+      "servo_code": "6RB",
+      "servo_description": "SERVO VF-040 Rebaixado",
       "kit_code": "KT-71",
-      "display_description": "SERVO VF-040 + KT-71",
+      "display_description": "SERVO VF-040 Rebaixado + KT-71",
       "commercial_codes": [
         "6P"
       ],
       "is_active": true
     },
     {
-      "configuration_key": "6::KT-64",
-      "servo_code": "6",
-      "servo_description": "SERVO VF-040",
+      "id": "2a2f5d77-bfe2-42cb-9942-cba87625b28d",
+      "configuration_key": "6RB::KT-64",
+      "servo_code": "6RB",
+      "servo_description": "SERVO VF-040 Rebaixado",
       "kit_code": "KT-64",
-      "display_description": "SERVO VF-040 + KT-64",
+      "display_description": "SERVO VF-040 Rebaixado + KT-64",
       "commercial_codes": [
         "6R"
       ],
@@ -1509,13 +1522,25 @@
       "is_active": true
     },
     {
+      "id": "7809b0b5-a697-4f30-8808-7475b420603d",
       "configuration_key": "9::KT-31",
       "servo_code": "9",
       "servo_description": "SERVO MBF-032",
       "kit_code": "KT-31",
       "display_description": "SERVO MBF-032 + KT-31",
       "commercial_codes": [
-        "9A",
+        "9A"
+      ],
+      "is_active": true
+    },
+    {
+      "id": "62316df6-e0ca-4e9c-8f55-73811596b74b",
+      "configuration_key": "9INV::KT-31",
+      "servo_code": "9INV",
+      "servo_description": "SERVO MBF-032 Invertido 028",
+      "kit_code": "KT-31",
+      "display_description": "SERVO MBF-032 Invertido 028 + KT-31",
+      "commercial_codes": [
         "9D"
       ],
       "is_active": true
@@ -1982,11 +2007,11 @@
     },
     {
       "code": "5Z",
-      "configuration_key": "5::KT-59",
-      "servo_code": "5",
-      "servo_description": "SERVO MBF-040",
+      "configuration_key": "5INV028::KT-59",
+      "servo_code": "5INV028",
+      "servo_description": "SERVO MBF-040 Invertido 028",
       "kit_code": "KT-59",
-      "display_description": "SERVO MBF-040 + KT-59",
+      "display_description": "SERVO MBF-040 Invertido 028 + KT-59",
       "is_active": true
     },
     {
@@ -2090,20 +2115,20 @@
     },
     {
       "code": "6P",
-      "configuration_key": "6::KT-71",
-      "servo_code": "6",
-      "servo_description": "SERVO VF-040",
+      "configuration_key": "6RB::KT-71",
+      "servo_code": "6RB",
+      "servo_description": "SERVO VF-040 Rebaixado",
       "kit_code": "KT-71",
-      "display_description": "SERVO VF-040 + KT-71",
+      "display_description": "SERVO VF-040 Rebaixado + KT-71",
       "is_active": true
     },
     {
       "code": "6R",
-      "configuration_key": "6::KT-64",
-      "servo_code": "6",
-      "servo_description": "SERVO VF-040",
+      "configuration_key": "6RB::KT-64",
+      "servo_code": "6RB",
+      "servo_description": "SERVO VF-040 Rebaixado",
       "kit_code": "KT-64",
-      "display_description": "SERVO VF-040 + KT-64",
+      "display_description": "SERVO VF-040 Rebaixado + KT-64",
       "is_active": true
     },
     {
@@ -2279,11 +2304,11 @@
     },
     {
       "code": "9D",
-      "configuration_key": "9::KT-31",
-      "servo_code": "9",
-      "servo_description": "SERVO MBF-032",
+      "configuration_key": "9INV::KT-31",
+      "servo_code": "9INV",
+      "servo_description": "SERVO MBF-032 Invertido 028",
       "kit_code": "KT-31",
-      "display_description": "SERVO MBF-032 + KT-31",
+      "display_description": "SERVO MBF-032 Invertido 028 + KT-31",
       "is_active": true
     },
     {
@@ -2551,6 +2576,13 @@
       "base_model": "VF-040",
       "servo_code": "6",
       "servo_description": "SERVO VF-040"
+    },
+    {
+      "repair_code": "R066",
+      "repair_description": "JOGO DE REPARO 066",
+      "base_model": "VF-040",
+      "servo_code": "6RB",
+      "servo_description": "SERVO VF-040 Rebaixado"
     },
     {
       "repair_code": "R067",
