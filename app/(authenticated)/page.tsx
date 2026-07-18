@@ -43,6 +43,7 @@ const actions: ActionCard[] = [
     title: "Saída",
     description: "Registrar retirada ou envio",
     icon: <OutboundIcon className="size-7" />,
+    href: "/saida",
     cardClassName: "border-red-200 bg-red-50/70 hover:border-red-300",
     iconClassName: "bg-red-700 text-white",
     labelClassName: "text-red-800",
@@ -365,7 +366,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             </h2>
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            3 em breve
+            2 em breve
           </span>
         </div>
 
