@@ -21,18 +21,12 @@ export function AppHeader({
           aria-label="Ir para o início do Negócios K"
           className="nk-focus min-w-0 rounded-full"
         >
-          <BrandMark
-            variant="compact"
-            size="sm"
-            inverted
-            className="sm:hidden"
-          />
-          <BrandMark
-            variant="full"
-            size="sm"
-            inverted
-            className="hidden sm:inline-flex"
-          />
+          <div className="sm:hidden">
+            <BrandMark variant="compact" size="sm" inverted />
+          </div>
+          <div className="hidden sm:block">
+            <BrandMark variant="full" size="sm" inverted />
+          </div>
         </Link>
 
         <div
