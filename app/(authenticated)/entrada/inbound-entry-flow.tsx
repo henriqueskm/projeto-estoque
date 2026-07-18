@@ -62,19 +62,19 @@ function Summary({
 }) {
   return (
     <div className="grid grid-cols-2 gap-3">
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+      <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
+        <p className="text-xs font-black tracking-wide text-text-muted uppercase">
           Itens distintos
         </p>
-        <p className="mt-1 text-2xl font-black text-slate-950">
+        <p className="mt-1 text-2xl font-black text-text-primary">
           {numberFormatter.format(distinctItems)}
         </p>
       </div>
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+      <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
+        <p className="text-xs font-black tracking-wide text-text-muted uppercase">
           Total de unidades
         </p>
-        <p className="mt-1 text-2xl font-black text-slate-950">
+        <p className="mt-1 text-2xl font-black text-text-primary">
           {numberFormatter.format(totalUnits)}
         </p>
       </div>
@@ -282,25 +282,25 @@ export function InboundEntryFlow({
 
   if (step === "success" && receipt) {
     return (
-      <section className="mx-auto max-w-2xl rounded-3xl border border-emerald-200 bg-white p-5 shadow-lg shadow-emerald-950/5 sm:p-8">
+      <section className="mx-auto max-w-2xl rounded-3xl border border-emerald-200 bg-surface p-5 shadow-lg shadow-emerald-950/5 sm:p-8">
         <div className="flex size-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
           <CheckIcon className="size-9" />
         </div>
         <p className="mt-6 text-xs font-black tracking-[0.18em] text-emerald-700 uppercase">
           Operação concluída
         </p>
-        <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+        <h2 className="mt-1 text-2xl font-black tracking-tight text-text-primary sm:text-3xl">
           Entrada registrada
         </h2>
-        <p className="mt-2 font-semibold text-slate-600">
+        <p className="mt-2 font-semibold text-text-muted">
           O estoque foi atualizado e o histórico da movimentação foi criado.
         </p>
 
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-          <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+        <div className="mt-6 rounded-2xl border border-border-neutral bg-app-background p-4 sm:p-5">
+          <p className="text-xs font-black tracking-wide text-text-muted uppercase">
             Movement batch ID
           </p>
-          <p className="mt-2 break-all font-mono text-sm font-bold text-slate-950">
+          <p className="mt-2 break-all font-mono text-sm font-bold text-text-primary">
             {receipt.movementBatchId}
           </p>
         </div>
@@ -316,13 +316,13 @@ export function InboundEntryFlow({
           <button
             type="button"
             onClick={startNewEntry}
-            className="inline-flex min-h-14 items-center justify-center rounded-2xl bg-blue-700 px-5 text-sm font-black text-white transition hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-blue-300"
+            className="nk-focus inline-flex min-h-14 items-center justify-center rounded-2xl bg-brand-charcoal px-5 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
           >
             Nova entrada
           </button>
           <Link
             href="/"
-            className="inline-flex min-h-14 items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-slate-300"
+            className="nk-focus inline-flex min-h-14 items-center justify-center rounded-2xl border border-border-neutral bg-surface px-5 text-sm font-black text-text-primary transition hover:bg-app-background"
           >
             Voltar para o início
           </Link>
@@ -338,21 +338,21 @@ export function InboundEntryFlow({
           <span className="flex size-9 items-center justify-center rounded-full bg-emerald-700 text-sm font-black text-white">
             <CheckIcon className="size-5" />
           </span>
-          <span className="h-1 flex-1 rounded-full bg-blue-700" />
-          <span className="flex size-9 items-center justify-center rounded-full bg-blue-700 text-sm font-black text-white">
+          <span className="h-1 flex-1 rounded-full bg-brand-gold" />
+          <span className="flex size-9 items-center justify-center rounded-full bg-brand-charcoal text-sm font-black text-white ring-2 ring-brand-gold">
             2
           </span>
           <p className="sr-only">Revisão antes da confirmação</p>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-          <p className="text-xs font-black tracking-[0.16em] text-blue-700 uppercase">
+        <div className="rounded-3xl border border-border-neutral bg-surface p-5 shadow-sm sm:p-7">
+          <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
             Etapa 2 de 2
           </p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+          <h2 className="mt-1 text-2xl font-black tracking-tight text-text-primary">
             Revise antes de confirmar
           </h2>
-          <p className="mt-2 text-sm font-semibold text-slate-600">
+          <p className="mt-2 text-sm font-semibold text-text-muted">
             A movimentação só acontecerá ao selecionar “Confirmar entrada”.
           </p>
 
@@ -360,22 +360,22 @@ export function InboundEntryFlow({
             {lines.map((line) => (
               <article
                 key={line.item.id}
-                className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                className="rounded-2xl border border-border-neutral bg-app-background p-4"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-blue-900 uppercase">
+                    <span className="inline-flex rounded-full bg-brand-gold-soft px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-brand-charcoal uppercase">
                       {physicalItemTypeLabels[line.item.itemType]}
                     </span>
-                    <p className="mt-2 text-xl font-black text-slate-950">
+                    <p className="mt-2 text-xl font-black text-text-primary">
                       {line.item.code}
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-600">
+                    <p className="mt-1 text-sm font-semibold text-text-muted">
                       {line.item.description}
                     </p>
                   </div>
-                  <div className="shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-right text-white">
-                    <p className="text-[0.65rem] font-black tracking-wide text-slate-300 uppercase">
+                  <div className="shrink-0 rounded-xl bg-brand-charcoal px-3 py-2 text-right text-white">
+                    <p className="text-[0.65rem] font-black tracking-wide text-brand-gold uppercase">
                       Quantidade
                     </p>
                     <p className="text-xl font-black">
@@ -389,11 +389,11 @@ export function InboundEntryFlow({
             ))}
           </div>
 
-          <div className="mt-5 rounded-2xl border border-slate-200 p-4">
-            <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+          <div className="mt-5 rounded-2xl border border-border-neutral p-4">
+            <p className="text-xs font-black tracking-wide text-text-muted uppercase">
               Descrição
             </p>
-            <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-slate-800">
+            <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-text-primary">
               {description.trim() || "Sem descrição"}
             </p>
           </div>
@@ -416,7 +416,7 @@ export function InboundEntryFlow({
               type="button"
               onClick={returnToEditing}
               disabled={isPending}
-              className="order-2 inline-flex min-h-14 items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"
+              className="nk-focus order-2 inline-flex min-h-14 items-center justify-center rounded-2xl border border-border-neutral bg-surface px-5 text-sm font-black text-text-primary transition hover:bg-app-background disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"
             >
               Voltar e corrigir
             </button>
@@ -448,58 +448,58 @@ export function InboundEntryFlow({
   return (
     <section>
       <div className="mb-5 flex items-center gap-3" aria-label="Etapa 1 de 2">
-        <span className="flex size-9 items-center justify-center rounded-full bg-blue-700 text-sm font-black text-white">
+        <span className="flex size-9 items-center justify-center rounded-full bg-brand-charcoal text-sm font-black text-white ring-2 ring-brand-gold">
           1
         </span>
-        <span className="h-1 flex-1 rounded-full bg-slate-200" />
-        <span className="flex size-9 items-center justify-center rounded-full bg-slate-200 text-sm font-black text-slate-600">
+        <span className="h-1 flex-1 rounded-full bg-border-neutral" />
+        <span className="flex size-9 items-center justify-center rounded-full bg-brand-gold-soft text-sm font-black text-brand-charcoal">
           2
         </span>
         <p className="sr-only">Edição da entrada</p>
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6">
           <div>
-            <p className="text-xs font-black tracking-[0.16em] text-blue-700 uppercase">
+            <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
               Etapa 1 de 2
             </p>
-            <h2 className="mt-1 text-xl font-black text-slate-950">
+            <h2 className="mt-1 text-xl font-black text-text-primary">
               Selecione os itens
             </h2>
           </div>
 
           <label
             htmlFor="inbound-search"
-            className="mt-5 block text-sm font-black text-slate-800"
+            className="mt-5 block text-sm font-black text-text-primary"
           >
             Pesquisar catálogo
           </label>
           <div className="relative mt-2">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-slate-500" />
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-text-muted" />
             <input
               id="inbound-search"
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Código ou descrição"
-              className="min-h-13 w-full rounded-2xl border border-slate-300 bg-white pr-4 pl-12 text-base font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-3 focus:ring-blue-100"
+              className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
             />
           </div>
 
-          <p className="mt-3 text-xs font-bold text-slate-500" aria-live="polite">
+          <p className="mt-3 text-xs font-bold text-text-muted" aria-live="polite">
             {filteredCatalog.length === 1
               ? "1 item encontrado"
               : `${numberFormatter.format(filteredCatalog.length)} itens encontrados`}
           </p>
 
           {filteredCatalog.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <SearchIcon className="mx-auto size-8 text-slate-400" />
-              <h3 className="mt-3 font-black text-slate-950">
+            <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
+              <SearchIcon className="mx-auto size-8 text-text-muted" />
+              <h3 className="mt-3 font-black text-text-primary">
                 Nenhum resultado
               </h3>
-              <p className="mt-1 text-sm font-semibold text-slate-600">
+              <p className="mt-1 text-sm font-semibold text-text-muted">
                 Tente pesquisar por outro código ou descrição.
               </p>
             </div>
@@ -511,27 +511,27 @@ export function InboundEntryFlow({
                 return (
                   <article
                     key={item.id}
-                    className="flex min-h-52 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    className="flex min-h-52 flex-col rounded-2xl border border-border-neutral bg-app-background p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-blue-900 uppercase">
+                      <span className="inline-flex rounded-full bg-brand-gold-soft px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-brand-charcoal uppercase">
                         {physicalItemTypeLabels[item.itemType]}
                       </span>
-                      <span className="text-right text-xs font-black text-slate-600">
+                      <span className="text-right text-xs font-black text-text-muted">
                         Saldo: {numberFormatter.format(item.balance)}
                       </span>
                     </div>
-                    <p className="mt-3 text-xl font-black text-slate-950">
+                    <p className="mt-3 font-mono text-xl font-black text-text-primary">
                       {item.code}
                     </p>
-                    <p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-600">
+                    <p className="mt-1 line-clamp-2 text-sm font-semibold text-text-muted">
                       {item.description}
                     </p>
                     <button
                       type="button"
                       onClick={() => addItem(item)}
                       disabled={isSelected}
-                      className="mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-black text-white transition hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-blue-300 disabled:cursor-default disabled:bg-emerald-100 disabled:text-emerald-900"
+                      className="nk-focus mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-default disabled:bg-emerald-100 disabled:text-emerald-900"
                     >
                       {isSelected ? (
                         <>
@@ -552,25 +552,25 @@ export function InboundEntryFlow({
           )}
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 lg:sticky lg:top-24">
+        <div className="rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6 lg:sticky lg:top-24">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-black tracking-[0.16em] text-blue-700 uppercase">
+              <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
                 Entrada atual
               </p>
-              <h2 className="mt-1 text-xl font-black text-slate-950">
+              <h2 className="mt-1 text-xl font-black text-text-primary">
                 Itens e quantidades
               </h2>
             </div>
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-800">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800">
               <InboundIcon className="size-6" />
             </span>
           </div>
 
           {lines.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <h3 className="font-black text-slate-950">Carrinho vazio</h3>
-              <p className="mt-1 text-sm font-semibold text-slate-600">
+            <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
+              <h3 className="font-black text-text-primary">Carrinho vazio</h3>
+              <p className="mt-1 text-sm font-semibold text-text-muted">
                 Adicione um ou mais itens do catálogo para continuar.
               </p>
             </div>
@@ -583,14 +583,14 @@ export function InboundEntryFlow({
                 return (
                   <article
                     key={line.item.id}
-                    className="rounded-2xl border border-slate-200 p-4"
+                    className="rounded-2xl border border-border-neutral p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-lg font-black text-slate-950">
+                        <p className="font-mono text-lg font-black text-text-primary">
                           {line.item.code}
                         </p>
-                        <p className="mt-0.5 line-clamp-2 text-xs font-bold text-slate-600">
+                        <p className="mt-0.5 line-clamp-2 text-xs font-bold text-text-muted">
                           {line.item.description}
                         </p>
                       </div>
@@ -606,7 +606,7 @@ export function InboundEntryFlow({
 
                     <label
                       htmlFor={`quantity-${line.item.id}`}
-                      className="mt-4 block text-xs font-black tracking-wide text-slate-600 uppercase"
+                      className="mt-4 block text-xs font-black tracking-wide text-text-muted uppercase"
                     >
                       Quantidade
                     </label>
@@ -627,7 +627,7 @@ export function InboundEntryFlow({
                           ? `quantity-error-${line.item.id}`
                           : undefined
                       }
-                      className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base font-black text-slate-950 outline-none transition focus:border-blue-600 focus:ring-3 focus:ring-blue-100 aria-invalid:border-red-600 aria-invalid:ring-red-100"
+                      className="nk-field mt-2 min-h-12 w-full rounded-xl border px-4 text-base font-black outline-none transition aria-invalid:border-red-600 aria-invalid:ring-3 aria-invalid:ring-red-100"
                     />
                     {quantityIsInvalid ? (
                       <p
@@ -645,10 +645,10 @@ export function InboundEntryFlow({
 
           <label
             htmlFor="inbound-description"
-            className="mt-5 block text-sm font-black text-slate-800"
+            className="mt-5 block text-sm font-black text-text-primary"
           >
             Descrição{" "}
-            <span className="font-semibold text-slate-500">(opcional)</span>
+            <span className="font-semibold text-text-muted">(opcional)</span>
           </label>
           <textarea
             id="inbound-description"
@@ -657,9 +657,9 @@ export function InboundEntryFlow({
             maxLength={maximumDescriptionLength}
             rows={3}
             placeholder="Ex.: recebimento do fornecedor"
-            className="mt-2 w-full resize-y rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-3 focus:ring-blue-100"
+            className="nk-field mt-2 w-full resize-y rounded-2xl border px-4 py-3 text-base font-semibold outline-none transition placeholder:text-text-muted"
           />
-          <p className="mt-1 text-right text-xs font-bold text-slate-500">
+          <p className="mt-1 text-right text-xs font-bold text-text-muted">
             {description.length}/{maximumDescriptionLength}
           </p>
 
@@ -679,7 +679,7 @@ export function InboundEntryFlow({
           <button
             type="button"
             onClick={reviewEntry}
-            className="mt-5 inline-flex min-h-14 w-full items-center justify-center rounded-2xl bg-blue-700 px-5 text-sm font-black text-white transition hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-blue-300"
+            className="nk-focus mt-5 inline-flex min-h-14 w-full items-center justify-center rounded-2xl bg-brand-charcoal px-5 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
           >
             Revisar entrada
           </button>

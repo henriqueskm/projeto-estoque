@@ -95,19 +95,19 @@ function Summary({
 }) {
   return (
     <div className="grid grid-cols-2 gap-3">
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+      <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
+        <p className="text-xs font-black tracking-wide text-text-muted uppercase">
           Linhas distintas
         </p>
-        <p className="mt-1 text-2xl font-black text-slate-950">
+        <p className="mt-1 text-2xl font-black text-text-primary">
           {numberFormatter.format(distinctLines)}
         </p>
       </div>
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+      <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
+        <p className="text-xs font-black tracking-wide text-text-muted uppercase">
           Total de unidades
         </p>
-        <p className="mt-1 text-2xl font-black text-slate-950">
+        <p className="mt-1 text-2xl font-black text-text-primary">
           {numberFormatter.format(totalUnits)}
         </p>
       </div>
@@ -117,7 +117,7 @@ function Summary({
 
 function OptionBadge({ option }: { option: OutboundCatalogOption }) {
   return option.kind === "ITEM" ? (
-    <span className="inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-slate-800 uppercase">
+    <span className="inline-flex rounded-full bg-brand-gold-soft px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-brand-charcoal uppercase">
       Item físico
     </span>
   ) : (
@@ -137,25 +137,25 @@ function PhysicalCatalogCard({
   onAdd: () => void;
 }) {
   return (
-    <article className="flex min-h-60 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-4">
+    <article className="flex min-h-60 flex-col rounded-2xl border border-border-neutral bg-app-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <OptionBadge option={item} />
-        <span className="text-right text-xs font-black text-slate-600">
+        <span className="text-right text-xs font-black text-text-muted">
           Saldo avulso: {numberFormatter.format(item.balance)}
         </span>
       </div>
-      <span className="mt-3 w-fit rounded-full bg-red-100 px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-red-900 uppercase">
+      <span className="mt-3 w-fit rounded-full bg-brand-gold-soft px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-brand-gold-ink uppercase">
         {physicalItemTypeLabels[item.itemType]}
       </span>
-      <p className="mt-2 text-xl font-black text-slate-950">{item.code}</p>
-      <p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-600">
+      <p className="mt-2 font-mono text-xl font-black text-text-primary">{item.code}</p>
+      <p className="mt-1 line-clamp-2 text-sm font-semibold text-text-muted">
         {item.description}
       </p>
       <button
         type="button"
         onClick={onAdd}
         disabled={isSelected}
-        className="mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-4 text-sm font-black text-white transition hover:bg-red-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-red-300 disabled:cursor-default disabled:bg-emerald-100 disabled:text-emerald-900"
+        className="nk-focus mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-default disabled:bg-emerald-100 disabled:text-emerald-900"
       >
         {isSelected ? (
           <>
@@ -190,27 +190,27 @@ function CommercialCatalogCard({
           Montados: {numberFormatter.format(option.assembledBalance)}
         </span>
       </div>
-      <p className="mt-3 text-xl font-black text-slate-950">{option.code}</p>
-      <p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-700">
+      <p className="mt-3 font-mono text-xl font-black text-text-primary">{option.code}</p>
+      <p className="mt-1 line-clamp-2 text-sm font-semibold text-text-muted">
         {option.description}
       </p>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-slate-700">
-        <div className="rounded-xl bg-white/80 p-2.5">
-          <span className="block text-[0.65rem] font-black tracking-wide text-slate-500 uppercase">
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-text-muted">
+        <div className="rounded-xl bg-surface/90 p-2.5">
+          <span className="block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
             Servo
           </span>
-          <span className="mt-1 block text-slate-950">
+          <span className="mt-1 block text-text-primary">
             {option.servo.code}
           </span>
           <span className="mt-0.5 block font-semibold">
             Avulso: {numberFormatter.format(option.servo.balance)}
           </span>
         </div>
-        <div className="rounded-xl bg-white/80 p-2.5">
-          <span className="block text-[0.65rem] font-black tracking-wide text-slate-500 uppercase">
+        <div className="rounded-xl bg-surface/90 p-2.5">
+          <span className="block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
             Kit
           </span>
-          <span className="mt-1 block text-slate-950">
+          <span className="mt-1 block text-text-primary">
             {option.installationKit.code}
           </span>
           <span className="mt-0.5 block font-semibold">
@@ -223,7 +223,7 @@ function CommercialCatalogCard({
         type="button"
         onClick={onAdd}
         disabled={isSelected}
-        className="mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-4 text-sm font-black text-white transition hover:bg-red-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-red-300 disabled:cursor-default disabled:bg-emerald-100 disabled:text-emerald-900"
+        className="nk-focus mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-default disabled:bg-emerald-100 disabled:text-emerald-900"
       >
         {isSelected ? (
           <>
@@ -478,44 +478,44 @@ export function OutboundEntryFlow({
 
   if (step === "success" && receipt) {
     return (
-      <section className="mx-auto max-w-2xl rounded-3xl border border-emerald-200 bg-white p-5 shadow-lg shadow-emerald-950/5 sm:p-8">
+      <section className="mx-auto max-w-2xl rounded-3xl border border-emerald-200 bg-surface p-5 shadow-lg shadow-emerald-950/5 sm:p-8">
         <div className="flex size-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
           <CheckIcon className="size-9" />
         </div>
         <p className="mt-6 text-xs font-black tracking-[0.18em] text-emerald-700 uppercase">
           Operação concluída
         </p>
-        <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+        <h2 className="mt-1 text-2xl font-black tracking-tight text-text-primary sm:text-3xl">
           Saída registrada
         </h2>
-        <p className="mt-2 font-semibold text-slate-600">
+        <p className="mt-2 font-semibold text-text-muted">
           Os saldos foram atualizados e o histórico da movimentação foi
           criado.
         </p>
 
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-          <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+        <div className="mt-6 rounded-2xl border border-border-neutral bg-app-background p-4 sm:p-5">
+          <p className="text-xs font-black tracking-wide text-text-muted uppercase">
             Movement batch ID
           </p>
-          <p className="mt-2 break-all font-mono text-sm font-bold text-slate-950">
+          <p className="mt-2 break-all font-mono text-sm font-bold text-text-primary">
             {receipt.movementBatchId}
           </p>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+          <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
+            <p className="text-xs font-black tracking-wide text-text-muted uppercase">
               Linhas
             </p>
-            <p className="mt-1 text-2xl font-black text-slate-950">
+            <p className="mt-1 text-2xl font-black text-text-primary">
               {numberFormatter.format(receipt.linesProcessed)}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+          <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
+            <p className="text-xs font-black tracking-wide text-text-muted uppercase">
               Unidades
             </p>
-            <p className="mt-1 text-2xl font-black text-slate-950">
+            <p className="mt-1 text-2xl font-black text-text-primary">
               {numberFormatter.format(receipt.totalQuantity)}
             </p>
           </div>
@@ -533,13 +533,13 @@ export function OutboundEntryFlow({
           <button
             type="button"
             onClick={startNewOutbound}
-            className="inline-flex min-h-14 items-center justify-center rounded-2xl bg-red-700 px-5 text-sm font-black text-white transition hover:bg-red-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-red-300"
+            className="nk-focus inline-flex min-h-14 items-center justify-center rounded-2xl bg-brand-charcoal px-5 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
           >
             Nova saída
           </button>
           <Link
             href="/"
-            className="inline-flex min-h-14 items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-slate-300"
+            className="nk-focus inline-flex min-h-14 items-center justify-center rounded-2xl border border-border-neutral bg-surface px-5 text-sm font-black text-text-primary transition hover:bg-app-background"
           >
             Voltar para o início
           </Link>
@@ -555,21 +555,21 @@ export function OutboundEntryFlow({
           <span className="flex size-9 items-center justify-center rounded-full bg-emerald-700 text-sm font-black text-white">
             <CheckIcon className="size-5" />
           </span>
-          <span className="h-1 flex-1 rounded-full bg-red-700" />
-          <span className="flex size-9 items-center justify-center rounded-full bg-red-700 text-sm font-black text-white">
+          <span className="h-1 flex-1 rounded-full bg-brand-gold" />
+          <span className="flex size-9 items-center justify-center rounded-full bg-brand-charcoal text-sm font-black text-white ring-2 ring-brand-gold">
             2
           </span>
           <p className="sr-only">Revisão da saída antes da confirmação</p>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-          <p className="text-xs font-black tracking-[0.16em] text-red-700 uppercase">
+        <div className="rounded-3xl border border-border-neutral bg-surface p-5 shadow-sm sm:p-7">
+          <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
             Etapa 2 de 2
           </p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+          <h2 className="mt-1 text-2xl font-black tracking-tight text-text-primary">
             Revise saldos e montagens
           </h2>
-          <p className="mt-2 text-sm font-semibold text-slate-600">
+          <p className="mt-2 text-sm font-semibold text-text-muted">
             Esta é uma previsão. O banco validará novamente os saldos ao
             selecionar “Confirmar saída”.
           </p>
@@ -578,7 +578,7 @@ export function OutboundEntryFlow({
             <section className="mt-7" aria-labelledby="review-items-title">
               <h3
                 id="review-items-title"
-                className="text-base font-black text-slate-950"
+                className="text-base font-black text-text-primary"
               >
                 Itens físicos
               </h3>
@@ -588,22 +588,22 @@ export function OutboundEntryFlow({
                     key={line.option.id}
                     className={`rounded-2xl border p-4 ${
                       line.isSufficient
-                        ? "border-slate-200 bg-slate-50"
+                        ? "border-border-neutral bg-app-background"
                         : "border-red-300 bg-red-50"
                     }`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <OptionBadge option={line.option} />
-                        <p className="mt-2 text-xl font-black text-slate-950">
+                        <p className="mt-2 font-mono text-xl font-black text-text-primary">
                           {line.option.code}
                         </p>
-                        <p className="mt-1 text-sm font-semibold text-slate-600">
+                        <p className="mt-1 text-sm font-semibold text-text-muted">
                           {line.option.description}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-slate-950 px-3 py-2 text-right text-white">
-                        <p className="text-[0.65rem] font-black tracking-wide text-slate-300 uppercase">
+                      <div className="rounded-xl bg-brand-charcoal px-3 py-2 text-right text-white">
+                        <p className="text-[0.65rem] font-black tracking-wide text-brand-gold uppercase">
                           Solicitado
                         </p>
                         <p className="text-xl font-black">
@@ -612,26 +612,26 @@ export function OutboundEntryFlow({
                       </div>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      <div className="rounded-xl bg-white p-3">
-                        <p className="text-[0.65rem] font-black tracking-wide text-slate-500 uppercase">
+                      <div className="rounded-xl bg-surface p-3">
+                        <p className="text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
                           Saldo atual
                         </p>
-                        <p className="mt-1 font-black text-slate-950">
+                        <p className="mt-1 font-black text-text-primary">
                           {numberFormatter.format(line.option.balance)}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-white p-3">
-                        <p className="text-[0.65rem] font-black tracking-wide text-slate-500 uppercase">
+                      <div className="rounded-xl bg-surface p-3">
+                        <p className="text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
                           Consumo total
                         </p>
-                        <p className="mt-1 font-black text-slate-950">
+                        <p className="mt-1 font-black text-text-primary">
                           {numberFormatter.format(
                             line.totalPhysicalConsumption,
                           )}
                         </p>
                       </div>
-                      <div className="col-span-2 rounded-xl bg-white p-3 sm:col-span-1">
-                        <p className="text-[0.65rem] font-black tracking-wide text-slate-500 uppercase">
+                      <div className="col-span-2 rounded-xl bg-surface p-3 sm:col-span-1">
+                        <p className="text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
                           Saldo previsto
                         </p>
                         <p
@@ -662,11 +662,11 @@ export function OutboundEntryFlow({
             <section className="mt-7" aria-labelledby="review-codes-title">
               <h3
                 id="review-codes-title"
-                className="text-base font-black text-slate-950"
+                className="text-base font-black text-text-primary"
               >
                 Códigos comerciais
               </h3>
-              <p className="mt-1 text-xs font-semibold text-slate-500">
+              <p className="mt-1 text-xs font-semibold text-text-muted">
                 Aliases da mesma configuração compartilham o saldo montado,
                 distribuído por código comercial e ID.
               </p>
@@ -679,10 +679,10 @@ export function OutboundEntryFlow({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <OptionBadge option={line.option} />
-                        <p className="mt-2 text-xl font-black text-slate-950">
+                        <p className="mt-2 font-mono text-xl font-black text-text-primary">
                           {line.option.code}
                         </p>
-                        <p className="mt-1 text-sm font-semibold text-slate-700">
+                        <p className="mt-1 text-sm font-semibold text-text-muted">
                           {line.option.description}
                         </p>
                       </div>
@@ -696,28 +696,28 @@ export function OutboundEntryFlow({
                       </div>
                     </div>
                     <div className="mt-4 grid grid-cols-3 gap-2">
-                      <div className="rounded-xl bg-white p-3">
-                        <p className="text-[0.65rem] font-black tracking-wide text-slate-500 uppercase">
+                      <div className="rounded-xl bg-surface p-3">
+                        <p className="text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
                           Saldo montado
                         </p>
-                        <p className="mt-1 font-black text-slate-950">
+                        <p className="mt-1 font-black text-text-primary">
                           {numberFormatter.format(
                             line.option.assembledBalance,
                           )}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-white p-3">
-                        <p className="text-[0.65rem] font-black tracking-wide text-slate-500 uppercase">
+                      <div className="rounded-xl bg-surface p-3">
+                        <p className="text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
                           Usar montados
                         </p>
-                        <p className="mt-1 font-black text-slate-950">
+                        <p className="mt-1 font-black text-text-primary">
                           {numberFormatter.format(
                             line.assembledQuantityUsed,
                           )}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-white p-3">
-                        <p className="text-[0.65rem] font-black tracking-wide text-slate-500 uppercase">
+                      <div className="rounded-xl bg-surface p-3">
+                        <p className="text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
                           Montar automaticamente
                         </p>
                         <p className="mt-1 font-black text-violet-900">
@@ -728,11 +728,11 @@ export function OutboundEntryFlow({
                       </div>
                     </div>
                     {line.autoAssembledQuantity > 0 ? (
-                      <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3">
+                      <div className="mt-3 rounded-xl border border-violet-200 bg-surface p-3">
                         <p className="text-xs font-black tracking-wide text-violet-800 uppercase">
                           Consumir avulsos
                         </p>
-                        <ul className="mt-2 space-y-1 text-sm font-semibold text-slate-700">
+                        <ul className="mt-2 space-y-1 text-sm font-semibold text-text-muted">
                           <li>
                             {numberFormatter.format(
                               line.autoAssembledQuantity,
@@ -759,11 +759,11 @@ export function OutboundEntryFlow({
           <section className="mt-7" aria-labelledby="physical-impact-title">
             <h3
               id="physical-impact-title"
-              className="text-base font-black text-slate-950"
+              className="text-base font-black text-text-primary"
             >
               Impacto total nos saldos avulsos
             </h3>
-            <p className="mt-1 text-xs font-semibold text-slate-500">
+            <p className="mt-1 text-xs font-semibold text-text-muted">
               Soma as saídas físicas diretas e todos os componentes das
               montagens automáticas.
             </p>
@@ -779,16 +779,16 @@ export function OutboundEntryFlow({
                     key={requirement.item.id}
                     className={`rounded-2xl border p-4 ${
                       requirement.isSufficient
-                        ? "border-slate-200 bg-slate-50"
+                        ? "border-border-neutral bg-app-background"
                         : "border-red-300 bg-red-50"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-black text-slate-950">
+                        <p className="font-mono font-black text-text-primary">
                           {requirement.item.code}
                         </p>
-                        <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600">
+                        <p className="mt-1 line-clamp-2 text-xs font-semibold text-text-muted">
                           {requirement.item.description}
                         </p>
                       </div>
@@ -806,25 +806,25 @@ export function OutboundEntryFlow({
                     </div>
                     <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
                       <div>
-                        <dt className="text-[0.65rem] font-black text-slate-500 uppercase">
+                        <dt className="text-[0.65rem] font-black text-text-muted uppercase">
                           Atual
                         </dt>
-                        <dd className="mt-1 font-black text-slate-950">
+                        <dd className="mt-1 font-black text-text-primary">
                           {numberFormatter.format(requirement.item.balance)}
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-[0.65rem] font-black text-slate-500 uppercase">
+                        <dt className="text-[0.65rem] font-black text-text-muted uppercase">
                           Necessário
                         </dt>
-                        <dd className="mt-1 font-black text-slate-950">
+                        <dd className="mt-1 font-black text-text-primary">
                           {numberFormatter.format(
                             requirement.totalQuantity,
                           )}
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-[0.65rem] font-black text-slate-500 uppercase">
+                        <dt className="text-[0.65rem] font-black text-text-muted uppercase">
                           Previsto
                         </dt>
                         <dd
@@ -859,11 +859,11 @@ export function OutboundEntryFlow({
             )}
           </section>
 
-          <div className="mt-5 rounded-2xl border border-slate-200 p-4">
-            <p className="text-xs font-black tracking-wide text-slate-500 uppercase">
+          <div className="mt-5 rounded-2xl border border-border-neutral p-4">
+            <p className="text-xs font-black tracking-wide text-text-muted uppercase">
               Descrição
             </p>
-            <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-slate-800">
+            <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-text-primary">
               {description.trim() || "Sem descrição"}
             </p>
           </div>
@@ -914,7 +914,7 @@ export function OutboundEntryFlow({
               type="button"
               onClick={returnToEditing}
               disabled={isPending}
-              className="order-2 inline-flex min-h-14 items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"
+              className="nk-focus order-2 inline-flex min-h-14 items-center justify-center rounded-2xl border border-border-neutral bg-surface px-5 text-sm font-black text-text-primary transition hover:bg-app-background disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"
             >
               Voltar e corrigir
             </button>
@@ -946,46 +946,46 @@ export function OutboundEntryFlow({
   return (
     <section>
       <div className="mb-5 flex items-center gap-3" aria-label="Etapa 1 de 2">
-        <span className="flex size-9 items-center justify-center rounded-full bg-red-700 text-sm font-black text-white">
+        <span className="flex size-9 items-center justify-center rounded-full bg-brand-charcoal text-sm font-black text-white ring-2 ring-brand-gold">
           1
         </span>
-        <span className="h-1 flex-1 rounded-full bg-slate-200" />
-        <span className="flex size-9 items-center justify-center rounded-full bg-slate-200 text-sm font-black text-slate-600">
+        <span className="h-1 flex-1 rounded-full bg-border-neutral" />
+        <span className="flex size-9 items-center justify-center rounded-full bg-brand-gold-soft text-sm font-black text-brand-charcoal">
           2
         </span>
         <p className="sr-only">Edição da saída</p>
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6">
           <div>
-            <p className="text-xs font-black tracking-[0.16em] text-red-700 uppercase">
+            <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
               Etapa 1 de 2
             </p>
-            <h2 className="mt-1 text-xl font-black text-slate-950">
+            <h2 className="mt-1 text-xl font-black text-text-primary">
               Selecione itens ou códigos
             </h2>
           </div>
 
           <label
             htmlFor="outbound-search"
-            className="mt-5 block text-sm font-black text-slate-800"
+            className="mt-5 block text-sm font-black text-text-primary"
           >
             Pesquisar catálogo
           </label>
           <div className="relative mt-2">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-slate-500" />
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-text-muted" />
             <input
               id="outbound-search"
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Código, descrição, modelo, servo ou kit"
-              className="min-h-13 w-full rounded-2xl border border-slate-300 bg-white pr-4 pl-12 text-base font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-red-600 focus:ring-3 focus:ring-red-100"
+              className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
             />
           </div>
 
-          <p className="mt-3 text-xs font-bold text-slate-500" aria-live="polite">
+          <p className="mt-3 text-xs font-bold text-text-muted" aria-live="polite">
             {!search.trim()
               ? `Mostrando todas as ${numberFormatter.format(filteredOptions.length)} opções`
               : filteredOptions.length === 1
@@ -994,12 +994,12 @@ export function OutboundEntryFlow({
           </p>
 
           {filteredOptions.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <SearchIcon className="mx-auto size-8 text-slate-400" />
-              <h3 className="mt-3 font-black text-slate-950">
+            <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
+              <SearchIcon className="mx-auto size-8 text-text-muted" />
+              <h3 className="mt-3 font-black text-text-primary">
                 Nenhum resultado
               </h3>
-              <p className="mt-1 text-sm font-semibold text-slate-600">
+              <p className="mt-1 text-sm font-semibold text-text-muted">
                 Tente pesquisar por outro código, descrição, modelo, servo ou
                 kit.
               </p>
@@ -1030,13 +1030,13 @@ export function OutboundEntryFlow({
           )}
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 lg:sticky lg:top-24">
+        <div className="rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6 lg:sticky lg:top-24">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-black tracking-[0.16em] text-red-700 uppercase">
+              <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
                 Saída atual
               </p>
-              <h2 className="mt-1 text-xl font-black text-slate-950">
+              <h2 className="mt-1 text-xl font-black text-text-primary">
                 Linhas e quantidades
               </h2>
             </div>
@@ -1046,9 +1046,9 @@ export function OutboundEntryFlow({
           </div>
 
           {lines.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <h3 className="font-black text-slate-950">Carrinho vazio</h3>
-              <p className="mt-1 text-sm font-semibold text-slate-600">
+            <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
+              <h3 className="font-black text-text-primary">Carrinho vazio</h3>
+              <p className="mt-1 text-sm font-semibold text-text-muted">
                 Adicione itens físicos ou códigos comerciais para continuar.
               </p>
             </div>
@@ -1062,15 +1062,15 @@ export function OutboundEntryFlow({
                 return (
                   <article
                     key={key}
-                    className="rounded-2xl border border-slate-200 p-4"
+                    className="rounded-2xl border border-border-neutral p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <OptionBadge option={line.option} />
-                        <p className="mt-2 text-lg font-black text-slate-950">
+                        <p className="mt-2 font-mono text-lg font-black text-text-primary">
                           {line.option.code}
                         </p>
-                        <p className="mt-0.5 line-clamp-2 text-xs font-bold text-slate-600">
+                        <p className="mt-0.5 line-clamp-2 text-xs font-bold text-text-muted">
                           {line.option.description}
                         </p>
                       </div>
@@ -1086,7 +1086,7 @@ export function OutboundEntryFlow({
 
                     <label
                       htmlFor={`quantity-${key}`}
-                      className="mt-4 block text-xs font-black tracking-wide text-slate-600 uppercase"
+                      className="mt-4 block text-xs font-black tracking-wide text-text-muted uppercase"
                     >
                       Quantidade
                     </label>
@@ -1107,7 +1107,7 @@ export function OutboundEntryFlow({
                           ? `quantity-error-${key}`
                           : undefined
                       }
-                      className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base font-black text-slate-950 outline-none transition focus:border-red-600 focus:ring-3 focus:ring-red-100 aria-invalid:border-red-600 aria-invalid:ring-red-100"
+                      className="nk-field mt-2 min-h-12 w-full rounded-xl border px-4 text-base font-black outline-none transition aria-invalid:border-red-600 aria-invalid:ring-3 aria-invalid:ring-red-100"
                     />
                     {quantityIsInvalid ? (
                       <p
@@ -1125,10 +1125,10 @@ export function OutboundEntryFlow({
 
           <label
             htmlFor="outbound-description"
-            className="mt-5 block text-sm font-black text-slate-800"
+            className="mt-5 block text-sm font-black text-text-primary"
           >
             Descrição{" "}
-            <span className="font-semibold text-slate-500">(opcional)</span>
+            <span className="font-semibold text-text-muted">(opcional)</span>
           </label>
           <textarea
             id="outbound-description"
@@ -1137,9 +1137,9 @@ export function OutboundEntryFlow({
             maxLength={maximumDescriptionLength}
             rows={3}
             placeholder="Ex.: envio para cliente"
-            className="mt-2 w-full resize-y rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-red-600 focus:ring-3 focus:ring-red-100"
+            className="nk-field mt-2 w-full resize-y rounded-2xl border px-4 py-3 text-base font-semibold outline-none transition placeholder:text-text-muted"
           />
-          <p className="mt-1 text-right text-xs font-bold text-slate-500">
+          <p className="mt-1 text-right text-xs font-bold text-text-muted">
             {description.length}/{maximumDescriptionLength}
           </p>
 
@@ -1162,11 +1162,11 @@ export function OutboundEntryFlow({
           <button
             type="button"
             onClick={reviewOutbound}
-            className="mt-5 inline-flex min-h-14 w-full items-center justify-center rounded-2xl bg-red-700 px-5 text-sm font-black text-white transition hover:bg-red-800 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-red-300"
+            className="nk-focus mt-5 inline-flex min-h-14 w-full items-center justify-center rounded-2xl bg-brand-charcoal px-5 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
           >
             Revisar saída
           </button>
-          <p className="mt-3 text-center text-xs font-bold text-slate-500">
+          <p className="mt-3 text-center text-xs font-bold text-text-muted">
             Revisar não movimenta o estoque.
           </p>
         </div>

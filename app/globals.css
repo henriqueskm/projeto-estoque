@@ -1,13 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f7f5;
-  --foreground: #17211b;
+  --brand-charcoal: #171d21;
+  --brand-charcoal-soft: #252c31;
+  --brand-gold: #d99a3d;
+  --brand-gold-dark: #a96d1f;
+  --brand-gold-soft: #f5e4be;
+  --brand-gold-ink: #7c4d17;
+  --app-background: #f6f5f1;
+  --surface: #ffffff;
+  --text-primary: #20252a;
+  --text-muted: #667078;
+  --border-neutral: #d9d8d2;
+  --background: var(--app-background);
+  --foreground: var(--text-primary);
+  --shadow-panel: 0 18px 44px -32px rgba(23, 29, 33, 0.38);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand-charcoal: var(--brand-charcoal);
+  --color-brand-charcoal-soft: var(--brand-charcoal-soft);
+  --color-brand-gold: var(--brand-gold);
+  --color-brand-gold-dark: var(--brand-gold-dark);
+  --color-brand-gold-soft: var(--brand-gold-soft);
+  --color-brand-gold-ink: var(--brand-gold-ink);
+  --color-app-background: var(--app-background);
+  --color-surface: var(--surface);
+  --color-text-primary: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --color-border-neutral: var(--border-neutral);
   --font-sans: var(--font-geist-sans);
 }
 
@@ -17,7 +40,14 @@
 
 body {
   margin: 0;
-  background: var(--background);
+  min-height: 100%;
+  background:
+    radial-gradient(
+      circle at 12% 0%,
+      rgba(217, 154, 61, 0.07),
+      transparent 24rem
+    ),
+    var(--app-background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
@@ -29,6 +59,52 @@ textarea {
 }
 
 ::selection {
-  background: #bbf7d0;
-  color: #14532d;
+  background: var(--brand-gold-soft);
+  color: var(--brand-charcoal);
+}
+
+.nk-panel {
+  border: 1px solid var(--border-neutral);
+  border-radius: 1.5rem;
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+}
+
+.nk-field {
+  border-color: var(--border-neutral);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.nk-field::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.nk-field:focus {
+  border-color: var(--brand-gold-dark);
+  box-shadow: 0 0 0 3px rgba(217, 154, 61, 0.22);
+}
+
+.nk-focus:focus-visible {
+  outline: 3px solid var(--brand-gold-dark);
+  outline-offset: 3px;
+}
+
+.nk-industrial-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

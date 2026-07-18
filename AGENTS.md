@@ -715,6 +715,70 @@ A ordem geral do projeto é:
 
 Não pular etapas sem solicitação explícita.
 
+---
+
+## 33. Identidade visual da NK Servos
+
+A identidade do sistema interno deve seguir uma linguagem industrial moderna,
+profissional, forte e limpa.
+
+Tokens oficiais da marca:
+
+- `--brand-charcoal: #171D21`
+- `--brand-charcoal-soft: #252C31`
+- `--brand-gold: #D99A3D`
+- `--brand-gold-dark: #A96D1F`
+- `--brand-gold-soft: #F5E4BE`
+- `--app-background: #F6F5F1`
+- `--surface: #FFFFFF`
+- `--text-primary: #20252A`
+- `--text-muted: #667078`
+- `--border-neutral: #D9D8D2`
+
+O carvão, o dourado e o branco formam a base neutra da marca. As cores
+operacionais devem manter seu significado:
+
+- verde para entrada, saldo suficiente e sucesso;
+- vermelho para saída, saldo insuficiente e erro;
+- dourado ou âmbar para marca, atenção e ações neutras importantes;
+- azul para informação;
+- violeta para configuração comercial e montagem automática, quando
+  necessário.
+
+Nunca substituir o verde ou o vermelho operacional pelo dourado da marca.
+Garantir contraste equivalente a WCAG AA e nunca depender somente da cor para
+comunicar estado.
+
+### Imagens técnicas de códigos comerciais — diretriz futura
+
+- códigos comerciais poderão ter imagem técnica associada;
+- ao clicar no código ou na miniatura, a imagem abrirá em visualizador de tela
+  cheia;
+- o visualizador usará fundo carvão ou preto;
+- o código comercial ficará destacado em dourado;
+- os controles de fechar e zoom serão brancos;
+- o visualizador terá suporte a celular;
+- a imagem inteira ficará inicialmente visível, com possibilidade de
+  ampliação;
+- um mesmo arquivo poderá atender aliases, como `1B` e `1D`, quando essa
+  associação estiver definida no catálogo;
+- a associação da imagem será feita por dados, nunca pelo nome do arquivo
+  inferido no frontend.
+
+---
+
+## 34. Risco pendente — perfis ativos sem nome
+
+Usuários ativos com `public.profiles.name` nulo ou vazio prejudicam a
+identificação visual e podem reduzir a qualidade da auditoria das operações.
+
+Enquanto não existir uma administração completa de usuários:
+
+- a interface deve mostrar `Nome não cadastrado`;
+- nunca usar a parte inicial do e-mail como nome oficial;
+- orientar que o administrador complete o cadastro;
+- manter `public.profiles.name` como única origem do nome do usuário.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

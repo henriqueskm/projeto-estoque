@@ -8,8 +8,12 @@ export default async function AuthenticatedLayout({
   const profile = await requireActiveProfile();
 
   return (
-    <div className="min-h-screen bg-[#f4f7f5]">
-      <AppHeader userName={profile.name} />
+    <div className="min-h-screen bg-app-background">
+      <AppHeader
+        userName={profile.displayName}
+        userEmail={profile.email}
+        hasRegisteredName={profile.hasRegisteredName}
+      />
       {children}
     </div>
   );

@@ -10,25 +10,29 @@ export default async function InboundPage() {
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <Link
         href="/"
-        className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-black text-slate-700 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-blue-300"
+        className="nk-focus mb-6 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-black text-text-primary transition hover:bg-brand-gold-soft"
       >
         <ArrowLeftIcon className="size-5" />
         Voltar para o início
       </Link>
 
-      <section className="mb-6 rounded-3xl border border-blue-200 bg-gradient-to-br from-blue-950 via-blue-900 to-slate-950 p-5 text-white shadow-xl shadow-blue-950/10 sm:p-7">
+      <section className="nk-industrial-grid relative mb-6 overflow-hidden rounded-3xl border border-brand-gold/25 bg-brand-charcoal p-5 text-white shadow-xl shadow-brand-charcoal/10 sm:p-7">
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 w-1.5 bg-emerald-600"
+        />
         <div className="flex items-start gap-4">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white/12 text-blue-100 ring-1 ring-white/15 sm:size-14">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-100 ring-1 ring-emerald-300/30 sm:size-14">
             <InboundIcon className="size-7" />
           </span>
           <div>
-            <p className="text-xs font-black tracking-[0.18em] text-blue-200 uppercase">
-              Estoque
+            <p className="text-xs font-black tracking-[0.18em] text-brand-gold uppercase">
+              NK Servos · Estoque
             </p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">
               Entrada manual
             </h1>
-            <p className="mt-2 max-w-2xl text-sm font-semibold text-blue-100 sm:text-base">
+            <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-200 sm:text-base">
               Selecione os itens físicos, informe as quantidades e revise tudo
               antes de confirmar.
             </p>
@@ -53,11 +57,11 @@ export default async function InboundPage() {
           </Link>
         </section>
       ) : catalog.data.length === 0 ? (
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm sm:p-8">
-          <h2 className="text-lg font-black text-slate-950">
+        <section className="rounded-3xl border border-border-neutral bg-surface p-6 text-center shadow-sm sm:p-8">
+          <h2 className="text-lg font-black text-text-primary">
             Nenhum item disponível
           </h2>
-          <p className="mt-2 text-sm font-semibold text-slate-600">
+          <p className="mt-2 text-sm font-semibold text-text-muted">
             Não há itens físicos ativos liberados para uma nova entrada.
           </p>
         </section>

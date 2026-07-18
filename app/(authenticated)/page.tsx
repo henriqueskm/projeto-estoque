@@ -52,9 +52,10 @@ const actions: ActionCard[] = [
     title: "Pedido por foto",
     description: "Interpretar foto de um pedido",
     icon: <CameraIcon className="size-7" />,
-    cardClassName: "border-sky-200 bg-sky-50/70 hover:border-sky-300",
-    iconClassName: "bg-sky-700 text-white",
-    labelClassName: "text-sky-800",
+    cardClassName:
+      "border-brand-gold/45 bg-brand-gold-soft/45 hover:border-brand-gold",
+    iconClassName: "bg-brand-charcoal text-brand-gold",
+    labelClassName: "text-brand-gold-ink",
   },
   {
     title: "Assistente IA",
@@ -70,7 +71,7 @@ const searchTypeStyles: Record<SearchResult["type"], string> = {
   SERVO: "bg-emerald-100 text-emerald-800",
   INSTALLATION_KIT: "bg-sky-100 text-sky-800",
   REPAIR_KIT: "bg-amber-100 text-amber-900",
-  LOOSE_PART: "bg-slate-200 text-slate-800",
+  LOOSE_PART: "bg-brand-gold-soft text-brand-charcoal",
   COMMERCIAL_CONFIGURATION: "bg-violet-100 text-violet-800",
 };
 
@@ -80,7 +81,7 @@ const movementTypeStyles: Record<RecentMovement["type"], string> = {
   ASSEMBLY: "bg-sky-100 text-sky-800",
   DISASSEMBLY: "bg-indigo-100 text-indigo-800",
   ADJUSTMENT: "bg-amber-100 text-amber-900",
-  REVERSAL: "bg-slate-200 text-slate-800",
+  REVERSAL: "bg-brand-gold-soft text-brand-charcoal",
 };
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
@@ -108,20 +109,20 @@ function CompatibilityList({
   emptyMessage: string;
 }) {
   return (
-    <div className="mt-4 border-t border-slate-100 pt-4">
-      <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+    <div className="mt-4 border-t border-border-neutral/70 pt-4">
+      <h3 className="text-xs font-bold uppercase tracking-wide text-text-primary">
         {title}
       </h3>
       {items.length === 0 ? (
-        <p className="mt-2 text-sm leading-6 text-slate-500">{emptyMessage}</p>
+        <p className="mt-2 text-sm leading-6 text-text-muted">{emptyMessage}</p>
       ) : (
         <ul className="mt-2 grid gap-2 sm:grid-cols-2">
           {items.map((item) => (
             <li
               key={item.code}
-              className="min-w-0 rounded-xl bg-slate-50 px-3 py-2 text-sm leading-5 text-slate-700"
+              className="min-w-0 rounded-xl bg-app-background px-3 py-2 text-sm leading-5 text-text-muted"
             >
-              <span className="font-mono font-bold text-slate-950">
+              <span className="font-mono font-bold text-text-primary">
                 {item.code}
               </span>
               <span aria-hidden="true"> — </span>
@@ -145,27 +146,27 @@ function SearchResults({
     <section className="mt-7" aria-labelledby="search-results-title">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-gold-ink">
             Pesquisa
           </p>
           <h2
             id="search-results-title"
-            className="mt-1 text-xl font-bold tracking-tight text-slate-950"
+            className="mt-1 text-xl font-bold tracking-tight text-text-primary"
           >
             Resultados para “{query}”
           </h2>
         </div>
-        <p className="text-sm font-semibold text-slate-500">
+        <p className="text-sm font-semibold text-text-muted">
           {results.length} {results.length === 1 ? "resultado" : "resultados"}
         </p>
       </div>
 
       {results.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-8 text-center">
-          <p className="font-bold text-slate-800">
+        <div className="mt-4 rounded-2xl border border-dashed border-border-neutral bg-surface px-5 py-8 text-center">
+          <p className="font-bold text-text-primary">
             Nenhuma correspondência encontrada.
           </p>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
+          <p className="mt-1 text-sm leading-6 text-text-muted">
             Tente pesquisar por outro código, descrição ou modelo.
           </p>
         </div>
@@ -174,14 +175,14 @@ function SearchResults({
           {results.map((result) => (
             <article
               key={`${result.kind}-${result.id}-${result.code}`}
-              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+              className="rounded-2xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-5"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-mono text-xl font-extrabold tracking-tight text-slate-950">
+                  <p className="font-mono text-xl font-extrabold tracking-tight text-text-primary">
                     {result.code}
                   </p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                  <p className="mt-1 text-sm leading-6 text-text-muted">
                     {result.description}
                   </p>
                 </div>
@@ -193,8 +194,8 @@ function SearchResults({
               </div>
 
               {result.kind === "item" && result.model ? (
-                <p className="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-600">
-                  Modelo: <strong className="text-slate-900">{result.model}</strong>
+                <p className="mt-4 border-t border-border-neutral/70 pt-3 text-sm text-text-muted">
+                  Modelo: <strong className="text-text-primary">{result.model}</strong>
                 </p>
               ) : null}
 
@@ -221,15 +222,15 @@ function SearchResults({
               {result.kind === "configuration" &&
               result.servo &&
               result.installationKit ? (
-                <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 border-t border-border-neutral/70 pt-4 sm:grid-cols-2">
                   <div className="rounded-xl bg-emerald-50 px-3 py-3">
                     <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
                       Servo
                     </p>
-                    <p className="mt-1 font-mono text-sm font-extrabold text-slate-950">
+                    <p className="mt-1 font-mono text-sm font-extrabold text-text-primary">
                       {result.servo.code}
                     </p>
-                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                    <p className="mt-1 text-xs leading-5 text-text-muted">
                       {result.servo.description}
                       {result.servo.model ? ` · ${result.servo.model}` : ""}
                     </p>
@@ -238,10 +239,10 @@ function SearchResults({
                     <p className="text-xs font-bold uppercase tracking-wide text-sky-800">
                       Kit
                     </p>
-                    <p className="mt-1 font-mono text-sm font-extrabold text-slate-950">
+                    <p className="mt-1 font-mono text-sm font-extrabold text-text-primary">
                       {result.installationKit.code}
                     </p>
-                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                    <p className="mt-1 text-xs leading-5 text-text-muted">
                       {result.installationKit.description}
                     </p>
                   </div>
@@ -291,19 +292,24 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
-      <section>
-        <p className="text-sm font-bold uppercase tracking-[0.16em] text-emerald-700">
-          Visão geral
+      <section className="nk-industrial-grid relative overflow-hidden rounded-3xl border border-brand-gold/25 bg-brand-charcoal px-5 py-7 text-white shadow-[0_22px_55px_-38px_rgba(23,29,33,0.95)] sm:px-8 sm:py-9">
+        <div
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 w-1.5 bg-brand-gold"
+        />
+        <p className="text-xs font-black tracking-[0.2em] text-brand-gold uppercase">
+          NK Servos · Visão geral
         </p>
-        <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
-          Negócios K
+        <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">
+          Operação de estoque
         </h1>
-        <p className="mt-2 max-w-2xl text-base leading-7 text-slate-600">
-          Acesse rapidamente as principais operações do seu estoque.
+        <p className="mt-2 max-w-2xl text-base leading-7 text-slate-200">
+          Consulte saldos e acesse rapidamente as principais operações do
+          Negócios K.
         </p>
       </section>
 
-      <section className="mt-7" aria-labelledby="search-label">
+      <section className="nk-panel mt-5 p-4 sm:p-5" aria-labelledby="search-label">
         <h2 id="search-label" className="sr-only">
           Pesquisa de estoque
         </h2>
@@ -312,26 +318,26 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             <span className="sr-only">
               Pesquisar por código, descrição ou modelo
             </span>
-            <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-500" />
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-text-muted" />
             <input
               name="q"
               type="search"
               defaultValue={query}
               maxLength={100}
               placeholder="Pesquisar por código, descrição ou modelo..."
-              className="min-h-14 w-full rounded-2xl border border-slate-200 bg-white py-3 pl-12 pr-4 text-base text-slate-950 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-emerald-700 focus:ring-3 focus:ring-emerald-700/15"
+              className="nk-field min-h-14 w-full rounded-2xl border py-3 pr-4 pl-12 text-base shadow-sm outline-none transition placeholder:text-text-muted"
             />
           </label>
           <button
             type="submit"
-            className="min-h-14 rounded-2xl bg-slate-950 px-6 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            className="nk-focus min-h-14 rounded-2xl bg-brand-charcoal px-6 text-sm font-black text-white shadow-sm transition hover:bg-brand-charcoal-soft"
           >
             Pesquisar
           </button>
           {query ? (
             <Link
               href="/"
-              className="inline-flex min-h-14 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+              className="nk-focus inline-flex min-h-14 items-center justify-center rounded-2xl border border-border-neutral bg-surface px-5 text-sm font-bold text-text-primary shadow-sm transition hover:bg-app-background"
             >
               Limpar
             </Link>
@@ -355,24 +361,24 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <section className="mt-9" aria-labelledby="quick-actions-title">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-gold-ink">
               Operações
             </p>
             <h2
               id="quick-actions-title"
-              className="mt-1 text-xl font-bold tracking-tight text-slate-950"
+              className="mt-1 text-xl font-bold tracking-tight text-text-primary"
             >
               Ações rápidas
             </h2>
           </div>
-          <span className="text-xs font-semibold text-slate-500">
+          <span className="rounded-full bg-brand-gold-soft px-3 py-1 text-xs font-bold text-brand-charcoal">
             2 em breve
           </span>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {actions.map((action) => {
-            const className = `group min-h-44 rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 sm:p-5 ${action.cardClassName}`;
+            const className = `nk-focus group min-h-44 rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${action.cardClassName}`;
             const content = (
               <>
                 <span
@@ -380,10 +386,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 >
                   {action.icon}
                 </span>
-                <span className="mt-5 block text-base font-extrabold leading-tight text-slate-950 sm:text-lg">
+                <span className="mt-5 block text-base leading-tight font-extrabold text-text-primary sm:text-lg">
                   {action.title}
                 </span>
-                <span className="mt-2 hidden text-sm leading-5 text-slate-600 sm:block">
+                <span className="mt-2 hidden text-sm leading-5 text-text-muted sm:block">
                   {action.description}
                 </span>
                 <span
@@ -419,12 +425,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
       <section className="mt-10" aria-labelledby="summary-title">
         <div className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-slate-900 text-white">
+          <span className="flex size-9 items-center justify-center rounded-xl bg-brand-charcoal text-brand-gold">
             <StockIcon className="size-5" />
           </span>
           <h2
             id="summary-title"
-            className="text-xl font-bold tracking-tight text-slate-950"
+            className="text-xl font-bold tracking-tight text-text-primary"
           >
             Resumo do estoque
           </h2>
@@ -434,12 +440,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           {summaries.map((summary) => (
             <article
               key={summary.label}
-              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+              className="rounded-2xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-5"
             >
-              <p className="text-sm font-semibold leading-5 text-slate-600">
+              <p className="text-sm leading-5 font-semibold text-text-muted">
                 {summary.label}
               </p>
-              <p className="mt-3 text-3xl font-extrabold text-slate-950">
+              <p className="mt-3 text-3xl font-extrabold text-text-primary">
                 {summary.value === null
                   ? "—"
                   : quantityFormatter.format(summary.value)}
@@ -455,35 +461,35 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       >
         <h2
           id="latest-movements-title"
-          className="text-xl font-bold tracking-tight text-slate-950"
+          className="text-xl font-bold tracking-tight text-text-primary"
         >
           Últimas movimentações
         </h2>
 
         {!homeData ? (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-white px-5 py-8 text-center">
-            <p className="font-bold text-slate-800">
+          <div className="mt-4 rounded-2xl border border-red-200 bg-surface px-5 py-8 text-center">
+            <p className="font-bold text-text-primary">
               Não foi possível carregar as movimentações.
             </p>
           </div>
         ) : homeData.recentMovements.length === 0 ? (
-          <div className="mt-4 flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-8 text-center">
-            <span className="flex size-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+          <div className="mt-4 flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-border-neutral bg-surface px-5 py-8 text-center">
+            <span className="flex size-12 items-center justify-center rounded-2xl bg-brand-gold-soft text-brand-charcoal">
               <ClockIcon className="size-6" />
             </span>
-            <p className="mt-4 text-base font-bold text-slate-800">
+            <p className="mt-4 text-base font-bold text-text-primary">
               Nenhuma movimentação para exibir.
             </p>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
+            <p className="mt-1 text-sm leading-6 text-text-muted">
               As movimentações registradas aparecerão aqui.
             </p>
           </div>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="mt-4 overflow-hidden rounded-2xl border border-border-neutral bg-surface shadow-sm">
             {homeData.recentMovements.map((movement, index) => (
               <article
                 key={movement.id}
-                className={`p-4 sm:p-5 ${index > 0 ? "border-t border-slate-100" : ""}`}
+                className={`p-4 sm:p-5 ${index > 0 ? "border-t border-border-neutral/70" : ""}`}
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span
@@ -491,14 +497,14 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   >
                     {movement.typeLabel}
                   </span>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                  <span className="rounded-full bg-app-background px-2.5 py-1 text-xs font-semibold text-text-muted">
                     {movement.sourceLabel}
                   </span>
                 </div>
-                <p className="mt-3 font-semibold leading-6 text-slate-900">
+                <p className="mt-3 font-semibold leading-6 text-text-primary">
                   {movement.description?.trim() || "Sem descrição informada."}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-muted">
                   <span>{movement.userName?.trim() || "Usuário não identificado"}</span>
                   <time dateTime={movement.occurredAt}>
                     {formatDate(movement.occurredAt)}

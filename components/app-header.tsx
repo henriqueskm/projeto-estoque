@@ -1,35 +1,59 @@
-import { logout } from "@/app/auth/actions";
-import { LogoutIcon } from "@/components/icons";
+import Link from "next/link";
+import { AccountMenu } from "@/components/account-menu";
+import { BrandMark } from "@/components/brand-mark";
 
 type AppHeaderProps = {
   userName: string;
+  userEmail: string;
+  hasRegisteredName: boolean;
 };
 
-export function AppHeader({ userName }: AppHeaderProps) {
+export function AppHeader({
+  userName,
+  userEmail,
+  hasRegisteredName,
+}: AppHeaderProps) {
   return (
-    <header className="border-b border-emerald-950/10 bg-white">
-      <div className="mx-auto flex min-h-18 w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-700 text-sm font-bold text-white shadow-sm">
-            NK
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-base font-bold tracking-tight text-slate-950">
-              Negócios K
-            </p>
-            <p className="truncate text-xs text-slate-500">{userName}</p>
-          </div>
-        </div>
+    <header className="sticky top-0 z-40 border-b border-brand-gold/25 bg-brand-charcoal text-white shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)]">
+      <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center justify-between gap-2 px-4 py-2 sm:gap-4 sm:px-6 lg:px-8">
+        <Link
+          href="/"
+          aria-label="Ir para o início do Negócios K"
+          className="nk-focus min-w-0 rounded-full"
+        >
+          <BrandMark
+            variant="compact"
+            size="sm"
+            inverted
+            className="sm:hidden"
+          />
+          <BrandMark
+            variant="full"
+            size="sm"
+            inverted
+            className="hidden sm:inline-flex"
+          />
+        </Link>
 
-        <form action={logout}>
-          <button
-            type="submit"
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+        <div
+          aria-hidden="true"
+          className="hidden h-8 w-px shrink-0 bg-brand-gold/55 sm:block"
+        />
+
+        <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
+          <Link
+            href="/"
+            className="nk-focus inline-flex min-h-11 items-center justify-center rounded-xl border border-white/15 px-3 text-xs font-black text-white transition hover:border-brand-gold/70 hover:bg-white/8 sm:px-4 sm:text-sm"
           >
-            <LogoutIcon className="size-4" />
-            Sair
-          </button>
-        </form>
+            Início
+          </Link>
+
+          <AccountMenu
+            fullName={userName}
+            email={userEmail}
+            hasRegisteredName={hasRegisteredName}
+          />
+        </div>
       </div>
     </header>
   );

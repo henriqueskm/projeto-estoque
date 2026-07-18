@@ -13,7 +13,7 @@ export function LoginForm() {
       <div>
         <label
           htmlFor="email"
-          className="mb-2 block text-sm font-semibold text-slate-800"
+          className="mb-2 block text-sm font-bold text-text-primary"
         >
           Email
         </label>
@@ -26,7 +26,7 @@ export function LoginForm() {
           required
           aria-invalid={Boolean(state.fieldErrors?.email)}
           aria-describedby={state.fieldErrors?.email ? "email-error" : undefined}
-          className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-700 focus:ring-3 focus:ring-emerald-700/15"
+          className="nk-field min-h-12 w-full rounded-xl border px-4 text-base outline-none transition placeholder:text-text-muted"
           placeholder="voce@empresa.com"
         />
         {state.fieldErrors?.email ? (
@@ -39,7 +39,7 @@ export function LoginForm() {
       <div>
         <label
           htmlFor="password"
-          className="mb-2 block text-sm font-semibold text-slate-800"
+          className="mb-2 block text-sm font-bold text-text-primary"
         >
           Senha
         </label>
@@ -53,7 +53,7 @@ export function LoginForm() {
           aria-describedby={
             state.fieldErrors?.password ? "password-error" : undefined
           }
-          className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-700 focus:ring-3 focus:ring-emerald-700/15"
+          className="nk-field min-h-12 w-full rounded-xl border px-4 text-base outline-none transition placeholder:text-text-muted"
           placeholder="Digite sua senha"
         />
         {state.fieldErrors?.password ? (
@@ -78,7 +78,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={isPending}
-        className="inline-flex min-h-13 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 text-base font-bold text-white shadow-sm transition hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-wait disabled:bg-emerald-700/70"
+        className="nk-focus inline-flex min-h-13 w-full items-center justify-center gap-2 rounded-xl border border-brand-gold-dark/50 bg-brand-charcoal px-5 text-base font-black text-white shadow-[0_8px_22px_-14px_rgba(23,29,33,0.9)] transition hover:bg-brand-charcoal-soft disabled:cursor-wait disabled:opacity-65"
       >
         {isPending ? (
           <>
