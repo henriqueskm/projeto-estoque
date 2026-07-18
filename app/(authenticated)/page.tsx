@@ -424,16 +424,24 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       </section>
 
       <section className="mt-10" aria-labelledby="summary-title">
-        <div className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-brand-charcoal text-brand-gold">
-            <StockIcon className="size-5" />
-          </span>
-          <h2
-            id="summary-title"
-            className="text-xl font-bold tracking-tight text-text-primary"
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-brand-charcoal text-brand-gold">
+              <StockIcon className="size-5" />
+            </span>
+            <h2
+              id="summary-title"
+              className="text-xl font-bold tracking-tight text-text-primary"
+            >
+              Resumo do estoque
+            </h2>
+          </div>
+          <Link
+            href="/estoque"
+            className="nk-focus inline-flex min-h-11 items-center justify-center rounded-xl border border-brand-gold-dark bg-brand-gold px-4 text-sm font-black text-brand-charcoal transition hover:bg-brand-gold-soft"
           >
-            Resumo do estoque
-          </h2>
+            Ver estoque completo
+          </Link>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">

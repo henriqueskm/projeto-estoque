@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { calculatePhysicalStockByItem } from "@/lib/stock-calculations";
 
 type ItemType = "SERVO" | "INSTALLATION_KIT" | "REPAIR_KIT" | "LOOSE_PART";
 
@@ -151,10 +152,6 @@ function getDistinctModel(description: string, model: string | null | undefined)
   }
 
   return trimmedModel;
-}
-
-function addQuantity(map: Map<string, number>, id: string, quantity: number) {
-  map.set(id, (map.get(id) ?? 0) + quantity);
 }
 
 function buildSearchResults(
@@ -325,42 +322,27 @@ function buildSummary(
   configurations: CommercialConfigurationRow[],
   configurationBalances: ConfigurationBalanceRow[],
 ): StockSummary {
-  const stockByItem = new Map(
-    stockBalances.map((balance) => [balance.item_id, balance.quantity]),
+  const physicalStockByItem = calculatePhysicalStockByItem(
+    items.map((item) => ({
+      id: item.id,
+      itemType: item.item_type,
+    })),
+    stockBalances.map((balance) => ({
+      itemId: balance.item_id,
+      quantity: balance.quantity,
+    })),
+    configurations.map((configuration) => ({
+      id: configuration.id,
+      servoId: configuration.servo_id,
+      installationKitId: configuration.installation_kit_id,
+    })),
+    configurationBalances.map((balance) => ({
+      configurationId: balance.configuration_id,
+      quantity: balance.quantity,
+    })),
   );
-  const stockByConfiguration = new Map(
-    configurationBalances.map((balance) => [
-      balance.configuration_id,
-      balance.quantity,
-    ]),
-  );
-  const mountedByServo = new Map<string, number>();
-  const mountedByInstallationKit = new Map<string, number>();
-
-  configurations.forEach((configuration) => {
-    const quantity = stockByConfiguration.get(configuration.id) ?? 0;
-
-    addQuantity(mountedByServo, configuration.servo_id, quantity);
-    addQuantity(
-      mountedByInstallationKit,
-      configuration.installation_kit_id,
-      quantity,
-    );
-  });
-
-  const physicalQuantity = (item: ItemRow) => {
-    const looseQuantity = stockByItem.get(item.id) ?? 0;
-
-    if (item.item_type === "SERVO") {
-      return looseQuantity + (mountedByServo.get(item.id) ?? 0);
-    }
-
-    if (item.item_type === "INSTALLATION_KIT") {
-      return looseQuantity + (mountedByInstallationKit.get(item.id) ?? 0);
-    }
-
-    return looseQuantity;
-  };
+  const physicalQuantity = (item: ItemRow) =>
+    physicalStockByItem.get(item.id)?.totalQuantity ?? 0;
 
   return {
     servoTotal: items
@@ -368,10 +350,18 @@ function buildSummary(
       .reduce((total, item) => total + physicalQuantity(item), 0),
     looseKitTotal: items
       .filter((item) => item.item_type === "INSTALLATION_KIT")
-      .reduce((total, item) => total + (stockByItem.get(item.id) ?? 0), 0),
+      .reduce(
+        (total, item) =>
+          total + (physicalStockByItem.get(item.id)?.looseQuantity ?? 0),
+        0,
+      ),
     repairKitTotal: items
       .filter((item) => item.item_type === "REPAIR_KIT")
-      .reduce((total, item) => total + (stockByItem.get(item.id) ?? 0), 0),
+      .reduce(
+        (total, item) =>
+          total + (physicalStockByItem.get(item.id)?.looseQuantity ?? 0),
+        0,
+      ),
     lowStockItems: items.filter(
       (item) =>
         item.is_active &&
