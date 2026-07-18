@@ -33,8 +33,8 @@ export default async function InboundPage() {
               Entrada manual
             </h1>
             <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-200 sm:text-base">
-              Selecione os itens físicos, informe as quantidades e revise tudo
-              antes de confirmar.
+              Registre peças recebidas separadas e caixas completas por código
+              comercial na mesma operação.
             </p>
           </div>
         </div>
@@ -56,13 +56,14 @@ export default async function InboundPage() {
             Tentar novamente
           </Link>
         </section>
-      ) : catalog.data.length === 0 ? (
+      ) : catalog.data.physicalItems.length === 0 &&
+        catalog.data.commercialCodes.length === 0 ? (
         <section className="rounded-3xl border border-border-neutral bg-surface p-6 text-center shadow-sm sm:p-8">
           <h2 className="text-lg font-black text-text-primary">
-            Nenhum item disponível
+            Nenhuma opção disponível
           </h2>
           <p className="mt-2 text-sm font-semibold text-text-muted">
-            Não há itens físicos ativos liberados para uma nova entrada.
+            Não há itens físicos ou códigos comerciais ativos para entrada.
           </p>
         </section>
       ) : (
