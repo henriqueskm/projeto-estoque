@@ -62,10 +62,13 @@ type MovementBatchRow = {
 };
 
 export type StockSummary = {
-  servoTotal: number;
+  completeBoxesTotal: number;
+  looseServoTotal: number;
   looseKitTotal: number;
   repairKitTotal: number;
+  loosePartTotal: number;
   lowStockItems: number;
+  outOfStockItems: number;
 };
 
 export type RecentMovement = {
@@ -351,30 +354,35 @@ function buildSummary(
   );
   const physicalQuantity = (item: ItemRow) =>
     physicalStockByItem.get(item.id)?.totalQuantity ?? 0;
+  const looseQuantity = (item: ItemRow) =>
+    physicalStockByItem.get(item.id)?.looseQuantity ?? 0;
 
   return {
-    servoTotal: items
+    completeBoxesTotal: configurationBalances.reduce(
+      (total, balance) => total + balance.quantity,
+      0,
+    ),
+    looseServoTotal: items
       .filter((item) => item.item_type === "SERVO")
-      .reduce((total, item) => total + physicalQuantity(item), 0),
+      .reduce((total, item) => total + looseQuantity(item), 0),
     looseKitTotal: items
       .filter((item) => item.item_type === "INSTALLATION_KIT")
-      .reduce(
-        (total, item) =>
-          total + (physicalStockByItem.get(item.id)?.looseQuantity ?? 0),
-        0,
-      ),
+      .reduce((total, item) => total + looseQuantity(item), 0),
     repairKitTotal: items
       .filter((item) => item.item_type === "REPAIR_KIT")
-      .reduce(
-        (total, item) =>
-          total + (physicalStockByItem.get(item.id)?.looseQuantity ?? 0),
-        0,
-      ),
+      .reduce((total, item) => total + looseQuantity(item), 0),
+    loosePartTotal: items
+      .filter((item) => item.item_type === "LOOSE_PART")
+      .reduce((total, item) => total + looseQuantity(item), 0),
     lowStockItems: items.filter(
       (item) =>
         item.is_active &&
         item.minimum_stock > 0 &&
+        physicalQuantity(item) > 0 &&
         physicalQuantity(item) <= item.minimum_stock,
+    ).length,
+    outOfStockItems: items.filter(
+      (item) => item.is_active && physicalQuantity(item) === 0,
     ).length,
   };
 }

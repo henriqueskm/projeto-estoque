@@ -282,8 +282,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const homeData = homeResult.data;
   const summaries = [
     {
-      label: "Servoembreagens",
-      value: homeData?.summary.servoTotal ?? null,
+      label: "Caixas completas",
+      value: homeData?.summary.completeBoxesTotal ?? null,
+    },
+    {
+      label: "Servos avulsos",
+      value: homeData?.summary.looseServoTotal ?? null,
     },
     {
       label: "Kits avulsos",
@@ -294,8 +298,24 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       value: homeData?.summary.repairKitTotal ?? null,
     },
     {
+      label: "Peças avulsas",
+      value: homeData?.summary.loosePartTotal ?? null,
+    },
+  ];
+  const stockAlerts = [
+    {
       label: "Estoque baixo",
       value: homeData?.summary.lowStockItems ?? null,
+      description: "Itens ativos com saldo físico positivo até o mínimo.",
+      className: "border-amber-300 bg-amber-50",
+      labelClassName: "text-amber-900",
+    },
+    {
+      label: "Estoque zerado",
+      value: homeData?.summary.outOfStockItems ?? null,
+      description: "Itens ativos sem nenhuma unidade física.",
+      className: "border-red-200 bg-red-50",
+      labelClassName: "text-red-800",
     },
   ];
 
@@ -455,7 +475,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           </Link>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {summaries.map((summary) => (
             <article
               key={summary.label}
@@ -472,6 +492,43 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             </article>
           ))}
         </div>
+
+        <section className="mt-6" aria-labelledby="stock-alerts-title">
+          <div>
+            <p className="text-xs font-bold tracking-[0.16em] text-amber-800 uppercase">
+              Atenção
+            </p>
+            <h3
+              id="stock-alerts-title"
+              className="mt-1 text-base font-bold text-text-primary"
+            >
+              Alertas do estoque
+            </h3>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {stockAlerts.map((alert) => (
+              <article
+                key={alert.label}
+                className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${alert.className}`}
+              >
+                <p
+                  className={`text-sm leading-5 font-bold ${alert.labelClassName}`}
+                >
+                  {alert.label}
+                </p>
+                <p className="mt-2 text-2xl font-extrabold text-text-primary sm:text-3xl">
+                  {alert.value === null
+                    ? "—"
+                    : quantityFormatter.format(alert.value)}
+                </p>
+                <p className="mt-2 hidden text-xs leading-5 font-semibold text-text-muted sm:block">
+                  {alert.description}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
       </section>
 
       <section
