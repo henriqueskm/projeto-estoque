@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const maximumQuantity = 2_147_483_647;
 const maximumDescriptionLength = 500;
+const maximumItemCodeLength = 120;
 const maximumRawLines = 500;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -95,8 +96,79 @@ function normalizeRequest(
 
     const line = rawLine as Record<string, unknown>;
 
-    if (line.kind !== "ITEM" && line.kind !== "COMMERCIAL_CODE") {
+    if (
+      line.kind !== "ITEM" &&
+      line.kind !== "COMMERCIAL_CODE" &&
+      line.kind !== "NEW_LOOSE_PART"
+    ) {
       return invalidRequest("Uma das linhas possui um tipo inválido.");
+    }
+
+    if (line.kind === "NEW_LOOSE_PART") {
+      const allowedLineFields = new Set([
+        "kind",
+        "code",
+        "description",
+        "quantity",
+      ]);
+      const code =
+        typeof line.code === "string" ? line.code.trim() : "";
+      const loosePartDescription =
+        typeof line.description === "string"
+          ? line.description.trim()
+          : "";
+
+      if (
+        Object.keys(line).some((field) => !allowedLineFields.has(field)) ||
+        !code ||
+        code.length > maximumItemCodeLength ||
+        !loosePartDescription ||
+        loosePartDescription.length > maximumDescriptionLength
+      ) {
+        return invalidRequest(
+          "Revise o código e a descrição da nova peça avulsa.",
+        );
+      }
+
+      if (
+        typeof line.quantity !== "number" ||
+        !Number.isInteger(line.quantity) ||
+        line.quantity <= 0 ||
+        line.quantity > maximumQuantity
+      ) {
+        return invalidRequest("Use somente quantidades inteiras e positivas.");
+      }
+
+      const key = `NEW_LOOSE_PART:${code}`;
+      const currentLine = linesByKey.get(key);
+
+      if (
+        currentLine?.kind === "NEW_LOOSE_PART" &&
+        currentLine.description.toLocaleLowerCase("pt-BR") !==
+          loosePartDescription.toLocaleLowerCase("pt-BR")
+      ) {
+        return invalidRequest(
+          `O código ${code} foi informado com descrições diferentes.`,
+        );
+      }
+
+      const consolidatedQuantity =
+        (currentLine?.quantity ?? 0) + line.quantity;
+
+      if (consolidatedQuantity > maximumQuantity) {
+        return invalidRequest("Uma das quantidades excede o limite permitido.");
+      }
+
+      linesByKey.set(key, {
+        kind: "NEW_LOOSE_PART",
+        code,
+        description:
+          currentLine?.kind === "NEW_LOOSE_PART"
+            ? currentLine.description
+            : loosePartDescription,
+        quantity: consolidatedQuantity,
+      });
+      continue;
     }
 
     const identifierField =
@@ -179,11 +251,17 @@ function normalizeRequest(
       }
 
       const firstId =
-        first.kind === "ITEM" ? first.item_id : first.commercial_code_id;
+        first.kind === "ITEM"
+          ? first.item_id
+          : first.kind === "COMMERCIAL_CODE"
+            ? first.commercial_code_id
+            : first.code;
       const secondId =
         second.kind === "ITEM"
           ? second.item_id
-          : second.commercial_code_id;
+          : second.kind === "COMMERCIAL_CODE"
+            ? second.commercial_code_id
+            : second.code;
 
       return firstId.localeCompare(secondId);
     }),
@@ -243,6 +321,15 @@ function mapRpcError(code: string | undefined, message: string) {
     normalizedMessage.includes("does not exist")
   ) {
     return "Um item ou código comercial não está mais disponível. Atualize a página e revise a entrada.";
+  }
+
+  if (
+    normalizedMessage.includes("different description") ||
+    normalizedMessage.includes("another item type") ||
+    normalizedMessage.includes("commercial configuration code") ||
+    normalizedMessage.includes("loose-part subtype")
+  ) {
+    return "O código da nova peça já existe com outro tipo ou outra descrição. Revise o cadastro sem substituir os dados existentes.";
   }
 
   if (code === "22003") {

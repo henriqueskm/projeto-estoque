@@ -1,6 +1,7 @@
 import type {
   InboundCatalogOption,
   InboundCommercialCode,
+  InboundNewLoosePart,
   InboundPhysicalItem,
 } from "@/lib/inbound-types";
 
@@ -12,7 +13,7 @@ export type InboundPreviewInputLine = {
 };
 
 export type InboundItemLinePreview = {
-  option: InboundPhysicalItem;
+  option: InboundPhysicalItem | InboundNewLoosePart;
   receivedQuantity: number;
   predictedBalance: number;
   isValid: boolean;
@@ -61,8 +62,10 @@ export function buildInboundPreview(
       (
         line,
       ): line is InboundPreviewInputLine & {
-        option: InboundPhysicalItem;
-      } => line.option.kind === "ITEM",
+        option: InboundPhysicalItem | InboundNewLoosePart;
+      } =>
+        line.option.kind === "ITEM" ||
+        line.option.kind === "NEW_LOOSE_PART",
     )
     .map((line): InboundItemLinePreview => {
       const predictedBalance = line.option.balance + line.quantity;

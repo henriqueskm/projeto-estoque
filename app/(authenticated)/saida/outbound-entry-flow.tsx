@@ -10,6 +10,8 @@ import {
   SearchIcon,
   TrashIcon,
 } from "@/components/icons";
+import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
+import { StockFlowSection } from "@/components/stock-flow-section";
 import { physicalItemTypeLabels } from "@/lib/inbound-types";
 import {
   buildOutboundPreview,
@@ -27,6 +29,7 @@ import { submitStockOutbound } from "./actions";
 
 const maximumQuantity = 2_147_483_647;
 const maximumDescriptionLength = 500;
+const maximumSearchLength = 120;
 const numberFormatter = new Intl.NumberFormat("pt-BR");
 
 type DraftLine = {
@@ -35,6 +38,7 @@ type DraftLine = {
 };
 
 type FlowStep = "editing" | "review" | "success";
+type CatalogSection = "separate" | "repair" | "commercial";
 
 function normalizeSearch(value: string) {
   return value
@@ -194,6 +198,11 @@ function CommercialCatalogCard({
       <p className="mt-1 line-clamp-2 text-sm font-semibold text-text-muted">
         {option.description}
       </p>
+      <CommercialConfigurationImage
+        commercialCodes={[option.code]}
+        imageUrl={option.imageUrl}
+        compact
+      />
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-text-muted">
         <div className="rounded-xl bg-surface/90 p-2.5">
           <span className="block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
@@ -248,6 +257,9 @@ export function OutboundEntryFlow({
 }) {
   const router = useRouter();
   const [step, setStep] = useState<FlowStep>("editing");
+  const [openSection, setOpenSection] = useState<CatalogSection | null>(
+    null,
+  );
   const [search, setSearch] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [description, setDescription] = useState("");
@@ -258,25 +270,50 @@ export function OutboundEntryFlow({
   const idempotencyKey = useRef<string | null>(null);
   const submissionInFlight = useRef(false);
 
-  const options = useMemo<OutboundCatalogOption[]>(
-    () => [...catalog.physicalItems, ...catalog.commercialCodes],
+  const separateItems = useMemo(
+    () =>
+      catalog.physicalItems.filter(
+        (item) => item.itemType !== "REPAIR_KIT",
+      ),
+    [catalog],
+  );
+  const repairItems = useMemo(
+    () =>
+      catalog.physicalItems.filter(
+        (item) => item.itemType === "REPAIR_KIT",
+      ),
     [catalog],
   );
   const selectedKeys = useMemo(
     () => new Set(lines.map((line) => getOptionKey(line.option))),
     [lines],
   );
+  const activeOptions = useMemo<OutboundCatalogOption[]>(() => {
+    if (openSection === "separate") {
+      return separateItems;
+    }
+
+    if (openSection === "repair") {
+      return repairItems;
+    }
+
+    if (openSection === "commercial") {
+      return catalog.commercialCodes;
+    }
+
+    return [];
+  }, [catalog.commercialCodes, openSection, repairItems, separateItems]);
   const filteredOptions = useMemo(() => {
     const normalizedQuery = normalizeSearch(search);
 
     if (!normalizedQuery) {
-      return options;
+      return activeOptions;
     }
 
-    return options.filter((option) =>
+    return activeOptions.filter((option) =>
       normalizeSearch(getOptionSearchText(option)).includes(normalizedQuery),
     );
-  }, [options, search]);
+  }, [activeOptions, search]);
   const parsedLines = useMemo<OutboundPreviewInputLine[]>(
     () =>
       lines.flatMap((line) => {
@@ -305,6 +342,15 @@ export function OutboundEntryFlow({
     rotateIdempotencyKey();
     setValidationError(null);
     setSubmissionError(null);
+  }
+
+  function toggleCatalogSection(section: CatalogSection) {
+    if (isPending) {
+      return;
+    }
+
+    setOpenSection((current) => (current === section ? null : section));
+    setSearch("");
   }
 
   function addOption(option: OutboundCatalogOption) {
@@ -467,6 +513,7 @@ export function OutboundEntryFlow({
     setLines([]);
     setDescription("");
     setSearch("");
+    setOpenSection(null);
     setValidationError(null);
     setSubmissionError(null);
     setReceipt(null);
@@ -474,6 +521,80 @@ export function OutboundEntryFlow({
     setStep("editing");
     router.refresh();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function renderCatalogResults() {
+    return (
+      <>
+        <label
+          htmlFor="outbound-search"
+          className="block text-sm font-black text-text-primary"
+        >
+          Pesquisar nesta categoria
+        </label>
+        <div className="relative mt-2">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-text-muted" />
+          <input
+            id="outbound-search"
+            type="search"
+            value={search}
+            maxLength={maximumSearchLength}
+            onChange={(event) =>
+              setSearch(event.target.value.slice(0, maximumSearchLength))
+            }
+            placeholder="Código, descrição, modelo, servo ou kit"
+            className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
+          />
+        </div>
+
+        <p
+          className="mt-3 text-xs font-bold text-text-muted"
+          aria-live="polite"
+        >
+          {!search.trim()
+            ? `${numberFormatter.format(filteredOptions.length)} opções disponíveis`
+            : filteredOptions.length === 1
+              ? "1 opção encontrada"
+              : `${numberFormatter.format(filteredOptions.length)} opções encontradas`}
+        </p>
+
+        {filteredOptions.length === 0 ? (
+          <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
+            <SearchIcon className="mx-auto size-8 text-text-muted" />
+            <h4 className="mt-3 font-black text-text-primary">
+              Nenhum resultado
+            </h4>
+            <p className="mt-1 text-sm font-semibold text-text-muted">
+              Tente pesquisar por outro código, descrição, modelo, servo ou
+              kit.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {filteredOptions.map((option) => {
+              const key = getOptionKey(option);
+              const isSelected = selectedKeys.has(key);
+
+              return option.kind === "ITEM" ? (
+                <PhysicalCatalogCard
+                  key={key}
+                  item={option}
+                  isSelected={isSelected}
+                  onAdd={() => addOption(option)}
+                />
+              ) : (
+                <CommercialCatalogCard
+                  key={key}
+                  option={option}
+                  isSelected={isSelected}
+                  onAdd={() => addOption(option)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </>
+    );
   }
 
   if (step === "success" && receipt) {
@@ -967,67 +1088,40 @@ export function OutboundEntryFlow({
             </h2>
           </div>
 
-          <label
-            htmlFor="outbound-search"
-            className="mt-5 block text-sm font-black text-text-primary"
-          >
-            Pesquisar catálogo
-          </label>
-          <div className="relative mt-2">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-text-muted" />
-            <input
-              id="outbound-search"
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Código, descrição, modelo, servo ou kit"
-              className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
-            />
+          <div className="mt-5 space-y-3">
+            <StockFlowSection
+              id="outbound-separate-section"
+              title="Item separado"
+              description="Servos, kits de instalação e peças avulsas"
+              count={separateItems.length}
+              isOpen={openSection === "separate"}
+              onToggle={() => toggleCatalogSection("separate")}
+            >
+              {renderCatalogResults()}
+            </StockFlowSection>
+
+            <StockFlowSection
+              id="outbound-repair-section"
+              title="Reparo"
+              description="Jogos e kits de reparo"
+              count={repairItems.length}
+              isOpen={openSection === "repair"}
+              onToggle={() => toggleCatalogSection("repair")}
+            >
+              {renderCatalogResults()}
+            </StockFlowSection>
+
+            <StockFlowSection
+              id="outbound-commercial-section"
+              title="Caixa com kit"
+              description="Configurações identificadas por código comercial"
+              count={catalog.commercialCodes.length}
+              isOpen={openSection === "commercial"}
+              onToggle={() => toggleCatalogSection("commercial")}
+            >
+              {renderCatalogResults()}
+            </StockFlowSection>
           </div>
-
-          <p className="mt-3 text-xs font-bold text-text-muted" aria-live="polite">
-            {!search.trim()
-              ? `Mostrando todas as ${numberFormatter.format(filteredOptions.length)} opções`
-              : filteredOptions.length === 1
-                ? "1 opção encontrada"
-                : `${numberFormatter.format(filteredOptions.length)} opções encontradas`}
-          </p>
-
-          {filteredOptions.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
-              <SearchIcon className="mx-auto size-8 text-text-muted" />
-              <h3 className="mt-3 font-black text-text-primary">
-                Nenhum resultado
-              </h3>
-              <p className="mt-1 text-sm font-semibold text-text-muted">
-                Tente pesquisar por outro código, descrição, modelo, servo ou
-                kit.
-              </p>
-            </div>
-          ) : (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {filteredOptions.map((option) => {
-                const key = getOptionKey(option);
-                const isSelected = selectedKeys.has(key);
-
-                return option.kind === "ITEM" ? (
-                  <PhysicalCatalogCard
-                    key={key}
-                    item={option}
-                    isSelected={isSelected}
-                    onAdd={() => addOption(option)}
-                  />
-                ) : (
-                  <CommercialCatalogCard
-                    key={key}
-                    option={option}
-                    isSelected={isSelected}
-                    onAdd={() => addOption(option)}
-                  />
-                );
-              })}
-            </div>
-          )}
         </div>
 
         <div className="rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6 lg:sticky lg:top-24">

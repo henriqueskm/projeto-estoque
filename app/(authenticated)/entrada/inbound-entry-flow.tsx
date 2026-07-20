@@ -10,6 +10,8 @@ import {
   SearchIcon,
   TrashIcon,
 } from "@/components/icons";
+import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
+import { StockFlowSection } from "@/components/stock-flow-section";
 import {
   buildInboundPreview,
   type InboundPreviewInputLine,
@@ -19,6 +21,7 @@ import {
   type InboundCatalog,
   type InboundCatalogOption,
   type InboundCommercialCode,
+  type InboundNewLoosePart,
   type InboundPhysicalItem,
   type InboundReceipt,
   type InboundRequestLine,
@@ -28,6 +31,7 @@ import { submitStockInbound } from "./actions";
 
 const maximumQuantity = 2_147_483_647;
 const maximumDescriptionLength = 500;
+const maximumItemCodeLength = 120;
 const maximumSearchLength = 120;
 const maximumLines = 500;
 const numberFormatter = new Intl.NumberFormat("pt-BR");
@@ -38,6 +42,7 @@ type DraftLine = {
 };
 
 type FlowStep = "editing" | "review" | "success";
+type CatalogSection = "separate" | "repair" | "commercial";
 
 function normalizeSearch(value: string) {
   return value
@@ -66,9 +71,15 @@ function parseQuantity(value: string) {
 }
 
 function getOptionKey(option: InboundCatalogOption) {
-  return option.kind === "ITEM"
-    ? `ITEM:${option.id}`
-    : `COMMERCIAL_CODE:${option.commercialCodeId}`;
+  if (option.kind === "ITEM") {
+    return `ITEM:${option.id}`;
+  }
+
+  if (option.kind === "NEW_LOOSE_PART") {
+    return `NEW_LOOSE_PART:${option.code}`;
+  }
+
+  return `COMMERCIAL_CODE:${option.commercialCodeId}`;
 }
 
 function getQuantityControlId(option: InboundCatalogOption) {
@@ -76,7 +87,7 @@ function getQuantityControlId(option: InboundCatalogOption) {
 }
 
 function getOptionSearchText(option: InboundCatalogOption) {
-  if (option.kind === "ITEM") {
+  if (option.kind === "ITEM" || option.kind === "NEW_LOOSE_PART") {
     return [
       option.code,
       option.description,
@@ -149,9 +160,13 @@ function Summary({
 }
 
 function OptionBadge({ option }: { option: InboundCatalogOption }) {
-  return option.kind === "ITEM" ? (
+  return option.kind === "ITEM" || option.kind === "NEW_LOOSE_PART" ? (
     <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-emerald-950 uppercase">
-      Item separado
+      {option.kind === "NEW_LOOSE_PART"
+        ? "Nova peça avulsa"
+        : option.itemType === "REPAIR_KIT"
+          ? "Reparo"
+          : "Item separado"}
     </span>
   ) : (
     <span className="inline-flex rounded-full bg-violet-200 px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-violet-950 uppercase">
@@ -240,6 +255,12 @@ function CommercialCatalogCard({
         {option.description}
       </p>
 
+      <CommercialConfigurationImage
+        commercialCodes={[option.code, ...option.aliases]}
+        imageUrl={option.imageUrl}
+        compact
+      />
+
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <div className="rounded-xl bg-surface p-3">
           <p className="text-[0.65rem] font-black tracking-wide text-violet-800 uppercase">
@@ -320,7 +341,18 @@ export function InboundEntryFlow({
 }) {
   const router = useRouter();
   const [step, setStep] = useState<FlowStep>("editing");
+  const [openSection, setOpenSection] = useState<CatalogSection | null>(
+    null,
+  );
   const [search, setSearch] = useState("");
+  const [isNewLoosePartOpen, setIsNewLoosePartOpen] = useState(false);
+  const [newLoosePartCode, setNewLoosePartCode] = useState("");
+  const [newLoosePartDescription, setNewLoosePartDescription] =
+    useState("");
+  const [newLoosePartQuantity, setNewLoosePartQuantity] = useState("1");
+  const [newLoosePartError, setNewLoosePartError] = useState<string | null>(
+    null,
+  );
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [description, setDescription] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -330,25 +362,52 @@ export function InboundEntryFlow({
   const idempotencyKey = useRef<string | null>(null);
   const submissionInFlight = useRef(false);
 
-  const options = useMemo<InboundCatalogOption[]>(
-    () => [...catalog.physicalItems, ...catalog.commercialCodes],
+  const separateItems = useMemo(
+    () =>
+      catalog.physicalItems.filter(
+        (item) => item.itemType !== "REPAIR_KIT",
+      ),
+    [catalog],
+  );
+  const repairItems = useMemo(
+    () =>
+      catalog.physicalItems.filter(
+        (item) => item.itemType === "REPAIR_KIT",
+      ),
     [catalog],
   );
   const selectedKeys = useMemo(
     () => new Set(lines.map((line) => getOptionKey(line.option))),
     [lines],
   );
+  const activeOptions = useMemo<
+    Array<InboundPhysicalItem | InboundCommercialCode>
+  >(() => {
+    if (openSection === "separate") {
+      return separateItems;
+    }
+
+    if (openSection === "repair") {
+      return repairItems;
+    }
+
+    if (openSection === "commercial") {
+      return catalog.commercialCodes;
+    }
+
+    return [];
+  }, [catalog.commercialCodes, openSection, repairItems, separateItems]);
   const filteredOptions = useMemo(() => {
     const normalizedQuery = normalizeSearch(search);
 
     if (!normalizedQuery) {
-      return options;
+      return activeOptions;
     }
 
-    return options.filter((option) =>
+    return activeOptions.filter((option) =>
       normalizeSearch(getOptionSearchText(option)).includes(normalizedQuery),
     );
-  }, [options, search]);
+  }, [activeOptions, search]);
   const parsedLines = useMemo<InboundPreviewInputLine[]>(
     () =>
       lines.flatMap((line) => {
@@ -375,6 +434,17 @@ export function InboundEntryFlow({
     setSubmissionError(null);
   }
 
+  function toggleCatalogSection(section: CatalogSection) {
+    if (isPending) {
+      return;
+    }
+
+    setOpenSection((current) => (current === section ? null : section));
+    setSearch("");
+    setNewLoosePartError(null);
+    setIsNewLoosePartOpen(false);
+  }
+
   function addOption(option: InboundCatalogOption) {
     if (selectedKeys.has(getOptionKey(option)) || isPending) {
       return;
@@ -385,6 +455,104 @@ export function InboundEntryFlow({
       ...currentLines,
       { option, quantity: "1" },
     ]);
+  }
+
+  function addNewLoosePart() {
+    if (isPending) {
+      return;
+    }
+
+    const code = newLoosePartCode.trim();
+    const loosePartDescription = newLoosePartDescription.trim();
+    const quantity = parseQuantity(newLoosePartQuantity);
+
+    if (!code || code.length > maximumItemCodeLength) {
+      setNewLoosePartError(
+        `Informe um código com até ${maximumItemCodeLength} caracteres.`,
+      );
+      return;
+    }
+
+    if (
+      !loosePartDescription ||
+      loosePartDescription.length > maximumDescriptionLength
+    ) {
+      setNewLoosePartError(
+        `Informe uma descrição com até ${maximumDescriptionLength} caracteres.`,
+      );
+      return;
+    }
+
+    if (quantity === null) {
+      setNewLoosePartError(
+        "Informe uma quantidade inteira maior que zero.",
+      );
+      return;
+    }
+
+    const existingItem = catalog.physicalItems.find(
+      (item) => item.code === code,
+    );
+
+    if (existingItem) {
+      if (existingItem.itemType !== "LOOSE_PART") {
+        setNewLoosePartError(
+          `O código ${code} já pertence a outro tipo de item.`,
+        );
+        return;
+      }
+
+      if (
+        existingItem.description.trim().toLocaleLowerCase("pt-BR") !==
+        loosePartDescription.toLocaleLowerCase("pt-BR")
+      ) {
+        setNewLoosePartError(
+          `O código ${code} já existe com outra descrição. O cadastro atual não será substituído.`,
+        );
+        return;
+      }
+
+      if (selectedKeys.has(getOptionKey(existingItem))) {
+        setNewLoosePartError(
+          `${code} já está na entrada. Ajuste a quantidade no carrinho.`,
+        );
+        return;
+      }
+
+      markPayloadChanged();
+      setLines((currentLines) => [
+        ...currentLines,
+        { option: existingItem, quantity: String(quantity) },
+      ]);
+    } else {
+      const newLoosePart: InboundNewLoosePart = {
+        kind: "NEW_LOOSE_PART",
+        code,
+        description: loosePartDescription,
+        itemType: "LOOSE_PART",
+        model: null,
+        balance: 0,
+      };
+
+      if (selectedKeys.has(getOptionKey(newLoosePart))) {
+        setNewLoosePartError(
+          `${code} já está na entrada. Ajuste a quantidade no carrinho.`,
+        );
+        return;
+      }
+
+      markPayloadChanged();
+      setLines((currentLines) => [
+        ...currentLines,
+        { option: newLoosePart, quantity: String(quantity) },
+      ]);
+    }
+
+    setNewLoosePartCode("");
+    setNewLoosePartDescription("");
+    setNewLoosePartQuantity("1");
+    setNewLoosePartError(null);
+    setIsNewLoosePartOpen(false);
   }
 
   function changeQuantity(key: string, quantity: string) {
@@ -472,17 +640,28 @@ export function InboundEntryFlow({
     return lines.map((line) => {
       const quantity = parseQuantity(line.quantity) as number;
 
-      return line.option.kind === "ITEM"
-        ? {
-            kind: "ITEM",
-            item_id: line.option.id,
-            quantity,
-          }
-        : {
-            kind: "COMMERCIAL_CODE",
-            commercial_code_id: line.option.commercialCodeId,
-            quantity,
-          };
+      if (line.option.kind === "ITEM") {
+        return {
+          kind: "ITEM",
+          item_id: line.option.id,
+          quantity,
+        } as const;
+      }
+
+      if (line.option.kind === "NEW_LOOSE_PART") {
+        return {
+          kind: "NEW_LOOSE_PART",
+          code: line.option.code,
+          description: line.option.description,
+          quantity,
+        } as const;
+      }
+
+      return {
+        kind: "COMMERCIAL_CODE",
+        commercial_code_id: line.option.commercialCodeId,
+        quantity,
+      } as const;
     });
   }
 
@@ -536,6 +715,12 @@ export function InboundEntryFlow({
     setLines([]);
     setDescription("");
     setSearch("");
+    setOpenSection(null);
+    setIsNewLoosePartOpen(false);
+    setNewLoosePartCode("");
+    setNewLoosePartDescription("");
+    setNewLoosePartQuantity("1");
+    setNewLoosePartError(null);
     setValidationError(null);
     setSubmissionError(null);
     setReceipt(null);
@@ -543,6 +728,185 @@ export function InboundEntryFlow({
     setStep("editing");
     router.refresh();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function renderCatalogResults() {
+    return (
+      <>
+        <label
+          htmlFor="inbound-search"
+          className="block text-sm font-black text-text-primary"
+        >
+          Pesquisar nesta categoria
+        </label>
+        <div className="relative mt-2">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-text-muted" />
+          <input
+            id="inbound-search"
+            type="search"
+            value={search}
+            maxLength={maximumSearchLength}
+            onChange={(event) =>
+              setSearch(event.target.value.slice(0, maximumSearchLength))
+            }
+            placeholder="Código, descrição, modelo, servo ou kit"
+            className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
+          />
+        </div>
+
+        <p
+          className="mt-3 text-xs font-bold text-text-muted"
+          aria-live="polite"
+        >
+          {!search.trim()
+            ? `${numberFormatter.format(filteredOptions.length)} opções disponíveis`
+            : filteredOptions.length === 1
+              ? "1 opção encontrada"
+              : `${numberFormatter.format(filteredOptions.length)} opções encontradas`}
+        </p>
+
+        {filteredOptions.length === 0 ? (
+          <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
+            <SearchIcon className="mx-auto size-8 text-text-muted" />
+            <h4 className="mt-3 font-black text-text-primary">
+              Nenhum resultado
+            </h4>
+            <p className="mt-1 text-sm font-semibold text-text-muted">
+              Tente outro código, descrição, modelo, servo ou kit.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {filteredOptions.map((option) => {
+              const key = getOptionKey(option);
+              const isSelected = selectedKeys.has(key);
+
+              return option.kind === "ITEM" ? (
+                <PhysicalCatalogCard
+                  key={key}
+                  item={option}
+                  isSelected={isSelected}
+                  onAdd={() => addOption(option)}
+                />
+              ) : (
+                <CommercialCatalogCard
+                  key={key}
+                  option={option}
+                  isSelected={isSelected}
+                  onAdd={() => addOption(option)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  function renderNewLoosePartForm() {
+    return (
+      <div className="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50/60 p-4">
+        <button
+          type="button"
+          onClick={() => {
+            setIsNewLoosePartOpen((current) => !current);
+            setNewLoosePartError(null);
+          }}
+          aria-expanded={isNewLoosePartOpen}
+          aria-controls="new-loose-part-form"
+          className="nk-focus inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 text-sm font-black text-white transition hover:bg-emerald-900"
+        >
+          <PlusIcon className="size-5" />
+          Nova peça avulsa
+        </button>
+
+        {isNewLoosePartOpen ? (
+          <div id="new-loose-part-form" className="mt-4 grid gap-4">
+            <div>
+              <label
+                htmlFor="new-loose-part-code"
+                className="block text-sm font-black text-text-primary"
+              >
+                Código
+              </label>
+              <input
+                id="new-loose-part-code"
+                value={newLoosePartCode}
+                required
+                maxLength={maximumItemCodeLength}
+                onChange={(event) => {
+                  setNewLoosePartCode(event.target.value);
+                  setNewLoosePartError(null);
+                }}
+                className="nk-field mt-2 min-h-12 w-full rounded-xl border px-4 font-mono text-base font-black outline-none transition"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="new-loose-part-description"
+                className="block text-sm font-black text-text-primary"
+              >
+                Descrição
+              </label>
+              <input
+                id="new-loose-part-description"
+                value={newLoosePartDescription}
+                required
+                maxLength={maximumDescriptionLength}
+                onChange={(event) => {
+                  setNewLoosePartDescription(event.target.value);
+                  setNewLoosePartError(null);
+                }}
+                className="nk-field mt-2 min-h-12 w-full rounded-xl border px-4 text-base font-semibold outline-none transition"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="new-loose-part-quantity"
+                className="block text-sm font-black text-text-primary"
+              >
+                Quantidade
+              </label>
+              <input
+                id="new-loose-part-quantity"
+                type="number"
+                min="1"
+                max={maximumQuantity}
+                step="1"
+                inputMode="numeric"
+                value={newLoosePartQuantity}
+                required
+                onChange={(event) => {
+                  setNewLoosePartQuantity(event.target.value);
+                  setNewLoosePartError(null);
+                }}
+                className="nk-field mt-2 min-h-12 w-full rounded-xl border px-4 text-base font-black outline-none transition"
+              />
+            </div>
+            <p className="text-xs font-semibold text-text-muted">
+              O cadastro e a entrada só serão efetivados juntos após a
+              confirmação. Se o código já existir, o banco validará o tipo e
+              a descrição antes de reutilizá-lo.
+            </p>
+            {newLoosePartError ? (
+              <p
+                role="alert"
+                className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-950"
+              >
+                {newLoosePartError}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={addNewLoosePart}
+              className="nk-focus inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
+            >
+              Adicionar à entrada
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   if (step === "success" && receipt) {
@@ -658,7 +1022,7 @@ export function InboundEntryFlow({
               <div className="mt-3 space-y-3">
                 {preview.itemLines.map((line) => (
                   <article
-                    key={line.option.id}
+                    key={getOptionKey(line.option)}
                     className={`rounded-2xl border p-4 ${
                       line.isValid
                         ? "border-emerald-200 bg-emerald-50/40"
@@ -674,6 +1038,12 @@ export function InboundEntryFlow({
                         <p className="mt-1 text-sm font-semibold text-text-muted">
                           {line.option.description}
                         </p>
+                        {line.option.kind === "NEW_LOOSE_PART" ? (
+                          <p className="mt-2 text-xs font-bold text-emerald-800">
+                            O item e o subtipo de peça avulsa serão criados na
+                            mesma transação desta entrada.
+                          </p>
+                        ) : null}
                       </div>
                       <div className="rounded-xl bg-emerald-900 px-3 py-2 text-right text-white">
                         <p className="text-[0.65rem] font-black tracking-wide text-emerald-200 uppercase">
@@ -942,69 +1312,41 @@ export function InboundEntryFlow({
             as peças chegarem separadas, adicione os códigos físicos.
           </div>
 
-          <label
-            htmlFor="inbound-search"
-            className="mt-5 block text-sm font-black text-text-primary"
-          >
-            Pesquisar catálogo
-          </label>
-          <div className="relative mt-2">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-text-muted" />
-            <input
-              id="inbound-search"
-              type="search"
-              value={search}
-              maxLength={maximumSearchLength}
-              onChange={(event) =>
-                setSearch(event.target.value.slice(0, maximumSearchLength))
-              }
-              placeholder="Código, descrição, modelo, servo ou kit"
-              className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
-            />
+          <div className="mt-5 space-y-3">
+            <StockFlowSection
+              id="inbound-separate-section"
+              title="Item separado"
+              description="Servos, kits de instalação e peças avulsas"
+              count={separateItems.length}
+              isOpen={openSection === "separate"}
+              onToggle={() => toggleCatalogSection("separate")}
+            >
+              {renderNewLoosePartForm()}
+              {renderCatalogResults()}
+            </StockFlowSection>
+
+            <StockFlowSection
+              id="inbound-repair-section"
+              title="Reparo"
+              description="Jogos e kits de reparo"
+              count={repairItems.length}
+              isOpen={openSection === "repair"}
+              onToggle={() => toggleCatalogSection("repair")}
+            >
+              {renderCatalogResults()}
+            </StockFlowSection>
+
+            <StockFlowSection
+              id="inbound-commercial-section"
+              title="Caixa com kit"
+              description="Configurações identificadas por código comercial"
+              count={catalog.commercialCodes.length}
+              isOpen={openSection === "commercial"}
+              onToggle={() => toggleCatalogSection("commercial")}
+            >
+              {renderCatalogResults()}
+            </StockFlowSection>
           </div>
-
-          <p className="mt-3 text-xs font-bold text-text-muted" aria-live="polite">
-            {!search.trim()
-              ? `Mostrando todas as ${numberFormatter.format(filteredOptions.length)} opções`
-              : filteredOptions.length === 1
-                ? "1 opção encontrada"
-                : `${numberFormatter.format(filteredOptions.length)} opções encontradas`}
-          </p>
-
-          {filteredOptions.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
-              <SearchIcon className="mx-auto size-8 text-text-muted" />
-              <h3 className="mt-3 font-black text-text-primary">
-                Nenhum resultado
-              </h3>
-              <p className="mt-1 text-sm font-semibold text-text-muted">
-                Tente outro código, descrição, modelo, servo ou kit.
-              </p>
-            </div>
-          ) : (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {filteredOptions.map((option) => {
-                const key = getOptionKey(option);
-                const isSelected = selectedKeys.has(key);
-
-                return option.kind === "ITEM" ? (
-                  <PhysicalCatalogCard
-                    key={key}
-                    item={option}
-                    isSelected={isSelected}
-                    onAdd={() => addOption(option)}
-                  />
-                ) : (
-                  <CommercialCatalogCard
-                    key={key}
-                    option={option}
-                    isSelected={isSelected}
-                    onAdd={() => addOption(option)}
-                  />
-                );
-              })}
-            </div>
-          )}
         </div>
 
         <div className="min-w-0 rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6 lg:sticky lg:top-24">
@@ -1041,7 +1383,8 @@ export function InboundEntryFlow({
                   <article
                     key={key}
                     className={`rounded-2xl border p-4 ${
-                      line.option.kind === "ITEM"
+                      line.option.kind === "ITEM" ||
+                      line.option.kind === "NEW_LOOSE_PART"
                         ? "border-emerald-200"
                         : "border-violet-300 bg-violet-50/40"
                     }`}

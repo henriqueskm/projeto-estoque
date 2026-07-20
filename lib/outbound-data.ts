@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 import {
   physicalItemTypes,
   type PhysicalItemType,
@@ -30,6 +31,7 @@ type CommercialCodeRow = {
 type CommercialConfigurationRow = {
   id: string;
   description: string | null;
+  image_path: string | null;
   servo_id: string;
   installation_kit_id: string;
 };
@@ -86,7 +88,7 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
         .eq("is_active", true),
       supabase
         .from("commercial_configurations")
-        .select("id, description, servo_id, installation_kit_id")
+        .select("id, description, image_path, servo_id, installation_kit_id")
         .eq("is_active", true),
       supabase.from("servo_models").select("item_id, model"),
       supabase
@@ -119,6 +121,10 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
     const servoModels = (servoModelsResult.data ?? []) as ServoModelRow[];
     const configurationBalances = (configurationBalancesResult.data ??
       []) as ConfigurationBalanceRow[];
+    const imageUrlByPath = await createCommercialImageUrlMap(
+      supabase,
+      configurations.map((configuration) => configuration.image_path),
+    );
 
     const stockByItem = new Map(
       stockBalances.map((balance) => [balance.item_id, balance.quantity]),
@@ -184,6 +190,9 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
             description:
               configuration.description ??
               `${servo.description} + ${installationKit.code}`,
+            imageUrl: configuration.image_path
+              ? (imageUrlByPath.get(configuration.image_path) ?? null)
+              : null,
             assembledBalance:
               stockByConfiguration.get(configuration.id) ?? 0,
             servo: {

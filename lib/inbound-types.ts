@@ -35,12 +35,22 @@ export type InboundCommercialCode = {
   configurationId: string;
   code: string;
   description: string;
+  imageUrl: string | null;
   assembledBalance: number;
   aliases: string[];
   servo: InboundConfigurationComponent & {
     model: string | null;
   };
   installationKit: InboundConfigurationComponent;
+};
+
+export type InboundNewLoosePart = {
+  kind: "NEW_LOOSE_PART";
+  code: string;
+  description: string;
+  itemType: "LOOSE_PART";
+  model: null;
+  balance: 0;
 };
 
 export type InboundCatalog = {
@@ -50,7 +60,8 @@ export type InboundCatalog = {
 
 export type InboundCatalogOption =
   | InboundPhysicalItem
-  | InboundCommercialCode;
+  | InboundCommercialCode
+  | InboundNewLoosePart;
 
 export type InboundRequestLine =
   | {
@@ -61,6 +72,12 @@ export type InboundRequestLine =
   | {
       kind: "COMMERCIAL_CODE";
       commercial_code_id: string;
+      quantity: number;
+    }
+  | {
+      kind: "NEW_LOOSE_PART";
+      code: string;
+      description: string;
       quantity: number;
     };
 
