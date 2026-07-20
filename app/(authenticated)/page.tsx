@@ -15,6 +15,7 @@ import {
   type RecentMovement,
   type SearchResult,
 } from "@/lib/home-data";
+import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 
 type ActionCard = {
   title: string;
@@ -316,6 +317,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           Negócios K.
         </p>
       </section>
+
+      <PwaInstallPrompt />
 
       <section className="nk-panel mt-5 p-4 sm:p-5" aria-labelledby="search-label">
         <h2 id="search-label" className="sr-only">
