@@ -11,6 +11,7 @@ import {
 } from "@/lib/inventory-types";
 import {
   calculatePhysicalStockByItem,
+  calculatePhysicalStockSummary,
   type PhysicalStockItemType,
 } from "@/lib/stock-calculations";
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
@@ -322,6 +323,27 @@ export async function loadInventoryData(
         state: getStockState(quantities.totalQuantity, item.minimum_stock),
       };
     });
+    const summary = calculatePhysicalStockSummary(
+      items.map((item) => ({
+        id: item.id,
+        itemType: item.item_type,
+        minimumStock: item.minimum_stock,
+        isActive: item.is_active,
+      })),
+      stockBalances.map((balance) => ({
+        itemId: balance.item_id,
+        quantity: balance.quantity,
+      })),
+      configurations.map((configuration) => ({
+        id: configuration.id,
+        servoId: configuration.servo_id,
+        installationKitId: configuration.installation_kit_id,
+      })),
+      configurationBalances.map((balance) => ({
+        configurationId: balance.configuration_id,
+        quantity: balance.quantity,
+      })),
+    );
     const codesByConfigurationId = new Map<string, string[]>();
 
     configurationCodes.forEach((configurationCode) => {
@@ -456,23 +478,7 @@ export async function loadInventoryData(
 
     return {
       data: {
-        summary: {
-          activePhysicalItems: physicalCatalog.length,
-          looseUnits: stockBalances.reduce(
-            (total, balance) => total + balance.quantity,
-            0,
-          ),
-          mountedConfigurations: configurationBalances.reduce(
-            (total, balance) => total + balance.quantity,
-            0,
-          ),
-          lowStockItems: physicalCatalog.filter(
-            (item) => item.state === "LOW",
-          ).length,
-          zeroStockItems: physicalCatalog.filter(
-            (item) => item.state === "ZERO",
-          ).length,
-        },
+        summary,
         physicalItems:
           filters.tab === "fisicos"
             ? (currentResults.items as InventoryPhysicalItem[])

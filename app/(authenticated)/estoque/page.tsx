@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { ArrowLeftIcon, SearchIcon, StockIcon } from "@/components/icons";
+import { InventoryRowActions } from "@/components/inventory-row-actions";
 import {
   loadInventoryData,
   parseInventoryFilters,
@@ -82,7 +82,7 @@ function PhysicalStateBadge({ state }: { state: StockState }) {
 
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${details.className}`}
+      className={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] leading-4 font-bold sm:text-xs ${details.className}`}
     >
       {details.label}
     </span>
@@ -98,7 +98,7 @@ function ConfigurationStateBadge({
 
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
+      className={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] leading-4 font-bold sm:text-xs ${
         hasBalance
           ? "bg-violet-100 text-violet-900"
           : "bg-slate-100 text-slate-700"
@@ -111,11 +111,11 @@ function ConfigurationStateBadge({
 
 function CommercialCodeBadges({ codes }: { codes: string[] }) {
   return (
-    <div className="flex flex-wrap gap-1.5" aria-label="Códigos comerciais">
+    <div className="flex flex-wrap gap-1" aria-label="Códigos comerciais">
       {codes.map((code) => (
         <span
           key={code}
-          className="rounded-lg bg-violet-100 px-2.5 py-1 font-mono text-sm font-black text-violet-900"
+          className="rounded-md bg-violet-100 px-1.5 py-0.5 font-mono text-xs font-black text-violet-900 sm:text-sm"
         >
           {code}
         </span>
@@ -124,200 +124,70 @@ function CommercialCodeBadges({ codes }: { codes: string[] }) {
   );
 }
 
-type PhysicalBalanceDetail = {
-  label: string;
-  accessibleDescription?: string;
-  value: number;
-  containerClassName: string;
-  labelClassName: string;
-};
-
-function getPhysicalBalanceDetails(
-  item: InventoryPhysicalItem,
-): PhysicalBalanceDetail[] {
+function PhysicalBalanceSummary({ item }: { item: InventoryPhysicalItem }) {
   if (item.itemType === "SERVO") {
-    return [
-      {
-        label: "Sem kit",
-        accessibleDescription: "Servos armazenados sem kit",
-        value: item.looseQuantity,
-        containerClassName: "bg-app-background",
-        labelClassName: "text-text-muted",
-      },
-      {
-        label: "Com kit",
-        accessibleDescription:
-          "Servos que estão dentro de configurações montadas",
-        value: item.mountedQuantity,
-        containerClassName: "bg-violet-50",
-        labelClassName: "text-violet-800",
-      },
-      {
-        label: "Total de servos",
-        value: item.totalQuantity,
-        containerClassName: "bg-emerald-50",
-        labelClassName: "text-emerald-800",
-      },
-      {
-        label: "Mínimo",
-        value: item.minimumStock,
-        containerClassName: "bg-app-background",
-        labelClassName: "text-text-muted",
-      },
-    ];
+    return (
+      <span title="Servos sem kit e servos presentes em configurações montadas">
+        {quantityFormatter.format(item.looseQuantity)} sem kit ·{" "}
+        {quantityFormatter.format(item.mountedQuantity)} com kit
+      </span>
+    );
   }
 
   if (item.itemType === "INSTALLATION_KIT") {
-    return [
-      {
-        label: "Separados",
-        accessibleDescription: "Kits disponíveis fora das caixas",
-        value: item.looseQuantity,
-        containerClassName: "bg-app-background",
-        labelClassName: "text-text-muted",
-      },
-      {
-        label: "Dentro de caixas",
-        accessibleDescription: "Kits presentes em configurações montadas",
-        value: item.mountedQuantity,
-        containerClassName: "bg-violet-50",
-        labelClassName: "text-violet-800",
-      },
-      {
-        label: "Total de kits",
-        value: item.totalQuantity,
-        containerClassName: "bg-emerald-50",
-        labelClassName: "text-emerald-800",
-      },
-      {
-        label: "Mínimo",
-        value: item.minimumStock,
-        containerClassName: "bg-app-background",
-        labelClassName: "text-text-muted",
-      },
-    ];
+    return (
+      <span title="Kits separados e kits presentes dentro de caixas montadas">
+        {quantityFormatter.format(item.looseQuantity)} separados ·{" "}
+        {quantityFormatter.format(item.mountedQuantity)} em caixas
+      </span>
+    );
   }
 
-  return [
-    {
-      label: "Quantidade",
-      value: item.looseQuantity,
-      containerClassName: "bg-emerald-50",
-      labelClassName: "text-emerald-800",
-    },
-    {
-      label: "Mínimo",
-      value: item.minimumStock,
-      containerClassName: "bg-app-background",
-      labelClassName: "text-text-muted",
-    },
-  ];
+  return null;
 }
 
-function PhysicalBalanceGrid({
-  item,
-  variant,
-}: {
-  item: InventoryPhysicalItem;
-  variant: "card" | "table";
-}) {
-  const details = getPhysicalBalanceDetails(item);
-  const columnsClassName =
-    details.length === 2
-      ? "grid-cols-2"
-      : variant === "card"
-        ? "grid-cols-2 sm:grid-cols-4"
-        : "grid-cols-2 xl:grid-cols-4";
-
-  return (
-    <dl
-      className={`grid gap-2 ${columnsClassName} ${
-        variant === "card"
-          ? "mt-4 border-t border-border-neutral/70 pt-4"
-          : ""
-      }`}
-    >
-      {details.map((detail) => (
-        <div
-          key={detail.label}
-          className={`rounded-xl px-3 py-3 ${detail.containerClassName}`}
-        >
-          <dt
-            title={detail.accessibleDescription}
-            className={`text-xs font-bold uppercase tracking-wide ${detail.labelClassName}`}
-          >
-            {detail.label}
-            {detail.accessibleDescription ? (
-              <span className="sr-only">
-                : {detail.accessibleDescription}
-              </span>
-            ) : null}
-          </dt>
-          <dd className="mt-1 text-lg lg:text-right">
-            <Quantity value={detail.value} />
-          </dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-function PhysicalCards({ items }: { items: InventoryPhysicalItem[] }) {
-  return (
-    <div className="grid gap-3 lg:hidden">
-      {items.map((item) => (
-        <article
-          key={item.id}
-          className="min-w-0 rounded-2xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-5"
-        >
-          <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-mono text-xl font-black tracking-tight text-text-primary">
-                {item.code}
-              </p>
-              <p className="mt-1 break-words text-sm leading-6 font-semibold text-text-primary">
-                {item.description}
-              </p>
-              <p className="mt-1 text-xs font-bold uppercase tracking-wide text-text-muted">
-                {item.typeLabel}
-              </p>
-            </div>
-            <PhysicalStateBadge state={item.state} />
-          </div>
-
-          {item.itemType === "SERVO" ? (
-            <p className="mt-3 text-sm text-text-muted">
-              Modelo:{" "}
-              <strong className="text-text-primary">
-                {item.model || "Modelo não informado"}
-              </strong>
-            </p>
-          ) : null}
-
-          <PhysicalBalanceGrid item={item} variant="card" />
-        </article>
-      ))}
-    </div>
-  );
-}
+const stickyHeaderClassName =
+  "sticky top-16 z-30 bg-brand-charcoal px-2 py-2.5 text-[0.65rem] font-bold uppercase tracking-wide text-slate-200 sm:px-3 sm:text-xs";
 
 function PhysicalTable({ items }: { items: InventoryPhysicalItem[] }) {
   return (
-    <div className="hidden overflow-hidden rounded-2xl border border-border-neutral bg-surface shadow-sm lg:block">
-      <table className="w-full table-fixed border-collapse text-left">
-        <thead className="bg-brand-charcoal text-xs uppercase tracking-wide text-slate-200">
+    <div className="relative rounded-2xl border border-border-neutral bg-surface shadow-sm">
+      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
+        <caption className="sr-only">
+          Itens avulsos, quantidades, estoque mínimo e ações disponíveis
+        </caption>
+        <thead>
           <tr>
-            <th scope="col" className="w-[29%] px-4 py-3 font-bold">
-              Item
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[18%] sm:w-[14%]`}
+            >
+              Código
             </th>
-            <th scope="col" className="w-[14%] px-3 py-3 font-bold">
-              Tipo
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[45%] sm:w-[48%]`}
+            >
+              Descrição
             </th>
-            <th scope="col" className="w-[42%] px-3 py-3 font-bold">
-              Saldos
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[15%] text-right sm:w-[16%]`}
+            >
+              <span className="sm:hidden">Qtd.</span>
+              <span className="hidden sm:inline">Quantidade</span>
             </th>
-            <th scope="col" className="w-[15%] px-4 py-3 font-bold">
-              Situação
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[10%] text-right sm:w-[12%]`}
+            >
+              Mín.
+            </th>
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[12%] text-center sm:w-[10%]`}
+            >
+              <span className="sr-only sm:not-sr-only">Ações</span>
             </th>
           </tr>
         </thead>
@@ -325,108 +195,60 @@ function PhysicalTable({ items }: { items: InventoryPhysicalItem[] }) {
           {items.map((item) => (
             <tr
               key={item.id}
-              className="border-t border-border-neutral/70 align-top"
+              className="align-middle transition hover:bg-app-background/70"
             >
-              <th scope="row" className="px-4 py-4 font-normal">
-                <p className="font-mono text-base font-black text-text-primary">
+              <th
+                scope="row"
+                className="border-t border-border-neutral/70 px-2 py-3 font-normal sm:px-3"
+              >
+                <span className="break-all font-mono text-xs font-black text-text-primary sm:text-sm">
                   {item.code}
-                </p>
-                <p className="mt-1 break-words text-sm leading-5 font-semibold text-text-primary">
+                </span>
+              </th>
+              <td className="border-t border-border-neutral/70 px-2 py-3 sm:px-3">
+                <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
                   {item.description}
                 </p>
-                {item.itemType === "SERVO" ? (
-                  <p className="mt-1 text-xs leading-5 text-text-muted">
-                    Modelo: {item.model || "Modelo não informado"}
+                <p className="mt-0.5 break-words text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                  {item.typeLabel}
+                  {item.itemType === "SERVO" && item.model
+                    ? ` · ${item.model}`
+                    : ""}
+                </p>
+                {item.itemType === "SERVO" ||
+                item.itemType === "INSTALLATION_KIT" ? (
+                  <p className="mt-1 text-[0.65rem] leading-4 text-text-muted sm:text-xs">
+                    <PhysicalBalanceSummary item={item} />
                   </p>
                 ) : null}
-              </th>
-              <td className="px-3 py-4 text-sm leading-5 font-semibold text-text-muted">
-                {item.typeLabel}
+                <span className="mt-1 inline-flex">
+                  <PhysicalStateBadge state={item.state} />
+                </span>
               </td>
-              <td className="px-3 py-4">
-                <PhysicalBalanceGrid item={item} variant="table" />
+              <td className="border-t border-border-neutral/70 px-1 py-3 text-right text-sm sm:px-3 sm:text-base">
+                <Quantity value={item.totalQuantity} />
               </td>
-              <td className="px-4 py-4">
-                <PhysicalStateBadge state={item.state} />
+              <td className="border-t border-border-neutral/70 px-1 py-3 text-right text-sm sm:px-3 sm:text-base">
+                <Quantity value={item.minimumStock} />
+              </td>
+              <td className="border-t border-border-neutral/70 px-1 py-3 text-center sm:px-3">
+                <InventoryRowActions
+                  target={{
+                    kind: "ITEM",
+                    itemId: item.id,
+                    code: item.code,
+                    description: item.description,
+                    itemType: item.itemType,
+                    looseQuantity: item.looseQuantity,
+                    mountedQuantity: item.mountedQuantity,
+                    minimumStock: item.minimumStock,
+                  }}
+                />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function ConfigurationCards({
-  configurations,
-}: {
-  configurations: InventoryCommercialConfiguration[];
-}) {
-  return (
-    <div className="grid gap-3 lg:hidden">
-      {configurations.map((configuration) => (
-        <article
-          key={configuration.id}
-          className="min-w-0 rounded-2xl border border-violet-200 bg-surface p-4 shadow-sm sm:p-5"
-        >
-          <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-            <CommercialCodeBadges codes={configuration.codes} />
-            <ConfigurationStateBadge
-              assembledQuantity={configuration.assembledQuantity}
-            />
-          </div>
-          <h3 className="mt-3 break-words text-base leading-6 font-extrabold text-text-primary">
-            {configuration.description}
-          </h3>
-          <CommercialConfigurationImage
-            commercialCodes={configuration.codes}
-            imageUrl={configuration.imageUrl}
-          />
-          {configuration.hasAliases ? (
-            <p className="mt-2 text-xs font-bold leading-5 text-violet-800">
-              Saldo compartilhado entre estes códigos
-            </p>
-          ) : null}
-
-          <div className="mt-4 grid gap-2 border-t border-border-neutral/70 pt-4 sm:grid-cols-2">
-            <div className="rounded-xl bg-emerald-50 px-3 py-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
-                Servo
-              </p>
-              <p className="mt-1 font-mono font-black text-text-primary">
-                {configuration.servo.code}
-              </p>
-              <p className="mt-1 break-words text-sm leading-5 text-text-muted">
-                {configuration.servo.description}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-text-muted">
-                Modelo:{" "}
-                {configuration.servo.model || "Modelo não informado"}
-              </p>
-            </div>
-            <div className="rounded-xl bg-sky-50 px-3 py-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-sky-800">
-                Kit
-              </p>
-              <p className="mt-1 font-mono font-black text-text-primary">
-                {configuration.installationKit.code}
-              </p>
-              <p className="mt-1 break-words text-sm leading-5 text-text-muted">
-                {configuration.installationKit.description}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-violet-50 px-3 py-3">
-            <span className="text-sm font-bold text-violet-900">
-              Caixas montadas
-            </span>
-            <span className="text-xl">
-              <Quantity value={configuration.assembledQuantity} />
-            </span>
-          </div>
-        </article>
-      ))}
     </div>
   );
 }
@@ -437,27 +259,37 @@ function ConfigurationTable({
   configurations: InventoryCommercialConfiguration[];
 }) {
   return (
-    <div className="hidden overflow-hidden rounded-2xl border border-violet-200 bg-surface shadow-sm lg:block">
-      <table className="w-full table-fixed border-collapse text-left">
-        <thead className="bg-brand-charcoal text-xs uppercase tracking-wide text-slate-200">
+    <div className="relative rounded-2xl border border-violet-200 bg-surface shadow-sm">
+      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
+        <caption className="sr-only">
+          Caixas completas, saldos montados e ações disponíveis
+        </caption>
+        <thead>
           <tr>
-            <th scope="col" className="w-[22%] px-4 py-3 font-bold">
-              Códigos comerciais
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[23%] sm:w-[20%]`}
+            >
+              Código
             </th>
-            <th scope="col" className="w-[31%] px-4 py-3 font-bold">
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[47%] sm:w-[54%]`}
+            >
               Configuração
             </th>
-            <th scope="col" className="w-[17%] px-4 py-3 font-bold">
-              Servo
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[15%] text-right sm:w-[14%]`}
+            >
+              <span className="sm:hidden">Qtd.</span>
+              <span className="hidden sm:inline">Caixas</span>
             </th>
-            <th scope="col" className="w-[14%] px-4 py-3 font-bold">
-              Kit
-            </th>
-            <th scope="col" className="w-[7%] px-3 py-3 text-right font-bold">
-              Caixas montadas
-            </th>
-            <th scope="col" className="w-[9%] px-4 py-3 font-bold">
-              Estado
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[15%] text-center sm:w-[12%]`}
+            >
+              <span className="sr-only sm:not-sr-only">Ações</span>
             </th>
           </tr>
         </thead>
@@ -465,50 +297,46 @@ function ConfigurationTable({
           {configurations.map((configuration) => (
             <tr
               key={configuration.id}
-              className="border-t border-border-neutral/70 align-top"
+              className="align-middle transition hover:bg-violet-50/50"
             >
-              <th scope="row" className="px-4 py-4 font-normal">
+              <th
+                scope="row"
+                className="border-t border-border-neutral/70 px-2 py-3 font-normal sm:px-3"
+              >
                 <CommercialCodeBadges codes={configuration.codes} />
                 {configuration.hasAliases ? (
-                  <p className="mt-2 text-xs font-bold leading-5 text-violet-800">
-                    Saldo compartilhado entre estes códigos
-                  </p>
+                  <span className="mt-1 block text-[0.6rem] leading-3 font-bold text-violet-800 sm:text-[0.65rem]">
+                    Saldo compartilhado
+                  </span>
                 ) : null}
               </th>
-              <td className="px-4 py-4 text-sm leading-5 font-semibold text-text-primary">
-                {configuration.description}
-                <CommercialConfigurationImage
-                  commercialCodes={configuration.codes}
-                  imageUrl={configuration.imageUrl}
-                  compact
-                />
-              </td>
-              <td className="px-4 py-4">
-                <p className="font-mono text-sm font-black text-text-primary">
-                  {configuration.servo.code}
+              <td className="border-t border-border-neutral/70 px-2 py-3 sm:px-3">
+                <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
+                  {configuration.description}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">
-                  {configuration.servo.description}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">
-                  Modelo:{" "}
-                  {configuration.servo.model || "Modelo não informado"}
-                </p>
-              </td>
-              <td className="px-4 py-4">
-                <p className="font-mono text-sm font-black text-text-primary">
+                <p className="mt-1 break-words text-[0.65rem] leading-4 text-text-muted sm:text-xs">
+                  Servo {configuration.servo.code} · Kit{" "}
                   {configuration.installationKit.code}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">
-                  {configuration.installationKit.description}
-                </p>
+                <span className="mt-1 inline-flex">
+                  <ConfigurationStateBadge
+                    assembledQuantity={configuration.assembledQuantity}
+                  />
+                </span>
               </td>
-              <td className="bg-violet-50/60 px-3 py-4 text-right">
+              <td className="border-t border-border-neutral/70 bg-violet-50/50 px-1 py-3 text-right text-sm sm:px-3 sm:text-base">
                 <Quantity value={configuration.assembledQuantity} />
               </td>
-              <td className="px-4 py-4">
-                <ConfigurationStateBadge
-                  assembledQuantity={configuration.assembledQuantity}
+              <td className="border-t border-border-neutral/70 px-1 py-3 text-center sm:px-3">
+                <InventoryRowActions
+                  target={{
+                    kind: "CONFIGURATION",
+                    configurationId: configuration.id,
+                    commercialCodes: configuration.codes,
+                    description: configuration.description,
+                    assembledQuantity: configuration.assembledQuantity,
+                  }}
+                  imageUrl={configuration.imageUrl}
                 />
               </td>
             </tr>
@@ -604,24 +432,24 @@ export default async function InventoryPage({
       : (inventory?.configurations ?? []);
   const summaryCards = [
     {
-      label: "Itens físicos ativos",
-      value: inventory?.summary.activePhysicalItems,
+      label: "Caixas completas",
+      value: inventory?.summary.completeBoxesTotal,
     },
     {
-      label: "Unidades avulsas",
-      value: inventory?.summary.looseUnits,
+      label: "Servos avulsos",
+      value: inventory?.summary.looseServoTotal,
     },
     {
-      label: "Configurações montadas",
-      value: inventory?.summary.mountedConfigurations,
+      label: "Kits avulsos",
+      value: inventory?.summary.looseKitTotal,
     },
     {
-      label: "Estoque baixo",
-      value: inventory?.summary.lowStockItems,
+      label: "Reparos",
+      value: inventory?.summary.repairKitTotal,
     },
     {
-      label: "Itens zerados",
-      value: inventory?.summary.zeroStockItems,
+      label: "Peças avulsas",
+      value: inventory?.summary.loosePartTotal,
     },
   ];
 
@@ -681,8 +509,8 @@ export default async function InventoryPage({
           ))}
         </div>
         <p className="mt-2 text-xs leading-5 text-text-muted">
-          Unidades avulsas e configurações montadas são contadas separadamente.
-          Cada configuração montada contém um servo e um kit físico.
+          Caixas completas representam configurações montadas. Os demais
+          indicadores mostram os saldos físicos separados por tipo.
         </p>
       </section>
 
@@ -705,7 +533,7 @@ export default async function InventoryPage({
               : "text-text-muted hover:bg-app-background hover:text-text-primary"
           }`}
         >
-          Itens físicos
+          Itens avulsos
         </Link>
         <Link
           href={createInventoryHref(filters, {
@@ -722,7 +550,7 @@ export default async function InventoryPage({
               : "text-text-muted hover:bg-violet-50 hover:text-violet-900"
           }`}
         >
-          Configurações comerciais
+          Caixas completas
         </Link>
       </nav>
 
@@ -864,8 +692,8 @@ export default async function InventoryPage({
                 className="mt-1 text-xl font-black text-text-primary"
               >
                 {filters.tab === "fisicos"
-                  ? "Itens físicos"
-                  : "Configurações comerciais"}
+                  ? "Itens avulsos"
+                  : "Caixas completas"}
               </h2>
             </div>
             <p className="text-sm font-semibold text-text-muted">
@@ -903,19 +731,9 @@ export default async function InventoryPage({
               </Link>
             </div>
           ) : filters.tab === "fisicos" ? (
-            <>
-              <PhysicalCards items={inventory.physicalItems} />
-              <PhysicalTable items={inventory.physicalItems} />
-            </>
+            <PhysicalTable items={inventory.physicalItems} />
           ) : (
-            <>
-              <ConfigurationCards
-                configurations={inventory.configurations}
-              />
-              <ConfigurationTable
-                configurations={inventory.configurations}
-              />
-            </>
+            <ConfigurationTable configurations={inventory.configurations} />
           )}
 
           <Pagination

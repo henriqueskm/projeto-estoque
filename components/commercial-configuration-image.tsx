@@ -14,6 +14,7 @@ type CommercialConfigurationImageProps = {
   commercialCodes: string[];
   imageUrl: string | null;
   compact?: boolean;
+  triggerVariant?: "thumbnail" | "menu-item";
 };
 
 const minimumZoom = 1;
@@ -24,6 +25,7 @@ export function CommercialConfigurationImage({
   commercialCodes,
   imageUrl,
   compact = false,
+  triggerVariant = "thumbnail",
 }: CommercialConfigurationImageProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [zoom, setZoom] = useState(minimumZoom);
@@ -103,6 +105,8 @@ export function CommercialConfigurationImage({
     );
   }
 
+  const isMenuItem = triggerVariant === "menu-item";
+
   return (
     <>
       <button
@@ -112,32 +116,44 @@ export function CommercialConfigurationImage({
           setZoom(minimumZoom);
           setIsOpen(true);
         }}
-        aria-label={`Ampliar ${altText.toLocaleLowerCase("pt-BR")}`}
-        className={`nk-focus group mt-4 block overflow-hidden rounded-xl border border-border-neutral bg-app-background text-left shadow-sm transition hover:border-brand-gold-dark ${
-          compact ? "w-28" : "w-full max-w-64"
-        }`}
+        role={isMenuItem ? "menuitem" : undefined}
+        aria-label={`${isMenuItem ? "Visualizar" : "Ampliar"} ${altText.toLocaleLowerCase("pt-BR")}`}
+        className={
+          isMenuItem
+            ? "nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
+            : `nk-focus group mt-4 block overflow-hidden rounded-xl border border-border-neutral bg-app-background text-left shadow-sm transition hover:border-brand-gold-dark ${
+                compact ? "w-28" : "w-full max-w-64"
+              }`
+        }
       >
-        <span
-          className={`flex items-center justify-center overflow-hidden bg-white ${
-            compact ? "h-20" : "h-36 sm:h-40"
-          }`}
-        >
-          <img
-            src={imageUrl}
-            alt={altText}
-            loading="lazy"
-            className="max-h-full max-w-full object-contain transition duration-200 group-hover:scale-[1.02]"
-          />
-        </span>
-        <span className="block px-3 py-2 text-center text-xs font-bold text-brand-gold-ink">
-          Ver foto ampliada
-        </span>
+        {isMenuItem ? (
+          "Visualizar imagem"
+        ) : (
+          <>
+            <span
+              className={`flex items-center justify-center overflow-hidden bg-white ${
+                compact ? "h-20" : "h-36 sm:h-40"
+              }`}
+            >
+              <img
+                src={imageUrl}
+                alt={altText}
+                loading="lazy"
+                className="max-h-full max-w-full object-contain transition duration-200 group-hover:scale-[1.02]"
+              />
+            </span>
+            <span className="block px-3 py-2 text-center text-xs font-bold text-brand-gold-ink">
+              Ver foto ampliada
+            </span>
+          </>
+        )}
       </button>
 
       {isOpen ? (
         <div
           ref={dialogRef}
           role="dialog"
+          data-commercial-image-dialog="true"
           aria-modal="true"
           aria-labelledby={dialogTitleId}
           onMouseDown={(event) => {

@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import { calculatePhysicalStockByItem } from "@/lib/stock-calculations";
+import {
+  calculatePhysicalStockSummary,
+  type PhysicalStockSummary,
+} from "@/lib/stock-calculations";
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 
 type ItemType = "SERVO" | "INSTALLATION_KIT" | "REPAIR_KIT" | "LOOSE_PART";
@@ -61,15 +64,7 @@ type MovementBatchRow = {
   occurred_at: string;
 };
 
-export type StockSummary = {
-  completeBoxesTotal: number;
-  looseServoTotal: number;
-  looseKitTotal: number;
-  repairKitTotal: number;
-  loosePartTotal: number;
-  lowStockItems: number;
-  outOfStockItems: number;
-};
+export type StockSummary = PhysicalStockSummary;
 
 export type RecentMovement = {
   id: string;
@@ -333,10 +328,12 @@ function buildSummary(
   configurations: CommercialConfigurationRow[],
   configurationBalances: ConfigurationBalanceRow[],
 ): StockSummary {
-  const physicalStockByItem = calculatePhysicalStockByItem(
+  return calculatePhysicalStockSummary(
     items.map((item) => ({
       id: item.id,
       itemType: item.item_type,
+      minimumStock: item.minimum_stock,
+      isActive: item.is_active,
     })),
     stockBalances.map((balance) => ({
       itemId: balance.item_id,
@@ -352,39 +349,6 @@ function buildSummary(
       quantity: balance.quantity,
     })),
   );
-  const physicalQuantity = (item: ItemRow) =>
-    physicalStockByItem.get(item.id)?.totalQuantity ?? 0;
-  const looseQuantity = (item: ItemRow) =>
-    physicalStockByItem.get(item.id)?.looseQuantity ?? 0;
-
-  return {
-    completeBoxesTotal: configurationBalances.reduce(
-      (total, balance) => total + balance.quantity,
-      0,
-    ),
-    looseServoTotal: items
-      .filter((item) => item.item_type === "SERVO")
-      .reduce((total, item) => total + looseQuantity(item), 0),
-    looseKitTotal: items
-      .filter((item) => item.item_type === "INSTALLATION_KIT")
-      .reduce((total, item) => total + looseQuantity(item), 0),
-    repairKitTotal: items
-      .filter((item) => item.item_type === "REPAIR_KIT")
-      .reduce((total, item) => total + looseQuantity(item), 0),
-    loosePartTotal: items
-      .filter((item) => item.item_type === "LOOSE_PART")
-      .reduce((total, item) => total + looseQuantity(item), 0),
-    lowStockItems: items.filter(
-      (item) =>
-        item.is_active &&
-        item.minimum_stock > 0 &&
-        physicalQuantity(item) > 0 &&
-        physicalQuantity(item) <= item.minimum_stock,
-    ).length,
-    outOfStockItems: items.filter(
-      (item) => item.is_active && physicalQuantity(item) === 0,
-    ).length,
-  };
 }
 
 export async function loadHomeData(query: string): Promise<HomeDataResult> {

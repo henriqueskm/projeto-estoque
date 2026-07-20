@@ -17,11 +17,12 @@ export default function InventoryLoading() {
       </div>
       <div className="mt-6 h-14 rounded-2xl bg-border-neutral/60" />
       <div className="mt-4 h-40 rounded-2xl border border-border-neutral bg-surface" />
-      <div className="mt-4 grid gap-3">
-        {Array.from({ length: 4 }, (_, index) => (
+      <div className="mt-4 overflow-hidden rounded-2xl border border-border-neutral bg-surface">
+        <div className="h-10 bg-brand-charcoal/90" />
+        {Array.from({ length: 6 }, (_, index) => (
           <div
             key={index}
-            className="h-36 rounded-2xl border border-border-neutral bg-surface"
+            className="h-20 border-t border-border-neutral bg-surface"
           />
         ))}
       </div>

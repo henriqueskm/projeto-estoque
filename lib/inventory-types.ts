@@ -1,4 +1,7 @@
-import type { PhysicalStockItemType } from "@/lib/stock-calculations";
+import type {
+  PhysicalStockItemType,
+  PhysicalStockSummary,
+} from "@/lib/stock-calculations";
 
 export const inventoryPageSize = 24;
 
@@ -35,13 +38,7 @@ export type InventoryFilters = {
   page: number;
 };
 
-export type InventorySummary = {
-  activePhysicalItems: number;
-  looseUnits: number;
-  mountedConfigurations: number;
-  lowStockItems: number;
-  zeroStockItems: number;
-};
+export type InventorySummary = PhysicalStockSummary;
 
 export type InventoryPhysicalItem = {
   id: string;

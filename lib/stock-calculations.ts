@@ -31,6 +31,21 @@ type MountedConfigurationBalance = {
   quantity: number;
 };
 
+type PhysicalStockSummaryItem = PhysicalStockItem & {
+  minimumStock: number;
+  isActive: boolean;
+};
+
+export type PhysicalStockSummary = {
+  completeBoxesTotal: number;
+  looseServoTotal: number;
+  looseKitTotal: number;
+  repairKitTotal: number;
+  loosePartTotal: number;
+  lowStockItems: number;
+  outOfStockItems: number;
+};
+
 function addQuantity(map: Map<string, number>, id: string, quantity: number) {
   map.set(id, (map.get(id) ?? 0) + quantity);
 }
@@ -84,4 +99,51 @@ export function calculatePhysicalStockByItem(
       ];
     }),
   );
+}
+
+export function calculatePhysicalStockSummary(
+  items: PhysicalStockSummaryItem[],
+  looseBalances: LooseStockBalance[],
+  configurations: PhysicalConfiguration[],
+  mountedBalances: MountedConfigurationBalance[],
+): PhysicalStockSummary {
+  const physicalStockByItem = calculatePhysicalStockByItem(
+    items,
+    looseBalances,
+    configurations,
+    mountedBalances,
+  );
+  const physicalQuantity = (item: PhysicalStockSummaryItem) =>
+    physicalStockByItem.get(item.id)?.totalQuantity ?? 0;
+  const looseQuantity = (item: PhysicalStockSummaryItem) =>
+    physicalStockByItem.get(item.id)?.looseQuantity ?? 0;
+
+  return {
+    completeBoxesTotal: mountedBalances.reduce(
+      (total, balance) => total + balance.quantity,
+      0,
+    ),
+    looseServoTotal: items
+      .filter((item) => item.itemType === "SERVO")
+      .reduce((total, item) => total + looseQuantity(item), 0),
+    looseKitTotal: items
+      .filter((item) => item.itemType === "INSTALLATION_KIT")
+      .reduce((total, item) => total + looseQuantity(item), 0),
+    repairKitTotal: items
+      .filter((item) => item.itemType === "REPAIR_KIT")
+      .reduce((total, item) => total + looseQuantity(item), 0),
+    loosePartTotal: items
+      .filter((item) => item.itemType === "LOOSE_PART")
+      .reduce((total, item) => total + looseQuantity(item), 0),
+    lowStockItems: items.filter(
+      (item) =>
+        item.isActive &&
+        item.minimumStock > 0 &&
+        physicalQuantity(item) > 0 &&
+        physicalQuantity(item) <= item.minimumStock,
+    ).length,
+    outOfStockItems: items.filter(
+      (item) => item.isActive && physicalQuantity(item) === 0,
+    ).length,
+  };
 }
