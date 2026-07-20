@@ -154,16 +154,16 @@ export function InventoryRowActions({
               Ajustar estoque
             </button>
 
-            {target.kind === "ITEM" ? (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => openDialog("MINIMUM_STOCK")}
-                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
-              >
-                Alterar estoque mínimo
-              </button>
-            ) : imageUrl ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => openDialog("MINIMUM_STOCK")}
+              className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
+            >
+              Alterar estoque mínimo
+            </button>
+
+            {target.kind === "CONFIGURATION" && imageUrl ? (
               <CommercialConfigurationImage
                 commercialCodes={target.commercialCodes}
                 imageUrl={imageUrl}
@@ -182,7 +182,7 @@ export function InventoryRowActions({
         />
       ) : null}
 
-      {activeDialog === "MINIMUM_STOCK" && target.kind === "ITEM" ? (
+      {activeDialog === "MINIMUM_STOCK" ? (
         <MinimumStockDialog
           target={target}
           onClose={closeDialog}

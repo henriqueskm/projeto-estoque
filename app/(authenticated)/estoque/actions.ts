@@ -171,7 +171,11 @@ function mapAdjustmentRpcError(code: string | undefined, message: string) {
   return "Não foi possível ajustar o estoque. Confira os dados e tente novamente.";
 }
 
-function mapMinimumStockRpcError(code: string | undefined, message: string) {
+function mapMinimumStockRpcError(
+  code: string | undefined,
+  message: string,
+  unavailableMessage: string,
+) {
   const normalizedMessage = message.toLocaleLowerCase("en-US");
 
   if (code === "42501" || code === "28000") {
@@ -179,7 +183,7 @@ function mapMinimumStockRpcError(code: string | undefined, message: string) {
   }
 
   if (normalizedMessage.includes("does not exist")) {
-    return "Este item não está mais disponível. Atualize a página e tente novamente.";
+    return unavailableMessage;
   }
 
   if (code === "22023" || code === "23514") {
@@ -368,7 +372,91 @@ export async function changeItemMinimumStock(
 
     if (error) {
       return minimumStockError(
-        mapMinimumStockRpcError(error.code, error.message),
+        mapMinimumStockRpcError(
+          error.code,
+          error.message,
+          "Este item não está mais disponível. Atualize a página e tente novamente.",
+        ),
+      );
+    }
+
+    const receipt = parseMinimumStockReceipt(data);
+
+    if (!receipt) {
+      return minimumStockError(
+        "A alteração foi processada, mas a confirmação não pôde ser carregada. Atualize a página antes de tentar novamente.",
+      );
+    }
+
+    revalidatePath("/");
+    revalidatePath("/estoque");
+
+    return { ok: true, receipt };
+  } catch {
+    return minimumStockError(
+      "Não foi possível alterar o estoque mínimo agora. Tente novamente.",
+    );
+  }
+}
+
+export async function changeConfigurationMinimumStock(
+  input: unknown,
+): Promise<MinimumStockActionResult> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return minimumStockError("Os dados informados são inválidos.");
+  }
+
+  const request = input as Record<string, unknown>;
+  const allowedFields = new Set(["configuration_id", "minimum_stock"]);
+
+  if (
+    Object.keys(request).some((field) => !allowedFields.has(field)) ||
+    typeof request.configuration_id !== "string" ||
+    !uuidPattern.test(request.configuration_id) ||
+    !isPostgresInteger(request.minimum_stock)
+  ) {
+    return minimumStockError(
+      "Informe um estoque mínimo inteiro e maior ou igual a zero.",
+    );
+  }
+
+  try {
+    const context = await getAuthenticatedContext();
+
+    if (!context) {
+      return minimumStockError(
+        "Sua sessão ou perfil ativo não está disponível. Entre novamente para continuar.",
+      );
+    }
+
+    const { data: configuration, error: configurationError } =
+      await context.supabase
+        .from("commercial_configurations")
+        .select("id")
+        .eq("id", request.configuration_id)
+        .maybeSingle();
+
+    if (configurationError || !configuration) {
+      return minimumStockError(
+        "Esta configuração não está mais disponível. Atualize a página.",
+      );
+    }
+
+    const { data, error } = await context.supabase.rpc(
+      "set_configuration_minimum_stock",
+      {
+        p_configuration_id: request.configuration_id,
+        p_minimum_stock: request.minimum_stock,
+      },
+    );
+
+    if (error) {
+      return minimumStockError(
+        mapMinimumStockRpcError(
+          error.code,
+          error.message,
+          "Esta configuração não está mais disponível. Atualize a página e tente novamente.",
+        ),
       );
     }
 

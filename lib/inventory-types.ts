@@ -1,4 +1,5 @@
 import type {
+  ConfigurationStockState,
   PhysicalStockItemType,
   PhysicalStockSummary,
 } from "@/lib/stock-calculations";
@@ -69,7 +70,8 @@ export type InventoryCommercialConfiguration = {
     description: string;
   };
   assembledQuantity: number;
-  state: "AVAILABLE" | "EMPTY";
+  minimumStock: number;
+  state: ConfigurationStockState;
   hasAliases: boolean;
 };
 

@@ -37,11 +37,14 @@ type CommercialConfigurationRow = {
   servo_id: string;
   installation_kit_id: string;
   image_path: string | null;
+  minimum_stock: number;
+  is_active: boolean;
 };
 
 type CommercialConfigurationCodeRow = {
   configuration_id: string;
   code: string;
+  is_active: boolean;
 };
 
 type ConfigurationBalanceRow = {
@@ -326,8 +329,16 @@ function buildSummary(
   items: ItemRow[],
   stockBalances: StockBalanceRow[],
   configurations: CommercialConfigurationRow[],
+  configurationCodes: CommercialConfigurationCodeRow[],
   configurationBalances: ConfigurationBalanceRow[],
 ): StockSummary {
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const configurationIdsWithActiveCodes = new Set(
+    configurationCodes
+      .filter((code) => code.is_active)
+      .map((code) => code.configuration_id),
+  );
+
   return calculatePhysicalStockSummary(
     items.map((item) => ({
       id: item.id,
@@ -343,6 +354,12 @@ function buildSummary(
       id: configuration.id,
       servoId: configuration.servo_id,
       installationKitId: configuration.installation_kit_id,
+      minimumStock: configuration.minimum_stock,
+      isActive:
+        configuration.is_active &&
+        configurationIdsWithActiveCodes.has(configuration.id) &&
+        itemById.get(configuration.servo_id)?.is_active === true &&
+        itemById.get(configuration.installation_kit_id)?.is_active === true,
     })),
     configurationBalances.map((balance) => ({
       configurationId: balance.configuration_id,
@@ -375,11 +392,11 @@ export async function loadHomeData(query: string): Promise<HomeDataResult> {
       supabase
         .from("commercial_configurations")
         .select(
-          "id, description, servo_id, installation_kit_id, image_path",
+          "id, description, servo_id, installation_kit_id, image_path, minimum_stock, is_active",
         ),
       supabase
         .from("commercial_configuration_codes")
-        .select("configuration_id, code"),
+        .select("configuration_id, code, is_active"),
       supabase
         .from("configuration_stock_balances")
         .select("configuration_id, quantity"),
@@ -452,6 +469,7 @@ export async function loadHomeData(query: string): Promise<HomeDataResult> {
           items,
           stockBalances,
           configurations,
+          configurationCodes,
           configurationBalances,
         ),
         recentMovements: movements.map((movement) => ({

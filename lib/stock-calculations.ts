@@ -26,6 +26,11 @@ type PhysicalConfiguration = {
   installationKitId: string;
 };
 
+type StockSummaryConfiguration = PhysicalConfiguration & {
+  minimumStock: number;
+  isActive: boolean;
+};
+
 type MountedConfigurationBalance = {
   configurationId: string;
   quantity: number;
@@ -46,8 +51,29 @@ export type PhysicalStockSummary = {
   outOfStockItems: number;
 };
 
+export type ConfigurationStockState = "AVAILABLE" | "LOW" | "ZERO" | "EMPTY";
+
 function addQuantity(map: Map<string, number>, id: string, quantity: number) {
   map.set(id, (map.get(id) ?? 0) + quantity);
+}
+
+export function getConfigurationStockState(
+  assembledQuantity: number,
+  minimumStock: number,
+): ConfigurationStockState {
+  if (minimumStock > 0 && assembledQuantity === 0) {
+    return "ZERO";
+  }
+
+  if (
+    minimumStock > 0 &&
+    assembledQuantity > 0 &&
+    assembledQuantity <= minimumStock
+  ) {
+    return "LOW";
+  }
+
+  return assembledQuantity > 0 ? "AVAILABLE" : "EMPTY";
 }
 
 export function calculatePhysicalStockByItem(
@@ -104,7 +130,7 @@ export function calculatePhysicalStockByItem(
 export function calculatePhysicalStockSummary(
   items: PhysicalStockSummaryItem[],
   looseBalances: LooseStockBalance[],
-  configurations: PhysicalConfiguration[],
+  configurations: StockSummaryConfiguration[],
   mountedBalances: MountedConfigurationBalance[],
 ): PhysicalStockSummary {
   const physicalStockByItem = calculatePhysicalStockByItem(
@@ -117,6 +143,20 @@ export function calculatePhysicalStockSummary(
     physicalStockByItem.get(item.id)?.totalQuantity ?? 0;
   const looseQuantity = (item: PhysicalStockSummaryItem) =>
     physicalStockByItem.get(item.id)?.looseQuantity ?? 0;
+  const mountedByConfiguration = new Map(
+    mountedBalances.map((balance) => [
+      balance.configurationId,
+      balance.quantity,
+    ]),
+  );
+  const configurationStates = configurations
+    .filter((configuration) => configuration.isActive)
+    .map((configuration) =>
+      getConfigurationStockState(
+        mountedByConfiguration.get(configuration.id) ?? 0,
+        configuration.minimumStock,
+      ),
+    );
 
   return {
     completeBoxesTotal: mountedBalances.reduce(
@@ -135,15 +175,18 @@ export function calculatePhysicalStockSummary(
     loosePartTotal: items
       .filter((item) => item.itemType === "LOOSE_PART")
       .reduce((total, item) => total + looseQuantity(item), 0),
-    lowStockItems: items.filter(
-      (item) =>
-        item.isActive &&
-        item.minimumStock > 0 &&
-        physicalQuantity(item) > 0 &&
-        physicalQuantity(item) <= item.minimumStock,
-    ).length,
-    outOfStockItems: items.filter(
-      (item) => item.isActive && physicalQuantity(item) === 0,
-    ).length,
+    lowStockItems:
+      items.filter(
+        (item) =>
+          item.isActive &&
+          item.minimumStock > 0 &&
+          physicalQuantity(item) > 0 &&
+          physicalQuantity(item) <= item.minimumStock,
+      ).length +
+      configurationStates.filter((state) => state === "LOW").length,
+    outOfStockItems:
+      items.filter((item) => item.isActive && physicalQuantity(item) === 0)
+        .length +
+      configurationStates.filter((state) => state === "ZERO").length,
   };
 }

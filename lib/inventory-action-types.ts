@@ -17,6 +17,7 @@ export type InventoryConfigurationActionTarget = {
   commercialCodes: string[];
   description: string;
   assembledQuantity: number;
+  minimumStock: number;
 };
 
 export type InventoryActionTarget =

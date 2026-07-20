@@ -10,12 +10,10 @@ import {
 } from "react";
 import {
   adjustInventoryStock,
+  changeConfigurationMinimumStock,
   changeItemMinimumStock,
 } from "@/app/(authenticated)/estoque/actions";
-import type {
-  InventoryActionTarget,
-  InventoryItemActionTarget,
-} from "@/lib/inventory-action-types";
+import type { InventoryActionTarget } from "@/lib/inventory-action-types";
 
 const maximumInteger = 2_147_483_647;
 const maximumReasonLength = 500;
@@ -353,7 +351,7 @@ export function MinimumStockDialog({
   target,
   onClose,
   onSuccess,
-}: DialogBaseProps & { target: InventoryItemActionTarget }) {
+}: DialogBaseProps & { target: InventoryActionTarget }) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -379,10 +377,16 @@ export function MinimumStockDialog({
     }
 
     startTransition(async () => {
-      const result = await changeItemMinimumStock({
-        item_id: target.itemId,
-        minimum_stock: normalizedMinimumStock,
-      });
+      const result =
+        target.kind === "ITEM"
+          ? await changeItemMinimumStock({
+              item_id: target.itemId,
+              minimum_stock: normalizedMinimumStock,
+            })
+          : await changeConfigurationMinimumStock({
+              configuration_id: target.configurationId,
+              minimum_stock: normalizedMinimumStock,
+            });
 
       if (!result.ok) {
         setError(result.error);
@@ -409,14 +413,23 @@ export function MinimumStockDialog({
       <form onSubmit={handleSubmit} className="space-y-4 p-5">
         <div id={descriptionId} className="rounded-xl bg-app-background p-3">
           <p className="text-xs font-bold uppercase tracking-wide text-text-muted">
-            Código
+            {target.kind === "ITEM" ? "Código" : "Código(s) comercial(is)"}
           </p>
           <p className="font-mono text-lg font-black text-text-primary">
-            {target.code}
+            {target.kind === "ITEM"
+              ? target.code
+              : target.commercialCodes.join(" / ")}
           </p>
           <p className="mt-1 text-sm leading-5 font-semibold text-text-muted">
             {target.description}
           </p>
+          {target.kind === "CONFIGURATION" ? (
+            <p className="mt-2 text-xs leading-5 font-semibold text-violet-800">
+              {target.commercialCodes.length > 1
+                ? "Estes códigos representam a mesma Caixa completa e compartilham um único estoque mínimo."
+                : "O estoque mínimo pertence à Caixa completa, não ao alias comercial."}
+            </p>
+          ) : null}
         </div>
 
         <div className="rounded-xl border border-border-neutral px-3 py-3">

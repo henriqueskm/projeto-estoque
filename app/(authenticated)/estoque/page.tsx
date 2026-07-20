@@ -12,6 +12,7 @@ import type {
   InventorySearchParams,
   StockState,
 } from "@/lib/inventory-types";
+import type { ConfigurationStockState } from "@/lib/stock-calculations";
 
 type InventoryPageProps = {
   searchParams: Promise<InventorySearchParams>;
@@ -89,22 +90,36 @@ function PhysicalStateBadge({ state }: { state: StockState }) {
   );
 }
 
-function ConfigurationStateBadge({
-  assembledQuantity,
-}: {
-  assembledQuantity: number;
-}) {
-  const hasBalance = assembledQuantity > 0;
+const configurationStateDetails: Record<
+  ConfigurationStockState,
+  { label: string; className: string }
+> = {
+  AVAILABLE: {
+    label: "Montado disponível",
+    className: "bg-violet-100 text-violet-900",
+  },
+  LOW: {
+    label: "Estoque baixo",
+    className: "bg-amber-100 text-amber-950",
+  },
+  ZERO: {
+    label: "Zerado",
+    className: "bg-red-100 text-red-900",
+  },
+  EMPTY: {
+    label: "Sem unidades montadas",
+    className: "bg-slate-100 text-slate-700",
+  },
+};
+
+function ConfigurationStateBadge({ state }: { state: ConfigurationStockState }) {
+  const details = configurationStateDetails[state];
 
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] leading-4 font-bold sm:text-xs ${
-        hasBalance
-          ? "bg-violet-100 text-violet-900"
-          : "bg-slate-100 text-slate-700"
-      }`}
+      className={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] leading-4 font-bold sm:text-xs ${details.className}`}
     >
-      {hasBalance ? "Montado disponível" : "Sem unidades montadas"}
+      {details.label}
     </span>
   );
 }
@@ -262,32 +277,38 @@ function ConfigurationTable({
     <div className="relative rounded-2xl border border-violet-200 bg-surface shadow-sm">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
-          Caixas completas, saldos montados e ações disponíveis
+          Caixas completas, saldos montados, estoque mínimo e ações disponíveis
         </caption>
         <thead>
           <tr>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[23%] sm:w-[20%]`}
+              className={`${stickyHeaderClassName} w-[22%] sm:w-[18%]`}
             >
               Código
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[47%] sm:w-[54%]`}
+              className={`${stickyHeaderClassName} w-[38%] sm:w-[46%]`}
             >
               Configuração
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[15%] text-right sm:w-[14%]`}
+              className={`${stickyHeaderClassName} w-[14%] text-right sm:w-[12%]`}
             >
               <span className="sm:hidden">Qtd.</span>
               <span className="hidden sm:inline">Caixas</span>
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[15%] text-center sm:w-[12%]`}
+              className={`${stickyHeaderClassName} w-[12%] text-right sm:w-[12%]`}
+            >
+              Mín.
+            </th>
+            <th
+              scope="col"
+              className={`${stickyHeaderClassName} w-[14%] text-center sm:w-[12%]`}
             >
               <span className="sr-only sm:not-sr-only">Ações</span>
             </th>
@@ -319,13 +340,14 @@ function ConfigurationTable({
                   {configuration.installationKit.code}
                 </p>
                 <span className="mt-1 inline-flex">
-                  <ConfigurationStateBadge
-                    assembledQuantity={configuration.assembledQuantity}
-                  />
+                  <ConfigurationStateBadge state={configuration.state} />
                 </span>
               </td>
               <td className="border-t border-border-neutral/70 bg-violet-50/50 px-1 py-3 text-right text-sm sm:px-3 sm:text-base">
                 <Quantity value={configuration.assembledQuantity} />
+              </td>
+              <td className="border-t border-border-neutral/70 px-1 py-3 text-right text-sm sm:px-3 sm:text-base">
+                <Quantity value={configuration.minimumStock} />
               </td>
               <td className="border-t border-border-neutral/70 px-1 py-3 text-center sm:px-3">
                 <InventoryRowActions
@@ -335,6 +357,7 @@ function ConfigurationTable({
                     commercialCodes: configuration.codes,
                     description: configuration.description,
                     assembledQuantity: configuration.assembledQuantity,
+                    minimumStock: configuration.minimumStock,
                   }}
                   imageUrl={configuration.imageUrl}
                 />

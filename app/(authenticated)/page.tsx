@@ -306,14 +306,16 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     {
       label: "Estoque baixo",
       value: homeData?.summary.lowStockItems ?? null,
-      description: "Itens ativos com saldo físico positivo até o mínimo.",
+      description:
+        "Itens ativos e caixas monitoradas com saldo positivo até o mínimo.",
       className: "border-amber-300 bg-amber-50",
       labelClassName: "text-amber-900",
     },
     {
       label: "Estoque zerado",
       value: homeData?.summary.outOfStockItems ?? null,
-      description: "Itens ativos sem nenhuma unidade física.",
+      description:
+        "Itens ativos sem saldo físico e caixas monitoradas sem unidades montadas.",
       className: "border-red-200 bg-red-50",
       labelClassName: "text-red-800",
     },

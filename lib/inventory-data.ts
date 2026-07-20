@@ -12,6 +12,7 @@ import {
 import {
   calculatePhysicalStockByItem,
   calculatePhysicalStockSummary,
+  getConfigurationStockState,
   type PhysicalStockItemType,
 } from "@/lib/stock-calculations";
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
@@ -43,6 +44,7 @@ type CommercialConfigurationRow = {
   installation_kit_id: string;
   is_active: boolean;
   image_path: string | null;
+  minimum_stock: number;
 };
 
 type CommercialConfigurationCodeRow = {
@@ -232,7 +234,7 @@ export async function loadInventoryData(
       supabase
         .from("commercial_configurations")
         .select(
-          "id, description, servo_id, installation_kit_id, is_active, image_path",
+          "id, description, servo_id, installation_kit_id, is_active, image_path, minimum_stock",
         ),
       supabase
         .from("commercial_configuration_codes")
@@ -270,6 +272,9 @@ export async function loadInventoryData(
       []) as ConfigurationBalanceRow[];
     const activeItems = items.filter((item) => item.is_active);
     const itemById = new Map(items.map((item) => [item.id, item]));
+    const configurationIdsWithActiveCodes = new Set(
+      configurationCodes.map((code) => code.configuration_id),
+    );
     const servoModelByItemId = new Map(
       servoModels.map((servoModel) => [
         servoModel.item_id,
@@ -338,6 +343,12 @@ export async function loadInventoryData(
         id: configuration.id,
         servoId: configuration.servo_id,
         installationKitId: configuration.installation_kit_id,
+        minimumStock: configuration.minimum_stock,
+        isActive:
+          configuration.is_active &&
+          configurationIdsWithActiveCodes.has(configuration.id) &&
+          itemById.get(configuration.servo_id)?.is_active === true &&
+          itemById.get(configuration.installation_kit_id)?.is_active === true,
       })),
       configurationBalances.map((balance) => ({
         configurationId: balance.configuration_id,
@@ -398,7 +409,11 @@ export async function loadInventoryData(
               description: installationKit.description,
             },
             assembledQuantity,
-            state: assembledQuantity > 0 ? ("AVAILABLE" as const) : ("EMPTY" as const),
+            minimumStock: configuration.minimum_stock,
+            state: getConfigurationStockState(
+              assembledQuantity,
+              configuration.minimum_stock,
+            ),
             hasAliases: codes.length > 1,
           },
         ];
