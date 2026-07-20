@@ -61,6 +61,7 @@ export type InventoryCommercialConfiguration = {
   id: string;
   codes: string[];
   description: string;
+  imageUrl: string | null;
   servo: {
     code: string;
     description: string;

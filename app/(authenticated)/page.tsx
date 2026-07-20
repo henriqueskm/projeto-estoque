@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import {
   AssistantIcon,
   CameraIcon,
@@ -216,6 +217,13 @@ function SearchResults({
                   title="Jogos de reparo compatíveis"
                   items={result.compatibleRepairs}
                   emptyMessage="Nenhum jogo de reparo cadastrado."
+                />
+              ) : null}
+
+              {result.kind === "configuration" ? (
+                <CommercialConfigurationImage
+                  commercialCodes={[result.code]}
+                  imageUrl={result.imageUrl ?? null}
                 />
               ) : null}
 

@@ -13,6 +13,7 @@ import {
   calculatePhysicalStockByItem,
   type PhysicalStockItemType,
 } from "@/lib/stock-calculations";
+import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 import { createClient } from "@/lib/supabase/server";
 
 type ItemRow = {
@@ -40,6 +41,7 @@ type CommercialConfigurationRow = {
   servo_id: string;
   installation_kit_id: string;
   is_active: boolean;
+  image_path: string | null;
 };
 
 type CommercialConfigurationCodeRow = {
@@ -51,6 +53,13 @@ type CommercialConfigurationCodeRow = {
 type ConfigurationBalanceRow = {
   configuration_id: string;
   quantity: number;
+};
+
+type InventoryCommercialConfigurationDraft = Omit<
+  InventoryCommercialConfiguration,
+  "imageUrl"
+> & {
+  imagePath: string | null;
 };
 
 const physicalItemTypeLabels: Record<PhysicalStockItemType, string> = {
@@ -222,7 +231,7 @@ export async function loadInventoryData(
       supabase
         .from("commercial_configurations")
         .select(
-          "id, description, servo_id, installation_kit_id, is_active",
+          "id, description, servo_id, installation_kit_id, is_active, image_path",
         ),
       supabase
         .from("commercial_configuration_codes")
@@ -322,7 +331,7 @@ export async function loadInventoryData(
       codesByConfigurationId.set(configurationCode.configuration_id, codes);
     });
 
-    const configurationCatalog: InventoryCommercialConfiguration[] =
+    const configurationCatalog: InventoryCommercialConfigurationDraft[] =
       configurations.flatMap((configuration) => {
         if (!configuration.is_active) {
           return [];
@@ -356,6 +365,7 @@ export async function loadInventoryData(
             description:
               configuration.description?.trim() ||
               `${servo.description} + ${installationKit.code}`,
+            imagePath: configuration.image_path,
             servo: {
               code: servo.code,
               description: servo.description,
@@ -426,6 +436,23 @@ export async function loadInventoryData(
       filters.tab === "fisicos"
         ? paginate(filteredPhysicalItems, filters.page)
         : paginate(filteredConfigurations, filters.page);
+    const currentConfigurationDrafts =
+      filters.tab === "configuracoes"
+        ? (currentResults.items as InventoryCommercialConfigurationDraft[])
+        : [];
+    const imageUrlByPath = await createCommercialImageUrlMap(
+      supabase,
+      currentConfigurationDrafts.map(
+        (configuration) => configuration.imagePath,
+      ),
+    );
+    const currentConfigurations: InventoryCommercialConfiguration[] =
+      currentConfigurationDrafts.map(({ imagePath, ...configuration }) => ({
+        ...configuration,
+        imageUrl: imagePath
+          ? (imageUrlByPath.get(imagePath) ?? null)
+          : null,
+      }));
 
     return {
       data: {
@@ -452,7 +479,7 @@ export async function loadInventoryData(
             : [],
         configurations:
           filters.tab === "configuracoes"
-            ? (currentResults.items as InventoryCommercialConfiguration[])
+            ? currentConfigurations
             : [],
         physicalCatalogCount: physicalCatalog.length,
         configurationCatalogCount: configurationCatalog.length,

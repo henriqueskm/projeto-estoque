@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { calculatePhysicalStockByItem } from "@/lib/stock-calculations";
+import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 
 type ItemType = "SERVO" | "INSTALLATION_KIT" | "REPAIR_KIT" | "LOOSE_PART";
 
@@ -32,6 +33,7 @@ type CommercialConfigurationRow = {
   description: string | null;
   servo_id: string;
   installation_kit_id: string;
+  image_path: string | null;
 };
 
 type CommercialConfigurationCodeRow = {
@@ -94,6 +96,11 @@ export type SearchResult = {
   installationKit?: RelatedItem;
   compatibleServos?: RelatedItem[];
   compatibleRepairs?: RelatedItem[];
+  imageUrl?: string | null;
+};
+
+type SearchResultDraft = SearchResult & {
+  imagePath?: string | null;
 };
 
 export type HomeData = {
@@ -161,7 +168,7 @@ function buildSearchResults(
   repairCompatibilities: ServoRepairCompatibilityRow[],
   configurations: CommercialConfigurationRow[],
   configurationCodes: CommercialConfigurationCodeRow[],
-) {
+): SearchResultDraft[] {
   const trimmedQuery = query.trim();
 
   if (!trimmedQuery) {
@@ -303,6 +310,7 @@ function buildSearchResults(
             repairIdsByServoId.get(servo.id),
             "REPAIR_KIT",
           ),
+          imagePath: configuration.image_path,
         },
       ];
     },
@@ -394,7 +402,9 @@ export async function loadHomeData(query: string): Promise<HomeDataResult> {
       supabase.from("stock_balances").select("item_id, quantity"),
       supabase
         .from("commercial_configurations")
-        .select("id, description, servo_id, installation_kit_id"),
+        .select(
+          "id, description, servo_id, installation_kit_id, image_path",
+        ),
       supabase
         .from("commercial_configuration_codes")
         .select("configuration_id, code"),
@@ -440,6 +450,29 @@ export async function loadHomeData(query: string): Promise<HomeDataResult> {
     const configurationBalances = (configurationBalancesResult.data ??
       []) as ConfigurationBalanceRow[];
     const movements = (movementsResult.data ?? []) as MovementBatchRow[];
+    const searchResultDrafts = buildSearchResults(
+      query,
+      items,
+      servoModels,
+      repairCompatibilities,
+      configurations,
+      configurationCodes,
+    );
+    const imageUrlByPath = await createCommercialImageUrlMap(
+      supabase,
+      searchResultDrafts.map((result) => result.imagePath),
+    );
+    const searchResults: SearchResult[] = searchResultDrafts.map(
+      ({ imagePath, ...result }) =>
+        result.kind === "configuration"
+          ? {
+              ...result,
+              imageUrl: imagePath
+                ? (imageUrlByPath.get(imagePath) ?? null)
+                : null,
+            }
+          : result,
+    );
 
     return {
       data: {
@@ -458,14 +491,7 @@ export async function loadHomeData(query: string): Promise<HomeDataResult> {
           userName: movement.user_name_snapshot,
           occurredAt: movement.occurred_at,
         })),
-        searchResults: buildSearchResults(
-          query,
-          items,
-          servoModels,
-          repairCompatibilities,
-          configurations,
-          configurationCodes,
-        ),
+        searchResults,
       },
       error: null,
     };

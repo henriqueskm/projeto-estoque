@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { ArrowLeftIcon, SearchIcon, StockIcon } from "@/components/icons";
 import {
   loadInventoryData,
@@ -377,6 +378,10 @@ function ConfigurationCards({
           <h3 className="mt-3 break-words text-base leading-6 font-extrabold text-text-primary">
             {configuration.description}
           </h3>
+          <CommercialConfigurationImage
+            commercialCodes={configuration.codes}
+            imageUrl={configuration.imageUrl}
+          />
           {configuration.hasAliases ? (
             <p className="mt-2 text-xs font-bold leading-5 text-violet-800">
               Saldo compartilhado entre estes códigos
@@ -472,6 +477,11 @@ function ConfigurationTable({
               </th>
               <td className="px-4 py-4 text-sm leading-5 font-semibold text-text-primary">
                 {configuration.description}
+                <CommercialConfigurationImage
+                  commercialCodes={configuration.codes}
+                  imageUrl={configuration.imageUrl}
+                  compact
+                />
               </td>
               <td className="px-4 py-4">
                 <p className="font-mono text-sm font-black text-text-primary">
