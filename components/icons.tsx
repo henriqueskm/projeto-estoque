@@ -12,6 +12,15 @@ const commonProps: IconProps = {
   strokeLinejoin: "round",
 };
 
+export function HomeIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="m3 11 9-8 9 8" />
+      <path d="M5 10v10h14V10M9 20v-6h6v6" />
+    </svg>
+  );
+}
+
 export function InboundIcon(props: IconProps) {
   return (
     <svg {...commonProps} {...props}>
