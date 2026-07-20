@@ -11,6 +11,7 @@ type StockFlowSectionProps = {
   isOpen: boolean;
   onToggle: () => void;
   children: ReactNode;
+  allowStickyContent?: boolean;
 };
 
 export function StockFlowSection({
@@ -21,11 +22,16 @@ export function StockFlowSection({
   isOpen,
   onToggle,
   children,
+  allowStickyContent = false,
 }: StockFlowSectionProps) {
   const panelId = `${id}-panel`;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border-neutral bg-surface">
+    <section
+      className={`rounded-2xl border border-border-neutral bg-surface ${
+        allowStickyContent ? "" : "overflow-hidden"
+      }`}
+    >
       <h3>
         <button
           id={id}
@@ -33,7 +39,13 @@ export function StockFlowSection({
           onClick={onToggle}
           aria-expanded={isOpen}
           aria-controls={panelId}
-          className="nk-focus flex min-h-18 w-full items-center justify-between gap-4 px-4 py-3 text-left transition hover:bg-app-background sm:px-5"
+          className={`nk-focus flex min-h-18 w-full items-center justify-between gap-4 px-4 py-3 text-left transition hover:bg-app-background sm:px-5 ${
+            allowStickyContent
+              ? isOpen
+                ? "rounded-t-2xl"
+                : "rounded-2xl"
+              : ""
+          }`}
         >
           <span className="min-w-0">
             <span className="block font-black text-text-primary">{title}</span>

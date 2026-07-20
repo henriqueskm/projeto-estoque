@@ -14,7 +14,7 @@ type CommercialConfigurationImageProps = {
   commercialCodes: string[];
   imageUrl: string | null;
   compact?: boolean;
-  triggerVariant?: "thumbnail" | "menu-item";
+  triggerVariant?: "thumbnail" | "menu-item" | "text-link";
 };
 
 const minimumZoom = 1;
@@ -106,6 +106,7 @@ export function CommercialConfigurationImage({
   }
 
   const isMenuItem = triggerVariant === "menu-item";
+  const isTextLink = triggerVariant === "text-link";
 
   return (
     <>
@@ -117,10 +118,12 @@ export function CommercialConfigurationImage({
           setIsOpen(true);
         }}
         role={isMenuItem ? "menuitem" : undefined}
-        aria-label={`${isMenuItem ? "Visualizar" : "Ampliar"} ${altText.toLocaleLowerCase("pt-BR")}`}
+        aria-label={`${isMenuItem || isTextLink ? "Visualizar" : "Ampliar"} ${altText.toLocaleLowerCase("pt-BR")}`}
         className={
           isMenuItem
             ? "nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
+            : isTextLink
+              ? "nk-focus mt-0.5 inline-flex min-h-11 items-center rounded-lg px-0.5 text-[0.65rem] font-bold text-violet-800"
             : `nk-focus group mt-4 block overflow-hidden rounded-xl border border-border-neutral bg-app-background text-left shadow-sm transition hover:border-brand-gold-dark ${
                 compact ? "w-28" : "w-full max-w-64"
               }`
@@ -128,6 +131,10 @@ export function CommercialConfigurationImage({
       >
         {isMenuItem ? (
           "Visualizar imagem"
+        ) : isTextLink ? (
+          <span className="rounded-md border border-violet-200 bg-surface px-1.5 py-1 leading-4 transition hover:border-violet-400 hover:bg-violet-50">
+            Ver foto
+          </span>
         ) : (
           <>
             <span

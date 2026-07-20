@@ -124,12 +124,6 @@ function getPhysicalBalanceLabel(itemType: PhysicalItemType) {
   return "Quantidade";
 }
 
-function getPhysicalActionLabel(itemType: PhysicalItemType) {
-  return itemType === "SERVO" || itemType === "INSTALLATION_KIT"
-    ? "Adicionar separado"
-    : "Adicionar";
-}
-
 function Summary({
   distinctLines,
   totalUnits,
@@ -175,162 +169,220 @@ function OptionBadge({ option }: { option: InboundCatalogOption }) {
   );
 }
 
-function PhysicalCatalogCard({
-  item,
+const catalogHeaderClassName =
+  "sticky top-16 z-30 bg-brand-charcoal px-2 py-2.5 text-[0.65rem] font-black uppercase tracking-wide text-slate-200 sm:px-3 sm:text-xs";
+
+function CatalogAddButton({
+  code,
   isSelected,
   onAdd,
+  variant,
 }: {
-  item: InboundPhysicalItem;
+  code: string;
   isSelected: boolean;
   onAdd: () => void;
+  variant: "physical" | "commercial";
 }) {
-  const balanceLabel = getPhysicalBalanceLabel(item.itemType);
+  const selectedLabel = variant === "physical" ? "Adicionado" : "Adicionada";
+  const addLabel = variant === "physical" ? "Adicionar item" : "Adicionar caixa";
 
   return (
-    <article className="flex min-h-64 flex-col rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <OptionBadge option={item} />
-        <span className="text-right text-xs font-black text-emerald-950">
-          {balanceLabel}: {numberFormatter.format(item.balance)}
-        </span>
-      </div>
-      <span className="mt-3 w-fit rounded-full bg-brand-gold-soft px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-brand-gold-ink uppercase">
-        {physicalItemTypeLabels[item.itemType]}
+    <button
+      type="button"
+      onClick={onAdd}
+      disabled={isSelected}
+      aria-label={isSelected ? `${code} já está na entrada` : `${addLabel} ${code}`}
+      className={`nk-focus inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-xs font-black text-white transition sm:w-full sm:px-3 ${
+        variant === "physical"
+          ? "bg-emerald-800 hover:bg-emerald-900 disabled:bg-emerald-100 disabled:text-emerald-950"
+          : "bg-violet-900 hover:bg-violet-950 disabled:bg-violet-200 disabled:text-violet-950"
+      } disabled:cursor-default`}
+    >
+      {isSelected ? (
+        <CheckIcon className="size-5 shrink-0" />
+      ) : (
+        <PlusIcon className="size-5 shrink-0" />
+      )}
+      <span className="hidden sm:inline">
+        {isSelected ? selectedLabel : "Adicionar"}
       </span>
-      <p className="mt-2 font-mono text-xl font-black text-text-primary">
-        {item.code}
-      </p>
-      <p className="mt-1 line-clamp-2 text-sm font-semibold text-text-muted">
-        {item.description}
-      </p>
-      {item.model ? (
-        <p className="mt-2 text-xs font-bold text-text-muted">
-          Modelo: <span className="text-text-primary">{item.model}</span>
-        </p>
-      ) : null}
-      <button
-        type="button"
-        onClick={onAdd}
-        disabled={isSelected}
-        className="nk-focus mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 text-sm font-black text-white transition hover:bg-emerald-900 disabled:cursor-default disabled:bg-emerald-100 disabled:text-emerald-950"
-      >
-        {isSelected ? (
-          <>
-            <CheckIcon className="size-5" />
-            Adicionado
-          </>
-        ) : (
-          <>
-            <PlusIcon className="size-5" />
-            {getPhysicalActionLabel(item.itemType)}
-          </>
-        )}
-      </button>
-    </article>
+    </button>
   );
 }
 
-function CommercialCatalogCard({
-  option,
-  isSelected,
+function PhysicalCatalogTable({
+  items,
+  selectedKeys,
   onAdd,
 }: {
-  option: InboundCommercialCode;
-  isSelected: boolean;
-  onAdd: () => void;
+  items: InboundPhysicalItem[];
+  selectedKeys: Set<string>;
+  onAdd: (item: InboundPhysicalItem) => void;
 }) {
   return (
-    <article className="flex min-h-80 flex-col rounded-2xl border border-violet-300 bg-violet-50/70 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <OptionBadge option={option} />
-        <span className="text-right text-xs font-black text-violet-950">
-          Caixas montadas:{" "}
-          {numberFormatter.format(option.assembledBalance)}
-        </span>
-      </div>
-      <p className="mt-3 font-mono text-2xl font-black text-violet-950">
-        {option.code}
-      </p>
-      <p className="mt-1 text-sm font-semibold text-text-muted">
-        {option.description}
-      </p>
+    <div className="relative mt-4 rounded-xl border border-emerald-200 bg-surface shadow-sm">
+      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
+        <caption className="sr-only">
+          Itens disponíveis para adicionar à entrada
+        </caption>
+        <thead>
+          <tr>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[23%] sm:w-[18%]`}
+            >
+              Código
+            </th>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[55%] sm:w-[58%]`}
+            >
+              Descrição
+            </th>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[22%] text-center sm:w-[24%]`}
+            >
+              Ação
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => {
+            const key = getOptionKey(item);
+            const isSelected = selectedKeys.has(key);
 
-      <CommercialConfigurationImage
-        commercialCodes={[option.code, ...option.aliases]}
-        imageUrl={option.imageUrl}
-        compact
-      />
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <div className="rounded-xl bg-surface p-3">
-          <p className="text-[0.65rem] font-black tracking-wide text-violet-800 uppercase">
-            Servo dentro da caixa
-          </p>
-          <p className="mt-1 font-mono text-sm font-black text-text-primary">
-            {option.servo.code}
-          </p>
-          <p className="mt-1 text-xs font-semibold text-text-muted">
-            {option.servo.description}
-          </p>
-          {option.servo.model ? (
-            <p className="mt-1 text-xs font-bold text-text-muted">
-              Modelo: {option.servo.model}
-            </p>
-          ) : null}
-        </div>
-        <div className="rounded-xl bg-surface p-3">
-          <p className="text-[0.65rem] font-black tracking-wide text-violet-800 uppercase">
-            Kit dentro da caixa
-          </p>
-          <p className="mt-1 font-mono text-sm font-black text-text-primary">
-            {option.installationKit.code}
-          </p>
-          <p className="mt-1 text-xs font-semibold text-text-muted">
-            {option.installationKit.description}
-          </p>
-        </div>
-      </div>
-
-      {option.aliases.length > 0 ? (
-        <div className="mt-3">
-          <p className="text-[0.65rem] font-black tracking-wide text-violet-800 uppercase">
-            Mesma configuração
-          </p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {option.aliases.map((alias) => (
-              <span
-                key={alias}
-                className="rounded-full border border-violet-200 bg-surface px-2.5 py-1 font-mono text-xs font-black text-violet-950"
+            return (
+              <tr
+                key={key}
+                className="align-middle transition hover:bg-emerald-50/60"
               >
-                {alias}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
+                <th
+                  scope="row"
+                  className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
+                >
+                  <span className="break-all font-mono text-xs font-black text-text-primary sm:text-sm">
+                    {item.code}
+                  </span>
+                </th>
+                <td className="border-t border-border-neutral/70 px-2 py-2.5 sm:px-3">
+                  <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
+                    {item.description}
+                  </p>
+                  <p className="mt-0.5 text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                    {physicalItemTypeLabels[item.itemType]}
+                    {item.model ? ` · ${item.model}` : ""}
+                  </p>
+                  <p className="text-[0.65rem] leading-4 font-bold text-emerald-900 sm:text-xs">
+                    {getPhysicalBalanceLabel(item.itemType)}: {numberFormatter.format(item.balance)}
+                  </p>
+                </td>
+                <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
+                  <CatalogAddButton
+                    code={item.code}
+                    isSelected={isSelected}
+                    onAdd={() => onAdd(item)}
+                    variant="physical"
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-      <p className="mt-3 text-xs font-bold text-violet-900">
-        1 unidade representa uma caixa completa com um servo e um kit.
-      </p>
-      <button
-        type="button"
-        onClick={onAdd}
-        disabled={isSelected}
-        className="nk-focus mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-violet-900 px-4 text-sm font-black text-white transition hover:bg-violet-950 disabled:cursor-default disabled:bg-violet-200 disabled:text-violet-950"
-      >
-        {isSelected ? (
-          <>
-            <CheckIcon className="size-5" />
-            Adicionada
-          </>
-        ) : (
-          <>
-            <PlusIcon className="size-5" />
-            Adicionar caixa
-          </>
-        )}
-      </button>
-    </article>
+function CommercialCatalogTable({
+  options,
+  selectedKeys,
+  onAdd,
+}: {
+  options: InboundCommercialCode[];
+  selectedKeys: Set<string>;
+  onAdd: (option: InboundCommercialCode) => void;
+}) {
+  return (
+    <div className="relative mt-4 rounded-xl border border-violet-200 bg-surface shadow-sm">
+      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
+        <caption className="sr-only">
+          Caixas com kit disponíveis para adicionar à entrada
+        </caption>
+        <thead>
+          <tr>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[23%] sm:w-[18%]`}
+            >
+              Código
+            </th>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[55%] sm:w-[58%]`}
+            >
+              Configuração
+            </th>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[22%] text-center sm:w-[24%]`}
+            >
+              Ação
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {options.map((option) => {
+            const key = getOptionKey(option);
+            const isSelected = selectedKeys.has(key);
+
+            return (
+              <tr
+                key={key}
+                className="align-middle transition hover:bg-violet-50/60"
+              >
+                <th
+                  scope="row"
+                  className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
+                >
+                  <span className="break-all font-mono text-xs font-black text-violet-950 sm:text-sm">
+                    {option.code}
+                  </span>
+                </th>
+                <td className="border-t border-border-neutral/70 px-2 py-2.5 sm:px-3">
+                  <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
+                    {option.description}
+                  </p>
+                  <p className="mt-0.5 break-words text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                    Servo {option.servo.code} · Kit {option.installationKit.code}
+                  </p>
+                  <p className="text-[0.65rem] leading-4 font-bold text-violet-900 sm:text-xs">
+                    Montadas: {numberFormatter.format(option.assembledBalance)}
+                    {option.aliases.length > 0
+                      ? ` · Mesma caixa: ${option.aliases.join(" / ")}`
+                      : ""}
+                  </p>
+                  <CommercialConfigurationImage
+                    commercialCodes={[option.code, ...option.aliases]}
+                    imageUrl={option.imageUrl}
+                    compact
+                    triggerVariant="text-link"
+                  />
+                </td>
+                <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
+                  <CatalogAddButton
+                    code={option.code}
+                    isSelected={isSelected}
+                    onAdd={() => onAdd(option)}
+                    variant="commercial"
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -775,29 +827,24 @@ export function InboundEntryFlow({
               Tente outro código, descrição, modelo, servo ou kit.
             </p>
           </div>
+        ) : openSection === "commercial" ? (
+          <CommercialCatalogTable
+            options={filteredOptions.filter(
+              (option): option is InboundCommercialCode =>
+                option.kind === "COMMERCIAL_CODE",
+            )}
+            selectedKeys={selectedKeys}
+            onAdd={addOption}
+          />
         ) : (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {filteredOptions.map((option) => {
-              const key = getOptionKey(option);
-              const isSelected = selectedKeys.has(key);
-
-              return option.kind === "ITEM" ? (
-                <PhysicalCatalogCard
-                  key={key}
-                  item={option}
-                  isSelected={isSelected}
-                  onAdd={() => addOption(option)}
-                />
-              ) : (
-                <CommercialCatalogCard
-                  key={key}
-                  option={option}
-                  isSelected={isSelected}
-                  onAdd={() => addOption(option)}
-                />
-              );
-            })}
-          </div>
+          <PhysicalCatalogTable
+            items={filteredOptions.filter(
+              (option): option is InboundPhysicalItem =>
+                option.kind === "ITEM",
+            )}
+            selectedKeys={selectedKeys}
+            onAdd={addOption}
+          />
         )}
       </>
     );
@@ -1320,6 +1367,7 @@ export function InboundEntryFlow({
               count={separateItems.length}
               isOpen={openSection === "separate"}
               onToggle={() => toggleCatalogSection("separate")}
+              allowStickyContent
             >
               {renderNewLoosePartForm()}
               {renderCatalogResults()}
@@ -1332,6 +1380,7 @@ export function InboundEntryFlow({
               count={repairItems.length}
               isOpen={openSection === "repair"}
               onToggle={() => toggleCatalogSection("repair")}
+              allowStickyContent
             >
               {renderCatalogResults()}
             </StockFlowSection>
@@ -1343,6 +1392,7 @@ export function InboundEntryFlow({
               count={catalog.commercialCodes.length}
               isOpen={openSection === "commercial"}
               onToggle={() => toggleCatalogSection("commercial")}
+              allowStickyContent
             >
               {renderCatalogResults()}
             </StockFlowSection>

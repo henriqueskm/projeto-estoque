@@ -74,12 +74,13 @@ function getOptionKey(option: OutboundCatalogOption) {
 
 function getOptionSearchText(option: OutboundCatalogOption) {
   if (option.kind === "ITEM") {
-    return `${option.code} ${option.description} ${physicalItemTypeLabels[option.itemType]}`;
+    return `${option.code} ${option.description} ${option.model ?? ""} ${physicalItemTypeLabels[option.itemType]}`;
   }
 
   return [
     option.code,
     option.description,
+    ...option.aliases,
     option.servo.code,
     option.servo.description,
     option.servo.model,
@@ -131,122 +132,222 @@ function OptionBadge({ option }: { option: OutboundCatalogOption }) {
   );
 }
 
-function PhysicalCatalogCard({
-  item,
+const catalogHeaderClassName =
+  "sticky top-16 z-30 bg-brand-charcoal px-2 py-2.5 text-[0.65rem] font-black uppercase tracking-wide text-slate-200 sm:px-3 sm:text-xs";
+
+function CatalogAddButton({
+  code,
   isSelected,
   onAdd,
+  variant,
 }: {
-  item: OutboundPhysicalItem;
+  code: string;
   isSelected: boolean;
   onAdd: () => void;
+  variant: "physical" | "commercial";
 }) {
+  const addLabel = variant === "physical" ? "Adicionar item" : "Adicionar caixa";
+
   return (
-    <article className="flex min-h-60 flex-col rounded-2xl border border-border-neutral bg-app-background p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <OptionBadge option={item} />
-        <span className="text-right text-xs font-black text-text-muted">
-          Saldo avulso: {numberFormatter.format(item.balance)}
-        </span>
-      </div>
-      <span className="mt-3 w-fit rounded-full bg-brand-gold-soft px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-brand-gold-ink uppercase">
-        {physicalItemTypeLabels[item.itemType]}
+    <button
+      type="button"
+      onClick={onAdd}
+      disabled={isSelected}
+      aria-label={isSelected ? `${code} já está na saída` : `${addLabel} ${code}`}
+      className={`nk-focus inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-xs font-black text-white transition sm:w-full sm:px-3 ${
+        variant === "commercial"
+          ? "bg-violet-900 hover:bg-violet-950 disabled:bg-violet-200 disabled:text-violet-950"
+          : "bg-red-800 hover:bg-red-900 disabled:bg-red-100 disabled:text-red-900"
+      } disabled:cursor-default`}
+    >
+      {isSelected ? (
+        <CheckIcon className="size-5 shrink-0" />
+      ) : (
+        <PlusIcon className="size-5 shrink-0" />
+      )}
+      <span className="hidden sm:inline">
+        {isSelected ? "Adicionado" : "Adicionar"}
       </span>
-      <p className="mt-2 font-mono text-xl font-black text-text-primary">{item.code}</p>
-      <p className="mt-1 line-clamp-2 text-sm font-semibold text-text-muted">
-        {item.description}
-      </p>
-      <button
-        type="button"
-        onClick={onAdd}
-        disabled={isSelected}
-        className="nk-focus mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-default disabled:bg-emerald-100 disabled:text-emerald-900"
-      >
-        {isSelected ? (
-          <>
-            <CheckIcon className="size-5" />
-            Adicionado
-          </>
-        ) : (
-          <>
-            <PlusIcon className="size-5" />
-            Adicionar
-          </>
-        )}
-      </button>
-    </article>
+    </button>
   );
 }
 
-function CommercialCatalogCard({
-  option,
-  isSelected,
+function PhysicalCatalogTable({
+  items,
+  selectedKeys,
   onAdd,
 }: {
-  option: OutboundCommercialCode;
-  isSelected: boolean;
-  onAdd: () => void;
+  items: OutboundPhysicalItem[];
+  selectedKeys: Set<string>;
+  onAdd: (item: OutboundPhysicalItem) => void;
 }) {
   return (
-    <article className="flex min-h-72 flex-col rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <OptionBadge option={option} />
-        <span className="text-right text-xs font-black text-violet-900">
-          Montados: {numberFormatter.format(option.assembledBalance)}
-        </span>
-      </div>
-      <p className="mt-3 font-mono text-xl font-black text-text-primary">{option.code}</p>
-      <p className="mt-1 line-clamp-2 text-sm font-semibold text-text-muted">
-        {option.description}
-      </p>
-      <CommercialConfigurationImage
-        commercialCodes={[option.code]}
-        imageUrl={option.imageUrl}
-        compact
-      />
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-text-muted">
-        <div className="rounded-xl bg-surface/90 p-2.5">
-          <span className="block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
-            Servo
-          </span>
-          <span className="mt-1 block text-text-primary">
-            {option.servo.code}
-          </span>
-          <span className="mt-0.5 block font-semibold">
-            Avulso: {numberFormatter.format(option.servo.balance)}
-          </span>
-        </div>
-        <div className="rounded-xl bg-surface/90 p-2.5">
-          <span className="block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
-            Kit
-          </span>
-          <span className="mt-1 block text-text-primary">
-            {option.installationKit.code}
-          </span>
-          <span className="mt-0.5 block font-semibold">
-            Avulso:{" "}
-            {numberFormatter.format(option.installationKit.balance)}
-          </span>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onAdd}
-        disabled={isSelected}
-        className="nk-focus mt-auto inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-default disabled:bg-emerald-100 disabled:text-emerald-900"
-      >
-        {isSelected ? (
-          <>
-            <CheckIcon className="size-5" />
-            Adicionado
-          </>
-        ) : (
-          <>
-            <PlusIcon className="size-5" />
-            Adicionar
-          </>
-        )}
-      </button>
-    </article>
+    <div className="relative mt-4 rounded-xl border border-red-200 bg-surface shadow-sm">
+      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
+        <caption className="sr-only">
+          Itens disponíveis para adicionar à saída
+        </caption>
+        <thead>
+          <tr>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[23%] sm:w-[18%]`}
+            >
+              Código
+            </th>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[55%] sm:w-[58%]`}
+            >
+              Descrição
+            </th>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[22%] text-center sm:w-[24%]`}
+            >
+              Ação
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => {
+            const key = getOptionKey(item);
+            const isSelected = selectedKeys.has(key);
+
+            return (
+              <tr
+                key={key}
+                className="align-middle transition hover:bg-red-50/50"
+              >
+                <th
+                  scope="row"
+                  className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
+                >
+                  <span className="break-all font-mono text-xs font-black text-text-primary sm:text-sm">
+                    {item.code}
+                  </span>
+                </th>
+                <td className="border-t border-border-neutral/70 px-2 py-2.5 sm:px-3">
+                  <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
+                    {item.description}
+                  </p>
+                  <p className="mt-0.5 text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                    {physicalItemTypeLabels[item.itemType]}
+                    {item.model ? ` · ${item.model}` : ""}
+                  </p>
+                  <p className="text-[0.65rem] leading-4 font-bold text-red-900 sm:text-xs">
+                    Saldo avulso: {numberFormatter.format(item.balance)}
+                  </p>
+                </td>
+                <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
+                  <CatalogAddButton
+                    code={item.code}
+                    isSelected={isSelected}
+                    onAdd={() => onAdd(item)}
+                    variant="physical"
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CommercialCatalogTable({
+  options,
+  selectedKeys,
+  onAdd,
+}: {
+  options: OutboundCommercialCode[];
+  selectedKeys: Set<string>;
+  onAdd: (option: OutboundCommercialCode) => void;
+}) {
+  return (
+    <div className="relative mt-4 rounded-xl border border-violet-200 bg-surface shadow-sm">
+      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
+        <caption className="sr-only">
+          Caixas com kit disponíveis para adicionar à saída
+        </caption>
+        <thead>
+          <tr>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[23%] sm:w-[18%]`}
+            >
+              Código
+            </th>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[55%] sm:w-[58%]`}
+            >
+              Configuração
+            </th>
+            <th
+              scope="col"
+              className={`${catalogHeaderClassName} w-[22%] text-center sm:w-[24%]`}
+            >
+              Ação
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {options.map((option) => {
+            const key = getOptionKey(option);
+            const isSelected = selectedKeys.has(key);
+
+            return (
+              <tr
+                key={key}
+                className="align-middle transition hover:bg-violet-50/60"
+              >
+                <th
+                  scope="row"
+                  className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
+                >
+                  <span className="break-all font-mono text-xs font-black text-violet-950 sm:text-sm">
+                    {option.code}
+                  </span>
+                </th>
+                <td className="border-t border-border-neutral/70 px-2 py-2.5 sm:px-3">
+                  <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
+                    {option.description}
+                  </p>
+                  <p className="mt-0.5 break-words text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                    Servo {option.servo.code} · Kit {option.installationKit.code}
+                  </p>
+                  <p className="text-[0.65rem] leading-4 font-bold text-violet-900 sm:text-xs">
+                    Montadas: {numberFormatter.format(option.assembledBalance)}
+                    {option.aliases.length > 0
+                      ? ` · Mesma caixa: ${option.aliases.join(" / ")}`
+                      : ""}
+                  </p>
+                  <p className="text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                    Avulsos: servo {numberFormatter.format(option.servo.balance)} · kit {numberFormatter.format(option.installationKit.balance)}
+                  </p>
+                  <CommercialConfigurationImage
+                    commercialCodes={[option.code, ...option.aliases]}
+                    imageUrl={option.imageUrl}
+                    compact
+                    triggerVariant="text-link"
+                  />
+                </td>
+                <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
+                  <CatalogAddButton
+                    code={option.code}
+                    isSelected={isSelected}
+                    onAdd={() => onAdd(option)}
+                    variant="commercial"
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -569,29 +670,24 @@ export function OutboundEntryFlow({
               kit.
             </p>
           </div>
+        ) : openSection === "commercial" ? (
+          <CommercialCatalogTable
+            options={filteredOptions.filter(
+              (option): option is OutboundCommercialCode =>
+                option.kind === "COMMERCIAL_CODE",
+            )}
+            selectedKeys={selectedKeys}
+            onAdd={addOption}
+          />
         ) : (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {filteredOptions.map((option) => {
-              const key = getOptionKey(option);
-              const isSelected = selectedKeys.has(key);
-
-              return option.kind === "ITEM" ? (
-                <PhysicalCatalogCard
-                  key={key}
-                  item={option}
-                  isSelected={isSelected}
-                  onAdd={() => addOption(option)}
-                />
-              ) : (
-                <CommercialCatalogCard
-                  key={key}
-                  option={option}
-                  isSelected={isSelected}
-                  onAdd={() => addOption(option)}
-                />
-              );
-            })}
-          </div>
+          <PhysicalCatalogTable
+            items={filteredOptions.filter(
+              (option): option is OutboundPhysicalItem =>
+                option.kind === "ITEM",
+            )}
+            selectedKeys={selectedKeys}
+            onAdd={addOption}
+          />
         )}
       </>
     );
@@ -1096,6 +1192,7 @@ export function OutboundEntryFlow({
               count={separateItems.length}
               isOpen={openSection === "separate"}
               onToggle={() => toggleCatalogSection("separate")}
+              allowStickyContent
             >
               {renderCatalogResults()}
             </StockFlowSection>
@@ -1107,6 +1204,7 @@ export function OutboundEntryFlow({
               count={repairItems.length}
               isOpen={openSection === "repair"}
               onToggle={() => toggleCatalogSection("repair")}
+              allowStickyContent
             >
               {renderCatalogResults()}
             </StockFlowSection>
@@ -1118,6 +1216,7 @@ export function OutboundEntryFlow({
               count={catalog.commercialCodes.length}
               isOpen={openSection === "commercial"}
               onToggle={() => toggleCatalogSection("commercial")}
+              allowStickyContent
             >
               {renderCatalogResults()}
             </StockFlowSection>

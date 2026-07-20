@@ -145,6 +145,14 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
         balance.quantity,
       ]),
     );
+    const codesByConfiguration = new Map<string, CommercialCodeRow[]>();
+
+    codes.forEach((code) => {
+      const configurationCodes =
+        codesByConfiguration.get(code.configuration_id) ?? [];
+      configurationCodes.push(code);
+      codesByConfiguration.set(code.configuration_id, configurationCodes);
+    });
 
     const physicalItems: OutboundPhysicalItem[] = items
       .map((item) => ({
@@ -153,6 +161,10 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
         code: item.code,
         description: item.description,
         itemType: item.item_type,
+        model:
+          item.item_type === "SERVO"
+            ? (servoModelById.get(item.id) ?? null)
+            : null,
         balance: stockByItem.get(item.id) ?? 0,
       }))
       .sort(compareCodes);
@@ -195,6 +207,10 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
               : null,
             assembledBalance:
               stockByConfiguration.get(configuration.id) ?? 0,
+            aliases: (codesByConfiguration.get(configuration.id) ?? [])
+              .filter((code) => code.id !== commercialCode.id)
+              .sort(compareCodes)
+              .map((code) => code.code),
             servo: {
               id: servo.id,
               code: servo.code,

@@ -6,6 +6,7 @@ export type OutboundPhysicalItem = {
   code: string;
   description: string;
   itemType: PhysicalItemType;
+  model: string | null;
   balance: number;
 };
 
@@ -24,6 +25,7 @@ export type OutboundCommercialCode = {
   description: string;
   imageUrl: string | null;
   assembledBalance: number;
+  aliases: string[];
   servo: OutboundConfigurationComponent & {
     model: string | null;
   };
