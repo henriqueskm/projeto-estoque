@@ -15,9 +15,28 @@ export type InventoryConfigurationActionTarget = {
   kind: "CONFIGURATION";
   configurationId: string;
   commercialCodes: string[];
+  commercialAliases: Array<{
+    code: string;
+    isActive: boolean;
+  }>;
   description: string;
+  isActive: boolean;
   assembledQuantity: number;
   minimumStock: number;
+  servo: {
+    id: string;
+    code: string;
+    description: string;
+    isActive: boolean;
+    looseQuantity: number;
+  };
+  installationKit: {
+    id: string;
+    code: string;
+    description: string;
+    isActive: boolean;
+    looseQuantity: number;
+  };
 };
 
 export type InventoryActionTarget =
@@ -45,4 +64,27 @@ export type MinimumStockReceipt = {
 
 export type MinimumStockActionResult =
   | { ok: true; receipt: MinimumStockReceipt }
+  | { ok: false; error: string };
+
+export type ConfigurationOperationType = "ASSEMBLY" | "DISASSEMBLY";
+
+export type ConfigurationOperationReceipt = {
+  movementBatchId: string;
+  operationType: ConfigurationOperationType;
+  configurationId: string;
+  commercialCode: string | null;
+  quantity: number;
+  servoId: string;
+  installationKitId: string;
+  servoQuantityBefore: number;
+  servoQuantityAfter: number;
+  kitQuantityBefore: number;
+  kitQuantityAfter: number;
+  configurationQuantityBefore: number;
+  configurationQuantityAfter: number;
+  operationApplied: true;
+};
+
+export type ConfigurationOperationActionResult =
+  | { ok: true; receipt: ConfigurationOperationReceipt }
   | { ok: false; error: string };

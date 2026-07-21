@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import {
+  ConfigurationOperationDialog,
   InventoryAdjustmentDialog,
   MinimumStockDialog,
 } from "@/components/inventory-action-dialogs";
@@ -13,7 +14,12 @@ type InventoryRowActionsProps = {
   imageUrl?: string | null;
 };
 
-type ActiveDialog = "ADJUSTMENT" | "MINIMUM_STOCK" | null;
+type ActiveDialog =
+  | "ASSEMBLY"
+  | "DISASSEMBLY"
+  | "ADJUSTMENT"
+  | "MINIMUM_STOCK"
+  | null;
 
 export function InventoryRowActions({
   target,
@@ -28,7 +34,7 @@ export function InventoryRowActions({
   const targetLabel =
     target.kind === "ITEM"
       ? target.code
-      : target.commercialCodes.join(" / ");
+      : target.commercialCodes.join(" / ") || target.description;
 
   const closeDialog = useCallback(() => {
     setActiveDialog(null);
@@ -145,6 +151,37 @@ export function InventoryRowActions({
             onKeyDown={handleMenuKeyDown}
             className="absolute top-full right-0 z-30 mt-1 w-56 rounded-xl border border-border-neutral bg-surface p-1.5 shadow-xl"
           >
+            {target.kind === "CONFIGURATION" ? (
+              <>
+                <p role="presentation" className="px-3 pt-1 pb-1 text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+                  Operações
+                </p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openDialog("ASSEMBLY")}
+                  className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-emerald-800 transition hover:bg-emerald-50"
+                >
+                  Montar
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openDialog("DISASSEMBLY")}
+                  className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-violet-900 transition hover:bg-violet-50"
+                >
+                  Desmontar
+                </button>
+                <div
+                  role="separator"
+                  className="my-1 border-t border-border-neutral"
+                />
+                <p role="presentation" className="px-3 pt-1 pb-1 text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+                  Gestão
+                </p>
+              </>
+            ) : null}
+
             <button
               type="button"
               role="menuitem"
@@ -164,11 +201,20 @@ export function InventoryRowActions({
             </button>
 
             {target.kind === "CONFIGURATION" && imageUrl ? (
-              <CommercialConfigurationImage
-                commercialCodes={target.commercialCodes}
-                imageUrl={imageUrl}
-                triggerVariant="menu-item"
-              />
+              <>
+                <div
+                  role="separator"
+                  className="my-1 border-t border-border-neutral"
+                />
+                <p role="presentation" className="px-3 pt-1 pb-1 text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+                  Imagem
+                </p>
+                <CommercialConfigurationImage
+                  commercialCodes={target.commercialCodes}
+                  imageUrl={imageUrl}
+                  triggerVariant="menu-item"
+                />
+              </>
             ) : null}
           </div>
         ) : null}
@@ -190,12 +236,30 @@ export function InventoryRowActions({
         />
       ) : null}
 
+      {activeDialog === "ASSEMBLY" && target.kind === "CONFIGURATION" ? (
+        <ConfigurationOperationDialog
+          target={target}
+          operationType="ASSEMBLY"
+          onClose={closeDialog}
+          onSuccess={finishAction}
+        />
+      ) : null}
+
+      {activeDialog === "DISASSEMBLY" && target.kind === "CONFIGURATION" ? (
+        <ConfigurationOperationDialog
+          target={target}
+          operationType="DISASSEMBLY"
+          onClose={closeDialog}
+          onSuccess={finishAction}
+        />
+      ) : null}
+
       {feedback ? (
         <div
           role="status"
           className="fixed right-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-3 z-[70] mx-auto flex max-w-md items-start justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-xl lg:right-5 lg:bottom-5 lg:left-auto"
         >
-          <span>{feedback}</span>
+          <span className="leading-5">{feedback}</span>
           <button
             type="button"
             onClick={() => setFeedback(null)}

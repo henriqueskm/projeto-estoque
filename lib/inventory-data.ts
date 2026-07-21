@@ -51,6 +51,7 @@ type CommercialConfigurationCodeRow = {
   id: string;
   configuration_id: string;
   code: string;
+  is_active: boolean;
 };
 
 type ConfigurationBalanceRow = {
@@ -238,8 +239,7 @@ export async function loadInventoryData(
         ),
       supabase
         .from("commercial_configuration_codes")
-        .select("id, configuration_id, code")
-        .eq("is_active", true),
+        .select("id, configuration_id, code, is_active"),
       supabase
         .from("configuration_stock_balances")
         .select("configuration_id, quantity"),
@@ -273,7 +273,12 @@ export async function loadInventoryData(
     const activeItems = items.filter((item) => item.is_active);
     const itemById = new Map(items.map((item) => [item.id, item]));
     const configurationIdsWithActiveCodes = new Set(
-      configurationCodes.map((code) => code.configuration_id),
+      configurationCodes
+        .filter((code) => code.is_active)
+        .map((code) => code.configuration_id),
+    );
+    const looseQuantityByItemId = new Map(
+      stockBalances.map((balance) => [balance.item_id, balance.quantity]),
     );
     const servoModelByItemId = new Map(
       servoModels.map((servoModel) => [
@@ -355,58 +360,74 @@ export async function loadInventoryData(
         quantity: balance.quantity,
       })),
     );
-    const codesByConfigurationId = new Map<string, string[]>();
+    const aliasesByConfigurationId = new Map<
+      string,
+      Array<{ code: string; isActive: boolean }>
+    >();
 
     configurationCodes.forEach((configurationCode) => {
-      const codes =
-        codesByConfigurationId.get(configurationCode.configuration_id) ?? [];
-      codes.push(configurationCode.code);
-      codesByConfigurationId.set(configurationCode.configuration_id, codes);
+      const aliases =
+        aliasesByConfigurationId.get(configurationCode.configuration_id) ?? [];
+      aliases.push({
+        code: configurationCode.code,
+        isActive: configurationCode.is_active,
+      });
+      aliasesByConfigurationId.set(configurationCode.configuration_id, aliases);
     });
 
     const configurationCatalog: InventoryCommercialConfigurationDraft[] =
       configurations.flatMap((configuration) => {
-        if (!configuration.is_active) {
-          return [];
-        }
-
         const servo = itemById.get(configuration.servo_id);
         const installationKit = itemById.get(
           configuration.installation_kit_id,
         );
-        const codes = (
-          codesByConfigurationId.get(configuration.id) ?? []
-        ).sort(compareCodes);
+        const aliases = (
+          aliasesByConfigurationId.get(configuration.id) ?? []
+        ).sort((first, second) => compareCodes(first.code, second.code));
+        const activeAliases = aliases.filter((alias) => alias.isActive);
+        const assembledQuantity =
+          assembledByConfigurationId.get(configuration.id) ?? 0;
 
         if (
-          codes.length === 0 ||
-          !servo?.is_active ||
-          servo.item_type !== "SERVO" ||
-          !installationKit?.is_active ||
-          installationKit.item_type !== "INSTALLATION_KIT"
+          servo?.item_type !== "SERVO" ||
+          installationKit?.item_type !== "INSTALLATION_KIT" ||
+          (assembledQuantity === 0 &&
+            (!configuration.is_active ||
+              !servo.is_active ||
+              !installationKit.is_active ||
+              activeAliases.length === 0))
         ) {
           return [];
         }
 
-        const assembledQuantity =
-          assembledByConfigurationId.get(configuration.id) ?? 0;
+        const displayedAliases =
+          activeAliases.length > 0 ? activeAliases : aliases;
 
         return [
           {
             id: configuration.id,
-            codes,
+            codes: displayedAliases.map((alias) => alias.code),
+            aliases,
             description:
               configuration.description?.trim() ||
               `${servo.description} + ${installationKit.code}`,
             imagePath: configuration.image_path,
+            isActive: configuration.is_active,
             servo: {
+              id: servo.id,
               code: servo.code,
               description: servo.description,
               model: servoModelByItemId.get(servo.id) ?? null,
+              isActive: servo.is_active,
+              looseQuantity: looseQuantityByItemId.get(servo.id) ?? 0,
             },
             installationKit: {
+              id: installationKit.id,
               code: installationKit.code,
               description: installationKit.description,
+              isActive: installationKit.is_active,
+              looseQuantity:
+                looseQuantityByItemId.get(installationKit.id) ?? 0,
             },
             assembledQuantity,
             minimumStock: configuration.minimum_stock,
@@ -414,7 +435,7 @@ export async function loadInventoryData(
               assembledQuantity,
               configuration.minimum_stock,
             ),
-            hasAliases: codes.length > 1,
+            hasAliases: aliases.length > 1,
           },
         ];
       });
@@ -445,7 +466,7 @@ export async function loadInventoryData(
     const filteredConfigurations = configurationCatalog
       .filter((configuration) =>
         matchesSearch(normalizedQuery, [
-          ...configuration.codes,
+          ...configuration.aliases.map((alias) => alias.code),
           configuration.description,
           configuration.servo.code,
           configuration.servo.description,
@@ -463,9 +484,9 @@ export async function loadInventoryData(
       )
       .sort((first, second) =>
         compareCodeAndId(
-          first.codes[0],
+          first.codes[0] ?? first.description,
           first.id,
-          second.codes[0],
+          second.codes[0] ?? second.description,
           second.id,
         ),
       );

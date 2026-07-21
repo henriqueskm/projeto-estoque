@@ -55,19 +55,32 @@ export type InventoryPhysicalItem = {
   state: StockState;
 };
 
+export type InventoryCommercialAlias = {
+  code: string;
+  isActive: boolean;
+};
+
 export type InventoryCommercialConfiguration = {
   id: string;
   codes: string[];
+  aliases: InventoryCommercialAlias[];
   description: string;
   imageUrl: string | null;
+  isActive: boolean;
   servo: {
+    id: string;
     code: string;
     description: string;
     model: string | null;
+    isActive: boolean;
+    looseQuantity: number;
   };
   installationKit: {
+    id: string;
     code: string;
     description: string;
+    isActive: boolean;
+    looseQuantity: number;
   };
   assembledQuantity: number;
   minimumStock: number;

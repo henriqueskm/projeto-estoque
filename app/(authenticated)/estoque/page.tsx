@@ -125,6 +125,14 @@ function ConfigurationStateBadge({ state }: { state: ConfigurationStockState }) 
 }
 
 function CommercialCodeBadges({ codes }: { codes: string[] }) {
+  if (codes.length === 0) {
+    return (
+      <span className="text-xs font-bold text-text-muted">
+        Sem código comercial
+      </span>
+    );
+  }
+
   return (
     <div className="flex flex-wrap gap-1" aria-label="Códigos comerciais">
       {codes.map((code) => (
@@ -355,9 +363,26 @@ function ConfigurationTable({
                     kind: "CONFIGURATION",
                     configurationId: configuration.id,
                     commercialCodes: configuration.codes,
+                    commercialAliases: configuration.aliases,
                     description: configuration.description,
+                    isActive: configuration.isActive,
                     assembledQuantity: configuration.assembledQuantity,
                     minimumStock: configuration.minimumStock,
+                    servo: {
+                      id: configuration.servo.id,
+                      code: configuration.servo.code,
+                      description: configuration.servo.description,
+                      isActive: configuration.servo.isActive,
+                      looseQuantity: configuration.servo.looseQuantity,
+                    },
+                    installationKit: {
+                      id: configuration.installationKit.id,
+                      code: configuration.installationKit.code,
+                      description: configuration.installationKit.description,
+                      isActive: configuration.installationKit.isActive,
+                      looseQuantity:
+                        configuration.installationKit.looseQuantity,
+                    },
                   }}
                   imageUrl={configuration.imageUrl}
                 />
@@ -594,7 +619,7 @@ export default async function InventoryPage({
             {activeTabCount === undefined
               ? "Catálogo indisponível"
               : `${quantityFormatter.format(activeTabCount)} ${
-                  activeTabCount === 1 ? "cadastro ativo" : "cadastros ativos"
+                  activeTabCount === 1 ? "cadastro" : "cadastros"
                 }`}
           </span>
         </div>
