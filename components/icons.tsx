@@ -134,3 +134,64 @@ export function CheckIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function MenuIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+export function CloseIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="m6 6 12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+export function OrdersIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="M7 4h10v4H7z" />
+      <path d="M6 6H4v15h16V6h-2M8 12h8M8 16h5" />
+    </svg>
+  );
+}
+
+export function StatisticsIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="M4 20V10h4v10M10 20V4h4v16M16 20v-7h4v7M3 20h18" />
+    </svg>
+  );
+}
+
+export function MicrophoneIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" />
+    </svg>
+  );
+}
+
+export function SendIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="m3 11 18-8-8 18-2-8-8-2Z" />
+      <path d="m11 13 5-5" />
+    </svg>
+  );
+}
+
+export function ImageIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="2" />
+      <path d="m4 17 4-4 3 3 3-4 6 6" />
+    </svg>
+  );
+}

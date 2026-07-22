@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { AppHeader } from "@/components/app-header";
-import { MobileBottomNavigation } from "@/components/mobile-bottom-navigation";
+import { AppSidebar } from "@/components/app-sidebar";
+import { AssistantFloatingLink } from "@/components/assistant-floating-link";
+import { AuthenticatedProfileProvider } from "@/components/authenticated-profile-provider";
 import { requireActiveProfile } from "@/lib/auth";
 
 export default async function AuthenticatedLayout({
@@ -9,14 +10,20 @@ export default async function AuthenticatedLayout({
   const profile = await requireActiveProfile();
 
   return (
-    <div className="min-h-screen bg-app-background pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0">
-      <AppHeader
-        userName={profile.displayName}
-        userEmail={profile.email}
-        hasRegisteredName={profile.hasRegisteredName}
-      />
-      {children}
-      <MobileBottomNavigation />
-    </div>
+    <AuthenticatedProfileProvider
+      displayName={profile.displayName}
+      hasRegisteredName={profile.hasRegisteredName}
+    >
+      <div className="min-h-screen bg-app-background">
+        <AppSidebar
+          userName={profile.displayName}
+          hasRegisteredName={profile.hasRegisteredName}
+        />
+        <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-screen lg:pl-64">
+          {children}
+        </div>
+        <AssistantFloatingLink />
+      </div>
+    </AuthenticatedProfileProvider>
   );
 }

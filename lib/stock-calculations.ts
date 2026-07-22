@@ -185,8 +185,12 @@ export function calculatePhysicalStockSummary(
       ).length +
       configurationStates.filter((state) => state === "LOW").length,
     outOfStockItems:
-      items.filter((item) => item.isActive && physicalQuantity(item) === 0)
-        .length +
+      items.filter(
+        (item) =>
+          item.isActive &&
+          item.minimumStock > 0 &&
+          physicalQuantity(item) === 0,
+      ).length +
       configurationStates.filter((state) => state === "ZERO").length,
   };
 }
