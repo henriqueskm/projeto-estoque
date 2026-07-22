@@ -352,8 +352,8 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
         />
       </aside>
 
-      <header className="sticky top-0 z-50 border-b border-brand-gold/20 bg-brand-charcoal px-3 py-1.5 text-white shadow-sm lg:hidden">
-        <div className="flex min-h-11 items-center gap-3">
+      <header className="sticky top-0 z-50 h-14 border-b border-brand-gold/20 bg-brand-charcoal px-3 text-white shadow-sm lg:hidden">
+        <div className="flex h-full items-center gap-3">
           <button
             ref={menuButtonRef}
             type="button"

@@ -2,11 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useEffect,
   useId,
   useRef,
   useState,
+  useTransition,
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
@@ -23,8 +25,16 @@ import {
   SendIcon,
   StockIcon,
 } from "@/components/icons";
+import { AssistantMessageContent } from "@/components/assistant-message-content";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
+import {
+  assistantHistoryMaxMessages,
+  assistantMessageMaxLength,
+  type AssistantChatRequest,
+  type AssistantChatError,
+  type AssistantChatSuccess,
+} from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
 type AssistantHomeProps = {
@@ -38,10 +48,16 @@ type LocalAttachment = {
   source: "camera" | "gallery";
 };
 
+type AssistantMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+};
+
 const suggestions = [
   {
     label: "Consultar estoque",
-    message: "Quero consultar meu estoque",
+    message: "Como está meu estoque?",
     icon: StockIcon,
   },
   {
@@ -64,16 +80,27 @@ const suggestions = [
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
 
+function isStructuredAssistantMessage(content: string) {
+  return /(^|\n)\s*(?:[-*+]\s+|\d+[.)]\s+)/m.test(content);
+}
+
 export function AssistantHome({
   summary,
   stockError,
 }: AssistantHomeProps) {
+  const router = useRouter();
   const profile = useAuthenticatedProfile();
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<LocalAttachment | null>(null);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [messages, setMessages] = useState<AssistantMessage[]>([]);
+  const [isPending, setIsPending] = useState(false);
+  const [isRefreshingStock, startStockRefresh] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const conversationRef = useRef<HTMLElement>(null);
+  const requestInFlightRef = useRef(false);
+  const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -82,7 +109,9 @@ export function AssistantHome({
   const firstName = profile.hasRegisteredName
     ? (profile.displayName.split(/\s+/).filter(Boolean)[0] ?? null)
     : null;
-  const canSubmit = Boolean(message.trim() || attachment);
+  const isInteractionLocked = isPending || isRefreshingStock;
+  const canSubmit =
+    !isInteractionLocked && Boolean(message.trim() || attachment);
   const stockItems = [
     ["Caixas", summary?.completeBoxesTotal],
     ["Servos", summary?.looseServoTotal],
@@ -137,6 +166,28 @@ export function AssistantHome({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isAttachmentMenuOpen]);
+
+  useEffect(() => {
+    const conversation = conversationRef.current;
+
+    if (!conversation || (messages.length === 0 && !isInteractionLocked)) {
+      return;
+    }
+
+    conversation.scrollTo({
+      top: conversation.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [isInteractionLocked, messages]);
+
+  useEffect(() => {
+    if (isInteractionLocked || !shouldRestoreFocusRef.current) {
+      return;
+    }
+
+    shouldRestoreFocusRef.current = false;
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [isInteractionLocked]);
 
   function resizeTextarea() {
     const textarea = textareaRef.current;
@@ -206,16 +257,97 @@ export function AssistantHome({
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!canSubmit) {
+    if (!canSubmit || requestInFlightRef.current) {
       return;
     }
 
+    const submittedMessage = message.trim();
+
+    if (!submittedMessage) {
+      setFeedback(
+        "Análise de imagens será habilitada em uma próxima etapa.",
+      );
+      return;
+    }
+
+    requestInFlightRef.current = true;
+    setMessages((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: submittedMessage,
+      },
+    ]);
+    setMessage("");
     setFeedback(
-      "Assistente IA ainda não conectado. Sua mensagem e seu anexo não foram enviados.",
+      attachment
+        ? "A imagem continua somente neste dispositivo. Apenas o texto foi enviado."
+        : null,
     );
+    setIsPending(true);
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    try {
+      const history = messages
+        .slice(-assistantHistoryMaxMessages)
+        .map(({ role, content }) => ({
+          role,
+          content: content.slice(0, assistantMessageMaxLength),
+        }));
+      const requestBody: AssistantChatRequest = {
+        message: submittedMessage,
+        history,
+      };
+      const response = await fetch("/api/assistant/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      const result: unknown = await response.json().catch(() => null);
+      const responseBody =
+        result && typeof result === "object" && !Array.isArray(result)
+          ? (result as Partial<AssistantChatSuccess & AssistantChatError>)
+          : null;
+      const responseMessage = response.ok
+        ? responseBody?.message
+        : responseBody?.error;
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            typeof responseMessage === "string" && responseMessage.trim()
+              ? responseMessage.trim()
+              : "Não foi possível concluir a consulta agora. Tente novamente.",
+        },
+      ]);
+    } catch {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "Não foi possível conectar ao Assistente IA. Verifique sua conexão e tente novamente.",
+        },
+      ]);
+    } finally {
+      requestInFlightRef.current = false;
+      shouldRestoreFocusRef.current = true;
+      setIsPending(false);
+      startStockRefresh(() => {
+        router.refresh();
+      });
+    }
   }
 
   function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -232,11 +364,20 @@ export function AssistantHome({
   return (
     <main className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden lg:h-dvh">
       <section
+        ref={conversationRef}
         aria-label="Conversa com o Assistente IA"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col justify-start px-4 pt-3 pb-5 sm:px-6 sm:pt-5 sm:pb-7 lg:justify-center lg:px-8 lg:py-10">
-          <div className="mx-auto w-full max-w-3xl text-center">
+        <div
+          className={`mx-auto flex min-h-full w-full max-w-5xl flex-col justify-start px-4 pt-3 pb-5 sm:px-6 sm:pt-5 sm:pb-7 lg:px-8 lg:py-10 ${
+            messages.length === 0 ? "lg:justify-center" : ""
+          }`}
+        >
+          <div
+            className={`mx-auto w-full max-w-3xl text-center ${
+              messages.length === 0 ? "" : "hidden"
+            }`}
+          >
             <span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-700 to-blue-700 text-white shadow-[0_16px_32px_-20px_rgba(76,29,149,0.9)] sm:size-14">
               <AssistantIcon className="size-7 sm:size-8" />
             </span>
@@ -255,7 +396,9 @@ export function AssistantHome({
 
           <Link
             href="/estoque"
-            className="nk-focus mx-auto mt-5 block w-full max-w-3xl rounded-2xl border border-border-neutral bg-surface px-3 py-2.5 text-left shadow-sm transition hover:border-brand-gold-dark hover:shadow-md sm:mt-6 sm:px-4 sm:py-3"
+            className={`nk-focus mx-auto mt-5 w-full max-w-3xl rounded-2xl border border-border-neutral bg-surface px-3 py-2.5 text-left shadow-sm transition hover:border-brand-gold-dark hover:shadow-md sm:mt-6 sm:px-4 sm:py-3 ${
+              messages.length === 0 ? "block" : "hidden"
+            }`}
           >
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs font-black tracking-[0.12em] text-text-muted uppercase">
@@ -300,7 +443,11 @@ export function AssistantHome({
             ) : null}
           </Link>
 
-          <div className="mx-auto mt-4 grid w-full max-w-3xl grid-cols-2 gap-2 sm:mt-5 sm:gap-3">
+          <div
+            className={`mx-auto mt-4 w-full max-w-3xl grid-cols-2 gap-2 sm:mt-5 sm:gap-3 ${
+              messages.length === 0 ? "grid" : "hidden"
+            }`}
+          >
             {suggestions.map((suggestion) => {
               const Icon = suggestion.icon;
 
@@ -323,12 +470,77 @@ export function AssistantHome({
             })}
           </div>
 
+          {messages.length > 0 ? (
+            <div
+              aria-live="polite"
+              className="mx-auto flex w-full max-w-3xl flex-col gap-4 py-2 sm:py-4"
+            >
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={isInteractionLocked}
+                  onClick={() => {
+                    setMessages([]);
+                    setFeedback(null);
+                    window.requestAnimationFrame(() =>
+                      textareaRef.current?.focus(),
+                    );
+                  }}
+                  className="nk-focus min-h-11 rounded-xl px-3 text-xs font-black text-text-muted transition hover:bg-surface hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Nova conversa
+                </button>
+              </div>
+              {messages.map((chatMessage) => {
+                const isStructured =
+                  chatMessage.role === "assistant" &&
+                  isStructuredAssistantMessage(chatMessage.content);
+
+                return (
+                  <article
+                    key={chatMessage.id}
+                    className={`rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm sm:text-base ${
+                      chatMessage.role === "user"
+                        ? "ml-auto w-fit max-w-[88%] rounded-br-md bg-brand-charcoal text-white sm:max-w-[78%]"
+                        : `mr-auto rounded-bl-md border border-border-neutral bg-surface text-text-primary ${
+                            isStructured
+                              ? "w-[94%] sm:w-[88%] lg:w-[80%] lg:max-w-2xl"
+                              : "w-fit max-w-[94%] lg:max-w-[80%]"
+                          }`
+                    }`}
+                  >
+                    <span className="sr-only">
+                      {chatMessage.role === "user"
+                        ? "Você: "
+                        : "Assistente IA: "}
+                    </span>
+                    {chatMessage.role === "user" ? (
+                      <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                        {chatMessage.content}
+                      </span>
+                    ) : (
+                      <AssistantMessageContent content={chatMessage.content} />
+                    )}
+                  </article>
+                );
+              })}
+              {isInteractionLocked ? (
+                <div className="mr-auto rounded-2xl rounded-bl-md border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-900 shadow-sm">
+                  {isPending
+                    ? "Consultando o estoque..."
+                    : "Atualizando o estoque..."}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
         </div>
       </section>
 
       <div className="z-30 shrink-0 border-t border-border-neutral/80 bg-app-background/95 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-8">
           <form
             onSubmit={handleSubmit}
+            aria-busy={isInteractionLocked}
             className="mx-auto w-full max-w-3xl rounded-2xl border border-border-neutral bg-surface p-2 shadow-[0_16px_42px_-26px_rgba(23,29,33,0.6)]"
           >
             {attachment ? (
@@ -424,7 +636,8 @@ export function AssistantHome({
                   ref={textareaRef}
                   value={message}
                   rows={1}
-                  maxLength={2000}
+                  maxLength={assistantMessageMaxLength}
+                  disabled={isInteractionLocked}
                   placeholder="Digite uma mensagem..."
                   onChange={(event) => {
                     setMessage(event.target.value);
@@ -483,7 +696,7 @@ export function AssistantHome({
             />
           </form>
           <p className="mx-auto mt-1 max-w-3xl text-center text-[0.6rem] leading-4 font-semibold text-text-muted sm:mt-1.5 sm:text-[0.68rem]">
-            O Assistente IA ainda não está conectado e não executa operações.
+            Consultas em modo somente leitura. Imagens, áudio e operações ainda não estão habilitados.
           </p>
       </div>
 

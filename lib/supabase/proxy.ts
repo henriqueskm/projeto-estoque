@@ -35,8 +35,10 @@ export async function updateSession(request: NextRequest) {
   const isPublicRoute =
     request.nextUrl.pathname.startsWith("/login") ||
     request.nextUrl.pathname.startsWith("/auth");
+  const handlesAuthenticationInRoute =
+    request.nextUrl.pathname === "/api/assistant/chat";
 
-  if (!data?.claims && !isPublicRoute) {
+  if (!data?.claims && !isPublicRoute && !handlesAuthenticationInRoute) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";

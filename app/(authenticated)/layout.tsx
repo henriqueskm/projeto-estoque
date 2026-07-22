@@ -14,12 +14,12 @@ export default async function AuthenticatedLayout({
       displayName={profile.displayName}
       hasRegisteredName={profile.hasRegisteredName}
     >
-      <div className="min-h-screen bg-app-background">
+      <div className="min-h-dvh bg-app-background">
         <AppSidebar
           userName={profile.displayName}
           hasRegisteredName={profile.hasRegisteredName}
         />
-        <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-screen lg:pl-64">
+        <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-dvh lg:pl-64">
           {children}
         </div>
         <AssistantFloatingLink />
