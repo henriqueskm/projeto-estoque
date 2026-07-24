@@ -98,29 +98,6 @@ function NavigationLink({
   );
 }
 
-function ComingSoonItem({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      aria-disabled="true"
-      className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-bold text-slate-400"
-    >
-      <span aria-hidden="true" className="flex size-5 shrink-0 items-center">
-        {children}
-      </span>
-      <span>{label}</span>
-      <span className="ml-auto rounded-full border border-white/15 px-2 py-0.5 text-[0.6rem] font-black tracking-wide uppercase">
-        Em breve
-      </span>
-    </div>
-  );
-}
-
 function NavigationContent({
   idSuffix,
   pathname,
@@ -153,9 +130,14 @@ function NavigationContent({
             <AssistantIcon className="size-5" />
           </NavigationLink>
 
-          <ComingSoonItem label="Pedidos">
+          <NavigationLink
+            href="/pedidos"
+            label="Pedidos"
+            pathname={pathname}
+            onNavigate={onNavigate}
+          >
             <OrdersIcon className="size-5" />
-          </ComingSoonItem>
+          </NavigationLink>
 
           <NavigationLink
             href="/estoque"

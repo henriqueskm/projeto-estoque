@@ -10,12 +10,19 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { EyeIcon } from "@/components/icons";
 
 type CommercialConfigurationImageProps = {
   commercialCodes: string[];
   imageUrl: string | null;
   compact?: boolean;
-  triggerVariant?: "thumbnail" | "menu-item" | "text-link";
+  triggerLabel?: string;
+  triggerVariant?:
+    | "thumbnail"
+    | "menu-item"
+    | "text-link"
+    | "icon-button"
+    | "selector-action";
 };
 
 const minimumZoom = 1;
@@ -26,6 +33,7 @@ export function CommercialConfigurationImage({
   commercialCodes,
   imageUrl,
   compact = false,
+  triggerLabel,
   triggerVariant = "thumbnail",
 }: CommercialConfigurationImageProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -108,26 +116,42 @@ export function CommercialConfigurationImage({
 
   const isMenuItem = triggerVariant === "menu-item";
   const isTextLink = triggerVariant === "text-link";
+  const isIconButton = triggerVariant === "icon-button";
+  const isSelectorAction = triggerVariant === "selector-action";
+  const actionLabel =
+    triggerLabel ?? `Ver foto do código ${codeLabel}`;
 
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => {
+        onClick={(event) => {
+          event.stopPropagation();
           setZoom(minimumZoom);
           setIsOpen(true);
         }}
         role={isMenuItem ? "menuitem" : undefined}
-        aria-label={`${isMenuItem || isTextLink ? "Visualizar" : "Ampliar"} ${altText.toLocaleLowerCase("pt-BR")}`}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-label={
+          isIconButton || isSelectorAction
+            ? actionLabel
+            : `${isMenuItem || isTextLink ? "Visualizar" : "Ampliar"} ${altText.toLocaleLowerCase("pt-BR")}`
+        }
+        title={isIconButton ? actionLabel : undefined}
         className={
           isMenuItem
             ? "nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
             : isTextLink
               ? "nk-focus mt-0.5 inline-flex min-h-11 items-center rounded-lg px-0.5 text-[0.65rem] font-bold text-violet-800"
-            : `nk-focus group mt-4 block overflow-hidden rounded-xl border border-border-neutral bg-app-background text-left shadow-sm transition hover:border-brand-gold-dark ${
-                compact ? "w-28" : "w-full max-w-64"
-              }`
+              : isIconButton
+                ? "nk-focus inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-800 transition hover:border-violet-400 hover:bg-violet-100"
+                : isSelectorAction
+                  ? "nk-focus inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
+                  : `nk-focus group mt-4 block overflow-hidden rounded-xl border border-border-neutral bg-app-background text-left shadow-sm transition hover:border-brand-gold-dark ${
+                      compact ? "w-28" : "w-full max-w-64"
+                    }`
         }
       >
         {isMenuItem ? (
@@ -136,6 +160,10 @@ export function CommercialConfigurationImage({
           <span className="rounded-md border border-violet-200 bg-surface px-1.5 py-1 leading-4 transition hover:border-violet-400 hover:bg-violet-50">
             Ver foto
           </span>
+        ) : isIconButton ? (
+          <EyeIcon className="size-4" />
+        ) : isSelectorAction ? (
+          "Ver foto"
         ) : (
           <>
             <span

@@ -11,6 +11,7 @@ import {
   type PhysicalStockItemType,
 } from "@/lib/stock-calculations";
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
+import { createCompatibleKitImageMap } from "@/lib/compatible-kit-images";
 import { createClient } from "@/lib/supabase/server";
 
 type ItemRow = {
@@ -215,6 +216,7 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
         minimumStock: item.minimum_stock,
         ...quantities,
         state: getStockState(quantities.totalQuantity, item.minimum_stock),
+        compatibleKitImages: [],
       };
     });
     const summary = calculatePhysicalStockSummary(
@@ -348,11 +350,53 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
           ? (imageUrlByPath.get(imagePath) ?? null)
           : null,
       }));
+    const compatibleKitImagesByItemId = createCompatibleKitImageMap(
+      sortedConfigurationDrafts.flatMap((configuration) => {
+        const imageUrl = configuration.imagePath
+          ? (imageUrlByPath.get(configuration.imagePath) ?? null)
+          : null;
+        const activeCodes = configuration.aliases
+          .filter((alias) => alias.isActive)
+          .map((alias) => alias.code);
+
+        if (
+          !configuration.imagePath ||
+          !imageUrl ||
+          !configuration.isActive ||
+          !configuration.servo.isActive ||
+          !configuration.installationKit.isActive ||
+          activeCodes.length === 0
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            installationKitId: configuration.installationKit.id,
+            configurationId: configuration.id,
+            commercialCodes: activeCodes,
+            servoCode: configuration.servo.code,
+            servoDescription: configuration.servo.description,
+            servoModel: configuration.servo.model,
+            installationKitCode: configuration.installationKit.code,
+            description: configuration.description,
+            imageUrl,
+          },
+        ];
+      }),
+    );
+    const physicalItemsWithImages = sortedPhysicalItems.map((item) => ({
+      ...item,
+      compatibleKitImages:
+        item.itemType === "INSTALLATION_KIT"
+          ? (compatibleKitImagesByItemId.get(item.id) ?? [])
+          : [],
+    }));
 
     return {
       data: {
         summary,
-        physicalItems: sortedPhysicalItems,
+        physicalItems: physicalItemsWithImages,
         configurations: catalogConfigurations,
         physicalCatalogCount: physicalCatalog.length,
         configurationCatalogCount: configurationCatalog.length,

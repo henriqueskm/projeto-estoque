@@ -3,6 +3,7 @@ import type {
   PhysicalStockItemType,
   PhysicalStockSummary,
 } from "@/lib/stock-calculations";
+import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 
 export type StockState = "AVAILABLE" | "LOW" | "ZERO";
 
@@ -20,6 +21,7 @@ export type InventoryPhysicalItem = {
   mountedQuantity: number;
   totalQuantity: number;
   state: StockState;
+  compatibleKitImages: CompatibleKitImageOption[];
 };
 
 export type InventoryCommercialAlias = {

@@ -7,6 +7,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { ChevronDownIcon, SearchIcon } from "@/components/icons";
 import { InventoryRowActions } from "@/components/inventory-row-actions";
 import { getServoFamilyLabel } from "@/lib/inventory-family";
@@ -330,13 +331,13 @@ function PhysicalTable({ items }: { items: InventoryPhysicalItem[] }) {
           <tr>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[18%] sm:w-[14%]`}
+              className={`${stickyHeaderClassName} w-[22%] sm:w-[14%]`}
             >
               Código
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[45%] sm:w-[48%]`}
+              className={`${stickyHeaderClassName} w-[41%] sm:w-[48%]`}
             >
               Descrição
             </th>
@@ -371,8 +372,16 @@ function PhysicalTable({ items }: { items: InventoryPhysicalItem[] }) {
                 scope="row"
                 className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
               >
-                <span className="break-all font-mono text-xs font-black text-text-primary sm:text-sm">
-                  {item.code}
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="break-all font-mono text-xs font-black text-text-primary sm:text-sm">
+                    {item.code}
+                  </span>
+                  {item.itemType === "INSTALLATION_KIT" ? (
+                    <CompatibleKitImages
+                      kitCode={item.code}
+                      options={item.compatibleKitImages}
+                    />
+                  ) : null}
                 </span>
               </th>
               <td className="border-t border-border-neutral/70 px-2 py-2.5 sm:px-3">
