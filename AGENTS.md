@@ -779,6 +779,26 @@ Enquanto não existir uma administração completa de usuários:
 - orientar que o administrador complete o cadastro;
 - manter `public.profiles.name` como única origem do nome do usuário.
 
+---
+
+## 35. Pedidos de fornecedor
+
+- um pedido acompanha uma negociação com o fornecedor;
+- pedido e retirada no fornecedor não movimentam estoque;
+- `picked_quantity` significa quantidade já retirada no fornecedor;
+- retirada parcial sempre é registrada por quantidade;
+- entrada no estoque é uma ação posterior e separada;
+- deve ser preservada a regra
+  `stocked_quantity <= picked_quantity <= ordered_quantity`;
+- com cancelamento, `picked_quantity + cancelled_quantity` nunca pode exceder
+  `ordered_quantity`;
+- o status do pedido representa o andamento da retirada no fornecedor, não a
+  entrada no estoque;
+- código comercial é um alias da configuração física e nunca cria estoque ou
+  configuração adicional;
+- a futura entrada vinculada ao pedido deve reutilizar as operações
+  transacionais de estoque e manter auditoria própria.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
