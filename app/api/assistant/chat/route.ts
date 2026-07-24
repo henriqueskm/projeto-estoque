@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import {
-  assistantHistoryMaxMessages,
   assistantMessageMaxLength,
+  assistantQueryMaxLength,
   assistantRequestMaxCharacters,
-  type AssistantConversationMessage,
   type AssistantChatError,
   type AssistantChatSuccess,
 } from "@/lib/assistant-types";
@@ -94,49 +93,13 @@ function serviceErrorResponse(error: AssistantServiceError) {
         502,
       );
     case "EMPTY_RESPONSE":
+    case "UNAVAILABLE":
     case "UPSTREAM":
       return errorResponse(
         "O Assistente IA está indisponível no momento. Tente novamente.",
-        502,
+        error.code === "UNAVAILABLE" ? 503 : 502,
       );
   }
-}
-
-function normalizeHistory(
-  value: unknown,
-): AssistantConversationMessage[] | null {
-  if (!Array.isArray(value) || value.length > assistantHistoryMaxMessages) {
-    return null;
-  }
-
-  const history: AssistantConversationMessage[] = [];
-
-  for (const entry of value) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return null;
-    }
-
-    const record = entry as Record<string, unknown>;
-    const keys = Object.keys(record);
-    const role = record.role;
-    const content =
-      typeof record.content === "string" ? record.content.trim() : "";
-
-    if (
-      keys.length !== 2 ||
-      !keys.includes("role") ||
-      !keys.includes("content") ||
-      (role !== "user" && role !== "assistant") ||
-      !content ||
-      content.length > assistantMessageMaxLength
-    ) {
-      return null;
-    }
-
-    history.push({ role, content });
-  }
-
-  return history;
 }
 
 export async function POST(request: Request) {
@@ -152,7 +115,7 @@ export async function POST(request: Request) {
     Number.isFinite(contentLength) &&
     contentLength > assistantRequestMaxCharacters * 4
   ) {
-    return errorResponse("A conversa enviada é muito longa.", 400);
+    return errorResponse("A mensagem enviada é muito longa.", 400);
   }
 
   let rawBody: string;
@@ -162,7 +125,7 @@ export async function POST(request: Request) {
     rawBody = await request.text();
 
     if (rawBody.length > assistantRequestMaxCharacters) {
-      return errorResponse("A conversa enviada é muito longa.", 400);
+      return errorResponse("A mensagem enviada é muito longa.", 400);
     }
 
     body = JSON.parse(rawBody);
@@ -178,10 +141,10 @@ export async function POST(request: Request) {
   const bodyKeys = Object.keys(bodyRecord);
   const message =
     typeof bodyRecord.message === "string" ? bodyRecord.message.trim() : "";
-  const history = normalizeHistory(bodyRecord.history ?? []);
+  const rawLastItemQuery = bodyRecord.lastItemQuery;
 
   if (
-    bodyKeys.some((key) => key !== "message" && key !== "history") ||
+    bodyKeys.some((key) => key !== "message" && key !== "lastItemQuery") ||
     !bodyKeys.includes("message")
   ) {
     return errorResponse("Envie uma mensagem válida.", 400);
@@ -194,21 +157,22 @@ export async function POST(request: Request) {
     );
   }
 
-  if (history === null) {
-    return errorResponse(
-      `O histórico deve conter no máximo ${assistantHistoryMaxMessages} mensagens válidas.`,
-      400,
-    );
-  }
+  const normalizedLastItemQuery =
+    typeof rawLastItemQuery === "string" ? rawLastItemQuery.trim() : "";
+  const lastItemQuery =
+    normalizedLastItemQuery &&
+    normalizedLastItemQuery.length <= assistantQueryMaxLength
+      ? normalizedLastItemQuery
+      : null;
 
   try {
     const answer = await answerAssistantQuestion(
       message,
-      history,
+      lastItemQuery,
       authentication.firstName,
     );
 
-    return NextResponse.json<AssistantChatSuccess>({ message: answer });
+    return NextResponse.json<AssistantChatSuccess>(answer);
   } catch (error) {
     if (error instanceof AssistantServiceError) {
       return serviceErrorResponse(error);

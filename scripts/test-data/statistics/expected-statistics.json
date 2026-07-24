@@ -1,0 +1,156 @@
+{
+  "dataset": "NK_STATS_TEST_V1",
+  "version": 1,
+  "planned_period": {
+    "minimum_days_ago": 1,
+    "maximum_days_ago": 88,
+    "relative_buckets": {
+      "days_61_to_90": 14,
+      "days_31_to_60": 7,
+      "days_0_to_30": 9
+    },
+    "relative_week_buckets_newest_first": [
+      3,
+      1,
+      2,
+      2,
+      2,
+      1,
+      2,
+      2,
+      1,
+      1,
+      4,
+      5,
+      4
+    ],
+    "calendar_month_groups": "calculated at verification time because calendar boundaries depend on the seed execution date",
+    "calendar_week_groups": "calculated at verification time because calendar boundaries depend on the seed execution date"
+  },
+  "record_counts": {
+    "movement_batches": 30,
+    "inbound_batch_lines": 13,
+    "outbound_batch_lines": 11,
+    "stock_movements": 30,
+    "configuration_stock_movements": 12,
+    "assembly_operations": 6,
+    "private_configuration_operation_requests": 0,
+    "private_stock_adjustment_requests": 0
+  },
+  "operation_quantities": {
+    "inbound": 136,
+    "outbound": 35,
+    "assembly": 22,
+    "disassembly": 2
+  },
+  "outbound_by_category": {
+    "commercial_configuration": 12,
+    "servo_without_kit": 11,
+    "installation_kit_loose": 3,
+    "repair_kit": 5,
+    "loose_part": 4
+  },
+  "servo_sales": {
+    "with_kit": 12,
+    "without_kit": 11,
+    "total": 23,
+    "with_kit_percent": 52.1739,
+    "without_kit_percent": 47.8261
+  },
+  "commercial_outbound_by_alias": {
+    "1B": 4,
+    "1D": 2,
+    "2A": 2,
+    "1F": 2,
+    "1H": 1,
+    "6P": 1
+  },
+  "commercial_outbound_by_physical_configuration": {
+    "1::KT-02": 6,
+    "2::KT-18": 2,
+    "1INV::KT-07": 2,
+    "1DESL::KT-29": 1,
+    "6RB::KT-71": 1
+  },
+  "direct_outbound_by_item": {
+    "1": 11,
+    "KT-02": 3,
+    "R064": 5,
+    "110": 4
+  },
+  "kits_used_in_assembly": {
+    "KT-02": 10,
+    "KT-18": 5,
+    "KT-07": 3,
+    "KT-29": 2,
+    "KT-71": 2
+  },
+  "expected_leaders": {
+    "servo_without_kit": "1",
+    "physical_configuration": "1::KT-02",
+    "kit_used_in_assembly": "KT-02",
+    "kit_sold_loose": "KT-02",
+    "repair_kit": "R064",
+    "loose_part": "110"
+  },
+  "net_balance_changes": {
+    "items": {
+      "1": 19,
+      "KT-02": 13,
+      "2": 7,
+      "KT-18": 5,
+      "R064": 7,
+      "110": 6,
+      "1INV": 3,
+      "KT-07": 3,
+      "1DESL": 3,
+      "KT-29": 3,
+      "6RB": 2,
+      "KT-71": 2
+    },
+    "configurations": {
+      "1::KT-02": 2,
+      "2::KT-18": 3,
+      "1INV::KT-07": 1,
+      "1DESL::KT-29": 1,
+      "6RB::KT-71": 1
+    }
+  },
+  "intentionally_without_movement": {
+    "servo_code": "3",
+    "commercial_code": "3A"
+  },
+  "current_stock_alerts": {
+    "dataset": "NK_STATS_TEST_MINIMUMS_V1",
+    "low_count": 5,
+    "zero_count": 2,
+    "healthy_with_positive_minimum_count": 2,
+    "minimum_zero_count": 170,
+    "low_items": [
+      "2",
+      "KT-18",
+      "R064",
+      "110"
+    ],
+    "low_configurations": [
+      "1F"
+    ],
+    "zero_items": [
+      "3"
+    ],
+    "zero_configurations": [
+      "3A"
+    ],
+    "healthy_items": [
+      "1"
+    ],
+    "healthy_configurations": [
+      "1B",
+      "1D"
+    ],
+    "minimum_zero_controls": {
+      "item": "1INV",
+      "configuration": "2A"
+    }
+  }
+}

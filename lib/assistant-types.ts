@@ -2,21 +2,16 @@ import type { PhysicalStockItemType } from "@/lib/stock-calculations";
 
 export const assistantMessageMaxLength = 2000;
 export const assistantQueryMaxLength = 120;
-export const assistantHistoryMaxMessages = 16;
-export const assistantRequestMaxCharacters = 80_000;
-
-export type AssistantConversationMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
+export const assistantRequestMaxCharacters = 4096;
 
 export type AssistantChatRequest = {
   message: string;
-  history: AssistantConversationMessage[];
+  lastItemQuery?: string;
 };
 
 export type AssistantChatSuccess = {
   message: string;
+  contextItemQuery?: string | null;
 };
 
 export type AssistantChatError = {

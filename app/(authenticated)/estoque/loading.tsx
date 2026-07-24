@@ -1,28 +1,25 @@
 export default function InventoryLoading() {
   return (
     <main
-      className="mx-auto w-full max-w-7xl animate-pulse px-4 py-7 sm:px-6 sm:py-10 lg:px-8"
+      className="mx-auto w-full max-w-7xl animate-pulse px-3 py-4 sm:px-6 sm:py-6 lg:px-8"
       aria-busy="true"
       aria-label="Carregando estoque"
     >
-      <div className="h-12 w-36 rounded-xl bg-border-neutral/60" />
-      <div className="mt-5 h-44 rounded-3xl bg-brand-charcoal/90" />
-      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="h-9 w-32 rounded-lg bg-border-neutral/60" />
+      <div className="mt-3 grid grid-cols-2 gap-2 min-[480px]:grid-cols-3 lg:grid-cols-5">
         {Array.from({ length: 5 }, (_, index) => (
           <div
             key={index}
-            className="h-28 rounded-2xl border border-border-neutral bg-surface"
+            className="h-14 rounded-xl border border-border-neutral bg-surface"
           />
         ))}
       </div>
-      <div className="mt-6 h-14 rounded-2xl bg-border-neutral/60" />
-      <div className="mt-4 h-40 rounded-2xl border border-border-neutral bg-surface" />
-      <div className="mt-4 overflow-hidden rounded-2xl border border-border-neutral bg-surface">
-        <div className="h-10 bg-brand-charcoal/90" />
-        {Array.from({ length: 6 }, (_, index) => (
+      <div className="mt-3 h-12 rounded-xl bg-border-neutral/60" />
+      <div className="mt-5 space-y-2">
+        {Array.from({ length: 7 }, (_, index) => (
           <div
             key={index}
-            className="h-20 border-t border-border-neutral bg-surface"
+            className="h-14 rounded-xl border border-border-neutral bg-surface"
           />
         ))}
       </div>

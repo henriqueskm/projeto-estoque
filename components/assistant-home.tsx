@@ -29,7 +29,6 @@ import { AssistantMessageContent } from "@/components/assistant-message-content"
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
 import {
-  assistantHistoryMaxMessages,
   assistantMessageMaxLength,
   type AssistantChatRequest,
   type AssistantChatError,
@@ -95,6 +94,7 @@ export function AssistantHome({
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
+  const [lastItemQuery, setLastItemQuery] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [isRefreshingStock, startStockRefresh] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -295,15 +295,9 @@ export function AssistantHome({
     }
 
     try {
-      const history = messages
-        .slice(-assistantHistoryMaxMessages)
-        .map(({ role, content }) => ({
-          role,
-          content: content.slice(0, assistantMessageMaxLength),
-        }));
       const requestBody: AssistantChatRequest = {
         message: submittedMessage,
-        history,
+        ...(lastItemQuery ? { lastItemQuery } : {}),
       };
       const response = await fetch("/api/assistant/chat", {
         method: "POST",
@@ -318,6 +312,23 @@ export function AssistantHome({
       const responseMessage = response.ok
         ? responseBody?.message
         : responseBody?.error;
+
+      if (
+        response.ok &&
+        responseBody &&
+        Object.prototype.hasOwnProperty.call(
+          responseBody,
+          "contextItemQuery",
+        )
+      ) {
+        const contextItemQuery = responseBody.contextItemQuery;
+        setLastItemQuery(
+          typeof contextItemQuery === "string" &&
+            contextItemQuery.trim()
+            ? contextItemQuery.trim()
+            : null,
+        );
+      }
 
       setMessages((current) => [
         ...current,
@@ -481,6 +492,7 @@ export function AssistantHome({
                   disabled={isInteractionLocked}
                   onClick={() => {
                     setMessages([]);
+                    setLastItemQuery(null);
                     setFeedback(null);
                     window.requestAnimationFrame(() =>
                       textareaRef.current?.focus(),

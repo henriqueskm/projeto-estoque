@@ -36,7 +36,7 @@ Utilizar:
 - PostgreSQL
 - Supabase Auth
 - Supabase Storage
-- OpenAI API
+- Google Gemini API
 - GitHub
 - Vercel
 

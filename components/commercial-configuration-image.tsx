@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 type CommercialConfigurationImageProps = {
   commercialCodes: string[];
@@ -156,106 +157,109 @@ export function CommercialConfigurationImage({
         )}
       </button>
 
-      {isOpen ? (
-        <div
-          ref={dialogRef}
-          role="dialog"
-          data-commercial-image-dialog="true"
-          aria-modal="true"
-          aria-labelledby={dialogTitleId}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeModal();
-            }
-          }}
-          className="fixed inset-0 z-[100] flex bg-black/95 p-2 pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] sm:p-5"
-        >
-          <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden rounded-2xl border border-white/15 bg-brand-charcoal shadow-2xl">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/15 px-3 py-3 sm:px-5">
-              <div className="min-w-0">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300">
-                  Configuração comercial
-                </p>
-                <h2
-                  id={dialogTitleId}
-                  className="truncate font-mono text-lg font-black text-brand-gold sm:text-xl"
-                >
-                  {codeLabel}
-                </h2>
-              </div>
+      {isOpen
+        ? createPortal(
+            <div
+              ref={dialogRef}
+              role="dialog"
+              data-commercial-image-dialog="true"
+              aria-modal="true"
+              aria-labelledby={dialogTitleId}
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  closeModal();
+                }
+              }}
+              className="fixed inset-0 z-[200] flex h-dvh min-h-0 w-screen overflow-hidden bg-black/95 p-2 pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] sm:p-5"
+            >
+              <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden rounded-2xl border border-white/15 bg-brand-charcoal shadow-2xl">
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/15 px-3 py-3 sm:px-5">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300">
+                      Configuração comercial
+                    </p>
+                    <h2
+                      id={dialogTitleId}
+                      className="truncate font-mono text-lg font-black text-brand-gold sm:text-xl"
+                    >
+                      {codeLabel}
+                    </h2>
+                  </div>
 
-              <div className="flex items-center gap-2">
-                <div
-                  className="flex items-center rounded-xl border border-white/20 bg-black/30"
-                  aria-label="Controles de zoom"
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setZoom((currentZoom) =>
-                        Math.max(minimumZoom, currentZoom - zoomStep),
-                      )
-                    }
-                    disabled={zoom <= minimumZoom}
-                    aria-label="Diminuir zoom"
-                    className="nk-focus flex size-11 items-center justify-center rounded-l-xl text-xl font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    −
-                  </button>
-                  <span
-                    aria-live="polite"
-                    className="min-w-14 text-center text-xs font-bold text-white"
-                  >
-                    {Math.round(zoom * 100)}%
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setZoom((currentZoom) =>
-                        Math.min(maximumZoom, currentZoom + zoomStep),
-                      )
-                    }
-                    disabled={zoom >= maximumZoom}
-                    aria-label="Aumentar zoom"
-                    className="nk-focus flex size-11 items-center justify-center rounded-r-xl text-xl font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    +
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="flex items-center rounded-xl border border-white/20 bg-black/30"
+                      aria-label="Controles de zoom"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setZoom((currentZoom) =>
+                            Math.max(minimumZoom, currentZoom - zoomStep),
+                          )
+                        }
+                        disabled={zoom <= minimumZoom}
+                        aria-label="Diminuir zoom"
+                        className="nk-focus flex size-11 items-center justify-center rounded-l-xl text-xl font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        −
+                      </button>
+                      <span
+                        aria-live="polite"
+                        className="min-w-14 text-center text-xs font-bold text-white"
+                      >
+                        {Math.round(zoom * 100)}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setZoom((currentZoom) =>
+                            Math.min(maximumZoom, currentZoom + zoomStep),
+                          )
+                        }
+                        disabled={zoom >= maximumZoom}
+                        aria-label="Aumentar zoom"
+                        className="nk-focus flex size-11 items-center justify-center rounded-r-xl text-xl font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <button
+                      ref={closeButtonRef}
+                      type="button"
+                      onClick={closeModal}
+                      aria-label="Fechar foto ampliada"
+                      className="nk-focus inline-flex min-h-11 items-center justify-center rounded-xl border border-white/25 bg-white px-4 text-sm font-black text-brand-charcoal transition hover:bg-slate-100"
+                    >
+                      Fechar
+                    </button>
+                  </div>
                 </div>
 
-                <button
-                  ref={closeButtonRef}
-                  type="button"
-                  onClick={closeModal}
-                  aria-label="Fechar foto ampliada"
-                  className="nk-focus inline-flex min-h-11 items-center justify-center rounded-xl border border-white/25 bg-white px-4 text-sm font-black text-brand-charcoal transition hover:bg-slate-100"
+                <div
+                  className="min-h-0 flex-1 overflow-auto overscroll-contain"
+                  style={{ touchAction: "pan-x pan-y pinch-zoom" }}
                 >
-                  Fechar
-                </button>
+                  <div
+                    className="flex min-h-full min-w-full items-center justify-center p-3 sm:p-5"
+                    style={{
+                      height: `${zoom * 100}%`,
+                      width: `${zoom * 100}%`,
+                    }}
+                  >
+                    <img
+                      src={imageUrl}
+                      alt={altText}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <div
-              className="min-h-0 flex-1 overflow-auto overscroll-contain"
-              style={{ touchAction: "pan-x pan-y pinch-zoom" }}
-            >
-              <div
-                className="flex min-h-full min-w-full items-center justify-center p-3 sm:p-5"
-                style={{
-                  height: `${zoom * 100}%`,
-                  width: `${zoom * 100}%`,
-                }}
-              >
-                <img
-                  src={imageUrl}
-                  alt={altText}
-                  className="max-h-full max-w-full object-contain"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

@@ -1,13 +1,8 @@
 import {
-  inventoryPageSize,
   type InventoryCommercialConfiguration,
   type InventoryDataResult,
-  type InventoryFilters,
   type InventoryPhysicalItem,
-  type InventorySearchParams,
-  type PhysicalTypeFilter,
   type StockState,
-  type StockStateFilter,
 } from "@/lib/inventory-types";
 import {
   calculatePhysicalStockByItem,
@@ -73,99 +68,6 @@ const physicalItemTypeLabels: Record<PhysicalStockItemType, string> = {
   LOOSE_PART: "Peça avulsa",
 };
 
-const physicalTypeByFilter: Record<
-  Exclude<PhysicalTypeFilter, "todos">,
-  PhysicalStockItemType
-> = {
-  servo: "SERVO",
-  "kit-instalacao": "INSTALLATION_KIT",
-  "jogo-reparo": "REPAIR_KIT",
-  "peca-avulsa": "LOOSE_PART",
-};
-
-const stockStateByFilter: Record<
-  Exclude<StockStateFilter, "todos">,
-  StockState
-> = {
-  disponivel: "AVAILABLE",
-  baixo: "LOW",
-  zerado: "ZERO",
-};
-
-function firstValue(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function isOneOf<T extends string>(
-  value: string | undefined,
-  options: readonly T[],
-): value is T {
-  return value !== undefined && options.includes(value as T);
-}
-
-export function parseInventoryFilters(
-  searchParams: InventorySearchParams,
-): InventoryFilters {
-  const tabValue = firstValue(searchParams.aba);
-  const typeValue = firstValue(searchParams.tipo);
-  const stockStateValue = firstValue(searchParams.situacao);
-  const mountedStateValue = firstValue(searchParams.montado);
-  const pageValue = firstValue(searchParams.pagina);
-  const parsedPage =
-    pageValue && /^\d+$/.test(pageValue) ? Number(pageValue) : 1;
-
-  return {
-    tab: tabValue === "configuracoes" ? "configuracoes" : "fisicos",
-    query: (firstValue(searchParams.q) ?? "").trim().slice(0, 100),
-    type: isOneOf(typeValue, [
-      "todos",
-      "servo",
-      "kit-instalacao",
-      "jogo-reparo",
-      "peca-avulsa",
-    ])
-      ? typeValue
-      : "todos",
-    stockState: isOneOf(stockStateValue, [
-      "todos",
-      "disponivel",
-      "baixo",
-      "zerado",
-    ])
-      ? stockStateValue
-      : "todos",
-    mountedState: isOneOf(mountedStateValue, [
-      "todos",
-      "com-saldo",
-      "sem-saldo",
-    ])
-      ? mountedStateValue
-      : "todos",
-    page:
-      Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1,
-  };
-}
-
-function normalizeSearch(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("pt-BR");
-}
-
-function matchesSearch(
-  normalizedQuery: string,
-  values: Array<string | null | undefined>,
-) {
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return values.some((value) =>
-    value ? normalizeSearch(value).includes(normalizedQuery) : false,
-  );
-}
-
 function compareCodes(first: string, second: string) {
   return first.localeCompare(second, "pt-BR", {
     numeric: true,
@@ -198,25 +100,7 @@ function getStockState(totalQuantity: number, minimumStock: number): StockState 
   return "AVAILABLE";
 }
 
-function paginate<T>(items: T[], requestedPage: number) {
-  const totalPages = Math.max(1, Math.ceil(items.length / inventoryPageSize));
-  const currentPage = Math.min(requestedPage, totalPages);
-  const start = (currentPage - 1) * inventoryPageSize;
-
-  return {
-    items: items.slice(start, start + inventoryPageSize),
-    pagination: {
-      currentPage,
-      totalPages,
-      totalResults: items.length,
-      pageSize: inventoryPageSize,
-    },
-  };
-}
-
-export async function loadInventoryData(
-  filters: InventoryFilters,
-): Promise<InventoryDataResult> {
+export async function loadInventoryData(): Promise<InventoryDataResult> {
   try {
     const supabase = await createClient();
     const [
@@ -439,73 +323,26 @@ export async function loadInventoryData(
           },
         ];
       });
-    const normalizedQuery = normalizeSearch(filters.query);
-    const filteredPhysicalItems = physicalCatalog
-      .filter((item) =>
-        matchesSearch(normalizedQuery, [
-          item.code,
-          item.description,
-          item.model,
-          item.itemType,
-          item.typeLabel,
-        ]),
-      )
-      .filter(
-        (item) =>
-          filters.type === "todos" ||
-          item.itemType === physicalTypeByFilter[filters.type],
-      )
-      .filter(
-        (item) =>
-          filters.stockState === "todos" ||
-          item.state === stockStateByFilter[filters.stockState],
-      )
-      .sort((first, second) =>
-        compareCodeAndId(first.code, first.id, second.code, second.id),
-      );
-    const filteredConfigurations = configurationCatalog
-      .filter((configuration) =>
-        matchesSearch(normalizedQuery, [
-          ...configuration.aliases.map((alias) => alias.code),
-          configuration.description,
-          configuration.servo.code,
-          configuration.servo.description,
-          configuration.servo.model,
-          configuration.installationKit.code,
-          configuration.installationKit.description,
-        ]),
-      )
-      .filter(
-        (configuration) =>
-          filters.mountedState === "todos" ||
-          (filters.mountedState === "com-saldo"
-            ? configuration.assembledQuantity > 0
-            : configuration.assembledQuantity === 0),
-      )
-      .sort((first, second) =>
+    const sortedPhysicalItems = physicalCatalog.sort((first, second) =>
+      compareCodeAndId(first.code, first.id, second.code, second.id),
+    );
+    const sortedConfigurationDrafts = configurationCatalog.sort(
+      (first, second) =>
         compareCodeAndId(
           first.codes[0] ?? first.description,
           first.id,
           second.codes[0] ?? second.description,
           second.id,
         ),
-      );
-    const currentResults =
-      filters.tab === "fisicos"
-        ? paginate(filteredPhysicalItems, filters.page)
-        : paginate(filteredConfigurations, filters.page);
-    const currentConfigurationDrafts =
-      filters.tab === "configuracoes"
-        ? (currentResults.items as InventoryCommercialConfigurationDraft[])
-        : [];
+    );
     const imageUrlByPath = await createCommercialImageUrlMap(
       supabase,
-      currentConfigurationDrafts.map(
+      sortedConfigurationDrafts.map(
         (configuration) => configuration.imagePath,
       ),
     );
-    const currentConfigurations: InventoryCommercialConfiguration[] =
-      currentConfigurationDrafts.map(({ imagePath, ...configuration }) => ({
+    const catalogConfigurations: InventoryCommercialConfiguration[] =
+      sortedConfigurationDrafts.map(({ imagePath, ...configuration }) => ({
         ...configuration,
         imageUrl: imagePath
           ? (imageUrlByPath.get(imagePath) ?? null)
@@ -515,17 +352,10 @@ export async function loadInventoryData(
     return {
       data: {
         summary,
-        physicalItems:
-          filters.tab === "fisicos"
-            ? (currentResults.items as InventoryPhysicalItem[])
-            : [],
-        configurations:
-          filters.tab === "configuracoes"
-            ? currentConfigurations
-            : [],
+        physicalItems: sortedPhysicalItems,
+        configurations: catalogConfigurations,
         physicalCatalogCount: physicalCatalog.length,
         configurationCatalogCount: configurationCatalog.length,
-        pagination: currentResults.pagination,
       },
       error: null,
     };

@@ -216,9 +216,14 @@ function NavigationContent({
             ) : null}
           </div>
 
-          <ComingSoonItem label="Estatísticas">
+          <NavigationLink
+            href="/estatisticas"
+            label="Estatísticas"
+            pathname={pathname}
+            onNavigate={onNavigate}
+          >
             <StatisticsIcon className="size-5" />
-          </ComingSoonItem>
+          </NavigationLink>
 
           <NavigationLink
             href="/historico"
