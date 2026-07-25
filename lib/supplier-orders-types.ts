@@ -10,6 +10,16 @@ export const supplierOrderStatuses = [
 
 export type SupplierOrderStatus = (typeof supplierOrderStatuses)[number];
 
+export const supplierOrderClosureKinds = [
+  "FINALIZED",
+  "CANCELLED",
+] as const;
+
+export type SupplierOrderClosureKind =
+  (typeof supplierOrderClosureKinds)[number];
+
+export type SupplierOrderView = "active" | "history";
+
 export const supplierOrderEventTypes = [
   "ORDER_CREATED",
   "ORDER_HEADER_UPDATED",
@@ -19,6 +29,7 @@ export const supplierOrderEventTypes = [
   "ORDER_CANCELLED",
   "REMAINING_QUANTITY_CANCELLED",
   "STOCK_ENTRY_CREATED",
+  "ORDER_FINALIZED",
 ] as const;
 
 export type SupplierOrderEventType =
@@ -35,6 +46,15 @@ export type SupplierOrderSummary = {
   cancelledAt: string | null;
   cancelledByName: string | null;
   cancellationNote: string | null;
+  finalizedAt: string | null;
+  finalizedByName: string | null;
+  finalizationNote: string | null;
+  isFinalized: boolean;
+  isActiveOrder: boolean;
+  isInHistory: boolean;
+  closureKind: SupplierOrderClosureKind | null;
+  closedAt: string | null;
+  closedByName: string | null;
   lineCount: number;
   orderedQuantity: number;
   pickedQuantity: number;
@@ -116,6 +136,7 @@ export type SupplierOrderCatalogConfiguration = {
 };
 
 export type SupplierOrdersData = {
+  view: SupplierOrderView;
   summaries: SupplierOrderSummary[];
   items: SupplierOrderItem[];
   events: SupplierOrderEvent[];
@@ -171,6 +192,13 @@ export type SupplierOrderCommandInput = {
 export type SupplierOrderCancellationInput = {
   supplier_order_id: string;
   cancellation_note: string;
+  idempotency_key: string;
+};
+
+export type FinalizeSupplierOrderInput = {
+  supplier_order_id: string;
+  expected_updated_at: string;
+  finalization_note: string | null;
   idempotency_key: string;
 };
 

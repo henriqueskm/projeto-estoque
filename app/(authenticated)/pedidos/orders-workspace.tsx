@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -16,6 +17,7 @@ import {
   cancelSupplierOrder,
   cancelSupplierOrderRemaining,
   createSupplierOrder,
+  finalizeSupplierOrder,
   markSupplierOrderAllPicked,
   setSupplierOrderItemPickedQuantity,
   updateSupplierOrder,
@@ -37,22 +39,30 @@ import type {
   CreateSupplierOrderInput,
   SupplierOrderCatalogConfiguration,
   SupplierOrderCatalogPhysicalItem,
+  SupplierOrderClosureKind,
   SupplierOrderEvent,
   SupplierOrderItem,
   SupplierOrderLineInput,
   SupplierOrdersData,
   SupplierOrderStatus,
   SupplierOrderSummary,
+  SupplierOrderView,
   UpdateSupplierOrderInput,
 } from "@/lib/supplier-orders-types";
 
 type SupplierOrdersWorkspaceProps = {
   data: SupplierOrdersData;
+  view: SupplierOrderView;
 };
 
-type StatusFilter = "ALL" | SupplierOrderStatus;
+type StatusFilter = "ALL" | Exclude<SupplierOrderStatus, "CANCELLED">;
 type PeriodFilter = "ALL" | "7" | "30" | "90" | "MONTH";
 type OrderSort = "RECENT" | "OLDEST" | "NUMBER";
+type HistoryClosureFilter =
+  | "ALL"
+  | SupplierOrderClosureKind
+  | "WAITING_STOCK";
+type HistorySort = "CLOSED_RECENT" | "CLOSED_OLDEST" | "ORDER_RECENT" | "NUMBER";
 type ConfirmationKind = "MARK_ALL" | "CANCEL" | "CANCEL_REMAINING";
 type CatalogGroup =
   | "CONFIGURATIONS"
@@ -84,6 +94,16 @@ type DraftLine = {
 
 const maximumInteger = 2_147_483_647;
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
+
+function formatCount(
+  value: number,
+  singular: string,
+  plural: string,
+) {
+  return `${quantityFormatter.format(value)} ${
+    value === 1 ? singular : plural
+  }`;
+}
 
 const statusDetails: Record<
   SupplierOrderStatus,
@@ -153,10 +173,12 @@ function OrderItemImageButton({
 }
 
 function ItemQuantityIndicators({
+  cancelledQuantity,
   orderedQuantity,
   pickedQuantity,
   waitingPickupQuantity,
 }: {
+  cancelledQuantity: number;
   orderedQuantity: number;
   pickedQuantity: number;
   waitingPickupQuantity: number;
@@ -165,34 +187,51 @@ function ItemQuantityIndicators({
     {
       label: "Solicitado",
       value: orderedQuantity,
-      className: "border-slate-200 bg-slate-50 text-text-primary",
+      className: "text-text-primary",
     },
     {
       label: "Retirado",
       value: pickedQuantity,
-      className: "border-emerald-200 bg-emerald-50 text-emerald-950",
+      className: "text-emerald-700",
     },
-    {
-      label: "Falta",
-      value: waitingPickupQuantity,
-      className: "border-amber-200 bg-amber-50 text-amber-950",
-    },
+    ...(cancelledQuantity > 0
+      ? [
+          {
+            label: "Cancelado",
+            value: cancelledQuantity,
+            className: "text-red-700",
+          },
+        ]
+      : []),
+    ...(waitingPickupQuantity > 0 || cancelledQuantity === 0
+      ? [
+          {
+            label: "Falta",
+            value: waitingPickupQuantity,
+            className: "text-amber-800",
+          },
+        ]
+      : []),
   ];
 
   return (
     <dl
-      className="grid min-w-0 grid-cols-3 gap-1"
+      className="flex min-w-0 flex-wrap items-baseline gap-y-0.5 text-xs leading-5 sm:text-sm"
       aria-label="Resumo das quantidades do item"
     >
-      {indicators.map((indicator) => (
+      {indicators.map((indicator, index) => (
         <div
           key={indicator.label}
-          className={`min-w-0 rounded-lg border px-1.5 py-1 ${indicator.className}`}
+          className={`inline-flex items-baseline gap-1 whitespace-nowrap ${
+            index > 0
+              ? "ml-2 border-l border-border-neutral pl-2"
+              : ""
+          }`}
         >
-          <dt className="truncate text-[0.52rem] leading-3 font-black tracking-wide uppercase sm:text-[0.58rem]">
-            {indicator.label}
+          <dt className="font-semibold text-text-muted">
+            {indicator.label}:
           </dt>
-          <dd className="font-mono text-sm leading-4 font-black sm:text-base sm:leading-5">
+          <dd className={`font-mono font-black ${indicator.className}`}>
             {quantityFormatter.format(indicator.value)}
           </dd>
         </div>
@@ -211,6 +250,17 @@ function formatCompactOrderDate(value: string) {
   return year && month && day
     ? `${day}/${month}/${year.slice(-2)}`
     : value;
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "Não informado";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function getLocalDateInputValue() {
@@ -276,6 +326,66 @@ function StatusBadge({
   );
 }
 
+function ClosureBadge({
+  closureKind,
+  compact = false,
+}: {
+  closureKind: SupplierOrderClosureKind | null;
+  compact?: boolean;
+}) {
+  const finalized = closureKind === "FINALIZED";
+  const cancelled = closureKind === "CANCELLED";
+
+  return (
+    <span
+      className={`inline-flex rounded-full border font-black ${
+        compact
+          ? "px-1.5 py-0.5 text-[0.62rem]"
+          : "px-2.5 py-1 text-xs"
+      } ${
+        finalized
+          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+          : cancelled
+            ? "border-red-200 bg-red-50 text-red-900"
+            : "border-slate-200 bg-slate-50 text-text-muted"
+      }`}
+    >
+      {finalized ? "Finalizado" : cancelled ? "Cancelado" : "Encerrado"}
+    </span>
+  );
+}
+
+function OrdersViewTabs({ view }: { view: SupplierOrderView }) {
+  return (
+    <nav
+      aria-label="Visualização dos pedidos"
+      className="mt-4 grid grid-cols-2 rounded-xl border border-border-neutral bg-surface p-1 sm:inline-grid sm:min-w-[25rem]"
+    >
+      {[
+        { href: "/pedidos?view=active", label: "Pedidos ativos", value: "active" },
+        { href: "/pedidos?view=history", label: "Histórico", value: "history" },
+      ].map((tab) => {
+        const active = view === tab.value;
+
+        return (
+          <Link
+            key={tab.value}
+            href={tab.href}
+            aria-current={active ? "page" : undefined}
+            className={`nk-focus flex min-h-11 items-center justify-center rounded-lg px-3 text-center text-sm font-black transition ${
+              active
+                ? "bg-brand-charcoal text-white shadow-sm"
+                : "text-text-muted hover:bg-app-background hover:text-text-primary"
+            }`}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 function MobileOrderSituation({ order }: { order: SupplierOrderSummary }) {
   const percentage = Math.max(0, Math.min(100, order.pickupPercentage));
 
@@ -303,6 +413,11 @@ function MobileOrderSituation({ order }: { order: SupplierOrderSummary }) {
       {order.cancelledQuantity > 0 ? (
         <p className="mt-1 text-[0.58rem] leading-tight font-bold text-red-800">
           {quantityFormatter.format(order.cancelledQuantity)} cancelado
+        </p>
+      ) : null}
+      {order.status === "COMPLETED" && order.isActiveOrder ? (
+        <p className="mt-1 text-[0.58rem] leading-tight font-bold text-emerald-800">
+          Aguardando finalização
         </p>
       ) : null}
     </div>
@@ -2135,18 +2250,168 @@ function ConfirmationDialog({
   );
 }
 
+function FinalizationDialog({
+  onClose,
+  onStale,
+  onSuccess,
+  order,
+}: {
+  onClose: () => void;
+  onStale: (message: string) => void;
+  onSuccess: () => void;
+  order: SupplierOrderSummary;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const noteInputRef = useRef<HTMLTextAreaElement>(null);
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  useAccessibleDialog(
+    dialogRef,
+    noteInputRef,
+    isPending,
+    onClose,
+  );
+
+  function handleConfirm() {
+    const normalizedNote = note.trim();
+
+    if (normalizedNote.length > 500) {
+      setError("A observação final deve ter no máximo 500 caracteres.");
+      return;
+    }
+
+    const idempotencyKey =
+      idempotencyKeyRef.current ?? crypto.randomUUID();
+    idempotencyKeyRef.current = idempotencyKey;
+    setError(null);
+
+    startTransition(async () => {
+      const result = await finalizeSupplierOrder({
+        supplier_order_id: order.id,
+        expected_updated_at: order.updatedAt,
+        finalization_note: normalizedNote || null,
+        idempotency_key: idempotencyKey,
+      });
+
+      if (!result.ok) {
+        if (result.stale) {
+          idempotencyKeyRef.current = null;
+          onStale(result.error);
+          return;
+        }
+
+        setError(result.error);
+        return;
+      }
+
+      idempotencyKeyRef.current = null;
+      onSuccess();
+    });
+  }
+
+  return (
+    <DialogShell
+      title="Finalizar pedido?"
+      titleId={titleId}
+      descriptionId={descriptionId}
+      dialogRef={dialogRef}
+      isPending={isPending}
+      onClose={onClose}
+    >
+      <div className="min-h-0 overflow-y-auto p-4 sm:p-5">
+        <p
+          id={descriptionId}
+          className="text-sm leading-6 font-semibold text-text-muted"
+        >
+          O pedido será removido de Pedidos ativos e permanecerá disponível no
+          Histórico.
+        </p>
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-950">
+          Isso não altera o estoque.
+        </p>
+        {order.waitingStockQuantity > 0 ? (
+          <p className="mt-3 rounded-xl border border-brand-gold/35 bg-brand-gold-soft/40 px-4 py-3 text-sm font-bold text-text-primary">
+            {order.waitingStockQuantity === 1
+              ? "1 unidade ainda aguarda entrada no estoque."
+              : `${quantityFormatter.format(order.waitingStockQuantity)} unidades ainda aguardam entrada no estoque.`}
+          </p>
+        ) : null}
+        <label className="mt-4 block">
+          <span className="mb-1.5 flex items-center justify-between gap-3 text-xs font-black tracking-wide text-text-primary uppercase">
+            <span>Observação final (opcional)</span>
+            <span className="font-mono text-text-muted normal-case">
+              {note.length}/500
+            </span>
+          </span>
+          <textarea
+            ref={noteInputRef}
+            rows={4}
+            maxLength={500}
+            disabled={isPending}
+            value={note}
+            onChange={(event) => {
+              setNote(event.target.value);
+              idempotencyKeyRef.current = null;
+              setError(null);
+            }}
+            className="nk-focus w-full resize-y rounded-xl border border-border-neutral p-3 text-sm font-semibold text-text-primary disabled:bg-slate-100"
+            placeholder="Ex.: retirada concluída no fornecedor."
+          />
+        </label>
+        {error ? (
+          <p
+            role="alert"
+            className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900"
+          >
+            {error}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border-neutral bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={onClose}
+          className="nk-focus min-h-12 rounded-xl border border-border-neutral px-5 text-sm font-black text-text-primary transition hover:bg-app-background disabled:opacity-50"
+        >
+          Voltar
+        </button>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={handleConfirm}
+          className="nk-focus min-h-12 rounded-xl bg-emerald-700 px-5 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60"
+        >
+          {isPending ? "Finalizando..." : "Finalizar pedido"}
+        </button>
+      </div>
+    </DialogShell>
+  );
+}
+
 function OrderDetailsDialog({
   items,
   onClose,
   onEdit,
+  onFinalized,
   onMutated,
+  onStale,
   order,
+  readOnly = false,
 }: {
   items: SupplierOrderItem[];
   onClose: () => void;
   onEdit: () => void;
+  onFinalized: () => void;
   onMutated: (message: string) => void;
+  onStale: (message: string) => void;
   order: SupplierOrderSummary;
+  readOnly?: boolean;
 }) {
   const titleId = useId();
   const descriptionId = useId();
@@ -2158,6 +2423,7 @@ function OrderDetailsDialog({
   );
   const [confirmation, setConfirmation] =
     useState<ConfirmationKind | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -2171,7 +2437,7 @@ function OrderDetailsDialog({
   useAccessibleDialog(
     dialogRef,
     closeButtonRef,
-    isPending || Boolean(confirmation),
+    isPending || Boolean(confirmation) || finalizing,
     handleClose,
   );
 
@@ -2189,10 +2455,26 @@ function OrderDetailsDialog({
     );
   }
 
+  if (finalizing) {
+    return (
+      <FinalizationDialog
+        order={order}
+        onClose={() => setFinalizing(false)}
+        onStale={(message) => {
+          setFinalizing(false);
+          onStale(message);
+        }}
+        onSuccess={onFinalized}
+      />
+    );
+  }
+
   const canEdit =
-    order.status === "PENDING" || order.status === "PARTIAL";
+    !readOnly &&
+    (order.status === "PENDING" || order.status === "PARTIAL");
   const canChangePickup = canEdit;
   const canMarkAll =
+    !readOnly &&
     order.status !== "CANCELLED" &&
     order.status !== "COMPLETED" &&
     order.waitingPickupQuantity > 0;
@@ -2205,8 +2487,17 @@ function OrderDetailsDialog({
     canEdit &&
     (order.pickedQuantity > 0 || order.stockedQuantity > 0) &&
     order.waitingPickupQuantity > 0;
+  const canFinalize =
+    !readOnly &&
+    order.status === "COMPLETED" &&
+    order.closureKind === null &&
+    order.cancelledAt === null;
   const hasFooterActions =
-    canEdit || canMarkAll || canCancelFull || canCancelRemaining;
+    canEdit ||
+    canMarkAll ||
+    canCancelFull ||
+    canCancelRemaining ||
+    canFinalize;
   const waitingStockMessage =
     order.waitingStockQuantity === 1
       ? "1 unidade aguarda entrada no estoque"
@@ -2286,7 +2577,11 @@ function OrderDetailsDialog({
             >
               {formatOrderDate(order.orderDate)}
             </p>
-            <StatusBadge status={order.status} />
+            {readOnly ? (
+              <ClosureBadge closureKind={order.closureKind} />
+            ) : (
+              <StatusBadge status={order.status} />
+            )}
           </div>
           {order.notes ? (
             <p className="mt-2 rounded-lg bg-app-background px-3 py-1.5 text-xs leading-5 font-semibold text-text-primary sm:text-sm">
@@ -2343,6 +2638,46 @@ function OrderDetailsDialog({
           ) : null}
         </section>
 
+        {readOnly ? (
+          <section className="border-b border-border-neutral px-3 py-2.5 sm:px-4 sm:py-3">
+            <h3 className="text-sm font-black text-text-primary">
+              Encerramento
+            </h3>
+            <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2 sm:text-sm">
+              <div className="rounded-lg bg-app-background px-3 py-2">
+                <dt className="font-bold text-text-muted">
+                  Data e hora
+                </dt>
+                <dd className="mt-0.5 font-black text-text-primary">
+                  {formatDateTime(order.closedAt)}
+                </dd>
+              </div>
+              <div className="rounded-lg bg-app-background px-3 py-2">
+                <dt className="font-bold text-text-muted">
+                  Encerrado por
+                </dt>
+                <dd className="mt-0.5 font-black text-text-primary">
+                  {order.closedByName ?? "Não informado"}
+                </dd>
+              </div>
+            </dl>
+            {(order.closureKind === "FINALIZED"
+              ? order.finalizationNote
+              : order.cancellationNote) ? (
+              <p className="mt-2 rounded-lg border border-border-neutral bg-white px-3 py-2 text-xs leading-5 font-semibold text-text-primary sm:text-sm">
+                <strong>
+                  {order.closureKind === "FINALIZED"
+                    ? "Observação final:"
+                    : "Motivo do cancelamento:"}
+                </strong>{" "}
+                {order.closureKind === "FINALIZED"
+                  ? order.finalizationNote
+                  : order.cancellationNote}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
         <section
           className="px-3 py-2.5 sm:px-4 sm:py-3"
           aria-labelledby={`${titleId}-items`}
@@ -2368,7 +2703,7 @@ function OrderDetailsDialog({
                 item.compatibleKitImages.length > 0;
 
               return (
-                <article key={item.id} className="px-2.5 py-2 sm:px-3">
+                <article key={item.id} className="px-2.5 py-1.5 sm:px-3 sm:py-2">
                   <div
                     className={`grid min-w-0 items-center gap-x-1.5 ${
                       hasImage
@@ -2407,40 +2742,35 @@ function OrderDetailsDialog({
                   </div>
 
                   <div
-                    className={`mt-1.5 grid items-end gap-2 ${
+                    className={`mt-1 grid items-end gap-1.5 ${
                       canChangePickup
-                        ? "grid-cols-1 min-[360px]:grid-cols-[minmax(0,1fr)_auto]"
-                        : "grid-cols-[minmax(0,1fr)_auto]"
+                        ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto]"
+                        : "grid-cols-1"
                     }`}
                   >
                     <div className="min-w-0">
                       <ItemQuantityIndicators
+                        cancelledQuantity={item.cancelledQuantity}
                         orderedQuantity={item.orderedQuantity}
                         pickedQuantity={item.pickedQuantity}
                         waitingPickupQuantity={
                           item.waitingPickupQuantity
                         }
                       />
-                      {item.cancelledQuantity > 0 ? (
-                        <p className="mt-0.5 text-[0.62rem] leading-4 font-bold text-red-800 sm:text-xs">
-                          Cancelado:{" "}
-                          {quantityFormatter.format(
-                            item.cancelledQuantity,
-                          )}
-                        </p>
-                      ) : null}
                       {item.waitingStockQuantity > 0 ? (
-                        <p className="mt-0.5 text-[0.62rem] leading-4 font-bold text-amber-900 sm:text-xs">
+                        <p className="text-[0.68rem] leading-4 font-semibold text-amber-900 sm:text-xs">
                           Aguardando entrada:{" "}
-                          {quantityFormatter.format(
-                            item.waitingStockQuantity,
-                          )}
+                          <strong className="font-mono font-black">
+                            {quantityFormatter.format(
+                              item.waitingStockQuantity,
+                            )}
+                          </strong>
                         </p>
                       ) : null}
                     </div>
 
                     {canChangePickup ? (
-                      <div className="flex flex-wrap items-end justify-start gap-1.5 min-[360px]:justify-end">
+                      <div className="flex flex-wrap items-end justify-start gap-1.5 sm:justify-end">
                         <div>
                           <span className="mb-0.5 block text-[0.58rem] font-black text-text-muted uppercase">
                             Retirado
@@ -2467,13 +2797,7 @@ function OrderDetailsDialog({
                             : "Salvar"}
                         </button>
                       </div>
-                    ) : (
-                      <p className="shrink-0 text-right text-xs font-black text-text-primary">
-                        Retirado:{" "}
-                        {quantityFormatter.format(item.pickedQuantity)}/
-                        {quantityFormatter.format(item.orderedQuantity)}
-                      </p>
-                    )}
+                    ) : null}
                   </div>
                 </article>
               );
@@ -2481,7 +2805,25 @@ function OrderDetailsDialog({
           </div>
         </section>
 
-        {order.waitingStockQuantity > 0 ? (
+        {readOnly ? (
+          <section className="border-t border-border-neutral px-3 py-2 sm:px-4">
+            <p
+              className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                order.waitingStockQuantity > 0
+                  ? "border-amber-200 bg-amber-50 text-amber-950"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-950"
+              }`}
+            >
+              {order.waitingStockQuantity > 0
+                ? order.waitingStockQuantity === 1
+                  ? "1 unidade aguardando entrada no estoque."
+                  : `${quantityFormatter.format(order.waitingStockQuantity)} unidades aguardando entrada no estoque.`
+                : order.pickedQuantity > 0
+                  ? "Entrada no estoque concluída."
+                  : "Sem entrada aplicável."}
+            </p>
+          </section>
+        ) : order.waitingStockQuantity > 0 ? (
           <section className="border-t border-border-neutral px-3 py-2 sm:px-4">
             <p className="rounded-lg border border-brand-gold/35 bg-brand-gold-soft/40 px-3 py-1.5 text-xs font-bold text-text-primary">
               {waitingStockMessage}{" "}
@@ -2541,6 +2883,16 @@ function OrderDetailsDialog({
             Cancelar saldo restante
           </button>
         ) : null}
+        {canFinalize ? (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => setFinalizing(true)}
+            className="nk-focus min-h-10 rounded-xl bg-emerald-700 px-3 text-center text-xs leading-tight font-black text-white transition hover:bg-emerald-800 disabled:opacity-50 sm:min-h-11 sm:px-4 sm:text-sm"
+          >
+            Finalizar pedido
+          </button>
+        ) : null}
         <button
           ref={closeButtonRef}
           type="button"
@@ -2583,9 +2935,41 @@ function orderMatchesPeriod(orderDate: string, period: PeriodFilter) {
   return date >= start && date <= today;
 }
 
-export function SupplierOrdersWorkspace({
+function historyOrderMatchesPeriod(
+  closedAt: string | null,
+  period: PeriodFilter,
+) {
+  if (period === "ALL") {
+    return true;
+  }
+
+  if (!closedAt) {
+    return false;
+  }
+
+  const date = new Date(closedAt);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+
+  if (period === "MONTH") {
+    return (
+      date.getFullYear() === today.getFullYear() &&
+      date.getMonth() === today.getMonth()
+    );
+  }
+
+  const days = Number(period);
+  const start = new Date(today);
+  start.setDate(start.getDate() - days + 1);
+  start.setHours(0, 0, 0, 0);
+  return date >= start && date <= today;
+}
+
+function ActiveSupplierOrdersWorkspace({
   data,
-}: SupplierOrdersWorkspaceProps) {
+}: {
+  data: SupplierOrdersData;
+}) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
@@ -2613,6 +2997,16 @@ export function SupplierOrdersWorkspace({
     );
     return grouped;
   }, [data.items]);
+  const aliasesByConfigurationId = useMemo(
+    () =>
+      new Map(
+        data.catalog.configurations.map((configuration) => [
+          configuration.configurationId,
+          configuration.aliases.map((alias) => alias.code),
+        ]),
+      ),
+    [data.catalog.configurations],
+  );
 
   const eventsByOrder = useMemo(() => {
     const grouped = new Map<string, SupplierOrderEvent[]>();
@@ -2675,6 +3069,11 @@ export function SupplierOrdersWorkspace({
           item.descriptionSnapshot,
           item.modelSnapshot,
           item.commercialCodeSnapshot,
+          ...(item.commercialConfigurationId
+            ? (aliasesByConfigurationId.get(
+                item.commercialConfigurationId,
+              ) ?? [])
+            : []),
         ]),
       ].some((value) =>
         value
@@ -2701,6 +3100,7 @@ export function SupplierOrdersWorkspace({
     });
   }, [
     data.summaries,
+    aliasesByConfigurationId,
     itemsByOrder,
     normalizedQuery,
     periodFilter,
@@ -2762,6 +3162,8 @@ export function SupplierOrdersWorkspace({
           Novo pedido
         </button>
       </div>
+
+      <OrdersViewTabs view="active" />
 
       <section
         className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 lg:grid-cols-4"
@@ -2839,7 +3241,6 @@ export function SupplierOrdersWorkspace({
                   ["PENDING", "Pendentes"],
                   ["PARTIAL", "Parciais"],
                   ["COMPLETED", "Concluídos"],
-                  ["CANCELLED", "Cancelados"],
                 ].map(([value, label]) => (
                   <button
                     key={value}
@@ -2981,7 +3382,7 @@ export function SupplierOrdersWorkspace({
                         {quantityFormatter.format(order.orderedQuantity)} un.
                       </strong>
                       <span className="mt-0.5 block text-[0.6rem] leading-tight font-semibold text-text-muted">
-                        {quantityFormatter.format(order.lineCount)} tipos
+                        {formatCount(order.lineCount, "tipo", "tipos")}
                       </span>
                     </td>
                     <td className="px-1.5 py-2">
@@ -3061,11 +3462,16 @@ export function SupplierOrdersWorkspace({
                         {quantityFormatter.format(order.orderedQuantity)} un.
                       </strong>
                       <span className="block text-xs font-semibold text-text-muted">
-                        {quantityFormatter.format(order.lineCount)} itens
+                        {formatCount(order.lineCount, "item", "itens")}
                       </span>
                     </td>
                     <td className="px-2 py-2.5 sm:px-4 sm:py-3">
                       <StatusBadge status={order.status} />
+                      {order.status === "COMPLETED" ? (
+                        <span className="mt-1 block text-[0.68rem] font-bold text-emerald-800">
+                          Aguardando finalização
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-2 py-2.5 sm:px-4 sm:py-3">
                       <PickupProgress order={order} />
@@ -3125,7 +3531,17 @@ export function SupplierOrdersWorkspace({
           items={itemsByOrder.get(selectedOrder.id) ?? []}
           onClose={() => setSelectedOrderId(null)}
           onEdit={() => setEditingOrderId(selectedOrder.id)}
+          onFinalized={() => {
+            setSelectedOrderId(null);
+            handleMutated(
+              "Pedido finalizado e movido para o Histórico.",
+            );
+          }}
           onMutated={(message) => handleMutated(message, selectedOrder.id)}
+          onStale={(message) => {
+            setFeedback(message);
+            router.refresh();
+          }}
         />
       ) : null}
 
@@ -3146,5 +3562,504 @@ export function SupplierOrdersWorkspace({
         </div>
       ) : null}
     </>
+  );
+}
+
+function HistorySupplierOrdersWorkspace({
+  data,
+}: {
+  data: SupplierOrdersData;
+}) {
+  const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [closureFilter, setClosureFilter] =
+    useState<HistoryClosureFilter>("ALL");
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("ALL");
+  const [sort, setSort] = useState<HistorySort>("CLOSED_RECENT");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+
+  const itemsByOrder = useMemo(() => {
+    const grouped = new Map<string, SupplierOrderItem[]>();
+    data.items.forEach((item) => {
+      const current = grouped.get(item.supplierOrderId) ?? [];
+      current.push(item);
+      grouped.set(item.supplierOrderId, current);
+    });
+    grouped.forEach((items) =>
+      items.sort(
+        (first, second) =>
+          first.position - second.position ||
+          compareText(first.codeSnapshot, second.codeSnapshot),
+      ),
+    );
+    return grouped;
+  }, [data.items]);
+  const aliasesByConfigurationId = useMemo(
+    () =>
+      new Map(
+        data.catalog.configurations.map((configuration) => [
+          configuration.configurationId,
+          configuration.aliases.map((alias) => alias.code),
+        ]),
+      ),
+    [data.catalog.configurations],
+  );
+  const normalizedQuery = normalizeSearch(search.trim());
+  const filteredOrders = useMemo(() => {
+    const result = data.summaries.filter((order) => {
+      if (
+        closureFilter === "WAITING_STOCK" &&
+        order.waitingStockQuantity <= 0
+      ) {
+        return false;
+      }
+
+      if (
+        closureFilter !== "ALL" &&
+        closureFilter !== "WAITING_STOCK" &&
+        order.closureKind !== closureFilter
+      ) {
+        return false;
+      }
+
+      if (!historyOrderMatchesPeriod(order.closedAt, periodFilter)) {
+        return false;
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const values = [
+        order.negotiationNumber,
+        ...(itemsByOrder.get(order.id) ?? []).flatMap((item) => [
+          item.codeSnapshot,
+          item.descriptionSnapshot,
+          item.modelSnapshot,
+          item.commercialCodeSnapshot,
+          ...(item.commercialConfigurationId
+            ? (aliasesByConfigurationId.get(
+                item.commercialConfigurationId,
+              ) ?? [])
+            : []),
+        ]),
+      ];
+
+      return values.some((value) =>
+        value
+          ? normalizeSearch(value).includes(normalizedQuery)
+          : false,
+      );
+    });
+
+    return result.sort((first, second) => {
+      if (sort === "NUMBER") {
+        return compareText(first.negotiationNumber, second.negotiationNumber);
+      }
+
+      if (sort === "ORDER_RECENT") {
+        return (
+          new Date(`${second.orderDate}T00:00:00`).getTime() -
+            new Date(`${first.orderDate}T00:00:00`).getTime() ||
+          new Date(second.createdAt).getTime() -
+            new Date(first.createdAt).getTime()
+        );
+      }
+
+      const firstClosed = first.closedAt
+        ? new Date(first.closedAt).getTime()
+        : 0;
+      const secondClosed = second.closedAt
+        ? new Date(second.closedAt).getTime()
+        : 0;
+      return sort === "CLOSED_OLDEST"
+        ? firstClosed - secondClosed
+        : secondClosed - firstClosed;
+    });
+  }, [
+    aliasesByConfigurationId,
+    closureFilter,
+    data.summaries,
+    itemsByOrder,
+    normalizedQuery,
+    periodFilter,
+    sort,
+  ]);
+  const indicators = useMemo(
+    () => ({
+      finalized: filteredOrders.filter(
+        (order) => order.closureKind === "FINALIZED",
+      ).length,
+      cancelled: filteredOrders.filter(
+        (order) => order.closureKind === "CANCELLED",
+      ).length,
+      waitingOrders: filteredOrders.filter(
+        (order) => order.waitingStockQuantity > 0,
+      ).length,
+      waitingUnits: filteredOrders.reduce(
+        (total, order) => total + order.waitingStockQuantity,
+        0,
+      ),
+    }),
+    [filteredOrders],
+  );
+  const selectedOrder = selectedOrderId
+    ? (data.summaries.find((order) => order.id === selectedOrderId) ?? null)
+    : null;
+  const activeFilterCount =
+    (closureFilter !== "ALL" ? 1 : 0) +
+    (periodFilter !== "ALL" ? 1 : 0);
+
+  function openOrder(orderId: string) {
+    setSelectedOrderId(orderId);
+  }
+
+  return (
+    <div className="pb-20 sm:pb-24 lg:pb-28">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-charcoal text-brand-gold">
+          <OrdersIcon className="size-5" />
+        </span>
+        <div>
+          <p className="text-[0.68rem] font-black tracking-[0.16em] text-brand-gold-ink uppercase">
+            Fornecedores
+          </p>
+          <h1 className="text-2xl font-black tracking-tight text-text-primary sm:text-3xl">
+            Histórico de pedidos
+          </h1>
+          <p className="mt-1 text-sm font-semibold text-text-muted">
+            Consulte pedidos finalizados e cancelados sem alterar seus dados.
+          </p>
+        </div>
+      </div>
+
+      <OrdersViewTabs view="history" />
+
+      <section
+        className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 lg:grid-cols-4"
+        aria-label="Indicadores do histórico filtrado"
+      >
+        {[
+          ["Finalizados", indicators.finalized, "bg-emerald-50 border-emerald-200"],
+          ["Cancelados", indicators.cancelled, "bg-red-50 border-red-200"],
+          [
+            "Com entrada pendente",
+            indicators.waitingOrders,
+            "bg-amber-50 border-amber-200",
+          ],
+          [
+            "Unidades para entrada",
+            indicators.waitingUnits,
+            "bg-violet-50 border-violet-200",
+          ],
+        ].map(([label, value, className]) => (
+          <article
+            key={String(label)}
+            className={`rounded-xl border p-2.5 sm:rounded-2xl sm:p-3 ${className}`}
+          >
+            <p className="text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+              {label}
+            </p>
+            <p className="mt-0.5 font-mono text-xl font-black text-text-primary sm:mt-1 sm:text-2xl">
+              {quantityFormatter.format(Number(value))}
+            </p>
+          </article>
+        ))}
+      </section>
+
+      <section className="mt-3 rounded-2xl border border-border-neutral bg-surface p-3 sm:mt-4 sm:p-4">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Pesquisar no histórico</span>
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-text-muted" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Pesquisar pedido, item, modelo ou código..."
+              className="nk-focus h-12 w-full rounded-xl border border-border-neutral bg-white pr-3 pl-10 text-sm font-semibold text-text-primary"
+            />
+          </label>
+          <button
+            type="button"
+            aria-expanded={filtersOpen}
+            aria-controls="supplier-order-history-filters"
+            onClick={() => setFiltersOpen((current) => !current)}
+            className="nk-focus inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border-neutral bg-white px-4 text-sm font-black text-text-primary transition hover:bg-app-background"
+          >
+            Filtros
+            {activeFilterCount > 0 ? (
+              <span className="rounded-full bg-brand-gold px-2 py-0.5 text-xs text-brand-charcoal">
+                {activeFilterCount}
+              </span>
+            ) : null}
+          </button>
+        </div>
+
+        {filtersOpen ? (
+          <div
+            id="supplier-order-history-filters"
+            className="mt-3 grid gap-3 border-t border-border-neutral pt-3 lg:grid-cols-[1fr_auto_auto]"
+          >
+            <div>
+              <p className="mb-1.5 text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+                Encerramento
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  ["ALL", "Todos"],
+                  ["FINALIZED", "Finalizados"],
+                  ["CANCELLED", "Cancelados"],
+                  ["WAITING_STOCK", "Aguardando estoque"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={closureFilter === value}
+                    onClick={() =>
+                      setClosureFilter(value as HistoryClosureFilter)
+                    }
+                    className={`nk-focus min-h-10 rounded-xl px-3 text-xs font-black transition ${
+                      closureFilter === value
+                        ? "bg-brand-charcoal text-white"
+                        : "border border-border-neutral bg-white text-text-muted hover:bg-app-background"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label>
+              <span className="mb-1.5 block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+                Período de encerramento
+              </span>
+              <select
+                value={periodFilter}
+                onChange={(event) =>
+                  setPeriodFilter(event.target.value as PeriodFilter)
+                }
+                className="nk-focus h-11 w-full rounded-xl border border-border-neutral bg-white px-3 text-sm font-bold text-text-primary lg:w-48"
+              >
+                <option value="ALL">Todos os períodos</option>
+                <option value="7">Últimos 7 dias</option>
+                <option value="30">Últimos 30 dias</option>
+                <option value="90">Últimos 90 dias</option>
+                <option value="MONTH">Este mês</option>
+              </select>
+            </label>
+            <label>
+              <span className="mb-1.5 block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+                Ordenação
+              </span>
+              <select
+                value={sort}
+                onChange={(event) =>
+                  setSort(event.target.value as HistorySort)
+                }
+                className="nk-focus h-11 w-full rounded-xl border border-border-neutral bg-white px-3 text-sm font-bold text-text-primary lg:w-52"
+              >
+                <option value="CLOSED_RECENT">
+                  Encerrados recentemente
+                </option>
+                <option value="CLOSED_OLDEST">Encerrados há mais tempo</option>
+                <option value="ORDER_RECENT">Data do pedido recente</option>
+                <option value="NUMBER">Nº do pedido</option>
+              </select>
+            </label>
+          </div>
+        ) : null}
+      </section>
+
+      {data.summaries.length === 0 ? (
+        <section className="mt-4 rounded-2xl border border-dashed border-border-neutral bg-surface px-5 py-10 text-center">
+          <OrdersIcon className="mx-auto size-10 text-brand-gold-dark" />
+          <h2 className="mt-3 text-xl font-black text-text-primary">
+            O Histórico ainda está vazio.
+          </h2>
+          <p className="mt-1 text-sm font-semibold text-text-muted">
+            Pedidos finalizados ou cancelados aparecerão aqui.
+          </p>
+        </section>
+      ) : filteredOrders.length === 0 ? (
+        <section className="mt-4 rounded-2xl border border-dashed border-border-neutral bg-surface px-5 py-10 text-center">
+          <h2 className="text-lg font-black text-text-primary">
+            Nenhum pedido encontrado com os filtros atuais.
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              setSearch("");
+              setClosureFilter("ALL");
+              setPeriodFilter("ALL");
+            }}
+            className="nk-focus mt-3 min-h-11 rounded-xl border border-border-neutral px-4 text-sm font-black text-text-primary"
+          >
+            Limpar filtros
+          </button>
+        </section>
+      ) : (
+        <div className="mt-3 max-w-full overflow-hidden rounded-2xl border border-border-neutral bg-surface sm:mt-4 sm:overflow-x-auto">
+          <table className="w-full table-fixed border-collapse text-left sm:hidden">
+            <colgroup>
+              <col className="w-[20%]" />
+              <col className="w-[27%]" />
+              <col className="w-[25%]" />
+              <col className="w-[28%]" />
+            </colgroup>
+            <thead className="bg-brand-charcoal text-white">
+              <tr>
+                {["Data", "Pedido", "Situação", "Estoque"].map((heading) => (
+                  <th
+                    key={heading}
+                    scope="col"
+                    className="px-1.5 py-2 text-[0.6rem] font-black tracking-wide uppercase"
+                  >
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredOrders.map((order) => (
+                <tr
+                  key={order.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Abrir pedido ${order.negotiationNumber} no histórico`}
+                  onClick={() => openOrder(order.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openOrder(order.id);
+                    }
+                  }}
+                  className="nk-focus cursor-pointer border-t border-border-neutral align-top transition hover:bg-brand-gold-soft/30 focus:bg-brand-gold-soft/30"
+                >
+                  <td className="whitespace-nowrap px-1.5 py-3 text-[0.65rem] font-bold text-text-primary">
+                    {formatCompactOrderDate(order.orderDate)}
+                  </td>
+                  <td className="px-1.5 py-3">
+                    <span className="line-clamp-2 [overflow-wrap:anywhere] font-mono text-xs leading-4 font-black text-text-primary">
+                      {order.negotiationNumber}
+                    </span>
+                    <span className="mt-0.5 block text-[0.58rem] font-semibold text-text-muted">
+                      {quantityFormatter.format(order.orderedQuantity)} un.
+                    </span>
+                  </td>
+                  <td className="px-1.5 py-3">
+                    <ClosureBadge
+                      closureKind={order.closureKind}
+                      compact
+                    />
+                  </td>
+                  <td className="px-1.5 py-3 text-[0.62rem] leading-4 font-bold text-text-primary">
+                    {order.waitingStockQuantity > 0
+                      ? `${quantityFormatter.format(order.waitingStockQuantity)} para entrada`
+                      : order.pickedQuantity > 0
+                        ? "Concluído"
+                        : "Não aplicável"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <table className="hidden w-full min-w-[760px] border-collapse text-left sm:table">
+            <thead className="bg-brand-charcoal text-white">
+              <tr>
+                {[
+                  "Data do pedido",
+                  "Nº do pedido",
+                  "Total de itens",
+                  "Encerramento",
+                  "Entrada no estoque",
+                ].map((heading) => (
+                  <th
+                    key={heading}
+                    scope="col"
+                    className="px-4 py-3 text-xs font-black tracking-wide uppercase"
+                  >
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredOrders.map((order) => (
+                <tr
+                  key={order.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Abrir pedido ${order.negotiationNumber} no histórico`}
+                  onClick={() => openOrder(order.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openOrder(order.id);
+                    }
+                  }}
+                  className="nk-focus cursor-pointer border-t border-border-neutral transition hover:bg-brand-gold-soft/30 focus:bg-brand-gold-soft/30"
+                >
+                  <td className="px-4 py-3.5 text-sm font-bold text-text-primary">
+                    {formatOrderDate(order.orderDate)}
+                  </td>
+                  <td className="px-4 py-3.5 font-mono text-sm font-black text-text-primary">
+                    {order.negotiationNumber}
+                  </td>
+                  <td className="px-4 py-3.5 text-sm text-text-primary">
+                    <strong>
+                      {quantityFormatter.format(order.orderedQuantity)} un.
+                    </strong>
+                    <span className="block text-xs font-semibold text-text-muted">
+                      {formatCount(order.lineCount, "item", "itens")}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <ClosureBadge closureKind={order.closureKind} />
+                    <span className="mt-1 block text-xs font-semibold text-text-muted">
+                      {formatDateTime(order.closedAt)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5 text-sm font-bold text-text-primary">
+                    {order.waitingStockQuantity > 0
+                      ? `${quantityFormatter.format(order.waitingStockQuantity)} para entrada`
+                      : order.pickedQuantity > 0
+                        ? "Concluída"
+                        : "Não aplicável"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {selectedOrder ? (
+        <OrderDetailsDialog
+          key={`${selectedOrder.id}:${selectedOrder.updatedAt}`}
+          order={selectedOrder}
+          items={itemsByOrder.get(selectedOrder.id) ?? []}
+          readOnly
+          onClose={() => setSelectedOrderId(null)}
+          onEdit={() => undefined}
+          onFinalized={() => undefined}
+          onMutated={() => undefined}
+          onStale={() => router.refresh()}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+export function SupplierOrdersWorkspace({
+  data,
+  view,
+}: SupplierOrdersWorkspaceProps) {
+  return view === "history" ? (
+    <HistorySupplierOrdersWorkspace data={data} />
+  ) : (
+    <ActiveSupplierOrdersWorkspace data={data} />
   );
 }

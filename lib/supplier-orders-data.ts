@@ -7,15 +7,18 @@ import {
 } from "@/lib/inbound-types";
 import {
   supplierOrderEventTypes,
+  supplierOrderClosureKinds,
   supplierOrderStatuses,
   type SupplierOrderCatalogConfiguration,
   type SupplierOrderCatalogPhysicalItem,
   type SupplierOrderEvent,
   type SupplierOrderEventType,
+  type SupplierOrderClosureKind,
   type SupplierOrderItem,
   type SupplierOrdersData,
   type SupplierOrderStatus,
   type SupplierOrderSummary,
+  type SupplierOrderView,
 } from "@/lib/supplier-orders-types";
 
 type SummaryRow = {
@@ -29,6 +32,15 @@ type SummaryRow = {
   cancelled_at: string | null;
   cancelled_by_name_snapshot: string | null;
   cancellation_note: string | null;
+  finalized_at: string | null;
+  finalized_by_name_snapshot: string | null;
+  finalization_note: string | null;
+  is_finalized: boolean;
+  is_active_order: boolean;
+  is_in_history: boolean;
+  closure_kind: string | null;
+  closed_at: string | null;
+  closed_by_name_snapshot: string | null;
   line_count: number;
   ordered_quantity: number;
   picked_quantity: number;
@@ -95,12 +107,14 @@ type ConfigurationRow = {
   image_path: string | null;
   servo_id: string;
   installation_kit_id: string;
+  is_active: boolean;
 };
 
 type CommercialCodeRow = {
   id: string;
   code: string;
   configuration_id: string;
+  is_active: boolean;
 };
 
 export type SupplierOrdersDataResult =
@@ -130,6 +144,15 @@ function isSupplierOrderEventType(
   return supplierOrderEventTypes.some((eventType) => eventType === value);
 }
 
+function isSupplierOrderClosureKind(
+  value: string | null,
+): value is SupplierOrderClosureKind {
+  return (
+    value !== null &&
+    supplierOrderClosureKinds.some((closureKind) => closureKind === value)
+  );
+}
+
 function asSafeInteger(value: unknown) {
   const parsed =
     typeof value === "number"
@@ -157,6 +180,17 @@ function mapSummary(row: SummaryRow): SupplierOrderSummary | null {
     cancelledAt: row.cancelled_at,
     cancelledByName: row.cancelled_by_name_snapshot,
     cancellationNote: row.cancellation_note,
+    finalizedAt: row.finalized_at,
+    finalizedByName: row.finalized_by_name_snapshot,
+    finalizationNote: row.finalization_note,
+    isFinalized: row.is_finalized,
+    isActiveOrder: row.is_active_order,
+    isInHistory: row.is_in_history,
+    closureKind: isSupplierOrderClosureKind(row.closure_kind)
+      ? row.closure_kind
+      : null,
+    closedAt: row.closed_at,
+    closedByName: row.closed_by_name_snapshot,
     lineCount: asSafeInteger(row.line_count),
     orderedQuantity: asSafeInteger(row.ordered_quantity),
     pickedQuantity: asSafeInteger(row.picked_quantity),
@@ -227,11 +261,65 @@ function mapEvent(row: EventRow): SupplierOrderEvent | null {
   };
 }
 
-export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult> {
+export async function loadSupplierOrdersData(
+  view: SupplierOrderView,
+): Promise<SupplierOrdersDataResult> {
   try {
     const supabase = await createClient();
+    const classificationColumn =
+      view === "history" ? "is_in_history" : "is_active_order";
+    let summariesQuery = supabase
+      .from("supplier_order_summaries")
+      .select(
+        "id, negotiation_number, order_date, notes, created_by_name_snapshot, created_at, updated_at, cancelled_at, cancelled_by_name_snapshot, cancellation_note, finalized_at, finalized_by_name_snapshot, finalization_note, is_finalized, is_active_order, is_in_history, closure_kind, closed_at, closed_by_name_snapshot, line_count, ordered_quantity, picked_quantity, cancelled_quantity, waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity, pickup_percentage, status",
+      )
+      .eq(classificationColumn, true);
+
+    summariesQuery =
+      view === "history"
+        ? summariesQuery
+            .order("closed_at", { ascending: false })
+            .order("order_date", { ascending: false })
+            .order("created_at", { ascending: false })
+        : summariesQuery
+            .order("order_date", { ascending: false })
+            .order("created_at", { ascending: false });
+
+    const summariesResult = await summariesQuery;
+
+    if (summariesResult.error) {
+      return {
+        data: null,
+        error: "Não foi possível carregar os pedidos agora.",
+      };
+    }
+
+    const summaries = ((summariesResult.data ?? []) as SummaryRow[])
+      .map(mapSummary)
+      .filter((summary): summary is SupplierOrderSummary => Boolean(summary));
+    const supplierOrderIds = summaries.map((summary) => summary.id);
+    const orderItemsPromise =
+      supplierOrderIds.length > 0
+        ? supabase
+            .from("supplier_order_item_details")
+            .select(
+              "id, supplier_order_id, item_id, commercial_configuration_id, commercial_configuration_code_id, code_snapshot, description_snapshot, model_snapshot, item_type_snapshot, commercial_code_snapshot, ordered_quantity, picked_quantity, stocked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_stock_quantity, position, notes, created_at, updated_at",
+            )
+            .in("supplier_order_id", supplierOrderIds)
+            .order("supplier_order_id")
+            .order("position")
+        : Promise.resolve({ data: [], error: null });
+    const eventsPromise =
+      view === "active" && supplierOrderIds.length > 0
+        ? supabase
+            .from("supplier_order_events")
+            .select(
+              "id, supplier_order_id, supplier_order_item_id, event_type, user_name_snapshot, previous_quantity, new_quantity, quantity_delta, description, created_at",
+            )
+            .in("supplier_order_id", supplierOrderIds)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null });
     const [
-      summariesResult,
       orderItemsResult,
       eventsResult,
       itemsResult,
@@ -239,26 +327,8 @@ export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult
       configurationsResult,
       commercialCodesResult,
     ] = await Promise.all([
-      supabase
-        .from("supplier_order_summaries")
-        .select(
-          "id, negotiation_number, order_date, notes, created_by_name_snapshot, created_at, updated_at, cancelled_at, cancelled_by_name_snapshot, cancellation_note, line_count, ordered_quantity, picked_quantity, cancelled_quantity, waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity, pickup_percentage, status",
-        )
-        .order("order_date", { ascending: false })
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("supplier_order_item_details")
-        .select(
-          "id, supplier_order_id, item_id, commercial_configuration_id, commercial_configuration_code_id, code_snapshot, description_snapshot, model_snapshot, item_type_snapshot, commercial_code_snapshot, ordered_quantity, picked_quantity, stocked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_stock_quantity, position, notes, created_at, updated_at",
-        )
-        .order("supplier_order_id")
-        .order("position"),
-      supabase
-        .from("supplier_order_events")
-        .select(
-          "id, supplier_order_id, supplier_order_item_id, event_type, user_name_snapshot, previous_quantity, new_quantity, quantity_delta, description, created_at",
-        )
-        .order("created_at", { ascending: false }),
+      orderItemsPromise,
+      eventsPromise,
       supabase
         .from("items")
         .select("id, code, description, item_type, is_active")
@@ -267,17 +337,14 @@ export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult
       supabase
         .from("commercial_configurations")
         .select(
-          "id, description, image_path, servo_id, installation_kit_id",
-        )
-        .eq("is_active", true),
+          "id, description, image_path, servo_id, installation_kit_id, is_active",
+        ),
       supabase
         .from("commercial_configuration_codes")
-        .select("id, code, configuration_id")
-        .eq("is_active", true),
+        .select("id, code, configuration_id, is_active"),
     ]);
 
     const readError = [
-      summariesResult.error,
       orderItemsResult.error,
       eventsResult.error,
       itemsResult.error,
@@ -293,9 +360,6 @@ export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult
       };
     }
 
-    const summaries = ((summariesResult.data ?? []) as SummaryRow[])
-      .map(mapSummary)
-      .filter((summary): summary is SupplierOrderSummary => Boolean(summary));
     const orderItemDrafts = ((orderItemsResult.data ?? []) as OrderItemRow[])
       .map(mapOrderItem)
       .filter((item): item is SupplierOrderItem => Boolean(item));
@@ -304,10 +368,34 @@ export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult
       .filter((event): event is SupplierOrderEvent => Boolean(event));
     const items = (itemsResult.data ?? []) as ItemRow[];
     const servoModels = (servoModelsResult.data ?? []) as ServoModelRow[];
-    const configurations = (configurationsResult.data ??
+    const allConfigurations = (configurationsResult.data ??
       []) as ConfigurationRow[];
     const commercialCodes = (commercialCodesResult.data ??
       []) as CommercialCodeRow[];
+    const referencedConfigurationIds = new Set(
+      orderItemDrafts.flatMap((item) =>
+        item.commercialConfigurationId
+          ? [item.commercialConfigurationId]
+          : [],
+      ),
+    );
+    const referencedInstallationKitIds = new Set(
+      orderItemDrafts.flatMap((item) =>
+        item.itemTypeSnapshot === "INSTALLATION_KIT" && item.itemId
+          ? [item.itemId]
+          : [],
+      ),
+    );
+    const configurations =
+      view === "active"
+        ? allConfigurations
+        : allConfigurations.filter(
+            (configuration) =>
+              referencedConfigurationIds.has(configuration.id) ||
+              referencedInstallationKitIds.has(
+                configuration.installation_kit_id,
+              ),
+          );
     const imageUrlByPath = await createCommercialImageUrlMap(
       supabase,
       configurations.map((configuration) => configuration.image_path),
@@ -338,12 +426,15 @@ export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult
         const installationKit = itemById.get(
           configuration.installation_kit_id,
         );
-        const aliases = codesByConfiguration.get(configuration.id) ?? [];
+        const aliases = (
+          codesByConfiguration.get(configuration.id) ?? []
+        ).filter((alias) => alias.is_active);
         const imageUrl = configuration.image_path
           ? (imageUrlByConfigurationId.get(configuration.id) ?? null)
           : null;
 
         if (
+          !configuration.is_active ||
           servo?.item_type !== "SERVO" ||
           !servo.is_active ||
           installationKit?.item_type !== "INSTALLATION_KIT" ||
@@ -385,7 +476,9 @@ export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult
           : [],
     }));
 
-    const physicalItems: SupplierOrderCatalogPhysicalItem[] = items
+    const physicalItems: SupplierOrderCatalogPhysicalItem[] = (
+      view === "active" ? items : []
+    )
       .filter((item) => item.is_active)
       .map((item) => ({
         kind: "ITEM" as const,
@@ -414,10 +507,11 @@ export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult
           );
 
           if (
+            (view === "active" && !configuration.is_active) ||
             servo?.item_type !== "SERVO" ||
-            !servo.is_active ||
+            (view === "active" && !servo.is_active) ||
             installationKit?.item_type !== "INSTALLATION_KIT" ||
-            !installationKit.is_active
+            (view === "active" && !installationKit.is_active)
           ) {
             return [];
           }
@@ -436,12 +530,12 @@ export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult
               installationKitDescription: installationKit.description,
               imageUrl:
                 imageUrlByConfigurationId.get(configuration.id) ?? null,
-              aliases: (codesByConfiguration.get(configuration.id) ?? []).map(
-                (code) => ({
+              aliases: (codesByConfiguration.get(configuration.id) ?? [])
+                .filter((code) => view === "history" || code.is_active)
+                .map((code) => ({
                   id: code.id,
                   code: code.code,
-                }),
-              ),
+                })),
             },
           ];
         })
@@ -458,6 +552,7 @@ export async function loadSupplierOrdersData(): Promise<SupplierOrdersDataResult
 
     return {
       data: {
+        view,
         summaries,
         items: orderItems,
         events,

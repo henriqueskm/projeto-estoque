@@ -6,6 +6,7 @@ export default function SupplierOrdersLoading() {
       aria-label="Carregando pedidos"
     >
       <div className="h-9 w-36 rounded-lg bg-border-neutral/60" />
+      <div className="mt-4 h-12 w-full max-w-[25rem] rounded-xl border border-border-neutral bg-surface" />
       <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
           <div

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   supplierOrderStatuses,
   type CreateSupplierOrderInput,
+  type FinalizeSupplierOrderInput,
   type SetSupplierOrderPickedQuantityInput,
   type SupplierOrderActionResult,
   type SupplierOrderCancellationInput,
@@ -493,6 +494,45 @@ function mapRpcError(
   );
 }
 
+function mapFinalizeRpcError(
+  code: string | undefined,
+  message: string,
+): SupplierOrderActionResult {
+  const normalizedMessage = message.toLocaleLowerCase("en-US");
+
+  if (code === "40001" || normalizedMessage.includes("changed after")) {
+    return actionError(
+      "Este pedido foi alterado por outro usuário. Os dados foram atualizados.",
+      true,
+    );
+  }
+
+  if (normalizedMessage.includes("already finalized")) {
+    return actionError("Este pedido já foi finalizado.");
+  }
+
+  if (normalizedMessage.includes("cancelled supplier order")) {
+    return actionError("Pedidos cancelados já pertencem ao Histórico.");
+  }
+
+  if (
+    normalizedMessage.includes("only a completed supplier order") ||
+    normalizedMessage.includes("pickup quantity remaining")
+  ) {
+    return actionError(
+      "Somente pedidos concluídos podem ser finalizados.",
+    );
+  }
+
+  if (normalizedMessage.includes("finalization_note")) {
+    return actionError(
+      `A observação final deve ter no máximo ${maximumOperationDescriptionLength} caracteres.`,
+    );
+  }
+
+  return mapRpcError(code, message);
+}
+
 function finishMutation(data: unknown): SupplierOrderActionResult {
   const receipt = parseReceipt(data);
 
@@ -780,4 +820,71 @@ export async function cancelSupplierOrderRemaining(
   input: unknown,
 ): Promise<SupplierOrderActionResult> {
   return cancelSupplierOrderWithRpc("cancel_supplier_order_remaining", input);
+}
+
+export async function finalizeSupplierOrder(
+  input: unknown,
+): Promise<SupplierOrderActionResult> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return actionError("Os dados da finalização são inválidos.");
+  }
+
+  const request = input as Record<string, unknown>;
+  const finalizationNote = normalizeOptionalText(
+    request.finalization_note,
+    maximumOperationDescriptionLength,
+  );
+
+  if (
+    !hasOnlyFields(request, [
+      "supplier_order_id",
+      "expected_updated_at",
+      "finalization_note",
+      "idempotency_key",
+    ]) ||
+    !isUuid(request.supplier_order_id) ||
+    typeof request.expected_updated_at !== "string" ||
+    Number.isNaN(Date.parse(request.expected_updated_at)) ||
+    finalizationNote === undefined ||
+    !isUuid(request.idempotency_key)
+  ) {
+    return actionError(
+      `Revise o pedido e informe uma observação final de até ${maximumOperationDescriptionLength} caracteres.`,
+    );
+  }
+
+  const normalized: FinalizeSupplierOrderInput = {
+    supplier_order_id: request.supplier_order_id.toLowerCase(),
+    expected_updated_at: request.expected_updated_at,
+    finalization_note: finalizationNote,
+    idempotency_key: request.idempotency_key.toLowerCase(),
+  };
+
+  try {
+    const context = await getAuthenticatedContext();
+
+    if (!context) {
+      return actionError(
+        "Sua sessão ou perfil ativo não está disponível. Entre novamente para continuar.",
+      );
+    }
+
+    const { data, error } = await context.supabase.rpc(
+      "finalize_supplier_order",
+      {
+        p_supplier_order_id: normalized.supplier_order_id,
+        p_expected_updated_at: normalized.expected_updated_at,
+        p_finalization_note: normalized.finalization_note,
+        p_idempotency_key: normalized.idempotency_key,
+      },
+    );
+
+    return error
+      ? mapFinalizeRpcError(error.code, error.message)
+      : finishMutation(data);
+  } catch {
+    return actionError(
+      "Não foi possível finalizar o pedido agora. Tente novamente.",
+    );
+  }
 }
