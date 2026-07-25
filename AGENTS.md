@@ -799,6 +799,32 @@ Enquanto não existir uma administração completa de usuários:
 - a futura entrada vinculada ao pedido deve reutilizar as operações
   transacionais de estoque e manter auditoria própria.
 
+## 36. Finalização e histórico de pedidos de fornecedor
+
+- pedidos ativos são os pedidos não cancelados e ainda não finalizados;
+- o histórico contém pedidos cancelados ou finalizados;
+- finalizar um pedido encerra somente a operação atual de retirada no
+  fornecedor;
+- finalizar um pedido não significa que toda a quantidade retirada já entrou
+  no estoque;
+- pedidos finalizados ainda podem conter quantidade aguardando entrada no
+  estoque;
+- a entrada futura vinculada ao pedido pode atualizar somente
+  `stocked_quantity` e os metadados próprios dessa operação;
+- pedidos finalizados são imutáveis para edição de cabeçalho, alteração de
+  itens, retirada e cancelamento;
+- toda finalização deve ser transacional, idempotente e auditável;
+- registrar sempre quem finalizou, quando finalizou, o snapshot do nome e a
+  observação opcional;
+- a interface deve separar pedidos ativos do histórico;
+- a tela atual de Pedidos não deve misturar pedidos encerrados na listagem
+  operacional;
+- o histórico futuro deve permitir consulta e detalhamento, nunca edição
+  operacional;
+- finalização e cancelamento são formas distintas de encerramento;
+- em qualquer inconsistência defensiva, a finalização prevalece na
+  classificação de histórico.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
