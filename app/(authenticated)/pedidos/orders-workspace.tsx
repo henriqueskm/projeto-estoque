@@ -152,6 +152,55 @@ function OrderItemImageButton({
   );
 }
 
+function ItemQuantityIndicators({
+  orderedQuantity,
+  pickedQuantity,
+  waitingPickupQuantity,
+}: {
+  orderedQuantity: number;
+  pickedQuantity: number;
+  waitingPickupQuantity: number;
+}) {
+  const indicators = [
+    {
+      label: "Solicitado",
+      value: orderedQuantity,
+      className: "border-slate-200 bg-slate-50 text-text-primary",
+    },
+    {
+      label: "Retirado",
+      value: pickedQuantity,
+      className: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    },
+    {
+      label: "Falta",
+      value: waitingPickupQuantity,
+      className: "border-amber-200 bg-amber-50 text-amber-950",
+    },
+  ];
+
+  return (
+    <dl
+      className="grid min-w-0 grid-cols-3 gap-1"
+      aria-label="Resumo das quantidades do item"
+    >
+      {indicators.map((indicator) => (
+        <div
+          key={indicator.label}
+          className={`min-w-0 rounded-lg border px-1.5 py-1 ${indicator.className}`}
+        >
+          <dt className="truncate text-[0.52rem] leading-3 font-black tracking-wide uppercase sm:text-[0.58rem]">
+            {indicator.label}
+          </dt>
+          <dd className="font-mono text-sm leading-4 font-black sm:text-base sm:leading-5">
+            {quantityFormatter.format(indicator.value)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function formatOrderDate(value: string) {
   const [year, month, day] = value.split("-");
   return year && month && day ? `${day}/${month}/${year}` : value;
@@ -2317,28 +2366,6 @@ function OrderDetailsDialog({
               const hasImage =
                 Boolean(item.imageUrl) ||
                 item.compatibleKitImages.length > 0;
-              const quantitySummary = [
-                `Solicitado: ${quantityFormatter.format(
-                  item.orderedQuantity,
-                )}`,
-                `Retirado: ${quantityFormatter.format(
-                  item.pickedQuantity,
-                )}`,
-                ...(item.cancelledQuantity > 0
-                  ? [
-                      `Cancelado: ${quantityFormatter.format(
-                        item.cancelledQuantity,
-                      )}`,
-                    ]
-                  : []),
-                ...(item.waitingPickupQuantity > 0
-                  ? [
-                      `Falta: ${quantityFormatter.format(
-                        item.waitingPickupQuantity,
-                      )}`,
-                    ]
-                  : []),
-              ].join(" · ");
 
               return (
                 <article key={item.id} className="px-2.5 py-2 sm:px-3">
@@ -2387,11 +2414,23 @@ function OrderDetailsDialog({
                     }`}
                   >
                     <div className="min-w-0">
-                      <p className="text-[0.64rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                        {quantitySummary}
-                      </p>
+                      <ItemQuantityIndicators
+                        orderedQuantity={item.orderedQuantity}
+                        pickedQuantity={item.pickedQuantity}
+                        waitingPickupQuantity={
+                          item.waitingPickupQuantity
+                        }
+                      />
+                      {item.cancelledQuantity > 0 ? (
+                        <p className="mt-0.5 text-[0.62rem] leading-4 font-bold text-red-800 sm:text-xs">
+                          Cancelado:{" "}
+                          {quantityFormatter.format(
+                            item.cancelledQuantity,
+                          )}
+                        </p>
+                      ) : null}
                       {item.waitingStockQuantity > 0 ? (
-                        <p className="text-[0.64rem] leading-4 font-bold text-amber-900 sm:text-xs">
+                        <p className="mt-0.5 text-[0.62rem] leading-4 font-bold text-amber-900 sm:text-xs">
                           Aguardando entrada:{" "}
                           {quantityFormatter.format(
                             item.waitingStockQuantity,
