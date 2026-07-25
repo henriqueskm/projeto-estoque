@@ -825,6 +825,30 @@ Enquanto não existir uma administração completa de usuários:
 - em qualquer inconsistência defensiva, a finalização prevalece na
   classificação de histórico.
 
+## 37. Entrada no estoque vinculada a pedidos de fornecedor
+
+- disponível para entrada é sempre
+  `picked_quantity - stocked_quantity`;
+- a entrada pode ser parcial e o mesmo item do pedido pode receber múltiplas
+  entradas até esgotar essa disponibilidade;
+- cada confirmação cria um `movement_batch` real de entrada e atualiza
+  `stocked_quantity` na mesma transação;
+- itens avulsos entram como itens físicos e Caixas completas entram como a
+  configuração física compartilhada;
+- o alias comercial é apenas referência do pedido e nunca duplica a
+  configuração ou o saldo;
+- pedidos finalizados podem receber as quantidades retiradas ainda pendentes de
+  entrada;
+- pedidos cancelados podem receber somente o que já foi retirado, nunca a
+  quantidade cancelada;
+- a entrada não altera status, `finalized_at`, cancelamento ou
+  `closure_kind` do pedido;
+- por usar o fluxo normal de entrada, a operação conta como entrada externa nas
+  Estatísticas;
+- nunca alterar `supplier_order_items.stocked_quantity` diretamente: toda
+  escrita deve passar pela operação transacional, idempotente e auditável de
+  entrada vinculada ao pedido.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
