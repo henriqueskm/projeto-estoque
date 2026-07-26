@@ -865,6 +865,32 @@ Enquanto não existir uma administração completa de usuários:
   pelo modelo;
 - respostas gerais continuam textuais e usam o componente de texto existente.
 
+## 39. Consultas de pedidos pela Assistente IA
+
+- a Assistente consulta pedidos de fornecedor somente em modo leitura;
+- consultas claras por negociação, data, período, status, encerramento,
+  retirada pendente, entrada pendente e código de catálogo devem ser
+  determinísticas e não usam Gemini;
+- `COMPLETED` significa retirada concluída e não significa pedido finalizado;
+- pedido finalizado é identificado exclusivamente por
+  `closure_kind = FINALIZED`;
+- pedidos ativos e de histórico seguem, respectivamente,
+  `is_active_order` e `is_in_history` da view oficial;
+- quantidades pendentes usam sempre `waiting_pickup_quantity` e
+  `waiting_stock_quantity` das views oficiais;
+- o código do item do pedido é o snapshot registrado na linha e não deve ser
+  reinterpretado por aliases atuais do catálogo;
+- listas estruturadas mostram no máximo dez pedidos e informam quantos
+  resultados adicionais existem;
+- IDs, links e mídia dos pedidos são construídos no backend com UUIDs reais e
+  nunca escolhidos livremente pelo modelo;
+- links de pedidos apontam apenas para `/pedidos`, com `view` validada e
+  `order` contendo um UUID real;
+- contexto de pedido é efêmero, separado do contexto de estoque e somente pode
+  ser definido depois que um único pedido real for resolvido;
+- a Assistente nunca cria, edita, cancela, finaliza, retira ou lança estoque de
+  um pedido.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

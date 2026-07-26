@@ -89,7 +89,7 @@ function serviceErrorResponse(error: AssistantServiceError) {
       );
     case "TOOL":
       return errorResponse(
-        "Não foi possível concluir a consulta de estoque. Tente reformular a pergunta.",
+        "Não foi possível concluir a consulta agora. Tente reformular a pergunta.",
         502,
       );
     case "EMPTY_RESPONSE":
@@ -142,9 +142,15 @@ export async function POST(request: Request) {
   const message =
     typeof bodyRecord.message === "string" ? bodyRecord.message.trim() : "";
   const rawLastItemQuery = bodyRecord.lastItemQuery;
+  const rawLastSupplierOrderId = bodyRecord.lastSupplierOrderId;
 
   if (
-    bodyKeys.some((key) => key !== "message" && key !== "lastItemQuery") ||
+    bodyKeys.some(
+      (key) =>
+        key !== "message" &&
+        key !== "lastItemQuery" &&
+        key !== "lastSupplierOrderId",
+    ) ||
     !bodyKeys.includes("message")
   ) {
     return errorResponse("Envie uma mensagem válida.", 400);
@@ -164,11 +170,22 @@ export async function POST(request: Request) {
     normalizedLastItemQuery.length <= assistantQueryMaxLength
       ? normalizedLastItemQuery
       : null;
+  const normalizedLastSupplierOrderId =
+    typeof rawLastSupplierOrderId === "string"
+      ? rawLastSupplierOrderId.trim()
+      : "";
+  const lastSupplierOrderId =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalizedLastSupplierOrderId,
+    )
+      ? normalizedLastSupplierOrderId
+      : null;
 
   try {
     const answer = await answerAssistantQuestion(
       message,
       lastItemQuery,
+      lastSupplierOrderId,
       authentication.firstName,
     );
 

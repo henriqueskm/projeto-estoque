@@ -9,10 +9,29 @@ import type {
   AssistantInventoryAlertCard,
   AssistantInventoryAlertsBlock,
   AssistantMediaDescriptor,
+  AssistantSupplierOrderAggregateBlock,
+  AssistantSupplierOrderAmbiguityBlock,
+  AssistantSupplierOrderCard,
+  AssistantSupplierOrderDetailBlock,
+  AssistantSupplierOrderItemCard,
+  AssistantSupplierOrderListBlock,
   AssistantStructuredBlock,
 } from "@/lib/assistant-types";
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
+const orderDateFormatter = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+const orderStatusLabels = {
+  PENDING: "Pendente",
+  PARTIAL: "Parcial",
+  COMPLETED: "Concluído",
+  CANCELLED: "Cancelado",
+} as const;
 
 function MediaControl({
   descriptor,
@@ -287,14 +306,304 @@ function CatalogMediaBlock({ block }: { block: AssistantCatalogMediaBlock }) {
   );
 }
 
+function OrderStatus({
+  order,
+}: {
+  order: AssistantSupplierOrderCard;
+}) {
+  const label =
+    order.closureKind === "FINALIZED"
+      ? "Finalizado"
+      : orderStatusLabels[order.status];
+  const classes =
+    order.closureKind === "FINALIZED"
+      ? "bg-emerald-100 text-emerald-900"
+      : order.status === "CANCELLED"
+        ? "bg-red-100 text-red-900"
+        : order.status === "COMPLETED"
+          ? "bg-sky-100 text-sky-900"
+          : order.status === "PARTIAL"
+            ? "bg-violet-100 text-violet-900"
+            : "bg-amber-100 text-amber-950";
+
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[0.62rem] font-black uppercase ${classes}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function formatOrderDate(value: string) {
+  return orderDateFormatter.format(new Date(`${value}T00:00:00Z`));
+}
+
+function SupplierOrderCard({
+  order,
+}: {
+  order: AssistantSupplierOrderCard;
+}) {
+  return (
+    <Link
+      href={order.href}
+      className="nk-focus block rounded-xl border border-border-neutral bg-surface p-3 shadow-sm transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/20"
+    >
+      <span className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-base font-black text-violet-900">
+          Pedido {order.negotiationNumber}
+        </span>
+        <OrderStatus order={order} />
+      </span>
+      <span className="mt-1 block text-xs font-semibold text-text-muted">
+        {formatOrderDate(order.orderDate)} ·{" "}
+        {quantityFormatter.format(order.lineCount)}{" "}
+        {order.lineCount === 1 ? "item" : "itens"}
+      </span>
+      <span className="mt-2 grid grid-cols-3 gap-1.5">
+        {[
+          ["Solicitado", order.orderedQuantity],
+          ["Retirado", order.pickedQuantity],
+          ["Para retirar", order.waitingPickupQuantity],
+        ].map(([label, value]) => (
+          <span
+            key={String(label)}
+            className="rounded-lg bg-app-background px-1.5 py-2 text-center"
+          >
+            <span className="block text-[0.58rem] font-black text-text-muted uppercase">
+              {label}
+            </span>
+            <strong className="block font-mono text-sm text-text-primary">
+              {quantityFormatter.format(Number(value))}
+            </strong>
+          </span>
+        ))}
+      </span>
+      {order.waitingStockQuantity > 0 ? (
+        <span className="mt-2 block rounded-lg bg-amber-50 px-2 py-1.5 text-xs font-black text-amber-950">
+          {quantityFormatter.format(order.waitingStockQuantity)} para entrada
+          no estoque
+        </span>
+      ) : null}
+      <span className="mt-2 block text-xs font-black text-brand-gold-ink">
+        Abrir pedido
+      </span>
+    </Link>
+  );
+}
+
+function SupplierOrderList({
+  block,
+}: {
+  block: AssistantSupplierOrderListBlock;
+}) {
+  return (
+    <div className="min-w-0">
+      <h3 className="text-base font-black text-text-primary">
+        {block.title}
+      </h3>
+      <p className="mt-1 text-xs font-semibold text-text-muted">
+        {block.filtersSummary}
+      </p>
+      {block.orders.length > 0 ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {block.orders.map((order) => (
+            <SupplierOrderCard key={order.id} order={order} />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-xl border border-dashed border-border-neutral px-3 py-4 text-sm font-semibold text-text-muted">
+          {block.fallbackText}
+        </p>
+      )}
+      {block.remainingCount > 0 ? (
+        <p className="mt-3 text-xs font-bold text-text-muted">
+          + {quantityFormatter.format(block.remainingCount)}{" "}
+          {block.remainingCount === 1
+            ? "pedido adicional"
+            : "pedidos adicionais"}
+        </p>
+      ) : null}
+      <Link
+        href={block.ordersHref}
+        className="nk-focus mt-3 inline-flex min-h-11 items-center rounded-xl border border-border-neutral px-3 text-sm font-black text-text-primary transition hover:bg-app-background"
+      >
+        Abrir Pedidos
+      </Link>
+    </div>
+  );
+}
+
+function SupplierOrderItem({
+  item,
+}: {
+  item: AssistantSupplierOrderItemCard;
+}) {
+  return (
+    <article className="rounded-xl border border-border-neutral bg-app-background/60 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[0.62rem] font-black tracking-wide text-text-muted uppercase">
+            {item.typeLabel}
+          </p>
+          <p className="font-mono text-sm font-black text-violet-900">
+            Cód. {item.displayCode}
+          </p>
+          <p className="mt-1 break-words text-sm font-bold text-text-primary">
+            {item.description}
+          </p>
+        </div>
+        <MediaControl descriptor={item.mediaDescriptor} />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {[
+          ["Solicitado", item.orderedQuantity],
+          ["Retirado", item.pickedQuantity],
+          ["Para retirar", item.waitingPickupQuantity],
+          ["Para entrada", item.waitingStockQuantity],
+        ].map(([label, value]) => (
+          <span
+            key={String(label)}
+            className="rounded-lg border border-border-neutral bg-white px-2 py-1.5 text-center"
+          >
+            <span className="block text-[0.56rem] font-black text-text-muted uppercase">
+              {label}
+            </span>
+            <strong className="font-mono text-sm text-text-primary">
+              {quantityFormatter.format(Number(value))}
+            </strong>
+          </span>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function SupplierOrderDetail({
+  block,
+}: {
+  block: AssistantSupplierOrderDetailBlock;
+}) {
+  return (
+    <div className="min-w-0">
+      <h3 className="text-base font-black text-text-primary">
+        {block.title}
+      </h3>
+      <div className="mt-3">
+        <SupplierOrderCard order={block.order} />
+      </div>
+      {block.items.length > 0 ? (
+        <section className="mt-4" aria-label="Itens do pedido">
+          <h4 className="mb-2 text-[0.68rem] font-black tracking-[0.12em] text-text-muted uppercase">
+            Itens
+          </h4>
+          <div className="grid gap-2">
+            {block.items.map((item) => (
+              <SupplierOrderItem key={item.id} item={item} />
+            ))}
+          </div>
+        </section>
+      ) : (
+        <p className="mt-3 rounded-xl border border-dashed border-border-neutral px-3 py-3 text-sm font-semibold text-text-muted">
+          Nenhum item corresponde ao recorte solicitado.
+        </p>
+      )}
+      {block.hiddenItemCount > 0 ? (
+        <p className="mt-2 text-xs font-bold text-text-muted">
+          + {quantityFormatter.format(block.hiddenItemCount)}{" "}
+          {block.hiddenItemCount === 1 ? "item adicional" : "itens adicionais"}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function SupplierOrderAggregate({
+  block,
+}: {
+  block: AssistantSupplierOrderAggregateBlock;
+}) {
+  const metrics = [
+    ["Pedidos", block.orderCount],
+    ["Unidades pedidas", block.orderedQuantity],
+    ["Retiradas", block.pickedQuantity],
+    ["Para retirar", block.waitingPickupQuantity],
+    ["Lançadas", block.stockedQuantity],
+    ["Para entrada", block.waitingStockQuantity],
+  ];
+
+  return (
+    <div className="min-w-0">
+      <h3 className="text-base font-black text-text-primary">
+        {block.title}
+      </h3>
+      <p className="mt-1 text-xs font-semibold text-text-muted">
+        {block.filtersSummary}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {metrics.map(([label, value]) => (
+          <span
+            key={String(label)}
+            className="rounded-xl border border-border-neutral bg-app-background px-2 py-3 text-center"
+          >
+            <span className="block text-[0.6rem] font-black text-text-muted uppercase">
+              {label}
+            </span>
+            <strong className="mt-0.5 block font-mono text-lg text-text-primary">
+              {quantityFormatter.format(Number(value))}
+            </strong>
+          </span>
+        ))}
+      </div>
+      <Link
+        href={block.ordersHref}
+        className="nk-focus mt-3 inline-flex min-h-11 items-center rounded-xl border border-border-neutral px-3 text-sm font-black text-text-primary transition hover:bg-app-background"
+      >
+        Abrir Pedidos
+      </Link>
+    </div>
+  );
+}
+
+function SupplierOrderAmbiguity({
+  block,
+}: {
+  block: AssistantSupplierOrderAmbiguityBlock;
+}) {
+  return (
+    <div className="min-w-0">
+      <h3 className="text-base font-black text-text-primary">
+        {block.title}
+      </h3>
+      <p className="mt-1 text-xs font-semibold text-text-muted">
+        {block.description}
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {block.orders.map((order) => (
+          <SupplierOrderCard key={order.id} order={order} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function AssistantStructuredBlockView({
   block,
 }: {
   block: AssistantStructuredBlock;
 }) {
-  return block.kind === "inventory_alerts" ? (
-    <InventoryAlertsBlock block={block} />
-  ) : (
-    <CatalogMediaBlock block={block} />
-  );
+  switch (block.kind) {
+    case "inventory_alerts":
+      return <InventoryAlertsBlock block={block} />;
+    case "catalog_media":
+      return <CatalogMediaBlock block={block} />;
+    case "supplier_order_list":
+      return <SupplierOrderList block={block} />;
+    case "supplier_order_detail":
+      return <SupplierOrderDetail block={block} />;
+    case "supplier_order_aggregate":
+      return <SupplierOrderAggregate block={block} />;
+    case "supplier_order_ambiguity":
+      return <SupplierOrderAmbiguity block={block} />;
+  }
 }

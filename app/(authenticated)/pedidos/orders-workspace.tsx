@@ -56,6 +56,7 @@ import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 type SupplierOrdersWorkspaceProps = {
   data: SupplierOrdersData;
   view: SupplierOrderView;
+  initialOrderId: string | null;
 };
 
 type StatusFilter = "ALL" | Exclude<SupplierOrderStatus, "CANCELLED">;
@@ -3564,8 +3565,10 @@ function historyOrderMatchesPeriod(
 
 function ActiveSupplierOrdersWorkspace({
   data,
+  initialOrderId,
 }: {
   data: SupplierOrdersData;
+  initialOrderId: string | null;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -3573,7 +3576,9 @@ function ActiveSupplierOrdersWorkspace({
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("ALL");
   const [sort, setSort] = useState<OrderSort>("RECENT");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
+    initialOrderId,
+  );
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -4164,8 +4169,10 @@ function ActiveSupplierOrdersWorkspace({
 
 function HistorySupplierOrdersWorkspace({
   data,
+  initialOrderId,
 }: {
   data: SupplierOrdersData;
+  initialOrderId: string | null;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -4174,7 +4181,9 @@ function HistorySupplierOrdersWorkspace({
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("ALL");
   const [sort, setSort] = useState<HistorySort>("CLOSED_RECENT");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
+    initialOrderId,
+  );
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const itemsByOrder = useMemo(() => {
@@ -4677,10 +4686,17 @@ function HistorySupplierOrdersWorkspace({
 export function SupplierOrdersWorkspace({
   data,
   view,
+  initialOrderId,
 }: SupplierOrdersWorkspaceProps) {
   return view === "history" ? (
-    <HistorySupplierOrdersWorkspace data={data} />
+    <HistorySupplierOrdersWorkspace
+      data={data}
+      initialOrderId={initialOrderId}
+    />
   ) : (
-    <ActiveSupplierOrdersWorkspace data={data} />
+    <ActiveSupplierOrdersWorkspace
+      data={data}
+      initialOrderId={initialOrderId}
+    />
   );
 }

@@ -8,11 +8,13 @@ export const assistantRequestMaxCharacters = 4096;
 export type AssistantChatRequest = {
   message: string;
   lastItemQuery?: string;
+  lastSupplierOrderId?: string;
 };
 
 export type AssistantChatSuccess = {
   message: string;
   contextItemQuery?: string | null;
+  contextSupplierOrderId?: string | null;
   structuredBlock?: AssistantStructuredBlock;
 };
 
@@ -153,9 +155,85 @@ export type AssistantCatalogMediaBlock = {
   fallbackText: string;
 };
 
+export type AssistantSupplierOrderCard = {
+  id: string;
+  negotiationNumber: string;
+  orderDate: string;
+  status: "PENDING" | "PARTIAL" | "COMPLETED" | "CANCELLED";
+  closureKind: "FINALIZED" | "CANCELLED" | null;
+  lineCount: number;
+  orderedQuantity: number;
+  pickedQuantity: number;
+  waitingPickupQuantity: number;
+  stockedQuantity: number;
+  waitingStockQuantity: number;
+  href: string;
+};
+
+export type AssistantSupplierOrderItemCard = {
+  id: string;
+  displayCode: string;
+  description: string;
+  typeLabel: string;
+  orderedQuantity: number;
+  pickedQuantity: number;
+  waitingPickupQuantity: number;
+  stockedQuantity: number;
+  waitingStockQuantity: number;
+  cancelledQuantity: number;
+  mediaDescriptor: AssistantMediaDescriptor | null;
+};
+
+export type AssistantSupplierOrderListBlock = {
+  kind: "supplier_order_list";
+  title: string;
+  filtersSummary: string;
+  totalCount: number;
+  remainingCount: number;
+  orders: AssistantSupplierOrderCard[];
+  ordersHref: string;
+  fallbackText: string;
+};
+
+export type AssistantSupplierOrderDetailBlock = {
+  kind: "supplier_order_detail";
+  title: string;
+  order: AssistantSupplierOrderCard;
+  items: AssistantSupplierOrderItemCard[];
+  hiddenItemCount: number;
+  fallbackText: string;
+};
+
+export type AssistantSupplierOrderAggregateBlock = {
+  kind: "supplier_order_aggregate";
+  title: string;
+  filtersSummary: string;
+  orderCount: number;
+  orderedQuantity: number;
+  pickedQuantity: number;
+  waitingPickupQuantity: number;
+  stockedQuantity: number;
+  waitingStockQuantity: number;
+  ordersHref: string;
+  fallbackText: string;
+};
+
+export type AssistantSupplierOrderAmbiguityBlock = {
+  kind: "supplier_order_ambiguity";
+  title: string;
+  description: string;
+  orders: AssistantSupplierOrderCard[];
+  ordersHref: string;
+  fallbackText: string;
+};
+
 export type AssistantStructuredBlock =
   | AssistantInventoryAlertsBlock
-  | AssistantCatalogMediaBlock;
+  | AssistantCatalogMediaBlock
+  | AssistantSupplierOrderListBlock
+  | AssistantSupplierOrderDetailBlock
+  | AssistantSupplierOrderAggregateBlock
+  | AssistantSupplierOrderAmbiguityBlock;
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -256,6 +334,123 @@ function isExpectedTargetHref(
   } catch {
     return false;
   }
+}
+
+function isSafeSupplierOrdersHref(
+  value: unknown,
+  expectedOrderId?: string,
+): value is string {
+  if (typeof value !== "string" || !value.startsWith("/pedidos")) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value, "https://negocios-k.local");
+    const keys = Array.from(url.searchParams.keys());
+    const uniqueKeys = new Set(keys);
+    const view = url.searchParams.get("view");
+    const orderId = url.searchParams.get("order");
+
+    return (
+      url.origin === "https://negocios-k.local" &&
+      url.pathname === "/pedidos" &&
+      !url.hash &&
+      keys.length === uniqueKeys.size &&
+      keys.every((key) => ["view", "order"].includes(key)) &&
+      (view === "active" || view === "history") &&
+      (!orderId || uuidPattern.test(orderId)) &&
+      (expectedOrderId === undefined
+        ? !orderId
+        : orderId === expectedOrderId)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function parseSupplierOrderCard(
+  value: unknown,
+): AssistantSupplierOrderCard | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !uuidPattern.test(value.id) ||
+    typeof value.negotiationNumber !== "string" ||
+    !value.negotiationNumber.trim() ||
+    typeof value.orderDate !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value.orderDate) ||
+    !["PENDING", "PARTIAL", "COMPLETED", "CANCELLED"].includes(
+      String(value.status),
+    ) ||
+    (value.closureKind !== null &&
+      value.closureKind !== "FINALIZED" &&
+      value.closureKind !== "CANCELLED") ||
+    !isNonnegativeInteger(value.lineCount) ||
+    !isNonnegativeInteger(value.orderedQuantity) ||
+    !isNonnegativeInteger(value.pickedQuantity) ||
+    !isNonnegativeInteger(value.waitingPickupQuantity) ||
+    !isNonnegativeInteger(value.stockedQuantity) ||
+    !isNonnegativeInteger(value.waitingStockQuantity) ||
+    value.pickedQuantity + value.waitingPickupQuantity >
+      value.orderedQuantity ||
+    value.stockedQuantity + value.waitingStockQuantity !==
+      value.pickedQuantity ||
+    !isSafeSupplierOrdersHref(value.href, value.id)
+  ) {
+    return null;
+  }
+
+  return value as AssistantSupplierOrderCard;
+}
+
+function parseSupplierOrderItemCard(
+  value: unknown,
+): AssistantSupplierOrderItemCard | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const mediaDescriptor = parseMediaDescriptor(value.mediaDescriptor);
+
+  if (
+    typeof value.id !== "string" ||
+    !uuidPattern.test(value.id) ||
+    typeof value.displayCode !== "string" ||
+    !value.displayCode.trim() ||
+    typeof value.description !== "string" ||
+    !value.description.trim() ||
+    typeof value.typeLabel !== "string" ||
+    !value.typeLabel.trim() ||
+    !isNonnegativeInteger(value.orderedQuantity) ||
+    !isNonnegativeInteger(value.pickedQuantity) ||
+    !isNonnegativeInteger(value.waitingPickupQuantity) ||
+    !isNonnegativeInteger(value.stockedQuantity) ||
+    !isNonnegativeInteger(value.waitingStockQuantity) ||
+    !isNonnegativeInteger(value.cancelledQuantity) ||
+    value.pickedQuantity +
+      value.waitingPickupQuantity +
+      value.cancelledQuantity !==
+      value.orderedQuantity ||
+    value.stockedQuantity + value.waitingStockQuantity !==
+      value.pickedQuantity ||
+    mediaDescriptor === undefined
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    displayCode: value.displayCode,
+    description: value.description,
+    typeLabel: value.typeLabel,
+    orderedQuantity: value.orderedQuantity,
+    pickedQuantity: value.pickedQuantity,
+    waitingPickupQuantity: value.waitingPickupQuantity,
+    stockedQuantity: value.stockedQuantity,
+    waitingStockQuantity: value.waitingStockQuantity,
+    cancelledQuantity: value.cancelledQuantity,
+    mediaDescriptor,
+  };
 }
 
 function parseCompatibleKitOption(
@@ -498,6 +693,127 @@ export function parseAssistantStructuredBlock(
       status: value.status as AssistantCatalogMediaBlock["status"],
       results: results as AssistantCatalogMediaTarget[],
       inventoryHref: value.inventoryHref,
+      fallbackText: value.fallbackText,
+    };
+  }
+
+  if (
+    value.kind === "supplier_order_list" ||
+    value.kind === "supplier_order_ambiguity"
+  ) {
+    const orders = Array.isArray(value.orders)
+      ? value.orders.map(parseSupplierOrderCard)
+      : [];
+
+    if (
+      typeof value.title !== "string" ||
+      !value.title.trim() ||
+      !Array.isArray(value.orders) ||
+      orders.some((order) => order === null) ||
+      orders.length > 10 ||
+      !isSafeSupplierOrdersHref(value.ordersHref) ||
+      typeof value.fallbackText !== "string"
+    ) {
+      return null;
+    }
+
+    if (value.kind === "supplier_order_ambiguity") {
+      if (
+        typeof value.description !== "string" ||
+        !value.description.trim() ||
+        orders.length < 2
+      ) {
+        return null;
+      }
+
+      return {
+        kind: "supplier_order_ambiguity",
+        title: value.title,
+        description: value.description,
+        orders: orders as AssistantSupplierOrderCard[],
+        ordersHref: value.ordersHref,
+        fallbackText: value.fallbackText,
+      };
+    }
+
+    if (
+      typeof value.filtersSummary !== "string" ||
+      !isNonnegativeInteger(value.totalCount) ||
+      !isNonnegativeInteger(value.remainingCount) ||
+      value.totalCount !== orders.length + value.remainingCount
+    ) {
+      return null;
+    }
+
+    return {
+      kind: "supplier_order_list",
+      title: value.title,
+      filtersSummary: value.filtersSummary,
+      totalCount: value.totalCount,
+      remainingCount: value.remainingCount,
+      orders: orders as AssistantSupplierOrderCard[],
+      ordersHref: value.ordersHref,
+      fallbackText: value.fallbackText,
+    };
+  }
+
+  if (value.kind === "supplier_order_detail") {
+    const order = parseSupplierOrderCard(value.order);
+    const items = Array.isArray(value.items)
+      ? value.items.map(parseSupplierOrderItemCard)
+      : [];
+
+    if (
+      typeof value.title !== "string" ||
+      !value.title.trim() ||
+      !order ||
+      !Array.isArray(value.items) ||
+      items.some((item) => item === null) ||
+      items.length > 20 ||
+      !isNonnegativeInteger(value.hiddenItemCount) ||
+      typeof value.fallbackText !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      kind: "supplier_order_detail",
+      title: value.title,
+      order,
+      items: items as AssistantSupplierOrderItemCard[],
+      hiddenItemCount: value.hiddenItemCount,
+      fallbackText: value.fallbackText,
+    };
+  }
+
+  if (value.kind === "supplier_order_aggregate") {
+    if (
+      typeof value.title !== "string" ||
+      !value.title.trim() ||
+      typeof value.filtersSummary !== "string" ||
+      !isNonnegativeInteger(value.orderCount) ||
+      !isNonnegativeInteger(value.orderedQuantity) ||
+      !isNonnegativeInteger(value.pickedQuantity) ||
+      !isNonnegativeInteger(value.waitingPickupQuantity) ||
+      !isNonnegativeInteger(value.stockedQuantity) ||
+      !isNonnegativeInteger(value.waitingStockQuantity) ||
+      !isSafeSupplierOrdersHref(value.ordersHref) ||
+      typeof value.fallbackText !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      kind: "supplier_order_aggregate",
+      title: value.title,
+      filtersSummary: value.filtersSummary,
+      orderCount: value.orderCount,
+      orderedQuantity: value.orderedQuantity,
+      pickedQuantity: value.pickedQuantity,
+      waitingPickupQuantity: value.waitingPickupQuantity,
+      stockedQuantity: value.stockedQuantity,
+      waitingStockQuantity: value.waitingStockQuantity,
+      ordersHref: value.ordersHref,
       fallbackText: value.fallbackText,
     };
   }

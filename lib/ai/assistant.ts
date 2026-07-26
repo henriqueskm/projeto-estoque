@@ -8,6 +8,7 @@ import {
   consultAssistantLowStock,
   consultAssistantStockSummary,
 } from "@/lib/assistant-data";
+import { consultAssistantSupplierOrders } from "@/lib/assistant-supplier-orders";
 import {
   classifyAssistantIntent,
   extractCatalogMediaCode,
@@ -16,6 +17,7 @@ import {
   isItemFollowUpMessage,
   normalizeAssistantText,
 } from "@/lib/ai/assistant-routing";
+import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
 import type {
   AssistantChatSuccess,
   AssistantCommercialConfigurationResult,
@@ -416,6 +418,7 @@ function resolveItemQuery(message: string, lastItemQuery: string | null) {
 export async function answerAssistantQuestion(
   message: string,
   lastItemQuery: string | null,
+  lastSupplierOrderId: string | null,
   firstName: string | null,
 ): Promise<AssistantChatSuccess> {
   const intent = classifyAssistantIntent(message);
@@ -427,6 +430,30 @@ export async function answerAssistantQuestion(
         message,
         firstName,
       ),
+    };
+  }
+
+  const supplierOrderRoute = routeSupplierOrderQuestion(
+    message,
+    lastSupplierOrderId,
+  );
+
+  if (supplierOrderRoute.kind === "NEEDS_ORDER_CONTEXT") {
+    return {
+      message: supplierOrderRoute.message,
+      contextSupplierOrderId: null,
+    };
+  }
+
+  if (supplierOrderRoute.kind === "ORDER_QUERY") {
+    const result = await executeStockQuery(() =>
+      consultAssistantSupplierOrders(supplierOrderRoute.query),
+    );
+
+    return {
+      message: result.block.fallbackText,
+      structuredBlock: result.block,
+      contextSupplierOrderId: result.contextSupplierOrderId,
     };
   }
 

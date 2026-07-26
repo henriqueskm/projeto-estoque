@@ -21,7 +21,7 @@ import {
   type SupplierOrderView,
 } from "@/lib/supplier-orders-types";
 
-type SummaryRow = {
+export type SupplierOrderSummaryRow = {
   id: string;
   negotiation_number: string;
   order_date: string;
@@ -52,7 +52,7 @@ type SummaryRow = {
   status: string;
 };
 
-type OrderItemRow = {
+export type SupplierOrderItemRow = {
   id: string;
   supplier_order_id: string;
   item_id: string | null;
@@ -164,7 +164,15 @@ function asSafeInteger(value: unknown) {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-function mapSummary(row: SummaryRow): SupplierOrderSummary | null {
+export const supplierOrderSummarySelect =
+  "id, negotiation_number, order_date, notes, created_by_name_snapshot, created_at, updated_at, cancelled_at, cancelled_by_name_snapshot, cancellation_note, finalized_at, finalized_by_name_snapshot, finalization_note, is_finalized, is_active_order, is_in_history, closure_kind, closed_at, closed_by_name_snapshot, line_count, ordered_quantity, picked_quantity, cancelled_quantity, waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity, pickup_percentage, status";
+
+export const supplierOrderItemSelect =
+  "id, supplier_order_id, item_id, commercial_configuration_id, commercial_configuration_code_id, code_snapshot, description_snapshot, model_snapshot, item_type_snapshot, commercial_code_snapshot, ordered_quantity, picked_quantity, stocked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_stock_quantity, position, notes, created_at, updated_at";
+
+export function mapSupplierOrderSummary(
+  row: SupplierOrderSummaryRow,
+): SupplierOrderSummary | null {
   if (!isSupplierOrderStatus(row.status)) {
     return null;
   }
@@ -203,7 +211,9 @@ function mapSummary(row: SummaryRow): SupplierOrderSummary | null {
   };
 }
 
-function mapOrderItem(row: OrderItemRow): SupplierOrderItem | null {
+export function mapSupplierOrderItem(
+  row: SupplierOrderItemRow,
+): SupplierOrderItem | null {
   const itemType = row.item_type_snapshot;
   const physicalItemType = physicalItemTypes.find(
     (physicalType) => physicalType === itemType,
@@ -271,7 +281,7 @@ export async function loadSupplierOrdersData(
     let summariesQuery = supabase
       .from("supplier_order_summaries")
       .select(
-        "id, negotiation_number, order_date, notes, created_by_name_snapshot, created_at, updated_at, cancelled_at, cancelled_by_name_snapshot, cancellation_note, finalized_at, finalized_by_name_snapshot, finalization_note, is_finalized, is_active_order, is_in_history, closure_kind, closed_at, closed_by_name_snapshot, line_count, ordered_quantity, picked_quantity, cancelled_quantity, waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity, pickup_percentage, status",
+        supplierOrderSummarySelect,
       )
       .eq(classificationColumn, true);
 
@@ -294,8 +304,10 @@ export async function loadSupplierOrdersData(
       };
     }
 
-    const summaries = ((summariesResult.data ?? []) as SummaryRow[])
-      .map(mapSummary)
+    const summaries = (
+      (summariesResult.data ?? []) as SupplierOrderSummaryRow[]
+    )
+      .map(mapSupplierOrderSummary)
       .filter((summary): summary is SupplierOrderSummary => Boolean(summary));
     const supplierOrderIds = summaries.map((summary) => summary.id);
     const orderItemsPromise =
@@ -303,7 +315,7 @@ export async function loadSupplierOrdersData(
         ? supabase
             .from("supplier_order_item_details")
             .select(
-              "id, supplier_order_id, item_id, commercial_configuration_id, commercial_configuration_code_id, code_snapshot, description_snapshot, model_snapshot, item_type_snapshot, commercial_code_snapshot, ordered_quantity, picked_quantity, stocked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_stock_quantity, position, notes, created_at, updated_at",
+              supplierOrderItemSelect,
             )
             .in("supplier_order_id", supplierOrderIds)
             .order("supplier_order_id")
@@ -360,8 +372,10 @@ export async function loadSupplierOrdersData(
       };
     }
 
-    const orderItemDrafts = ((orderItemsResult.data ?? []) as OrderItemRow[])
-      .map(mapOrderItem)
+    const orderItemDrafts = (
+      (orderItemsResult.data ?? []) as SupplierOrderItemRow[]
+    )
+      .map(mapSupplierOrderItem)
       .filter((item): item is SupplierOrderItem => Boolean(item));
     const events = ((eventsResult.data ?? []) as EventRow[])
       .map(mapEvent)

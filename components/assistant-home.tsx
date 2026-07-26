@@ -99,6 +99,9 @@ export function AssistantHome({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [lastItemQuery, setLastItemQuery] = useState<string | null>(null);
+  const [lastSupplierOrderId, setLastSupplierOrderId] = useState<
+    string | null
+  >(null);
   const [isPending, setIsPending] = useState(false);
   const [isRefreshingStock, startStockRefresh] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -302,6 +305,7 @@ export function AssistantHome({
       const requestBody: AssistantChatRequest = {
         message: submittedMessage,
         ...(lastItemQuery ? { lastItemQuery } : {}),
+        ...(lastSupplierOrderId ? { lastSupplierOrderId } : {}),
       };
       const response = await fetch("/api/assistant/chat", {
         method: "POST",
@@ -333,6 +337,24 @@ export function AssistantHome({
           typeof contextItemQuery === "string" &&
             contextItemQuery.trim()
             ? contextItemQuery.trim()
+            : null,
+        );
+      }
+
+      if (
+        response.ok &&
+        responseBody &&
+        Object.prototype.hasOwnProperty.call(
+          responseBody,
+          "contextSupplierOrderId",
+        )
+      ) {
+        const contextSupplierOrderId =
+          responseBody.contextSupplierOrderId;
+        setLastSupplierOrderId(
+          typeof contextSupplierOrderId === "string" &&
+            /^[0-9a-f-]{36}$/i.test(contextSupplierOrderId)
+            ? contextSupplierOrderId
             : null,
         );
       }
@@ -501,6 +523,7 @@ export function AssistantHome({
                   onClick={() => {
                     setMessages([]);
                     setLastItemQuery(null);
+                    setLastSupplierOrderId(null);
                     setFeedback(null);
                     window.requestAnimationFrame(() =>
                       textareaRef.current?.focus(),
@@ -556,8 +579,8 @@ export function AssistantHome({
               {isInteractionLocked ? (
                 <div className="mr-auto rounded-2xl rounded-bl-md border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-900 shadow-sm">
                   {isPending
-                    ? "Consultando o estoque..."
-                    : "Atualizando o estoque..."}
+                    ? "Consultando..."
+                    : "Atualizando os dados..."}
                 </div>
               ) : null}
             </div>

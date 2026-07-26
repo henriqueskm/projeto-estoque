@@ -42,6 +42,8 @@ function hasUnsupportedWriteIntent(message: string) {
     /\b(alterar|altere|mudar|mude|definir|defina|configurar|configure)\b.{0,50}\b(estoque\s+minimo|minimo|saldo|quantidade)\b/,
     /\b(adicionar|adicione)\b.{0,40}\b(estoque|saldo|quantidade|item|produto|peca|servo|kit|caixa)\b/,
     /\b(criar|crie|cadastrar|cadastre)\b.{0,50}\b(item|produto|peca|servo|kit|caixa|codigo|pedido|dado|registro)\b/,
+    /\b(cancelar|cancele|finalizar|finalize|editar|edite|alterar|altere)\b.{0,50}\b(pedido|negociacao)\b/,
+    /\b(marcar|registre|registrar)\b.{0,50}\b(retirada|retirado|pedido)\b/,
     /\b(ativar|ative|desativar|desative)\b.{0,40}\b(item|produto|peca|servo|kit|caixa|codigo|registro)\b/,
     /\b(excluir|exclua|apagar|apague|remover|remova)\b/,
     /\b(delete|insert|update|truncate|drop|alter|create|grant|revoke)\b/,
