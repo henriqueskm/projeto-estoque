@@ -26,13 +26,16 @@ import {
   StockIcon,
 } from "@/components/icons";
 import { AssistantMessageContent } from "@/components/assistant-message-content";
+import { AssistantStructuredBlockView } from "@/components/assistant-structured-block";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
 import {
   assistantMessageMaxLength,
+  parseAssistantStructuredBlock,
   type AssistantChatRequest,
   type AssistantChatError,
   type AssistantChatSuccess,
+  type AssistantStructuredBlock,
 } from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
@@ -51,6 +54,7 @@ type AssistantMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  structuredBlock?: AssistantStructuredBlock;
 };
 
 const suggestions = [
@@ -312,6 +316,9 @@ export function AssistantHome({
       const responseMessage = response.ok
         ? responseBody?.message
         : responseBody?.error;
+      const structuredBlock = response.ok
+        ? parseAssistantStructuredBlock(responseBody?.structuredBlock)
+        : null;
 
       if (
         response.ok &&
@@ -339,6 +346,7 @@ export function AssistantHome({
             typeof responseMessage === "string" && responseMessage.trim()
               ? responseMessage.trim()
               : "Não foi possível concluir a consulta agora. Tente novamente.",
+          ...(structuredBlock ? { structuredBlock } : {}),
         },
       ]);
     } catch {
@@ -506,7 +514,8 @@ export function AssistantHome({
               {messages.map((chatMessage) => {
                 const isStructured =
                   chatMessage.role === "assistant" &&
-                  isStructuredAssistantMessage(chatMessage.content);
+                  (Boolean(chatMessage.structuredBlock) ||
+                    isStructuredAssistantMessage(chatMessage.content));
 
                 return (
                   <article
@@ -531,7 +540,15 @@ export function AssistantHome({
                         {chatMessage.content}
                       </span>
                     ) : (
-                      <AssistantMessageContent content={chatMessage.content} />
+                      chatMessage.structuredBlock ? (
+                        <AssistantStructuredBlockView
+                          block={chatMessage.structuredBlock}
+                        />
+                      ) : (
+                        <AssistantMessageContent
+                          content={chatMessage.content}
+                        />
+                      )
                     )}
                   </article>
                 );
@@ -708,7 +725,8 @@ export function AssistantHome({
             />
           </form>
           <p className="mx-auto mt-1 max-w-3xl text-center text-[0.6rem] leading-4 font-semibold text-text-muted sm:mt-1.5 sm:text-[0.68rem]">
-            Consultas em modo somente leitura. Imagens, áudio e operações ainda não estão habilitados.
+            Consultas em modo somente leitura. Envio de imagens, áudio e
+            operações ainda não estão habilitados.
           </p>
       </div>
 

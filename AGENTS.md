@@ -849,6 +849,22 @@ Enquanto não existir uma administração completa de usuários:
   escrita deve passar pela operação transacional, idempotente e auditável de
   entrada vinculada ao pedido.
 
+## 38. Respostas estruturadas da Assistente IA
+
+- alertas de reposição da Assistente devem usar cards estruturados construídos
+  pelo backend com dados reais do catálogo e do estoque;
+- os cards exibem `Cód.` antes do código e abrem o item ou a configuração
+  física correspondente na tela Estoque;
+- fotos e galerias reutilizam os componentes de mídia existentes;
+- um kit avulso continua apontando para o item físico, mesmo quando suas fotos
+  vêm de configurações compatíveis;
+- aliases comerciais compartilham a mesma configuração física e não duplicam
+  saldo nem foto;
+- consultas claras de foto por código são determinísticas e não usam Gemini;
+- IDs, links internos e URLs de mídia nunca podem ser escolhidos livremente
+  pelo modelo;
+- respostas gerais continuam textuais e usam o componente de texto existente.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

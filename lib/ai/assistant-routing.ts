@@ -4,6 +4,7 @@ export type AssistantIntent =
   | "UNSUPPORTED_WRITE"
   | "SUMMARY"
   | "ALERTS"
+  | "CATALOG_MEDIA"
   | "ITEM_QUERY"
   | "GENERAL_CONVERSATION"
   | "AMBIGUOUS";
@@ -93,6 +94,31 @@ function hasAlertsIntent(message: string) {
   );
 }
 
+function hasCatalogMediaIntent(message: string) {
+  const hasExplicitMediaWord = /\b(foto|fotos|imagem|imagens)\b/.test(
+    message,
+  );
+
+  if (hasExplicitMediaWord) {
+    return true;
+  }
+
+  const hasVisualVerb =
+    /\b(ver|veja|mostrar|mostre|abrir|abra|visualizar|visualize)\b/.test(
+      message,
+    );
+  const hasCatalogTarget =
+    /\b(codigo|item|servo|kit|reparo|peca|caixa|configuracao)\b/.test(
+      message,
+    );
+  const asksOperationalData =
+    /\b(estoque|saldo|quantidade|quanto|quantos|quanta|quantas|tenho|temos|tem|disponivel|montar|montagem|minimo)\b/.test(
+      message,
+    );
+
+  return hasVisualVerb && hasCatalogTarget && !asksOperationalData;
+}
+
 export function isItemFollowUpMessage(message: string) {
   const normalizedMessage = normalizeAssistantText(message);
 
@@ -167,6 +193,10 @@ export function classifyAssistantIntent(message: string): AssistantIntent {
     return "ALERTS";
   }
 
+  if (hasCatalogMediaIntent(normalizedMessage)) {
+    return "CATALOG_MEDIA";
+  }
+
   if (hasItemQueryIntent(normalizedMessage)) {
     return "ITEM_QUERY";
   }
@@ -176,6 +206,46 @@ export function classifyAssistantIntent(message: string): AssistantIntent {
   }
 
   return "AMBIGUOUS";
+}
+
+function normalizeCatalogCode(value: string) {
+  return value
+    .trim()
+    .replace(/\s*-\s*/g, "-")
+    .replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/gi, "")
+    .toLocaleUpperCase("pt-BR");
+}
+
+export function extractCatalogMediaCode(message: string) {
+  const normalizedMessage = normalizeAssistantText(message);
+  const searchableMessage = message
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/([A-Z0-9])\s*-\s*([A-Z0-9])/gi, "$1-$2");
+
+  if (!hasCatalogMediaIntent(normalizedMessage)) {
+    return null;
+  }
+
+  const alphanumericCodes =
+    searchableMessage.match(
+      /\b(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9]+(?:\s*-\s*[A-Z0-9]+)*\b/gi,
+    ) ?? [];
+  const contextualNumericCodes = Array.from(
+    searchableMessage.matchAll(
+      /\b(?:codigo|item|servo|kit|reparo|peca|caixa|configuracao|foto|imagem)\s+(?:do|da|de|n[ao])?\s*(\d+)\b/gi,
+    ),
+    (match) => match[1],
+  );
+  const candidates = Array.from(
+    new Set(
+      [...alphanumericCodes, ...contextualNumericCodes]
+        .map(normalizeCatalogCode)
+        .filter(Boolean),
+    ),
+  );
+
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 function cleanQueryCandidate(value: string) {

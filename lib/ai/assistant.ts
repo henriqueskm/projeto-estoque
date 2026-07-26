@@ -3,12 +3,14 @@ import "server-only";
 import { ApiError, GoogleGenAI, type Interactions } from "@google/genai";
 import {
   AssistantDataError,
+  consultAssistantCatalogMedia,
   consultAssistantItem,
   consultAssistantLowStock,
   consultAssistantStockSummary,
 } from "@/lib/assistant-data";
 import {
   classifyAssistantIntent,
+  extractCatalogMediaCode,
   extractExplicitItemQuery,
   getExplicitGreeting,
   isItemFollowUpMessage,
@@ -18,7 +20,6 @@ import type {
   AssistantChatSuccess,
   AssistantCommercialConfigurationResult,
   AssistantItemLookupResult,
-  AssistantLowStockResult,
   AssistantPhysicalItemResult,
   AssistantStockSummaryResult,
 } from "@/lib/assistant-types";
@@ -251,26 +252,6 @@ function formatStockSummary(result: AssistantStockSummaryResult) {
 - Estoque zerado: ${result.out_of_stock}`;
 }
 
-function formatLowStock(result: AssistantLowStockResult) {
-  if (result.items.length === 0) {
-    return "No momento não há itens abaixo do estoque mínimo configurado.";
-  }
-
-  const lines = result.items.map((item) => {
-    const aliases =
-      item.aliases && item.aliases.length > 1
-        ? ` (${item.aliases.join(" / ")})`
-        : "";
-    const state = item.status === "ZERO" ? "zerado" : "baixo";
-
-    return `- **${item.code}${aliases} — ${item.description}**: ${item.current_quantity} em estoque · mínimo ${item.minimum_stock} · ${state}`;
-  });
-
-  return `**Itens para repor**
-
-${lines.join("\n")}`;
-}
-
 function compactPhysicalItem(item: AssistantPhysicalItemResult) {
   return {
     kind: item.kind,
@@ -472,14 +453,36 @@ export async function answerAssistantQuestion(
   }
 
   if (intent === "ALERTS") {
-    const lowStock = await executeStockQuery(consultAssistantLowStock);
+    const alertsBlock = await executeStockQuery(consultAssistantLowStock);
 
     return {
-      message: ensureExplicitGreeting(
-        formatLowStock(lowStock),
-        message,
-        firstName,
-      ),
+      message: alertsBlock.fallbackText,
+      structuredBlock: alertsBlock,
+    };
+  }
+
+  if (intent === "CATALOG_MEDIA") {
+    const catalogCode = extractCatalogMediaCode(message);
+
+    if (!catalogCode) {
+      return {
+        message:
+          "Informe um único código para eu localizar a foto no catálogo.",
+        contextItemQuery: null,
+      };
+    }
+
+    const mediaBlock = await executeStockQuery(() =>
+      consultAssistantCatalogMedia(catalogCode),
+    );
+
+    return {
+      message: mediaBlock.fallbackText,
+      structuredBlock: mediaBlock,
+      contextItemQuery:
+        mediaBlock.status === "FOUND"
+          ? (mediaBlock.results[0]?.displayCode ?? null)
+          : null,
     };
   }
 

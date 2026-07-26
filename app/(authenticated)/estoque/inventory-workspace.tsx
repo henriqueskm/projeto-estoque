@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useState,
   type Dispatch,
@@ -25,7 +26,12 @@ import type {
 type InventoryWorkspaceProps = {
   inventory: InventoryData;
   initialStatusFilter?: InventoryStatusFilter;
+  initialTarget?: InventoryDeepLinkTarget;
 };
+
+export type InventoryDeepLinkTarget =
+  | { kind: "item"; id: string }
+  | { kind: "commercial_configuration"; id: string };
 
 export type InventoryStatusFilter =
   | "all"
@@ -320,7 +326,13 @@ function InventoryAccordion({
   );
 }
 
-function PhysicalTable({ items }: { items: InventoryPhysicalItem[] }) {
+function PhysicalTable({
+  items,
+  highlightedItemId,
+}: {
+  items: InventoryPhysicalItem[];
+  highlightedItemId?: string;
+}) {
   return (
     <div className="relative bg-surface">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
@@ -366,7 +378,13 @@ function PhysicalTable({ items }: { items: InventoryPhysicalItem[] }) {
           {items.map((item) => (
             <tr
               key={item.id}
-              className="align-middle transition hover:bg-app-background/70"
+              id={`inventory-item-${item.id}`}
+              tabIndex={item.id === highlightedItemId ? -1 : undefined}
+              className={`align-middle transition hover:bg-app-background/70 ${
+                item.id === highlightedItemId
+                  ? "bg-brand-gold-soft/60 outline-2 outline-offset-[-2px] outline-brand-gold-dark"
+                  : ""
+              }`}
             >
               <th
                 scope="row"
@@ -434,8 +452,10 @@ function PhysicalTable({ items }: { items: InventoryPhysicalItem[] }) {
 
 function ConfigurationTable({
   configurations,
+  highlightedConfigurationId,
 }: {
   configurations: InventoryCommercialConfiguration[];
+  highlightedConfigurationId?: string;
 }) {
   return (
     <div className="relative bg-surface">
@@ -482,7 +502,17 @@ function ConfigurationTable({
           {configurations.map((configuration) => (
             <tr
               key={configuration.id}
-              className="align-middle transition hover:bg-violet-50/50"
+              id={`inventory-configuration-${configuration.id}`}
+              tabIndex={
+                configuration.id === highlightedConfigurationId
+                  ? -1
+                  : undefined
+              }
+              className={`align-middle transition hover:bg-violet-50/50 ${
+                configuration.id === highlightedConfigurationId
+                  ? "bg-brand-gold-soft/60 outline-2 outline-offset-[-2px] outline-brand-gold-dark"
+                  : ""
+              }`}
             >
               <th
                 scope="row"
@@ -570,7 +600,24 @@ function FilterIcon() {
 export function InventoryWorkspace({
   inventory,
   initialStatusFilter = "all",
+  initialTarget,
 }: InventoryWorkspaceProps) {
+  const targetedPhysicalItem =
+    initialTarget?.kind === "item"
+      ? inventory.physicalItems.find((item) => item.id === initialTarget.id)
+      : undefined;
+  const targetedConfiguration =
+    initialTarget?.kind === "commercial_configuration"
+      ? inventory.configurations.find(
+          (configuration) => configuration.id === initialTarget.id,
+        )
+      : undefined;
+  const targetedConfigurationFamily = targetedConfiguration
+    ? getServoFamilyLabel(
+        targetedConfiguration.servo.model,
+        targetedConfiguration.servo.description,
+      )
+    : null;
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<InventoryStatusFilter>(initialStatusFilter);
@@ -579,14 +626,39 @@ export function InventoryWorkspace({
     initialStatusFilter !== "all",
   );
   const [openPhysicalGroups, setOpenPhysicalGroups] = useState<Set<string>>(
-    () => new Set(),
+    () =>
+      new Set(
+        targetedPhysicalItem ? [targetedPhysicalItem.itemType] : [],
+      ),
   );
   const [openFamilies, setOpenFamilies] = useState<Set<string>>(
-    () => new Set(),
+    () =>
+      new Set(
+        targetedConfigurationFamily ? [targetedConfigurationFamily] : [],
+      ),
   );
   const normalizedQuery = normalizeSearch(query.trim());
   const hasSearch = normalizedQuery.length > 0;
   const hasActiveFilters = statusFilter !== "all" || sort !== "code";
+
+  useEffect(() => {
+    if (!initialTarget) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const rowId =
+        initialTarget.kind === "item"
+          ? `inventory-item-${initialTarget.id}`
+          : `inventory-configuration-${initialTarget.id}`;
+      const row = document.getElementById(rowId);
+
+      row?.scrollIntoView({ behavior: "smooth", block: "center" });
+      row?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialTarget]);
 
   const filteredPhysicalItems = useMemo(() => {
     const result = inventory.physicalItems.filter(
@@ -956,7 +1028,14 @@ export function InventoryWorkspace({
                 }
               >
                 {group.items.length > 0 ? (
-                  <PhysicalTable items={group.items} />
+                  <PhysicalTable
+                    items={group.items}
+                    highlightedItemId={
+                      initialTarget?.kind === "item"
+                        ? initialTarget.id
+                        : undefined
+                    }
+                  />
                 ) : (
                   <p className="px-4 py-5 text-sm text-text-muted">
                     Nenhum cadastro neste grupo.
@@ -1009,6 +1088,11 @@ export function InventoryWorkspace({
               >
                 <ConfigurationTable
                   configurations={family.configurations}
+                  highlightedConfigurationId={
+                    initialTarget?.kind === "commercial_configuration"
+                      ? initialTarget.id
+                      : undefined
+                  }
                 />
               </InventoryAccordion>
             );

@@ -2,13 +2,22 @@ import "server-only";
 
 import {
   assistantQueryMaxLength,
+  type AssistantCatalogMediaBlock,
+  type AssistantCatalogMediaTarget,
   type AssistantCommercialConfigurationResult,
+  type AssistantInventoryAlertCard,
+  type AssistantInventoryAlertsBlock,
   type AssistantItemLookupResult,
-  type AssistantLowStockResult,
+  type AssistantMediaDescriptor,
   type AssistantPhysicalItemResult,
   type AssistantStockAttentionItem,
   type AssistantStockSummaryResult,
 } from "@/lib/assistant-types";
+import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
+import {
+  createCompatibleKitImageMap,
+  type CompatibleKitImageOption,
+} from "@/lib/compatible-kit-images";
 import { loadHomeData } from "@/lib/home-data";
 import {
   calculatePhysicalStockByItem,
@@ -43,6 +52,7 @@ type CommercialConfigurationRow = {
   installation_kit_id: string;
   minimum_stock: number;
   is_active: boolean;
+  image_path: string | null;
 };
 
 type CommercialConfigurationCodeRow = {
@@ -129,7 +139,7 @@ async function loadAssistantStockSnapshot(): Promise<AssistantStockSnapshot> {
     supabase
       .from("commercial_configurations")
       .select(
-        "id, description, servo_id, installation_kit_id, minimum_stock, is_active",
+        "id, description, servo_id, installation_kit_id, minimum_stock, is_active, image_path",
       ),
     supabase
       .from("commercial_configuration_codes")
@@ -353,6 +363,188 @@ function buildLookupCatalog(snapshot: AssistantStockSnapshot) {
   };
 }
 
+const physicalItemTypeLabels: Record<PhysicalStockItemType, string> = {
+  SERVO: "Servoembreagem",
+  INSTALLATION_KIT: "Kit de instalação",
+  REPAIR_KIT: "Jogo de reparo",
+  LOOSE_PART: "Peça avulsa",
+};
+
+type AssistantMediaMaps = {
+  configurationImageById: Map<
+    string,
+    Extract<
+      AssistantMediaDescriptor,
+      { kind: "commercial_configuration_image" }
+    >
+  >;
+  compatibleKitImagesByItemId: Map<string, CompatibleKitImageOption[]>;
+};
+
+async function buildAssistantMediaMaps(
+  snapshot: AssistantStockSnapshot,
+  requestedConfigurationIds: Set<string>,
+  requestedInstallationKitIds: Set<string>,
+): Promise<AssistantMediaMaps> {
+  if (
+    requestedConfigurationIds.size === 0 &&
+    requestedInstallationKitIds.size === 0
+  ) {
+    return {
+      configurationImageById: new Map(),
+      compatibleKitImagesByItemId: new Map(),
+    };
+  }
+
+  const activeItemById = new Map(
+    snapshot.items
+      .filter((item) => item.is_active)
+      .map((item) => [item.id, item]),
+  );
+  const modelByItemId = new Map(
+    snapshot.servoModels.map((servo) => [
+      servo.item_id,
+      servo.model?.trim() || null,
+    ]),
+  );
+  const activeAliasesByConfigurationId = new Map<string, string[]>();
+
+  snapshot.configurationCodes
+    .filter((code) => code.is_active)
+    .forEach((code) => {
+      const aliases =
+        activeAliasesByConfigurationId.get(code.configuration_id) ?? [];
+      aliases.push(code.code);
+      activeAliasesByConfigurationId.set(code.configuration_id, aliases);
+    });
+  activeAliasesByConfigurationId.forEach((aliases) =>
+    aliases.sort(compareCodes),
+  );
+
+  const relevantConfigurations = snapshot.configurations.filter(
+    (configuration) => {
+      const servo = activeItemById.get(configuration.servo_id);
+      const installationKit = activeItemById.get(
+        configuration.installation_kit_id,
+      );
+
+      return (
+        Boolean(configuration.image_path) &&
+        configuration.is_active &&
+        servo?.item_type === "SERVO" &&
+        installationKit?.item_type === "INSTALLATION_KIT" &&
+        (activeAliasesByConfigurationId.get(configuration.id)?.length ?? 0) >
+          0 &&
+        (requestedConfigurationIds.has(configuration.id) ||
+          requestedInstallationKitIds.has(configuration.installation_kit_id))
+      );
+    },
+  );
+  const supabase = await createClient();
+  const imageUrlByPath = await createCommercialImageUrlMap(
+    supabase,
+    relevantConfigurations.map((configuration) => configuration.image_path),
+  );
+  const configurationImageById: AssistantMediaMaps["configurationImageById"] =
+    new Map();
+  const compatibleKitImagesByItemId = createCompatibleKitImageMap(
+    relevantConfigurations.flatMap((configuration) => {
+      const imageUrl = configuration.image_path
+        ? (imageUrlByPath.get(configuration.image_path) ?? null)
+        : null;
+      const servo = activeItemById.get(configuration.servo_id);
+      const installationKit = activeItemById.get(
+        configuration.installation_kit_id,
+      );
+      const commercialCodes =
+        activeAliasesByConfigurationId.get(configuration.id) ?? [];
+
+      if (
+        !imageUrl ||
+        servo?.item_type !== "SERVO" ||
+        installationKit?.item_type !== "INSTALLATION_KIT"
+      ) {
+        return [];
+      }
+
+      configurationImageById.set(configuration.id, {
+        kind: "commercial_configuration_image",
+        commercialCodes,
+        imageUrl,
+      });
+
+      return [
+        {
+          installationKitId: installationKit.id,
+          configurationId: configuration.id,
+          commercialCodes,
+          servoCode: servo.code,
+          servoDescription: servo.description,
+          servoModel: modelByItemId.get(servo.id) ?? null,
+          installationKitCode: installationKit.code,
+          description:
+            configuration.description?.trim() ||
+            `${servo.description} + ${installationKit.code}`,
+          imageUrl,
+        },
+      ];
+    }),
+  );
+
+  return {
+    configurationImageById,
+    compatibleKitImagesByItemId,
+  };
+}
+
+function buildInventoryTargetHref(
+  targetKind: "item" | "commercial_configuration",
+  targetId: string,
+  includeAttentionFilter = false,
+) {
+  const targetParam =
+    targetKind === "item" ? "item" : "configuration";
+  const params = new URLSearchParams();
+
+  if (includeAttentionFilter) {
+    params.set("status", "attention");
+  }
+
+  params.set(targetParam, targetId);
+  return `/estoque?${params.toString()}`;
+}
+
+function getAttentionFallbackText(
+  items: AssistantStockAttentionItem[],
+  zeroCount: number,
+  lowCount: number,
+  remainingCount: number,
+) {
+  if (zeroCount + lowCount === 0) {
+    return "Estoque em dia. Nenhum item precisa de reposição no momento.";
+  }
+
+  const itemLines = items.map(
+    (item) =>
+      `Código ${item.code}, ${item.description}, estoque ${item.current_quantity}, mínimo ${item.minimum_stock}, ${item.status === "ZERO" ? "zerado" : "baixo"}.`,
+  );
+  const remainingLine =
+    remainingCount > 0
+      ? `${remainingCount} ${
+          remainingCount === 1
+            ? "item adicional precisa"
+            : "itens adicionais precisam"
+        } de atenção.`
+      : null;
+
+  return [
+    "Itens para repor.",
+    `${zeroCount} ${zeroCount === 1 ? "item zerado" : "itens zerados"} e ${lowCount} ${lowCount === 1 ? "item baixo" : "itens baixos"}.`,
+    ...itemLines,
+    ...(remainingLine ? [remainingLine] : []),
+  ].join("\n");
+}
+
 export async function consultAssistantItem(
   rawQuery: string,
 ): Promise<AssistantItemLookupResult> {
@@ -429,6 +621,275 @@ export async function consultAssistantItem(
   };
 }
 
+async function loadAssistantCatalogMediaSnapshot(
+  queryCode: string,
+): Promise<AssistantStockSnapshot> {
+  const supabase = await createClient();
+  const [itemsResult, exactCodesResult] = await Promise.all([
+    supabase
+      .from("items")
+      .select("id, code, description, item_type, minimum_stock, is_active")
+      .eq("code", queryCode)
+      .eq("is_active", true)
+      .limit(2),
+    supabase
+      .from("commercial_configuration_codes")
+      .select("configuration_id, code, is_active")
+      .eq("code", queryCode)
+      .eq("is_active", true)
+      .limit(2),
+  ]);
+
+  if (itemsResult.error || exactCodesResult.error) {
+    throw new AssistantDataError();
+  }
+
+  const exactItems = (itemsResult.data ?? []) as ItemRow[];
+  const exactCodes = (exactCodesResult.data ??
+    []) as CommercialConfigurationCodeRow[];
+  const exactConfigurationIds = Array.from(
+    new Set(exactCodes.map((code) => code.configuration_id)),
+  );
+  const installationKitIds = exactItems
+    .filter((item) => item.item_type === "INSTALLATION_KIT")
+    .map((item) => item.id);
+  const configurationSelect =
+    "id, description, servo_id, installation_kit_id, minimum_stock, is_active, image_path";
+  const exactConfigurationsPromise =
+    exactConfigurationIds.length > 0
+      ? supabase
+          .from("commercial_configurations")
+          .select(configurationSelect)
+          .in("id", exactConfigurationIds)
+      : Promise.resolve({ data: [], error: null });
+  const compatibleConfigurationsPromise =
+    installationKitIds.length > 0
+      ? supabase
+          .from("commercial_configurations")
+          .select(configurationSelect)
+          .in("installation_kit_id", installationKitIds)
+          .eq("is_active", true)
+      : Promise.resolve({ data: [], error: null });
+  const [exactConfigurationsResult, compatibleConfigurationsResult] =
+    await Promise.all([
+      exactConfigurationsPromise,
+      compatibleConfigurationsPromise,
+    ]);
+
+  if (
+    exactConfigurationsResult.error ||
+    compatibleConfigurationsResult.error
+  ) {
+    throw new AssistantDataError();
+  }
+
+  const configurationById = new Map<string, CommercialConfigurationRow>();
+  [
+    ...(exactConfigurationsResult.data ?? []),
+    ...(compatibleConfigurationsResult.data ?? []),
+  ].forEach((configuration) => {
+    const row = configuration as CommercialConfigurationRow;
+    configurationById.set(row.id, row);
+  });
+  const configurations = Array.from(configurationById.values());
+  const configurationIds = configurations.map(
+    (configuration) => configuration.id,
+  );
+  const componentItemIds = Array.from(
+    new Set(
+      configurations.flatMap((configuration) => [
+        configuration.servo_id,
+        configuration.installation_kit_id,
+      ]),
+    ),
+  );
+  const servoIds = Array.from(
+    new Set(configurations.map((configuration) => configuration.servo_id)),
+  );
+  const componentItemsPromise =
+    componentItemIds.length > 0
+      ? supabase
+          .from("items")
+          .select(
+            "id, code, description, item_type, minimum_stock, is_active",
+          )
+          .in("id", componentItemIds)
+      : Promise.resolve({ data: [], error: null });
+  const aliasesPromise =
+    configurationIds.length > 0
+      ? supabase
+          .from("commercial_configuration_codes")
+          .select("configuration_id, code, is_active")
+          .in("configuration_id", configurationIds)
+          .eq("is_active", true)
+      : Promise.resolve({ data: [], error: null });
+  const servoModelsPromise =
+    servoIds.length > 0
+      ? supabase
+          .from("servo_models")
+          .select("item_id, model")
+          .in("item_id", servoIds)
+      : Promise.resolve({ data: [], error: null });
+  const [componentItemsResult, aliasesResult, servoModelsResult] =
+    await Promise.all([
+      componentItemsPromise,
+      aliasesPromise,
+      servoModelsPromise,
+    ]);
+
+  if (
+    componentItemsResult.error ||
+    aliasesResult.error ||
+    servoModelsResult.error
+  ) {
+    throw new AssistantDataError();
+  }
+
+  const itemById = new Map<string, ItemRow>();
+  [
+    ...exactItems,
+    ...((componentItemsResult.data ?? []) as ItemRow[]),
+  ].forEach((item) => itemById.set(item.id, item));
+
+  return {
+    items: Array.from(itemById.values()),
+    servoModels: (servoModelsResult.data ?? []) as ServoModelRow[],
+    stockBalances: [],
+    configurations,
+    configurationCodes: (aliasesResult.data ??
+      []) as CommercialConfigurationCodeRow[],
+    configurationBalances: [],
+    repairCompatibilities: [],
+  };
+}
+
+export async function consultAssistantCatalogMedia(
+  rawCode: string,
+): Promise<AssistantCatalogMediaBlock> {
+  const queryCode = rawCode.trim().toLocaleUpperCase("pt-BR");
+
+  if (!queryCode || queryCode.length > assistantQueryMaxLength) {
+    throw new AssistantDataError();
+  }
+
+  const normalizedCode = normalizeSearch(queryCode);
+  const snapshot = await loadAssistantCatalogMediaSnapshot(queryCode);
+  const { physicalItems, configurations } = buildLookupCatalog(snapshot);
+  const physicalMatches = physicalItems.filter(
+    (item) => normalizeSearch(item.code) === normalizedCode,
+  );
+  const configurationMatches = configurations
+    .filter((configuration) =>
+      configuration.aliases.some(
+        (alias) => normalizeSearch(alias) === normalizedCode,
+      ),
+    )
+    .map((configuration) => ({
+      ...configuration,
+      matched_commercial_code:
+        configuration.aliases.find(
+          (alias) => normalizeSearch(alias) === normalizedCode,
+        ) ?? configuration.aliases[0],
+    }));
+  const requestedConfigurationIds = new Set(
+    configurationMatches.map((configuration) => configuration.configuration_id),
+  );
+  const requestedInstallationKitIds = new Set(
+    physicalMatches
+      .filter((item) => item.kind === "INSTALLATION_KIT")
+      .map((item) => item.item_id),
+  );
+  const mediaMaps = await buildAssistantMediaMaps(
+    snapshot,
+    requestedConfigurationIds,
+    requestedInstallationKitIds,
+  );
+  const results: AssistantCatalogMediaTarget[] = [
+    ...physicalMatches.map((item) => {
+      const compatibleImages =
+        item.kind === "INSTALLATION_KIT"
+          ? (mediaMaps.compatibleKitImagesByItemId.get(item.item_id) ?? [])
+          : [];
+
+      return {
+        targetKind: "item" as const,
+        targetId: item.item_id,
+        displayCode: item.code,
+        description: item.description,
+        typeLabel: physicalItemTypeLabels[item.kind],
+        href: buildInventoryTargetHref("item", item.item_id),
+        mediaDescriptor:
+          compatibleImages.length > 0
+            ? ({
+                kind: "compatible_kit_images",
+                kitCode: item.code,
+                options: compatibleImages,
+              } satisfies AssistantMediaDescriptor)
+            : null,
+      };
+    }),
+    ...configurationMatches.map((configuration) => ({
+      targetKind: "commercial_configuration" as const,
+      targetId: configuration.configuration_id,
+      displayCode: configuration.matched_commercial_code,
+      description: configuration.description,
+      typeLabel: "Caixa completa",
+      href: buildInventoryTargetHref(
+        "commercial_configuration",
+        configuration.configuration_id,
+      ),
+      mediaDescriptor:
+        mediaMaps.configurationImageById.get(
+          configuration.configuration_id,
+        ) ?? null,
+    })),
+  ].sort((first, second) => compareCodes(first.displayCode, second.displayCode));
+  const inventoryHref =
+    results.length === 1 ? results[0].href : "/estoque";
+
+  if (results.length === 0) {
+    return {
+      kind: "catalog_media",
+      queryCode,
+      status: "NOT_FOUND",
+      results: [],
+      inventoryHref,
+      fallbackText: `Não encontrei o código “${queryCode}” no catálogo.`,
+    };
+  }
+
+  if (results.length > 1) {
+    return {
+      kind: "catalog_media",
+      queryCode,
+      status: "AMBIGUOUS",
+      results,
+      inventoryHref,
+      fallbackText: [
+        `Encontrei mais de um resultado para o código “${queryCode}”.`,
+        ...results.map(
+          (result) =>
+            `Código ${result.displayCode}, ${result.description}, ${result.typeLabel}.`,
+        ),
+      ].join("\n"),
+    };
+  }
+
+  const result = results[0];
+  const hasMedia = result.mediaDescriptor !== null;
+
+  return {
+    kind: "catalog_media",
+    queryCode,
+    status: "FOUND",
+    results,
+    inventoryHref,
+    fallbackText: hasMedia
+      ? `Código ${result.displayCode}, ${result.description}. Foto disponível.`
+      : `Encontrei o código ${result.displayCode}, mas ainda não há uma foto cadastrada para ${result.targetKind === "commercial_configuration" ? "essa configuração" : "esse item"}.`,
+  };
+}
+
 export async function consultAssistantStockSummary(): Promise<AssistantStockSummaryResult> {
   const result = await loadHomeData();
 
@@ -447,7 +908,7 @@ export async function consultAssistantStockSummary(): Promise<AssistantStockSumm
   };
 }
 
-export async function consultAssistantLowStock(): Promise<AssistantLowStockResult> {
+export async function consultAssistantLowStock(): Promise<AssistantInventoryAlertsBlock> {
   const snapshot = await loadAssistantStockSnapshot();
   const {
     activeItems,
@@ -471,6 +932,8 @@ export async function consultAssistantLowStock(): Promise<AssistantLowStockResul
 
       return [
         {
+          target_kind: "item" as const,
+          target_id: item.id,
           type: item.item_type,
           code: item.code,
           description:
@@ -508,6 +971,8 @@ export async function consultAssistantLowStock(): Promise<AssistantLowStockResul
     }
 
     attentionItems.push({
+      target_kind: "commercial_configuration",
+      target_id: configuration.id,
       type: "COMMERCIAL_CONFIGURATION",
       code: aliases[0],
       aliases,
@@ -528,9 +993,77 @@ export async function consultAssistantLowStock(): Promise<AssistantLowStockResul
           ? -1
           : 1) || compareCodes(first.code, second.code),
   );
+  const zeroCount = attentionItems.filter(
+    (item) => item.status === "ZERO",
+  ).length;
+  const lowCount = attentionItems.length - zeroCount;
+  const displayedItems = attentionItems.slice(0, 10);
+  const remainingCount = attentionItems.length - displayedItems.length;
+  const requestedConfigurationIds = new Set(
+    displayedItems
+      .filter((item) => item.target_kind === "commercial_configuration")
+      .map((item) => item.target_id),
+  );
+  const requestedInstallationKitIds = new Set(
+    displayedItems
+      .filter((item) => item.type === "INSTALLATION_KIT")
+      .map((item) => item.target_id),
+  );
+  const mediaMaps = await buildAssistantMediaMaps(
+    snapshot,
+    requestedConfigurationIds,
+    requestedInstallationKitIds,
+  );
+  const cards: AssistantInventoryAlertCard[] = displayedItems.map((item) => {
+    const compatibleImages =
+      item.type === "INSTALLATION_KIT"
+        ? (mediaMaps.compatibleKitImagesByItemId.get(item.target_id) ?? [])
+        : [];
+    const mediaDescriptor: AssistantMediaDescriptor | null =
+      item.target_kind === "commercial_configuration"
+        ? (mediaMaps.configurationImageById.get(item.target_id) ?? null)
+        : compatibleImages.length > 0
+          ? {
+              kind: "compatible_kit_images",
+              kitCode: item.code,
+              options: compatibleImages,
+            }
+          : null;
+
+    return {
+      targetKind: item.target_kind,
+      targetId: item.target_id,
+      displayCode: item.code,
+      description: item.description,
+      currentStock: item.current_quantity,
+      minimumStock: item.minimum_stock,
+      status: item.status,
+      href: buildInventoryTargetHref(
+        item.target_kind,
+        item.target_id,
+        true,
+      ),
+      mediaDescriptor,
+    };
+  });
 
   return {
-    count: attentionItems.length,
-    items: attentionItems,
+    kind: "inventory_alerts",
+    title: "Itens para repor",
+    summary: {
+      zeroCount,
+      lowCount,
+      totalCount: attentionItems.length,
+    },
+    zeroItems: cards.filter((item) => item.status === "ZERO"),
+    lowItems: cards.filter((item) => item.status === "LOW"),
+    remainingCount,
+    inventoryHref: "/estoque?status=attention",
+    fallbackText: getAttentionFallbackText(
+      displayedItems,
+      zeroCount,
+      lowCount,
+      remainingCount,
+    ),
   };
 }
