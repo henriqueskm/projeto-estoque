@@ -12,6 +12,9 @@ import {
   type SupplierOrderCommandInput,
   type SupplierOrderLineInput,
   type SupplierOrderReceipt,
+  type SupplierOrderStockEntryActionInput,
+  type SupplierOrderStockEntryActionResult,
+  type SupplierOrderStockEntryReceipt,
   type SupplierOrderStatus,
   type UpdateSupplierOrderInput,
 } from "@/lib/supplier-orders-types";
@@ -45,11 +48,36 @@ type RpcReceipt = {
   updated_at?: unknown;
 };
 
+type RpcStockEntryReceipt = RpcReceipt & {
+  supplier_order_stock_entry_id?: unknown;
+  movement_batch_id?: unknown;
+  stock_entry_line_count?: unknown;
+  stock_entry_quantity?: unknown;
+  stock_entry_created_at?: unknown;
+};
+
 function actionError(
   error: string,
   stale = false,
 ): SupplierOrderActionResult {
   return stale ? { ok: false, error, stale: true } : { ok: false, error };
+}
+
+function stockEntryActionError(
+  error: string,
+  options?: {
+    stale?: boolean;
+    transportUncertain?: boolean;
+  },
+): SupplierOrderStockEntryActionResult {
+  return {
+    ok: false,
+    error,
+    ...(options?.stale ? { stale: true } : {}),
+    ...(options?.transportUncertain
+      ? { transportUncertain: true }
+      : {}),
+  };
 }
 
 function hasOnlyFields(
@@ -425,6 +453,47 @@ function parseReceipt(data: unknown): SupplierOrderReceipt | null {
   };
 }
 
+function parseStockEntryReceipt(
+  data: unknown,
+): SupplierOrderStockEntryReceipt | null {
+  const receipt = parseReceipt(data);
+
+  if (!receipt || !data || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+
+  const stockEntry = data as RpcStockEntryReceipt;
+  const stockEntryLineCount = parseNonnegativeInteger(
+    stockEntry.stock_entry_line_count,
+  );
+  const stockEntryQuantity = parseNonnegativeInteger(
+    stockEntry.stock_entry_quantity,
+  );
+
+  if (
+    !isUuid(stockEntry.supplier_order_stock_entry_id) ||
+    !isUuid(stockEntry.movement_batch_id) ||
+    stockEntryLineCount === null ||
+    stockEntryLineCount < 1 ||
+    stockEntryQuantity === null ||
+    stockEntryQuantity < 1 ||
+    typeof stockEntry.stock_entry_created_at !== "string" ||
+    Number.isNaN(Date.parse(stockEntry.stock_entry_created_at))
+  ) {
+    return null;
+  }
+
+  return {
+    ...receipt,
+    supplierOrderStockEntryId:
+      stockEntry.supplier_order_stock_entry_id,
+    movementBatchId: stockEntry.movement_batch_id,
+    stockEntryLineCount,
+    stockEntryQuantity,
+    stockEntryCreatedAt: stockEntry.stock_entry_created_at,
+  };
+}
+
 function mapRpcError(
   code: string | undefined,
   message: string,
@@ -531,6 +600,153 @@ function mapFinalizeRpcError(
   }
 
   return mapRpcError(code, message);
+}
+
+function mapStockEntryRpcError(
+  code: string | undefined,
+  message: string,
+): SupplierOrderStockEntryActionResult {
+  const normalizedMessage = message.toLocaleLowerCase("en-US");
+
+  if (code === "40001" || normalizedMessage.includes("changed after")) {
+    return stockEntryActionError(
+      "Este pedido foi atualizado por outra operação. Recarregue os dados antes de tentar novamente.",
+      { stale: true },
+    );
+  }
+
+  if (code === "42501" || code === "28000") {
+    return stockEntryActionError("Seu acesso não está ativo.");
+  }
+
+  if (normalizedMessage.includes("same supplier-order line")) {
+    return stockEntryActionError(
+      "O mesmo item não pode aparecer duas vezes na entrada.",
+    );
+  }
+
+  if (
+    normalizedMessage.includes("cannot exceed") ||
+    normalizedMessage.includes("awaiting stock entry")
+  ) {
+    return stockEntryActionError(
+      "A quantidade para entrada não pode ultrapassar o que já foi retirado.",
+    );
+  }
+
+  if (
+    normalizedMessage.includes("every stock-entry line must belong") ||
+    normalizedMessage.includes("must belong to the informed supplier order")
+  ) {
+    return stockEntryActionError(
+      "Um dos itens não pertence mais a este pedido.",
+    );
+  }
+
+  if (normalizedMessage.includes("supplier order does not exist")) {
+    return stockEntryActionError("O pedido não foi encontrado.");
+  }
+
+  if (
+    normalizedMessage.includes("idempotency") ||
+    normalizedMessage.includes("different request")
+  ) {
+    return stockEntryActionError(
+      "Esta tentativa já foi usada com outros dados. Revise a entrada e tente novamente.",
+    );
+  }
+
+  return stockEntryActionError(
+    "Não foi possível registrar a entrada no estoque.",
+  );
+}
+
+function normalizeStockEntryInput(
+  input: unknown,
+):
+  | SupplierOrderStockEntryActionInput
+  | SupplierOrderStockEntryActionResult {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return stockEntryActionError("Os dados da entrada são inválidos.");
+  }
+
+  const request = input as Record<string, unknown>;
+
+  if (
+    !hasOnlyFields(request, [
+      "supplierOrderId",
+      "lines",
+      "note",
+      "expectedUpdatedAt",
+      "idempotencyKey",
+    ]) ||
+    !isUuid(request.supplierOrderId) ||
+    !Array.isArray(request.lines) ||
+    request.lines.length < 1 ||
+    request.lines.length > maximumLines ||
+    typeof request.expectedUpdatedAt !== "string" ||
+    Number.isNaN(Date.parse(request.expectedUpdatedAt)) ||
+    !isUuid(request.idempotencyKey)
+  ) {
+    return stockEntryActionError("Os dados da entrada são inválidos.");
+  }
+
+  const note = normalizeOptionalText(
+    request.note,
+    maximumOperationDescriptionLength,
+  );
+
+  if (note === undefined) {
+    return stockEntryActionError(
+      `A observação deve ter no máximo ${maximumOperationDescriptionLength} caracteres.`,
+    );
+  }
+
+  const lineIds = new Set<string>();
+  const lines: SupplierOrderStockEntryActionInput["lines"] = [];
+
+  for (const rawLine of request.lines) {
+    if (!rawLine || typeof rawLine !== "object" || Array.isArray(rawLine)) {
+      return stockEntryActionError("Os dados da entrada são inválidos.");
+    }
+
+    const line = rawLine as Record<string, unknown>;
+
+    if (
+      !hasOnlyFields(line, ["supplierOrderItemId", "quantity"]) ||
+      !isUuid(line.supplierOrderItemId) ||
+      typeof line.quantity !== "number" ||
+      !Number.isInteger(line.quantity) ||
+      line.quantity < 1 ||
+      line.quantity > maximumInteger
+    ) {
+      return stockEntryActionError(
+        "Informe quantidades inteiras e positivas para a entrada.",
+      );
+    }
+
+    const supplierOrderItemId = line.supplierOrderItemId.toLowerCase();
+
+    if (lineIds.has(supplierOrderItemId)) {
+      return stockEntryActionError(
+        "O mesmo item não pode aparecer duas vezes na entrada.",
+      );
+    }
+
+    lineIds.add(supplierOrderItemId);
+    lines.push({
+      supplierOrderItemId,
+      quantity: line.quantity,
+    });
+  }
+
+  return {
+    supplierOrderId: request.supplierOrderId.toLowerCase(),
+    lines,
+    note,
+    expectedUpdatedAt: request.expectedUpdatedAt,
+    idempotencyKey: request.idempotencyKey.toLowerCase(),
+  };
 }
 
 function finishMutation(data: unknown): SupplierOrderActionResult {
@@ -885,6 +1101,68 @@ export async function finalizeSupplierOrder(
   } catch {
     return actionError(
       "Não foi possível finalizar o pedido agora. Tente novamente.",
+    );
+  }
+}
+
+export async function createSupplierOrderStockEntryAction(
+  input: unknown,
+): Promise<SupplierOrderStockEntryActionResult> {
+  const normalized = normalizeStockEntryInput(input);
+
+  if ("ok" in normalized) {
+    return normalized;
+  }
+
+  try {
+    const context = await getAuthenticatedContext();
+
+    if (!context) {
+      return stockEntryActionError("Seu acesso não está ativo.");
+    }
+
+    const { data, error } = await context.supabase.rpc(
+      "create_supplier_order_stock_entry",
+      {
+        p_supplier_order_id: normalized.supplierOrderId,
+        p_lines: normalized.lines.map((line) => ({
+          supplier_order_item_id: line.supplierOrderItemId,
+          quantity: line.quantity,
+        })),
+        p_note: normalized.note ?? null,
+        p_expected_updated_at: normalized.expectedUpdatedAt,
+        p_idempotency_key: normalized.idempotencyKey,
+      },
+    );
+
+    if (error) {
+      return mapStockEntryRpcError(error.code, error.message);
+    }
+
+    const receipt = parseStockEntryReceipt(data);
+
+    if (!receipt) {
+      return stockEntryActionError(
+        "Não foi possível confirmar o resultado. Tente novamente sem alterar os dados para verificar a mesma operação.",
+        { transportUncertain: true },
+      );
+    }
+
+    [
+      "/",
+      "/pedidos",
+      "/estoque",
+      "/entrada",
+      "/saida",
+      "/estatisticas",
+      "/historico",
+    ].forEach((path) => revalidatePath(path));
+
+    return { ok: true, receipt };
+  } catch {
+    return stockEntryActionError(
+      "Não foi possível confirmar o resultado. Tente novamente sem alterar os dados para verificar a mesma operação.",
+      { transportUncertain: true },
     );
   }
 }

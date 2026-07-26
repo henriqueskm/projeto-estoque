@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 type InstallChoice = {
   outcome: "accepted" | "dismissed";
@@ -50,6 +51,7 @@ export function PwaInstallPrompt() {
   const primaryActionRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const descriptionId = useId();
+  useDocumentScrollLock(Boolean(installMode));
 
   const dismissForSession = useCallback(() => {
     window.sessionStorage.setItem(sessionDismissalKey, "true");
@@ -116,8 +118,6 @@ export function PwaInstallPrompt() {
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     window.requestAnimationFrame(() => primaryActionRef.current?.focus());
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -155,7 +155,6 @@ export function PwaInstallPrompt() {
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
       previouslyFocusedElement?.focus();
     };

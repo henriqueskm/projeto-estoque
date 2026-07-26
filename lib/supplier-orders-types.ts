@@ -202,6 +202,19 @@ export type FinalizeSupplierOrderInput = {
   idempotency_key: string;
 };
 
+export type SupplierOrderStockEntryLineInput = {
+  supplierOrderItemId: string;
+  quantity: number;
+};
+
+export type SupplierOrderStockEntryActionInput = {
+  supplierOrderId: string;
+  lines: SupplierOrderStockEntryLineInput[];
+  note?: string | null;
+  expectedUpdatedAt: string;
+  idempotencyKey: string;
+};
+
 export type SupplierOrderReceipt = {
   supplierOrderId: string;
   negotiationNumber: string;
@@ -217,6 +230,14 @@ export type SupplierOrderReceipt = {
   updatedAt: string;
 };
 
+export type SupplierOrderStockEntryReceipt = SupplierOrderReceipt & {
+  supplierOrderStockEntryId: string;
+  movementBatchId: string;
+  stockEntryLineCount: number;
+  stockEntryQuantity: number;
+  stockEntryCreatedAt: string;
+};
+
 export type SupplierOrderActionResult =
   | {
       ok: true;
@@ -226,4 +247,16 @@ export type SupplierOrderActionResult =
       ok: false;
       error: string;
       stale?: boolean;
+    };
+
+export type SupplierOrderStockEntryActionResult =
+  | {
+      ok: true;
+      receipt: SupplierOrderStockEntryReceipt;
+    }
+  | {
+      ok: false;
+      error: string;
+      stale?: boolean;
+      transportUncertain?: boolean;
     };

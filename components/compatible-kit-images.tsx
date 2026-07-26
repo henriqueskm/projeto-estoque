@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { EyeIcon } from "@/components/icons";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
+import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 type CompatibleKitImagesProps = {
   kitCode: string;
@@ -26,6 +27,7 @@ export function CompatibleKitImages({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  useDocumentScrollLock(isOpen);
 
   const closeSelector = useCallback(() => {
     setIsOpen(false);
@@ -37,8 +39,6 @@ export function CompatibleKitImages({
       return;
     }
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -82,7 +82,6 @@ export function CompatibleKitImages({
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [closeSelector, isOpen]);

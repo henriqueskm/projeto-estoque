@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { EyeIcon } from "@/components/icons";
+import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 type CommercialConfigurationImageProps = {
   commercialCodes: string[];
@@ -42,6 +43,7 @@ export function CommercialConfigurationImage({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  useDocumentScrollLock(isOpen);
   const codeLabel = commercialCodes.join(" / ");
   const altText = `Foto da configuração comercial ${codeLabel}`;
 
@@ -56,8 +58,6 @@ export function CommercialConfigurationImage({
       return;
     }
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -95,7 +95,6 @@ export function CommercialConfigurationImage({
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [closeModal, isOpen]);

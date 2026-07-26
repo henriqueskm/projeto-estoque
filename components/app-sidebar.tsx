@@ -25,6 +25,7 @@ import {
   StatisticsIcon,
   StockIcon,
 } from "@/components/icons";
+import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 type AppSidebarProps = {
   userName: string;
@@ -260,6 +261,8 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
 
+  useDocumentScrollLock(isDrawerOpen);
+
   const closeDrawer = useCallback((restoreFocus = false) => {
     setIsDrawerOpen(false);
 
@@ -273,8 +276,6 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
       return;
     }
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -312,7 +313,6 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [closeDrawer, isDrawerOpen]);

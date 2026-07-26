@@ -20,6 +20,7 @@ import type {
   InventoryActionTarget,
   InventoryConfigurationActionTarget,
 } from "@/lib/inventory-action-types";
+import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 const maximumInteger = 2_147_483_647;
 const maximumReasonLength = 500;
@@ -35,9 +36,9 @@ function useAccessibleDialog(
   isPending: boolean,
   onClose: () => void,
 ) {
+  useDocumentScrollLock();
+
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     initialFocusRef.current?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -75,7 +76,6 @@ function useAccessibleDialog(
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [dialogRef, initialFocusRef, isPending, onClose]);

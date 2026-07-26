@@ -17,6 +17,7 @@ import {
   cancelSupplierOrder,
   cancelSupplierOrderRemaining,
   createSupplierOrder,
+  createSupplierOrderStockEntryAction,
   finalizeSupplierOrder,
   markSupplierOrderAllPicked,
   setSupplierOrderItemPickedQuantity,
@@ -45,10 +46,12 @@ import type {
   SupplierOrderLineInput,
   SupplierOrdersData,
   SupplierOrderStatus,
+  SupplierOrderStockEntryReceipt,
   SupplierOrderSummary,
   SupplierOrderView,
   UpdateSupplierOrderInput,
 } from "@/lib/supplier-orders-types";
+import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 type SupplierOrdersWorkspaceProps = {
   data: SupplierOrdersData;
@@ -90,6 +93,11 @@ type DraftLine = {
   stockedQuantity: number;
   cancelledQuantity: number;
   identityLocked: boolean;
+};
+
+type StockEntryDraft = {
+  included: boolean;
+  quantity: number;
 };
 
 const maximumInteger = 2_147_483_647;
@@ -476,13 +484,13 @@ function useAccessibleDialog(
   isPending: boolean,
   onClose: () => void,
 ) {
+  useDocumentScrollLock();
+
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
     const previouslyFocused =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
-    document.body.style.overflow = "hidden";
     window.requestAnimationFrame(() => initialFocusRef.current?.focus());
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -529,7 +537,6 @@ function useAccessibleDialog(
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
       window.requestAnimationFrame(() => previouslyFocused?.focus());
     };
@@ -538,9 +545,11 @@ function useAccessibleDialog(
 
 function DialogShell({
   children,
+  closeButtonRef,
   compactMobileHeader = false,
   descriptionId,
   dialogRef,
+  headerActions,
   isPending,
   onClose,
   title,
@@ -548,9 +557,11 @@ function DialogShell({
   wide = false,
 }: {
   children: React.ReactNode;
+  closeButtonRef?: RefObject<HTMLButtonElement | null>;
   compactMobileHeader?: boolean;
   descriptionId: string;
   dialogRef: RefObject<HTMLDivElement | null>;
+  headerActions?: React.ReactNode;
   isPending: boolean;
   onClose: () => void;
   title: string;
@@ -577,7 +588,7 @@ function DialogShell({
         }`}
       >
         <div
-          className={`flex shrink-0 items-start justify-between gap-4 border-b border-white/10 bg-brand-charcoal text-white ${
+          className={`relative z-20 flex shrink-0 items-start justify-between gap-3 overflow-visible border-b border-white/10 bg-brand-charcoal text-white ${
             compactMobileHeader
               ? "px-3 py-2 sm:px-4 sm:py-3"
               : "px-4 py-3 sm:px-5 sm:py-4"
@@ -593,17 +604,21 @@ function DialogShell({
               {title}
             </h2>
           </div>
-          <button
-            type="button"
-            aria-label="Fechar"
-            disabled={isPending}
-            onClick={onClose}
-            className={`nk-focus inline-flex shrink-0 items-center justify-center rounded-xl border border-white/20 transition hover:border-brand-gold hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 ${
-              compactMobileHeader ? "size-10 sm:size-11" : "size-11"
-            }`}
-          >
-            <CloseIcon className="size-5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {headerActions}
+            <button
+              ref={closeButtonRef}
+              type="button"
+              aria-label="Fechar"
+              disabled={isPending}
+              onClick={onClose}
+              className={`nk-focus inline-flex shrink-0 items-center justify-center rounded-xl border border-white/20 transition hover:border-brand-gold hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 ${
+                compactMobileHeader ? "size-10 sm:size-11" : "size-11"
+              }`}
+            >
+              <CloseIcon className="size-5" />
+            </button>
+          </div>
         </div>
         {children}
       </div>
@@ -2394,6 +2409,371 @@ function FinalizationDialog({
   );
 }
 
+function StockEntryDialog({
+  items,
+  onClose,
+  onStale,
+  onSuccess,
+  order,
+}: {
+  items: SupplierOrderItem[];
+  onClose: () => void;
+  onStale: (message: string) => void;
+  onSuccess: (
+    receipt: SupplierOrderStockEntryReceipt,
+    message: string,
+  ) => void;
+  order: SupplierOrderSummary;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const errorId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const firstControlRef = useRef<HTMLInputElement>(null);
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const eligibleItems = useMemo(
+    () => items.filter((item) => item.waitingStockQuantity > 0),
+    [items],
+  );
+  const [drafts, setDrafts] = useState<Record<string, StockEntryDraft>>(() =>
+    Object.fromEntries(
+      eligibleItems.map((item) => [
+        item.id,
+        {
+          included: true,
+          quantity: item.waitingStockQuantity,
+        },
+      ]),
+    ),
+  );
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  useAccessibleDialog(
+    dialogRef,
+    firstControlRef,
+    isPending,
+    onClose,
+  );
+
+  const selectedItems = eligibleItems.filter(
+    (item) => drafts[item.id]?.included,
+  );
+  const selectedLineCount = selectedItems.length;
+  const selectedQuantity = selectedItems.reduce(
+    (total, item) => total + (drafts[item.id]?.quantity ?? 0),
+    0,
+  );
+  const hasInvalidQuantity = selectedItems.some((item) => {
+    const quantity = drafts[item.id]?.quantity;
+    return (
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      quantity > item.waitingStockQuantity
+    );
+  });
+  const canSubmit =
+    selectedLineCount > 0 &&
+    !hasInvalidQuantity &&
+    note.length <= 500 &&
+    !isPending;
+
+  function invalidateAttempt() {
+    idempotencyKeyRef.current = null;
+    setError(null);
+  }
+
+  function toggleLine(item: SupplierOrderItem, included: boolean) {
+    invalidateAttempt();
+    setDrafts((current) => ({
+      ...current,
+      [item.id]: {
+        included,
+        quantity:
+          current[item.id]?.quantity ?? item.waitingStockQuantity,
+      },
+    }));
+  }
+
+  function updateQuantity(item: SupplierOrderItem, quantity: number) {
+    invalidateAttempt();
+    setDrafts((current) => ({
+      ...current,
+      [item.id]: {
+        included: true,
+        quantity,
+      },
+    }));
+  }
+
+  function handleConfirm() {
+    if (!canSubmit) {
+      setError(
+        selectedLineCount === 0
+          ? "Selecione ao menos um item para registrar a entrada."
+          : "Revise as quantidades informadas antes de continuar.",
+      );
+      return;
+    }
+
+    const idempotencyKey =
+      idempotencyKeyRef.current ?? crypto.randomUUID();
+    idempotencyKeyRef.current = idempotencyKey;
+    setError(null);
+
+    startTransition(async () => {
+      const result = await createSupplierOrderStockEntryAction({
+        supplierOrderId: order.id,
+        lines: selectedItems.map((item) => ({
+          supplierOrderItemId: item.id,
+          quantity: drafts[item.id].quantity,
+        })),
+        note: note.trim() || null,
+        expectedUpdatedAt: order.updatedAt,
+        idempotencyKey,
+      });
+
+      if (!result.ok) {
+        if (result.stale) {
+          idempotencyKeyRef.current = null;
+          onStale(result.error);
+          return;
+        }
+
+        setError(result.error);
+        return;
+      }
+
+      idempotencyKeyRef.current = null;
+      const quantityLabel = formatCount(
+        result.receipt.stockEntryQuantity,
+        "unidade foi lançada",
+        "unidades foram lançadas",
+      );
+      onSuccess(
+        result.receipt,
+        `Entrada registrada no estoque com sucesso. ${quantityLabel} no estoque.`,
+      );
+    });
+  }
+
+  return (
+    <DialogShell
+      title="Dar entrada no estoque"
+      titleId={titleId}
+      descriptionId={descriptionId}
+      dialogRef={dialogRef}
+      isPending={isPending}
+      onClose={onClose}
+      wide
+      compactMobileHeader
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="border-b border-border-neutral px-3 py-3 sm:px-5 sm:py-4">
+          <p
+            id={descriptionId}
+            className="text-sm leading-5 font-semibold text-text-muted"
+          >
+            Selecione as quantidades retiradas que serão lançadas no estoque.
+          </p>
+          <p className="mt-1 font-mono text-sm font-black text-text-primary">
+            Pedido {order.negotiationNumber}
+          </p>
+        </div>
+
+        <div className="space-y-2.5 px-3 py-3 sm:px-5 sm:py-4">
+          {eligibleItems.map((item, index) => {
+            const draft = drafts[item.id];
+            const code =
+              item.commercialCodeSnapshot ?? item.codeSnapshot;
+            const hasImage =
+              Boolean(item.imageUrl) ||
+              item.compatibleKitImages.length > 0;
+
+            return (
+              <article
+                key={item.id}
+                className={`rounded-xl border bg-white p-3 transition sm:p-4 ${
+                  draft.included
+                    ? "border-emerald-300"
+                    : "border-border-neutral opacity-70"
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-app-background px-2 py-1 text-[0.62rem] font-black text-text-muted uppercase">
+                      {compactItemTypeLabel(item.itemTypeSnapshot)}
+                    </span>
+                    <strong className="font-mono text-sm font-black text-text-primary sm:text-base">
+                      {code}
+                    </strong>
+                    {hasImage ? (
+                      <OrderItemImageButton
+                        code={code}
+                        imageUrl={item.imageUrl}
+                        compatibleKitImages={item.compatibleKitImages}
+                      />
+                    ) : null}
+                  </div>
+                  <p className="mt-1 break-words text-sm leading-5 font-semibold text-text-primary">
+                    {item.descriptionSnapshot}
+                    {item.modelSnapshot &&
+                    !normalizeSearch(item.descriptionSnapshot).includes(
+                      normalizeSearch(item.modelSnapshot),
+                    )
+                      ? ` · ${item.modelSnapshot}`
+                      : ""}
+                  </p>
+                  <p className="mt-1.5 text-xs leading-5 font-semibold text-text-muted sm:text-sm">
+                    Retirado:{" "}
+                    <strong className="font-mono text-text-primary">
+                      {quantityFormatter.format(item.pickedQuantity)}
+                    </strong>
+                    {" · "}Já lançado:{" "}
+                    <strong className="font-mono text-text-primary">
+                      {quantityFormatter.format(item.stockedQuantity)}
+                    </strong>
+                    {" · "}Disponível para entrada:{" "}
+                    <strong className="font-mono text-emerald-800">
+                      {quantityFormatter.format(item.waitingStockQuantity)}
+                    </strong>
+                  </p>
+                </div>
+
+                <div className="mt-2 flex flex-col gap-2 border-t border-border-neutral pt-2 sm:flex-row sm:items-end sm:justify-between">
+                  <label className="inline-flex min-h-10 items-center gap-2 text-xs font-black text-text-primary">
+                    <input
+                      ref={index === 0 ? firstControlRef : undefined}
+                      type="checkbox"
+                      checked={draft.included}
+                      disabled={isPending}
+                      aria-describedby={error ? errorId : undefined}
+                      onChange={(event) =>
+                        toggleLine(item, event.target.checked)
+                      }
+                      className="nk-focus size-5 accent-emerald-700"
+                    />
+                    Incluir nesta entrada
+                  </label>
+                  <div>
+                    <span className="mb-1 block text-xs font-black text-text-primary">
+                      Quantidade para entrada
+                    </span>
+                    <QuantityControl
+                      label={`Quantidade para entrada de ${code}`}
+                      minimum={1}
+                      maximum={item.waitingStockQuantity}
+                      value={draft.quantity}
+                      disabled={isPending || !draft.included}
+                      onChange={(quantity) =>
+                        updateQuantity(item, quantity)
+                      }
+                    />
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="border-t border-border-neutral px-3 py-3 sm:px-5 sm:py-4">
+          <label className="block">
+            <span className="mb-1.5 flex items-center justify-between gap-3 text-xs font-black text-text-primary">
+              <span>Observação (opcional)</span>
+              <span className="font-mono text-text-muted">
+                {note.length}/500
+              </span>
+            </span>
+            <textarea
+              rows={3}
+              maxLength={500}
+              value={note}
+              disabled={isPending}
+              onChange={(event) => {
+                invalidateAttempt();
+                setNote(event.target.value);
+              }}
+              placeholder="Ex.: mercadoria conferida no recebimento"
+              className="nk-focus w-full resize-y rounded-xl border border-border-neutral p-3 text-sm font-semibold text-text-primary disabled:bg-slate-100"
+            />
+          </label>
+
+          <dl className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-border-neutral bg-app-background p-3">
+            <div>
+              <dt className="text-[0.65rem] font-black text-text-muted uppercase">
+                Itens selecionados
+              </dt>
+              <dd className="mt-0.5 font-mono text-lg font-black text-text-primary">
+                {formatCount(selectedLineCount, "item", "itens")}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[0.65rem] font-black text-text-muted uppercase">
+                Total de unidades
+              </dt>
+              <dd className="mt-0.5 font-mono text-lg font-black text-text-primary">
+                {formatCount(selectedQuantity, "unidade", "unidades")}
+              </dd>
+            </div>
+          </dl>
+
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs leading-5 font-semibold text-emerald-950 sm:text-sm">
+            <strong>Esta operação criará uma entrada real no estoque.</strong>
+            <p>
+              Os saldos serão atualizados e a operação ficará registrada no
+              Histórico de movimentações. O pedido não será reaberto e seu
+              status não será alterado.
+            </p>
+            {order.closureKind === "FINALIZED" ? (
+              <p className="mt-1">
+                Este pedido continuará finalizado após a entrada.
+              </p>
+            ) : null}
+            {order.closureKind === "CANCELLED" ? (
+              <p className="mt-1">
+                Somente as quantidades já retiradas serão lançadas. O pedido
+                continuará cancelado.
+              </p>
+            ) : null}
+          </div>
+
+          {error ? (
+            <p
+              id={errorId}
+              role="alert"
+              className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900"
+            >
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border-neutral bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:p-4">
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={onClose}
+          className="nk-focus min-h-12 rounded-xl border border-border-neutral px-5 text-sm font-black text-text-primary transition hover:bg-app-background disabled:opacity-50"
+        >
+          Voltar
+        </button>
+        <button
+          type="button"
+          disabled={!canSubmit}
+          onClick={handleConfirm}
+          className="nk-focus min-h-12 rounded-xl bg-emerald-700 px-5 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+        >
+          {isPending
+            ? "Registrando entrada..."
+            : "Confirmar entrada no estoque"}
+        </button>
+      </div>
+    </DialogShell>
+  );
+}
+
 function OrderDetailsDialog({
   items,
   onClose,
@@ -2415,8 +2795,12 @@ function OrderDetailsDialog({
 }) {
   const titleId = useId();
   const descriptionId = useId();
+  const headerActionsMenuId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const headerActionsRef = useRef<HTMLDivElement>(null);
+  const headerActionsButtonRef = useRef<HTMLButtonElement>(null);
+  const firstHeaderActionRef = useRef<HTMLButtonElement>(null);
   const pickedKeysRef = useRef<Record<string, string>>({});
   const [pickedDrafts, setPickedDrafts] = useState<Record<string, number>>(
     () => Object.fromEntries(items.map((item) => [item.id, item.pickedQuantity])),
@@ -2424,9 +2808,21 @@ function OrderDetailsDialog({
   const [confirmation, setConfirmation] =
     useState<ConfirmationKind | null>(null);
   const [finalizing, setFinalizing] = useState(false);
+  const [stockEntryOpen, setStockEntryOpen] = useState(false);
+  const [headerActionsOpen, setHeaderActionsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const closeHeaderActions = useCallback((restoreFocus = true) => {
+    setHeaderActionsOpen(false);
+
+    if (restoreFocus) {
+      window.requestAnimationFrame(() =>
+        headerActionsButtonRef.current?.focus(),
+      );
+    }
+  }, []);
 
   const handleClose = useCallback(() => {
     if (!isPending) {
@@ -2437,9 +2833,77 @@ function OrderDetailsDialog({
   useAccessibleDialog(
     dialogRef,
     closeButtonRef,
-    isPending || Boolean(confirmation) || finalizing,
+    isPending || Boolean(confirmation) || finalizing || stockEntryOpen,
     handleClose,
   );
+
+  useEffect(() => {
+    if (!headerActionsOpen) {
+      return;
+    }
+
+    const focusFrame = window.requestAnimationFrame(() =>
+      firstHeaderActionRef.current?.focus(),
+    );
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        !headerActionsRef.current?.contains(event.target)
+      ) {
+        closeHeaderActions();
+      }
+    }
+
+    function handleMenuKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeHeaderActions();
+        return;
+      }
+
+      if (
+        !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) ||
+        !headerActionsRef.current
+      ) {
+        return;
+      }
+
+      const actions = Array.from(
+        headerActionsRef.current.querySelectorAll<HTMLButtonElement>(
+          '[role="menuitem"]:not([disabled])',
+        ),
+      );
+
+      if (actions.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      const currentIndex = actions.indexOf(
+        document.activeElement as HTMLButtonElement,
+      );
+      const nextIndex =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? actions.length - 1
+            : event.key === "ArrowUp"
+              ? (currentIndex - 1 + actions.length) % actions.length
+              : (currentIndex + 1) % actions.length;
+      actions[nextIndex]?.focus();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleMenuKeyDown, true);
+
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleMenuKeyDown, true);
+    };
+  }, [closeHeaderActions, headerActionsOpen]);
 
   if (confirmation) {
     return (
@@ -2469,6 +2933,24 @@ function OrderDetailsDialog({
     );
   }
 
+  if (stockEntryOpen) {
+    return (
+      <StockEntryDialog
+        order={order}
+        items={items}
+        onClose={() => setStockEntryOpen(false)}
+        onStale={(message) => {
+          setStockEntryOpen(false);
+          onStale(message);
+        }}
+        onSuccess={(_receipt, message) => {
+          setStockEntryOpen(false);
+          onMutated(message);
+        }}
+      />
+    );
+  }
+
   const canEdit =
     !readOnly &&
     (order.status === "PENDING" || order.status === "PARTIAL");
@@ -2492,18 +2974,158 @@ function OrderDetailsDialog({
     order.status === "COMPLETED" &&
     order.closureKind === null &&
     order.cancelledAt === null;
-  const hasFooterActions =
-    canEdit ||
-    canMarkAll ||
-    canCancelFull ||
-    canCancelRemaining ||
-    canFinalize;
+  const canCreateStockEntry = items.some(
+    (item) => item.waitingStockQuantity > 0,
+  );
+  const hasHeaderActions =
+    canEdit || canCancelFull || canCancelRemaining || canFinalize;
+  const hasFooterActions = canMarkAll || canCreateStockEntry;
   const waitingStockMessage =
     order.waitingStockQuantity === 1
       ? "1 unidade aguarda entrada no estoque"
       : `${quantityFormatter.format(
           order.waitingStockQuantity,
         )} unidades aguardam entrada no estoque`;
+  const headerActions = hasHeaderActions ? (
+    <>
+      <div className="hidden items-center gap-2 lg:flex">
+        {canEdit ? (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={onEdit}
+            className="nk-focus min-h-9 rounded-lg border border-white/25 px-3 text-xs font-black text-white transition hover:border-white/50 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Editar pedido
+          </button>
+        ) : null}
+        {canCancelFull ? (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => setConfirmation("CANCEL")}
+            className="nk-focus min-h-9 rounded-lg border border-red-300/80 px-3 text-xs font-black text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancelar pedido
+          </button>
+        ) : null}
+        {canCancelRemaining ? (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => setConfirmation("CANCEL_REMAINING")}
+            className="nk-focus min-h-9 rounded-lg border border-red-300/80 px-3 text-xs font-black text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancelar saldo restante
+          </button>
+        ) : null}
+        {canFinalize ? (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => setFinalizing(true)}
+            className="nk-focus min-h-9 rounded-lg border border-emerald-300/80 px-3 text-xs font-black text-emerald-200 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Finalizar pedido
+          </button>
+        ) : null}
+      </div>
+
+      <div ref={headerActionsRef} className="relative lg:hidden">
+        <button
+          ref={headerActionsButtonRef}
+          type="button"
+          aria-label="Ações do pedido"
+          aria-haspopup="menu"
+          aria-expanded={headerActionsOpen}
+          aria-controls={headerActionsMenuId}
+          disabled={isPending}
+          onClick={() => setHeaderActionsOpen((current) => !current)}
+          className="nk-focus inline-flex size-10 items-center justify-center rounded-xl border border-white/20 text-2xl leading-none font-black text-white transition hover:border-brand-gold hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          ⋮
+        </button>
+
+        {headerActionsOpen ? (
+          <div
+            id={headerActionsMenuId}
+            role="menu"
+            aria-label="Ações do pedido"
+            className="absolute top-[calc(100%+0.5rem)] right-0 z-50 w-60 overflow-hidden rounded-xl border border-border-neutral bg-white p-1.5 text-text-primary shadow-2xl"
+          >
+            {canEdit ? (
+              <button
+                ref={firstHeaderActionRef}
+                type="button"
+                role="menuitem"
+                disabled={isPending}
+                onClick={() => {
+                  closeHeaderActions(false);
+                  onEdit();
+                }}
+                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black transition hover:bg-app-background disabled:opacity-50"
+              >
+                Editar pedido
+              </button>
+            ) : null}
+            {canCancelFull ? (
+              <button
+                ref={canEdit ? undefined : firstHeaderActionRef}
+                type="button"
+                role="menuitem"
+                disabled={isPending}
+                onClick={() => {
+                  closeHeaderActions(false);
+                  setConfirmation("CANCEL");
+                }}
+                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+              >
+                Cancelar pedido
+              </button>
+            ) : null}
+            {canCancelRemaining ? (
+              <button
+                ref={
+                  !canEdit && !canCancelFull
+                    ? firstHeaderActionRef
+                    : undefined
+                }
+                type="button"
+                role="menuitem"
+                disabled={isPending}
+                onClick={() => {
+                  closeHeaderActions(false);
+                  setConfirmation("CANCEL_REMAINING");
+                }}
+                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+              >
+                Cancelar saldo restante
+              </button>
+            ) : null}
+            {canFinalize ? (
+              <button
+                ref={
+                  !canEdit && !canCancelFull && !canCancelRemaining
+                    ? firstHeaderActionRef
+                    : undefined
+                }
+                type="button"
+                role="menuitem"
+                disabled={isPending}
+                onClick={() => {
+                  closeHeaderActions(false);
+                  setFinalizing(true);
+                }}
+                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black text-emerald-800 transition hover:bg-emerald-50 disabled:opacity-50"
+              >
+                Finalizar pedido
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </>
+  ) : null;
 
   function updatePicked(item: SupplierOrderItem, nextValue: number) {
     const minimum = item.stockedQuantity;
@@ -2563,6 +3185,8 @@ function OrderDetailsDialog({
       titleId={titleId}
       descriptionId={descriptionId}
       dialogRef={dialogRef}
+      closeButtonRef={closeButtonRef}
+      headerActions={headerActions}
       isPending={isPending}
       onClose={handleClose}
       wide
@@ -2826,8 +3450,13 @@ function OrderDetailsDialog({
         ) : order.waitingStockQuantity > 0 ? (
           <section className="border-t border-border-neutral px-3 py-2 sm:px-4">
             <p className="rounded-lg border border-brand-gold/35 bg-brand-gold-soft/40 px-3 py-1.5 text-xs font-bold text-text-primary">
-              {waitingStockMessage}{" "}
-              <span className="text-brand-gold-ink">· Em breve</span>
+              {waitingStockMessage}.
+            </p>
+          </section>
+        ) : order.pickedQuantity > 0 ? (
+          <section className="border-t border-border-neutral px-3 py-2 sm:px-4">
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-950">
+              Todas as unidades retiradas já foram lançadas no estoque.
             </p>
           </section>
         ) : null}
@@ -2842,71 +3471,39 @@ function OrderDetailsDialog({
         ) : null}
       </div>
 
-      <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-border-neutral bg-white p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:flex sm:flex-wrap sm:justify-end sm:p-3">
-        {canEdit ? (
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={onEdit}
-            className="nk-focus min-h-10 rounded-xl border border-border-neutral px-3 text-center text-xs leading-tight font-black text-text-primary transition hover:bg-app-background disabled:opacity-50 sm:min-h-11 sm:px-4 sm:text-sm"
-          >
-            Editar pedido
-          </button>
-        ) : null}
-        {canMarkAll ? (
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={() => setConfirmation("MARK_ALL")}
-            className="nk-focus min-h-10 rounded-xl bg-emerald-700 px-3 text-center text-xs leading-tight font-black text-white transition hover:bg-emerald-800 disabled:opacity-50 sm:min-h-11 sm:px-4 sm:text-sm"
-          >
-            Marcar tudo como retirado
-          </button>
-        ) : null}
-        {canCancelFull ? (
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={() => setConfirmation("CANCEL")}
-            className="nk-focus min-h-10 rounded-xl border border-red-300 px-3 text-center text-xs leading-tight font-black text-red-800 transition hover:bg-red-50 disabled:opacity-50 sm:min-h-11 sm:px-4 sm:text-sm"
-          >
-            Cancelar pedido
-          </button>
-        ) : null}
-        {canCancelRemaining ? (
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={() => setConfirmation("CANCEL_REMAINING")}
-            className="nk-focus min-h-10 rounded-xl border border-red-300 px-3 text-center text-xs leading-tight font-black text-red-800 transition hover:bg-red-50 disabled:opacity-50 sm:min-h-11 sm:px-4 sm:text-sm"
-          >
-            Cancelar saldo restante
-          </button>
-        ) : null}
-        {canFinalize ? (
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={() => setFinalizing(true)}
-            className="nk-focus min-h-10 rounded-xl bg-emerald-700 px-3 text-center text-xs leading-tight font-black text-white transition hover:bg-emerald-800 disabled:opacity-50 sm:min-h-11 sm:px-4 sm:text-sm"
-          >
-            Finalizar pedido
-          </button>
-        ) : null}
-        <button
-          ref={closeButtonRef}
-          type="button"
-          disabled={isPending}
-          onClick={handleClose}
-          className={`nk-focus min-h-10 rounded-xl bg-brand-charcoal px-3 text-center text-xs font-black text-white transition hover:bg-brand-charcoal-soft disabled:opacity-50 sm:ml-0 sm:min-h-11 sm:px-4 sm:text-sm ${
-            hasFooterActions
-              ? ""
-              : "col-span-2 sm:ml-auto"
+      {hasFooterActions ? (
+        <div
+          className={`grid shrink-0 gap-2 border-t border-border-neutral bg-white p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:flex sm:justify-end sm:p-3 ${
+            canMarkAll && canCreateStockEntry
+              ? "grid-cols-2"
+              : "grid-cols-1"
           }`}
         >
-          Fechar
-        </button>
-      </div>
+          {canMarkAll ? (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => setConfirmation("MARK_ALL")}
+              className="nk-focus min-h-11 min-w-0 rounded-xl border border-emerald-700 bg-white px-2 text-center text-xs leading-tight font-black text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 sm:px-4 sm:text-sm"
+            >
+              Marcar tudo como retirado
+            </button>
+          ) : null}
+          {canCreateStockEntry ? (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => {
+                setError(null);
+                setStockEntryOpen(true);
+              }}
+              className="nk-focus min-h-11 min-w-0 rounded-xl bg-emerald-700 px-2 text-center text-xs leading-tight font-black text-white transition hover:bg-emerald-800 disabled:opacity-50 sm:px-4 sm:text-sm"
+            >
+              Dar entrada no estoque
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </DialogShell>
   );
 }
@@ -3578,6 +4175,7 @@ function HistorySupplierOrdersWorkspace({
   const [sort, setSort] = useState<HistorySort>("CLOSED_RECENT");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
 
   const itemsByOrder = useMemo(() => {
     const grouped = new Map<string, SupplierOrderItem[]>();
@@ -4045,9 +4643,32 @@ function HistorySupplierOrdersWorkspace({
           onClose={() => setSelectedOrderId(null)}
           onEdit={() => undefined}
           onFinalized={() => undefined}
-          onMutated={() => undefined}
-          onStale={() => router.refresh()}
+          onMutated={(message) => {
+            setFeedback(message);
+            router.refresh();
+          }}
+          onStale={(message) => {
+            setFeedback(message);
+            router.refresh();
+          }}
         />
+      ) : null}
+
+      {feedback ? (
+        <div
+          role="status"
+          className="fixed right-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] left-3 z-[120] mx-auto flex max-w-md items-start justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-xl lg:right-5 lg:left-auto"
+        >
+          <span>{feedback}</span>
+          <button
+            type="button"
+            aria-label="Fechar confirmação"
+            onClick={() => setFeedback(null)}
+            className="nk-focus shrink-0 rounded px-1 font-black"
+          >
+            ×
+          </button>
+        </div>
       ) : null}
     </div>
   );
