@@ -238,7 +238,7 @@ function NavigationContent({
             </Link>
           </div>
         </div>
-        <form action={logout}>
+        <form action={logout} data-assistant-session-logout>
           <button
             type="submit"
             className="nk-focus mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-black text-red-200 transition hover:bg-red-950/45 hover:text-white"

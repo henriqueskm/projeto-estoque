@@ -244,7 +244,11 @@ export function AccountMenu({
               Minha conta
             </Link>
 
-            <form action={logout} role="none">
+            <form
+              action={logout}
+              role="none"
+              data-assistant-session-logout
+            >
               <button
                 type="submit"
                 role="menuitem"

@@ -16,15 +16,19 @@ import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 type CompatibleKitImagesProps = {
   kitCode: string;
   options: CompatibleKitImageOption[];
+  openOnMount?: boolean;
   triggerVariant?: "icon-button" | "assistant-action";
 };
 
 export function CompatibleKitImages({
   kitCode,
   options,
+  openOnMount = false,
   triggerVariant = "icon-button",
 }: CompatibleKitImagesProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(
+    openOnMount && options.length > 1,
+  );
   const titleId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -104,6 +108,7 @@ export function CompatibleKitImages({
       <CommercialConfigurationImage
         commercialCodes={option.commercialCodes}
         imageUrl={option.imageUrl}
+        openOnMount={openOnMount}
         triggerLabel={actionLabel}
         triggerVariant={triggerVariant}
       />

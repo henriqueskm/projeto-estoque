@@ -12,20 +12,20 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
+import { useAssistantConversation } from "@/components/assistant-conversation-provider";
 import {
-  AssistantIcon,
   CameraIcon,
   CloseIcon,
   ImageIcon,
-  InboundIcon,
   MicrophoneIcon,
-  OutboundIcon,
   PlusIcon,
   SendIcon,
-  StockIcon,
 } from "@/components/icons";
 import { AssistantMessageContent } from "@/components/assistant-message-content";
+import { AssistantNewConversationDialog } from "@/components/assistant-new-conversation-dialog";
+import { AssistantRestoredMediaControl } from "@/components/assistant-restored-media-control";
 import { AssistantStructuredBlockView } from "@/components/assistant-structured-block";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
@@ -35,7 +35,7 @@ import {
   type AssistantChatRequest,
   type AssistantChatError,
   type AssistantChatSuccess,
-  type AssistantStructuredBlock,
+  type AssistantClarificationBlock,
 } from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
@@ -50,36 +50,51 @@ type LocalAttachment = {
   source: "camera" | "gallery";
 };
 
-type AssistantMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  structuredBlock?: AssistantStructuredBlock;
+const initialSuggestions: AssistantClarificationBlock = {
+  kind: "assistant_clarification",
+  title: "O que você quer consultar hoje?",
+  message: "Escolha uma sugestão ou escreva sua pergunta abaixo.",
+  options: [
+    {
+      id: "initial-inventory-balance",
+      label: "Consultar saldo",
+      prompt: "Quantos 1H tenho?",
+      category: "inventory",
+    },
+    {
+      id: "initial-inventory-zero",
+      label: "Ver itens zerados",
+      prompt: "Quais itens estão zerados?",
+      category: "inventory",
+    },
+    {
+      id: "initial-order-number",
+      label: "Buscar negociação",
+      prompt: "Mostre o pedido Teste 04",
+      category: "supplier_orders",
+    },
+    {
+      id: "initial-order-partial",
+      label: "Ver Pedidos parciais",
+      prompt: "Quais pedidos estão parciais?",
+      category: "supplier_orders",
+    },
+    {
+      id: "initial-catalog-photo",
+      label: "Consultar foto",
+      prompt: "Quero ver a foto do 1B",
+      category: "media",
+    },
+    {
+      id: "initial-replenishment",
+      label: "Ver reposição",
+      prompt: "Quais itens precisam de reposição?",
+      category: "replenishment",
+    },
+  ],
+  fallbackText:
+    "Posso consultar Estoque, Pedidos, fotos e itens para reposição.",
 };
-
-const suggestions = [
-  {
-    label: "Consultar estoque",
-    message: "Como está meu estoque?",
-    icon: StockIcon,
-  },
-  {
-    label: "Registrar uma entrada",
-    message: "Quero registrar uma entrada",
-    icon: InboundIcon,
-  },
-  {
-    label: "Registrar uma saída",
-    message: "Quero registrar uma saída",
-    icon: OutboundIcon,
-  },
-  {
-    label: "Analisar foto de pedido",
-    message: "Quero analisar uma foto de pedido",
-    icon: CameraIcon,
-    opensAttachmentMenu: true,
-  },
-] as const;
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
 
@@ -93,36 +108,60 @@ export function AssistantHome({
 }: AssistantHomeProps) {
   const router = useRouter();
   const profile = useAuthenticatedProfile();
-  const [message, setMessage] = useState("");
-  const [attachment, setAttachment] = useState<LocalAttachment | null>(null);
-  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [messages, setMessages] = useState<AssistantMessage[]>([]);
-  const [lastItemQuery, setLastItemQuery] = useState<string | null>(null);
-  const [lastSupplierOrderId, setLastSupplierOrderId] = useState<
-    string | null
-  >(null);
-  const [
+  const {
+    isHydrated,
+    conversationId,
+    messages,
+    setMessages,
+    draft,
+    setDraft,
+    lastItemQuery,
+    setLastItemQuery,
+    lastSupplierOrderId,
+    setLastSupplierOrderId,
     lastSupplierOrderCatalogCode,
     setLastSupplierOrderCatalogCode,
-  ] = useState<string | null>(null);
+    scrollTop,
+    setScrollTop,
+    persistNow,
+    resetConversation,
+  } = useAssistantConversation();
+  const [attachment, setAttachment] = useState<LocalAttachment | null>(null);
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
+  const [
+    isNewConversationDialogOpen,
+    setIsNewConversationDialogOpen,
+  ] = useState(false);
+  const [isConversationMenuOpen, setIsConversationMenuOpen] =
+    useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [isRefreshingStock, startStockRefresh] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationRef = useRef<HTMLElement>(null);
+  const restoredConversationRef = useRef<string | null>(null);
+  const previousMessageCountRef = useRef(0);
+  const scrollFrameRef = useRef<number | null>(null);
+  const latestScrollTopRef = useRef(0);
   const requestInFlightRef = useRef(false);
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const newConversationButtonRef = useRef<HTMLButtonElement>(null);
+  const conversationMenuRef = useRef<HTMLDivElement>(null);
+  const conversationMenuItemRef = useRef<HTMLButtonElement>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const attachmentMenuId = useId();
+  const conversationMenuId = useId();
   const firstName = profile.hasRegisteredName
     ? (profile.displayName.split(/\s+/).filter(Boolean)[0] ?? null)
     : null;
   const isInteractionLocked = isPending || isRefreshingStock;
+  const isComposerLocked = !isHydrated || isInteractionLocked;
   const canSubmit =
-    !isInteractionLocked && Boolean(message.trim() || attachment);
+    !isComposerLocked &&
+    Boolean(draft.trim() || attachment);
   const stockItems = [
     ["Caixas", summary?.completeBoxesTotal],
     ["Servos", summary?.looseServoTotal],
@@ -179,17 +218,121 @@ export function AssistantHome({
   }, [isAttachmentMenuOpen]);
 
   useEffect(() => {
-    const conversation = conversationRef.current;
-
-    if (!conversation || (messages.length === 0 && !isInteractionLocked)) {
+    if (!isConversationMenuOpen) {
       return;
     }
 
+    window.requestAnimationFrame(() =>
+      conversationMenuItemRef.current?.focus(),
+    );
+
+    function closeMenu(restoreFocus = false) {
+      setIsConversationMenuOpen(false);
+
+      if (restoreFocus) {
+        window.requestAnimationFrame(() =>
+          newConversationButtonRef.current?.focus(),
+        );
+      }
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        !conversationMenuRef.current?.contains(event.target) &&
+        !newConversationButtonRef.current?.contains(event.target)
+      ) {
+        closeMenu();
+      }
+    }
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu(true);
+        return;
+      }
+
+      if (
+        event.key === "ArrowDown" ||
+        event.key === "ArrowUp" ||
+        event.key === "Home" ||
+        event.key === "End"
+      ) {
+        event.preventDefault();
+        conversationMenuItemRef.current?.focus();
+      } else if (event.key === "Tab") {
+        closeMenu();
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isConversationMenuOpen]);
+
+  useEffect(() => {
+    const conversation = conversationRef.current;
+
+    if (!conversation || !isHydrated || !conversationId) {
+      return;
+    }
+
+    if (restoredConversationRef.current !== conversationId) {
+      restoredConversationRef.current = conversationId;
+      previousMessageCountRef.current = messages.length;
+      latestScrollTopRef.current = scrollTop;
+      window.requestAnimationFrame(() => {
+        conversation.scrollTo({
+          top: scrollTop > 0 ? scrollTop : conversation.scrollHeight,
+          behavior: "auto",
+        });
+      });
+      return;
+    }
+
+    const hasNewMessage =
+      messages.length > previousMessageCountRef.current;
+    previousMessageCountRef.current = messages.length;
+
+    if (!hasNewMessage && !isInteractionLocked) {
+      return;
+    }
+
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
     conversation.scrollTo({
       top: conversation.scrollHeight,
-      behavior: "smooth",
+      behavior: reduceMotion ? "auto" : "smooth",
     });
-  }, [isInteractionLocked, messages]);
+  }, [
+    conversationId,
+    isHydrated,
+    isInteractionLocked,
+    messages.length,
+    scrollTop,
+  ]);
+
+  useEffect(() => {
+    const conversation = conversationRef.current;
+
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+
+      persistNow({
+        scrollTop:
+          conversation?.scrollTop ?? latestScrollTopRef.current,
+      });
+    };
+  }, [persistNow]);
 
   useEffect(() => {
     if (isInteractionLocked || !shouldRestoreFocusRef.current) {
@@ -199,6 +342,14 @@ export function AssistantHome({
     shouldRestoreFocusRef.current = false;
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }, [isInteractionLocked]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    window.requestAnimationFrame(resizeTextarea);
+  }, [draft, isHydrated]);
 
   function resizeTextarea() {
     const textarea = textareaRef.current;
@@ -211,27 +362,16 @@ export function AssistantHome({
     textarea.style.height = `${Math.min(textarea.scrollHeight, 128)}px`;
   }
 
-  function selectSuggestion(
-    suggestionMessage: string,
-    opensAttachmentMenu = false,
-  ) {
-    setMessage(suggestionMessage);
-    setFeedback(null);
-
-    if (opensAttachmentMenu) {
-      setIsAttachmentMenuOpen(true);
-      window.requestAnimationFrame(() => {
-        resizeTextarea();
-        attachmentMenuRef.current
-          ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
-          ?.focus();
-      });
+  function handleConversationScroll() {
+    if (scrollFrameRef.current !== null) {
       return;
     }
 
-    window.requestAnimationFrame(() => {
-      resizeTextarea();
-      textareaRef.current?.focus();
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const nextScrollTop = conversationRef.current?.scrollTop ?? 0;
+      latestScrollTopRef.current = nextScrollTop;
+      setScrollTop(nextScrollTop);
     });
   }
 
@@ -287,7 +427,7 @@ export function AssistantHome({
         content: submittedMessage,
       },
     ]);
-    setMessage("");
+    setDraft("");
     setFeedback(
       attachment
         ? "A imagem continua somente neste dispositivo. Apenas o texto foi enviado."
@@ -397,7 +537,7 @@ export function AssistantHome({
           id: crypto.randomUUID(),
           role: "assistant",
           content:
-            "Não foi possível conectar ao Assistente IA. Verifique sua conexão e tente novamente.",
+            "Não foi possível conectar à Assistente NK. Verifique sua conexão e tente novamente.",
         },
       ]);
     } finally {
@@ -417,7 +557,7 @@ export function AssistantHome({
       return;
     }
 
-    const submittedMessage = message.trim();
+    const submittedMessage = draft.trim();
 
     if (!submittedMessage) {
       setFeedback(
@@ -440,169 +580,222 @@ export function AssistantHome({
     }
   }
 
+  function handleNewConversationRequest() {
+    setIsConversationMenuOpen(false);
+
+    if (messages.length > 0) {
+      setIsNewConversationDialogOpen(true);
+      return;
+    }
+
+    resetConversation();
+    setFeedback(null);
+    setAttachment(null);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
+  function confirmNewConversation() {
+    setIsNewConversationDialogOpen(false);
+    setFeedback(null);
+    setAttachment(null);
+    restoredConversationRef.current = null;
+    resetConversation();
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
+  function handleInternalNavigation(
+    event: ReactMouseEvent<HTMLElement>,
+  ) {
+    const target = event.target;
+    const anchor =
+      target instanceof Element ? target.closest("a[href]") : null;
+    const href = anchor?.getAttribute("href");
+
+    if (href?.startsWith("/")) {
+      persistNow({
+        scrollTop: conversationRef.current?.scrollTop ?? 0,
+      });
+    }
+  }
+
   return (
-    <main className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden lg:h-dvh">
-      <section
-        ref={conversationRef}
-        aria-label="Conversa com o Assistente IA"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-      >
-        <div
-          className={`mx-auto flex min-h-full w-full max-w-5xl flex-col justify-start px-4 pt-3 pb-5 sm:px-6 sm:pt-5 sm:pb-7 lg:px-8 lg:py-10 ${
-            messages.length === 0 ? "lg:justify-center" : ""
-          }`}
-        >
-          <div
-            className={`mx-auto w-full max-w-3xl text-center ${
-              messages.length === 0 ? "" : "hidden"
-            }`}
-          >
-            <span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-700 to-blue-700 text-white shadow-[0_16px_32px_-20px_rgba(76,29,149,0.9)] sm:size-14">
-              <AssistantIcon className="size-7 sm:size-8" />
-            </span>
-            <p className="mt-3 text-xs font-black tracking-[0.12em] text-brand-gold-ink uppercase sm:mt-4 sm:text-sm">
-              Assistente IA
-            </p>
-            <h1 className="mt-1.5 text-2xl font-black tracking-tight text-text-primary sm:text-4xl">
-              {firstName
-                ? `Bem-vindo de volta, ${firstName}.`
-                : "Bem-vindo de volta."}
-            </h1>
-            <p className="mt-1 text-lg font-bold text-text-muted sm:mt-2 sm:text-2xl">
-              Como posso te ajudar?
-            </p>
-          </div>
-
-          <Link
-            href="/estoque"
-            className={`nk-focus mx-auto mt-5 w-full max-w-3xl rounded-2xl border border-border-neutral bg-surface px-3 py-2.5 text-left shadow-sm transition hover:border-brand-gold-dark hover:shadow-md sm:mt-6 sm:px-4 sm:py-3 ${
-              messages.length === 0 ? "block" : "hidden"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-black tracking-[0.12em] text-text-muted uppercase">
-                Resumo do estoque
-              </p>
-              <span className="text-xs font-black text-brand-gold-ink">
-                Ver estoque
-              </span>
-            </div>
-            {stockError ? (
-              <p className="mt-2 text-sm font-semibold text-red-800">
-                Resumo indisponível no momento.
-              </p>
-            ) : (
-              <div className="mt-2 grid grid-cols-5 gap-1.5 sm:gap-2">
-                {stockItems.map(([label, value]) => (
-                  <span
-                    key={label}
-                    className="min-w-0 rounded-lg bg-app-background px-1 py-1.5 text-center sm:rounded-xl sm:px-2 sm:py-2"
-                  >
-                    <span className="block text-base font-black tabular-nums text-text-primary sm:text-lg">
-                      {value === undefined
-                        ? "—"
-                        : quantityFormatter.format(value)}
-                    </span>
-                    <span className="block truncate text-[0.58rem] leading-3.5 font-bold text-text-muted sm:text-[0.68rem] sm:leading-4">
-                      {label}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            )}
-            {!stockError ? (
-              <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-[0.68rem] font-black sm:mt-2 sm:gap-2 sm:text-xs">
-                <span className="rounded-lg bg-orange-50 px-2.5 py-1.5 text-orange-900 sm:px-3 sm:py-2">
-                  {quantityFormatter.format(summary?.lowStockItems ?? 0)} baixos
-                </span>
-                <span className="rounded-lg bg-red-50 px-2.5 py-1.5 text-red-900 sm:px-3 sm:py-2">
-                  {quantityFormatter.format(summary?.outOfStockItems ?? 0)} zerados
-                </span>
-              </div>
-            ) : null}
-          </Link>
-
-          <div
-            className={`mx-auto mt-4 w-full max-w-3xl grid-cols-2 gap-2 sm:mt-5 sm:gap-3 ${
-              messages.length === 0 ? "grid" : "hidden"
-            }`}
-          >
-            {suggestions.map((suggestion) => {
-              const Icon = suggestion.icon;
-
-              return (
-                <button
-                  key={suggestion.label}
-                  type="button"
-                  onClick={() =>
-                    selectSuggestion(
-                      suggestion.message,
-                      "opensAttachmentMenu" in suggestion,
-                    )
-                  }
-                  className="nk-focus flex min-h-12 items-center gap-2.5 rounded-xl border border-border-neutral bg-surface px-3 py-2 text-left text-xs font-black text-text-primary shadow-sm transition hover:border-violet-300 hover:bg-violet-50 sm:min-h-14 sm:rounded-2xl sm:px-4 sm:text-sm"
-                >
-                  <Icon className="size-5 shrink-0 text-violet-700" />
-                  <span>{suggestion.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {messages.length > 0 ? (
-            <div
-              aria-live="polite"
-              className="mx-auto flex w-full max-w-3xl flex-col gap-4 py-2 sm:py-4"
+    <main
+      onClickCapture={handleInternalNavigation}
+      className="relative flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden lg:h-dvh"
+    >
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 h-0">
+        <div className="relative mx-auto h-0 w-full max-w-4xl">
+          <div className="pointer-events-auto absolute top-2 right-3 sm:right-5 lg:right-2">
+            <button
+              ref={newConversationButtonRef}
+              type="button"
+              disabled={!isHydrated || isInteractionLocked}
+              onClick={() =>
+                setIsConversationMenuOpen((current) => !current)
+              }
+              aria-label="Opções da conversa"
+              aria-haspopup="menu"
+              aria-expanded={isConversationMenuOpen}
+              aria-controls={conversationMenuId}
+              title="Opções da conversa"
+              className="nk-focus inline-flex size-10 items-center justify-center rounded-full border border-border-neutral bg-surface/90 text-text-muted shadow-sm backdrop-blur transition hover:border-brand-gold-dark hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <div className="flex justify-end">
+              <span
+                aria-hidden="true"
+                className="-translate-y-0.5 text-2xl leading-none font-black"
+              >
+                ⋮
+              </span>
+            </button>
+
+            {isConversationMenuOpen ? (
+              <div
+                ref={conversationMenuRef}
+                id={conversationMenuId}
+                role="menu"
+                aria-label="Opções da conversa"
+                className="absolute top-[calc(100%+0.25rem)] right-0 z-40 w-52 rounded-xl border border-border-neutral bg-surface p-1.5 shadow-xl"
+              >
                 <button
+                  ref={conversationMenuItemRef}
                   type="button"
-                  disabled={isInteractionLocked}
-                  onClick={() => {
-                    setMessages([]);
-                    setLastItemQuery(null);
-                    setLastSupplierOrderId(null);
-                    setLastSupplierOrderCatalogCode(null);
-                    setFeedback(null);
-                    window.requestAnimationFrame(() =>
-                      textareaRef.current?.focus(),
-                    );
-                  }}
-                  className="nk-focus min-h-11 rounded-xl px-3 text-xs font-black text-text-muted transition hover:bg-surface hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  role="menuitem"
+                  onClick={handleNewConversationRequest}
+                  className="nk-focus flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-black text-text-primary transition hover:bg-app-background"
                 >
+                  <PlusIcon aria-hidden="true" className="size-4" />
                   Nova conversa
                 </button>
               </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <section
+        ref={conversationRef}
+        aria-label="Conversa com a Assistente NK"
+        onScroll={handleConversationScroll}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+      >
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-1 pb-8 sm:px-6 sm:pt-2 sm:pb-10 lg:px-8">
+          {!isHydrated ? (
+            <p
+              role="status"
+              className="mx-auto my-auto rounded-xl border border-border-neutral bg-surface px-4 py-3 text-sm font-semibold text-text-muted shadow-sm"
+            >
+              Restaurando sua conversa...
+            </p>
+          ) : messages.length === 0 ? (
+            <div className="mx-auto w-full max-w-3xl">
+              <div className="mb-5 sm:mb-6">
+                <p className="text-xl font-black tracking-tight text-text-primary sm:text-2xl">
+                  {firstName ? `Olá, ${firstName}.` : "Olá."}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-text-muted sm:text-base">
+                  Consulte informações reais em modo somente leitura.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border-neutral bg-surface p-3 shadow-sm sm:p-4">
+                <AssistantStructuredBlockView
+                  block={initialSuggestions}
+                  disabled={isInteractionLocked}
+                  onPromptSelect={(prompt) => {
+                    void sendAssistantMessage(prompt);
+                  }}
+                />
+              </div>
+
+              <Link
+                href="/estoque"
+                className="nk-focus mt-4 flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border-neutral bg-surface px-3 py-2 text-xs font-bold text-text-muted transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/25"
+              >
+                <strong className="text-text-primary">
+                  Resumo do estoque
+                </strong>
+                {stockError ? (
+                  <span className="text-red-800">
+                    Indisponível no momento
+                  </span>
+                ) : (
+                  <>
+                    <span>
+                      {stockItems
+                        .map(
+                          ([label, value]) =>
+                            `${quantityFormatter.format(value ?? 0)} ${label.toLocaleLowerCase("pt-BR")}`,
+                        )
+                        .join(" · ")}
+                    </span>
+                    <span className="text-orange-900">
+                      {quantityFormatter.format(
+                        summary?.lowStockItems ?? 0,
+                      )}{" "}
+                      baixos
+                    </span>
+                    <span className="text-red-800">
+                      {quantityFormatter.format(
+                        summary?.outOfStockItems ?? 0,
+                      )}{" "}
+                      zerados
+                    </span>
+                  </>
+                )}
+                <span className="ml-auto text-brand-gold-ink">
+                  Abrir Estoque
+                </span>
+              </Link>
+            </div>
+          ) : (
+            <div
+              aria-live="polite"
+              className="mx-auto flex w-full max-w-3xl flex-col gap-4 pr-12 lg:pr-0"
+            >
               {messages.map((chatMessage) => {
                 const isStructured =
                   chatMessage.role === "assistant" &&
                   (Boolean(chatMessage.structuredBlock) ||
                     isStructuredAssistantMessage(chatMessage.content));
 
-                return (
-                  <article
-                    key={chatMessage.id}
-                    className={`rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm sm:text-base ${
-                      chatMessage.role === "user"
-                        ? "ml-auto w-fit max-w-[88%] rounded-br-md bg-brand-charcoal text-white sm:max-w-[78%]"
-                        : `mr-auto rounded-bl-md border border-border-neutral bg-surface text-text-primary ${
-                            isStructured
-                              ? "w-[94%] sm:w-[88%] lg:w-[80%] lg:max-w-2xl"
-                              : "w-fit max-w-[94%] lg:max-w-[80%]"
-                          }`
-                    }`}
-                  >
-                    <span className="sr-only">
-                      {chatMessage.role === "user"
-                        ? "Você: "
-                        : "Assistente IA: "}
-                    </span>
-                    {chatMessage.role === "user" ? (
+                if (chatMessage.role === "user") {
+                  return (
+                    <article
+                      key={chatMessage.id}
+                      className="ml-auto w-fit max-w-[88%] rounded-2xl rounded-br-md bg-brand-charcoal px-4 py-3 text-sm leading-6 text-white shadow-sm sm:max-w-[78%] sm:text-base"
+                    >
+                      <span className="sr-only">Você: </span>
                       <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                         {chatMessage.content}
                       </span>
-                    ) : (
-                      chatMessage.structuredBlock ? (
+                    </article>
+                  );
+                }
+
+                return (
+                  <section
+                    key={chatMessage.id}
+                    aria-label="Resposta da Assistente NK"
+                    className={`mr-auto min-w-0 ${
+                      isStructured
+                        ? "w-[96%] sm:w-[90%] lg:max-w-2xl"
+                        : "w-fit max-w-[96%] lg:max-w-[82%]"
+                    }`}
+                  >
+                    <div className="mb-1.5 flex items-center gap-2 px-1">
+                      <span
+                        aria-hidden="true"
+                        className="flex size-7 items-center justify-center rounded-full bg-brand-charcoal text-[0.58rem] font-black tracking-wide text-brand-gold"
+                      >
+                        NK
+                      </span>
+                      <span className="text-xs font-black text-text-muted">
+                        Assistente NK
+                      </span>
+                    </div>
+                    <article className="rounded-2xl rounded-bl-md border border-border-neutral bg-surface px-4 py-3 text-sm leading-6 text-text-primary shadow-sm sm:text-base">
+                      <span className="sr-only">Assistente NK: </span>
+                      {chatMessage.structuredBlock ? (
                         <AssistantStructuredBlockView
                           block={chatMessage.structuredBlock}
                           disabled={isInteractionLocked}
@@ -614,28 +807,59 @@ export function AssistantHome({
                         <AssistantMessageContent
                           content={chatMessage.content}
                         />
-                      )
-                    )}
-                  </article>
+                      )}
+                      {chatMessage.restoredMediaReferences?.length ? (
+                        <div
+                          className="mt-3 flex flex-wrap gap-2 border-t border-border-neutral pt-3"
+                          aria-label="Fotos disponíveis nesta resposta"
+                        >
+                          {chatMessage.restoredMediaReferences.map(
+                            (reference) => (
+                              <AssistantRestoredMediaControl
+                                key={`${reference.code}-${reference.targetKind ?? "catalog"}-${reference.targetId ?? ""}`}
+                                reference={reference}
+                                disabled={isInteractionLocked}
+                              />
+                            ),
+                          )}
+                        </div>
+                      ) : null}
+                    </article>
+                  </section>
                 );
               })}
               {isInteractionLocked ? (
-                <div className="mr-auto rounded-2xl rounded-bl-md border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-900 shadow-sm">
-                  {isPending
-                    ? "Consultando..."
-                    : "Atualizando os dados..."}
-                </div>
+                <section
+                  aria-label="Resposta da Assistente NK em andamento"
+                  className="mr-auto"
+                >
+                  <div className="mb-1.5 flex items-center gap-2 px-1">
+                    <span
+                      aria-hidden="true"
+                      className="flex size-7 items-center justify-center rounded-full bg-brand-charcoal text-[0.58rem] font-black text-brand-gold"
+                    >
+                      NK
+                    </span>
+                    <span className="text-xs font-black text-text-muted">
+                      Assistente NK
+                    </span>
+                  </div>
+                  <div className="rounded-2xl rounded-bl-md border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-900 shadow-sm">
+                    {isPending
+                      ? "Consultando..."
+                      : "Atualizando os dados..."}
+                  </div>
+                </section>
               ) : null}
             </div>
-          ) : null}
-
+          )}
         </div>
       </section>
 
       <div className="z-30 shrink-0 border-t border-border-neutral/80 bg-app-background/95 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-8">
           <form
             onSubmit={handleSubmit}
-            aria-busy={isInteractionLocked}
+            aria-busy={isComposerLocked}
             className="mx-auto w-full max-w-3xl rounded-2xl border border-border-neutral bg-surface p-2 shadow-[0_16px_42px_-26px_rgba(23,29,33,0.6)]"
           >
             {attachment ? (
@@ -663,6 +887,7 @@ export function AssistantHome({
                 </div>
                 <button
                   type="button"
+                  disabled={isComposerLocked}
                   onClick={removeAttachment}
                   aria-label="Remover imagem anexada"
                   className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-text-muted transition hover:bg-white hover:text-red-800"
@@ -684,7 +909,7 @@ export function AssistantHome({
                   onClick={() =>
                     setIsAttachmentMenuOpen((current) => !current)
                   }
-                  className="nk-focus inline-flex size-11 items-center justify-center rounded-xl bg-app-background text-text-primary transition hover:bg-brand-gold-soft"
+                  className="nk-focus inline-flex size-11 items-center justify-center rounded-xl bg-app-background text-text-primary transition hover:bg-brand-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <PlusIcon className="size-5" />
                 </button>
@@ -726,16 +951,16 @@ export function AssistantHome({
               </div>
 
               <label className="min-w-0 flex-1">
-                <span className="sr-only">Mensagem para o Assistente IA</span>
+                <span className="sr-only">Mensagem para a Assistente NK</span>
                 <textarea
                   ref={textareaRef}
-                  value={message}
+                  value={draft}
                   rows={1}
                   maxLength={assistantMessageMaxLength}
-                  disabled={isInteractionLocked}
+                  disabled={isComposerLocked}
                   placeholder="Digite uma mensagem..."
                   onChange={(event) => {
-                    setMessage(event.target.value);
+                    setDraft(event.target.value);
                     setFeedback(null);
                     resizeTextarea();
                   }}
@@ -746,11 +971,12 @@ export function AssistantHome({
 
               <button
                 type="button"
+                disabled={isComposerLocked}
                 aria-label="Usar microfone"
                 onClick={() =>
                   setFeedback("Entrada por voz está em preparação.")
                 }
-                className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-app-background text-text-primary transition hover:bg-violet-50 hover:text-violet-800"
+                className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-app-background text-text-primary transition hover:bg-violet-50 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <MicrophoneIcon className="size-5" />
               </button>
@@ -796,6 +1022,16 @@ export function AssistantHome({
           </p>
       </div>
 
+      <AssistantNewConversationDialog
+        isOpen={isNewConversationDialogOpen}
+        onCancel={() => {
+          setIsNewConversationDialogOpen(false);
+          window.requestAnimationFrame(() =>
+            newConversationButtonRef.current?.focus(),
+          );
+        }}
+        onConfirm={confirmNewConversation}
+      />
       <PwaInstallPrompt />
     </main>
   );

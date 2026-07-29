@@ -108,7 +108,11 @@ export default async function AccountPage() {
             Voltar para o início
           </Link>
 
-          <form action={logout} className="flex-1">
+          <form
+            action={logout}
+            className="flex-1"
+            data-assistant-session-logout
+          >
             <button
               type="submit"
               className="nk-focus inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-red-300 bg-surface px-5 text-sm font-black text-red-800 transition hover:bg-red-50"

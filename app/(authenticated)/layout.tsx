@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AssistantConversationProvider } from "@/components/assistant-conversation-provider";
 import { AssistantFloatingLink } from "@/components/assistant-floating-link";
 import { AuthenticatedProfileProvider } from "@/components/authenticated-profile-provider";
 import { requireActiveProfile } from "@/lib/auth";
@@ -14,16 +15,21 @@ export default async function AuthenticatedLayout({
       displayName={profile.displayName}
       hasRegisteredName={profile.hasRegisteredName}
     >
-      <div className="min-h-dvh bg-app-background">
-        <AppSidebar
-          userName={profile.displayName}
-          hasRegisteredName={profile.hasRegisteredName}
-        />
-        <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-dvh lg:pl-64">
-          {children}
+      <AssistantConversationProvider
+        key={profile.id}
+        userId={profile.id}
+      >
+        <div className="min-h-dvh bg-app-background">
+          <AppSidebar
+            userName={profile.displayName}
+            hasRegisteredName={profile.hasRegisteredName}
+          />
+          <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-dvh lg:pl-64">
+            {children}
+          </div>
+          <AssistantFloatingLink />
         </div>
-        <AssistantFloatingLink />
-      </div>
+      </AssistantConversationProvider>
     </AuthenticatedProfileProvider>
   );
 }

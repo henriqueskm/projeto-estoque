@@ -513,3 +513,33 @@ export function getExplicitGreeting(message: string) {
       return null;
   }
 }
+
+export function getStandaloneGreeting(message: string) {
+  const normalizedMessage = normalizeAssistantText(message);
+
+  if (
+    !/^(bom dia|boa tarde|boa noite|ola|oi)(?:[\s,.!?]+(?:assistente|negocios k))?[\s,.!?]*$/.test(
+      normalizedMessage,
+    )
+  ) {
+    return null;
+  }
+
+  const greeting = normalizedMessage.match(
+    /^(bom dia|boa tarde|boa noite|ola|oi)\b/,
+  )?.[1];
+
+  switch (greeting) {
+    case "bom dia":
+      return "Bom dia";
+    case "boa tarde":
+      return "Boa tarde";
+    case "boa noite":
+      return "Boa noite";
+    case "ola":
+    case "oi":
+      return "Olá";
+    default:
+      return null;
+  }
+}

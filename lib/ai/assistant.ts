@@ -15,6 +15,7 @@ import {
   extractCatalogMediaCode,
   extractExplicitItemQuery,
   getExplicitGreeting,
+  getStandaloneGreeting,
   isItemFollowUpMessage,
   isItemToSupplierOrdersFollowUp,
   normalizeAssistantText,
@@ -625,6 +626,16 @@ export async function answerAssistantQuestion(
   firstName: string | null,
 ): Promise<AssistantChatSuccess> {
   const intent = classifyAssistantIntent(message);
+  const standaloneGreeting = getStandaloneGreeting(message);
+
+  if (standaloneGreeting) {
+    return {
+      message: `${standaloneGreeting}${firstName ? `, ${firstName}` : ""}. Como posso ajudar?`,
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
 
   if (intent === "UNSUPPORTED_WRITE") {
     return {

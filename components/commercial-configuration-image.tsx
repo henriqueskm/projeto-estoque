@@ -17,6 +17,7 @@ type CommercialConfigurationImageProps = {
   commercialCodes: string[];
   imageUrl: string | null;
   compact?: boolean;
+  openOnMount?: boolean;
   triggerLabel?: string;
   triggerVariant?:
     | "thumbnail"
@@ -35,10 +36,13 @@ export function CommercialConfigurationImage({
   commercialCodes,
   imageUrl,
   compact = false,
+  openOnMount = false,
   triggerLabel,
   triggerVariant = "thumbnail",
 }: CommercialConfigurationImageProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(
+    openOnMount && Boolean(imageUrl),
+  );
   const [zoom, setZoom] = useState(minimumZoom);
   const dialogTitleId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
