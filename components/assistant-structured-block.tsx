@@ -13,6 +13,7 @@ import type {
   AssistantInventoryItemSummaryBlock,
   AssistantInventoryItemSummaryTarget,
   AssistantMediaDescriptor,
+  AssistantPurchaseRecommendationBlock,
   AssistantSupplierOrderAggregateBlock,
   AssistantSupplierOrderAmbiguityBlock,
   AssistantSupplierOrderCard,
@@ -22,6 +23,7 @@ import type {
   AssistantSupplierOrderListBlock,
   AssistantStructuredBlock,
 } from "@/lib/assistant-types";
+import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
 const orderDateFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -37,6 +39,16 @@ const orderStatusLabels = {
   COMPLETED: "Concluído",
   CANCELLED: "Cancelado",
 } as const;
+
+function getPurchaseOrderSituationLabel(
+  order: PurchaseRecommendationItem["relatedOrders"][number],
+) {
+  return order.closureKind === "FINALIZED"
+    ? "Finalizado"
+    : order.closureKind === "CANCELLED"
+      ? "Cancelado"
+      : orderStatusLabels[order.status];
+}
 
 function MediaControl({
   descriptor,
@@ -921,6 +933,215 @@ function SupplierOrderAggregate({
   );
 }
 
+function PurchaseRecommendationCard({
+  item,
+}: {
+  item: PurchaseRecommendationItem;
+}) {
+  const hasPendingPurchase = item.pendingPurchaseQuantity > 0;
+  const groupDetails = {
+    BUY_NOW: {
+      label: "Comprar agora",
+      className: "bg-amber-100 text-amber-950",
+    },
+    ALREADY_ORDERED: {
+      label: "Já comprado",
+      className: "bg-emerald-100 text-emerald-900",
+    },
+    MISSING_MINIMUM: {
+      label: "Sem mínimo",
+      className: "bg-slate-100 text-slate-700",
+    },
+    NO_ACTION: {
+      label: "Sem reposição",
+      className: "bg-blue-100 text-blue-900",
+    },
+  }[item.group];
+
+  return (
+    <article className="rounded-xl border border-border-neutral bg-white p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-black text-text-primary">
+          Cód. {item.primaryCode}
+        </span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[0.6rem] font-black uppercase ${groupDetails.className}`}
+        >
+          {groupDetails.label}
+        </span>
+      </div>
+      {item.aliases.length > 0 ? (
+        <p className="mt-1 text-[0.68rem] font-semibold text-text-muted">
+          Também: {item.aliases.map((code) => `Cód. ${code}`).join(", ")}
+        </p>
+      ) : null}
+      <p className="mt-1 text-[0.65rem] font-black tracking-[0.08em] text-text-muted uppercase">
+        {item.typeLabel}
+      </p>
+      <p className="mt-1 break-words text-sm font-bold text-text-primary">
+        {item.description}
+      </p>
+      <dl className="mt-2 grid grid-cols-2 gap-1.5">
+        <div className="rounded-lg bg-app-background px-2 py-1.5">
+          <dt className="text-[0.58rem] font-black text-text-muted uppercase">
+            Estoque
+          </dt>
+          <dd className="font-mono text-sm font-black text-text-primary">
+            {quantityFormatter.format(item.currentStock)}
+          </dd>
+        </div>
+        <div className="rounded-lg bg-app-background px-2 py-1.5">
+          <dt className="text-[0.58rem] font-black text-text-muted uppercase">
+            Mínimo
+          </dt>
+          <dd className="font-mono text-sm font-black text-text-primary">
+            {item.minimumStock === null
+              ? "Não definido"
+              : quantityFormatter.format(item.minimumStock)}
+          </dd>
+        </div>
+        {item.group === "BUY_NOW" ? (
+          <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2">
+            <dt className="text-[0.58rem] font-black text-amber-950 uppercase">
+              Comprar
+            </dt>
+            <dd className="font-mono text-lg font-black text-text-primary">
+              {quantityFormatter.format(item.recommendedQuantity ?? 0)}{" "}
+              <span className="text-xs">
+                {item.recommendedQuantity === 1 ? "unidade" : "unidades"}
+              </span>
+            </dd>
+          </div>
+        ) : null}
+        {hasPendingPurchase ? (
+          <>
+            <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
+              <dt className="text-[0.58rem] font-black text-emerald-900 uppercase">
+                Pendente
+              </dt>
+              <dd className="font-mono text-sm font-black text-text-primary">
+                {quantityFormatter.format(item.pendingPurchaseQuantity)}
+              </dd>
+            </div>
+            <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
+              <dt className="text-[0.58rem] font-black text-emerald-900 uppercase">
+                Projetado
+              </dt>
+              <dd className="font-mono text-sm font-black text-text-primary">
+                {quantityFormatter.format(item.projectedStock ?? 0)}
+              </dd>
+            </div>
+          </>
+        ) : null}
+      </dl>
+      {hasPendingPurchase ? (
+        <>
+          <p className="mt-2 text-xs font-bold text-text-muted">
+            {item.coverage === "SUFFICIENT"
+              ? "A compra pendente cobre o mínimo."
+              : "A compra pendente ainda não cobre o mínimo."}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {item.relatedOrders.map((order, index) => (
+              <Link
+                key={`${order.orderId}-${order.codeSnapshot}-${index}`}
+                href={order.href}
+                className="nk-focus min-h-10 rounded-lg border border-border-neutral bg-app-background px-2.5 py-1.5 text-xs font-black text-text-primary hover:bg-white"
+                title={`Comprado como Cód. ${order.codeSnapshot}`}
+              >
+                <span className="block">
+                  Pedido {order.negotiationNumber} · Cód.{" "}
+                  {order.codeSnapshot}
+                </span>
+                <span className="block text-[0.62rem] font-semibold text-text-muted">
+                  {getPurchaseOrderSituationLabel(order)} ·{" "}
+                  {orderDateFormatter.format(
+                    new Date(`${order.orderDate}T00:00:00Z`),
+                  )}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </>
+      ) : null}
+      <Link
+        href={item.inventoryHref}
+        className="nk-focus mt-3 inline-flex min-h-10 items-center rounded-lg border border-border-neutral px-3 text-xs font-black text-text-primary hover:bg-app-background"
+      >
+        Abrir no Estoque
+      </Link>
+    </article>
+  );
+}
+
+function PurchaseRecommendationList({
+  block,
+}: {
+  block: AssistantPurchaseRecommendationBlock;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[0.65rem] font-black tracking-[0.14em] text-brand-gold-ink uppercase">
+        Reposição
+      </p>
+      <h3 className="text-base font-black text-text-primary sm:text-lg">
+        {block.title}
+      </h3>
+      <p className="mt-1 text-sm font-bold text-text-primary">
+        {block.primaryText}
+      </p>
+      <p className="mt-1 text-xs font-semibold text-text-muted">
+        {block.subtitle}
+      </p>
+      <div className="mt-3 grid grid-cols-3 gap-1.5">
+        {[
+          ["Comprar", block.summary.buyNowCount],
+          ["Comprados", block.summary.alreadyOrderedCount],
+          ["Sem mínimo", block.summary.missingMinimumCount],
+        ].map(([label, value]) => (
+          <div
+            key={String(label)}
+            className="rounded-lg border border-border-neutral bg-app-background px-1.5 py-2 text-center"
+          >
+            <strong className="block font-mono text-sm text-text-primary">
+              {quantityFormatter.format(Number(value))}
+            </strong>
+            <span className="block text-[0.55rem] font-black text-text-muted uppercase">
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+      {block.items.length > 0 ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {block.items.map((item) => (
+            <PurchaseRecommendationCard
+              key={`${item.targetKind}-${item.targetId}`}
+              item={item}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-xl border border-dashed border-border-neutral bg-app-background px-3 py-3 text-sm font-semibold text-text-muted">
+          Nenhum item encontrado para esta consulta.
+        </p>
+      )}
+      {block.remainingCount > 0 ? (
+        <p className="mt-2 text-xs font-bold text-text-muted">
+          Mostrando {quantityFormatter.format(block.items.length)} de{" "}
+          {quantityFormatter.format(block.totalCount)} itens.
+        </p>
+      ) : null}
+      <Link
+        href={block.listHref}
+        className="nk-focus mt-3 inline-flex min-h-11 items-center rounded-xl bg-brand-charcoal px-3 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
+      >
+        Abrir lista completa
+      </Link>
+    </div>
+  );
+}
+
 function SupplierOrderAmbiguity({
   block,
 }: {
@@ -1056,5 +1277,7 @@ export function AssistantStructuredBlockView({
       return <SupplierOrderAggregate block={block} />;
     case "supplier_order_ambiguity":
       return <SupplierOrderAmbiguity block={block} />;
+    case "purchase_recommendation_list":
+      return <PurchaseRecommendationList block={block} />;
   }
 }

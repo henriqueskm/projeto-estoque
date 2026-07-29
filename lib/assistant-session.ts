@@ -229,6 +229,7 @@ function sanitizeStructuredBlock(
         mediaReferences: deduplicateMediaReferences(mediaReferences),
       };
     case "assistant_clarification":
+    case "purchase_recommendation_list":
     case "supplier_order_aggregate":
     case "supplier_order_ambiguity":
       return { block, mediaReferences: [] };

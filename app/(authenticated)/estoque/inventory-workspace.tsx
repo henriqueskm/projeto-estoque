@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useEffect,
   useMemo,
@@ -836,7 +837,7 @@ export function InventoryWorkspace({
 
   return (
     <>
-      <header className="flex items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[0.68rem] font-black tracking-[0.16em] text-brand-gold-ink uppercase">
             Consulta operacional
@@ -845,13 +846,21 @@ export function InventoryWorkspace({
             Estoque
           </h1>
         </div>
-        <p className="text-right text-xs font-semibold text-text-muted sm:text-sm">
-          {quantityFormatter.format(
-            inventory.physicalCatalogCount +
-              inventory.configurationCatalogCount,
-          )}{" "}
-          cadastros
-        </p>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link
+            href="/estoque?view=purchase-recommendations"
+            className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-brand-gold-dark bg-white px-3 text-sm font-black text-brand-gold-ink transition hover:bg-brand-gold-soft"
+          >
+            Lista recomendada
+          </Link>
+          <p className="text-right text-xs font-semibold text-text-muted sm:text-sm">
+            {quantityFormatter.format(
+              inventory.physicalCatalogCount +
+                inventory.configurationCatalogCount,
+            )}{" "}
+            cadastros
+          </p>
+        </div>
       </header>
 
       <section className="mt-3" aria-labelledby="inventory-summary-title">

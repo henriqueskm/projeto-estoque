@@ -3,13 +3,16 @@ import {
   type InventoryDeepLinkTarget,
   type InventoryStatusFilter,
 } from "@/app/(authenticated)/estoque/inventory-workspace";
+import { PurchaseRecommendationPanel } from "@/components/purchase-recommendation-panel";
 import { loadInventoryData } from "@/lib/inventory-data";
+import { loadPurchaseRecommendations } from "@/lib/purchase-recommendations";
 
 type InventoryPageProps = {
   searchParams: Promise<{
     status?: string | string[];
     item?: string | string[];
     configuration?: string | string[];
+    view?: string | string[];
   }>;
 };
 
@@ -37,7 +40,16 @@ export default async function InventoryPage({
   const initialStatusFilter = parseInitialStatusFilter(
     resolvedSearchParams.status,
   );
-  const inventoryResult = await loadInventoryData();
+  const isPurchaseRecommendationsOpen =
+    firstSearchParam(resolvedSearchParams.view) ===
+    "purchase-recommendations";
+  const [inventoryResult, purchaseRecommendationsResult] =
+    await Promise.all([
+      loadInventoryData(),
+      isPurchaseRecommendationsOpen
+        ? loadPurchaseRecommendations()
+        : Promise.resolve(null),
+    ]);
   let initialTarget: InventoryDeepLinkTarget | undefined;
 
   if (inventoryResult.data) {
@@ -94,6 +106,23 @@ export default async function InventoryPage({
           initialTarget={initialTarget}
         />
       )}
+      {isPurchaseRecommendationsOpen ? (
+        <PurchaseRecommendationPanel
+          data={
+            purchaseRecommendationsResult?.data
+              ? {
+                  buyNow: purchaseRecommendationsResult.data.buyNow,
+                  alreadyOrdered:
+                    purchaseRecommendationsResult.data.alreadyOrdered,
+                  missingMinimum:
+                    purchaseRecommendationsResult.data.missingMinimum,
+                  summary: purchaseRecommendationsResult.data.summary,
+                }
+              : null
+          }
+          error={purchaseRecommendationsResult?.error ?? null}
+        />
+      ) : null}
     </main>
   );
 }

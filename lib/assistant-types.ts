@@ -1,5 +1,6 @@
 import type { PhysicalStockItemType } from "@/lib/stock-calculations";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
+import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
 
 export const assistantMessageMaxLength = 2000;
 export const assistantQueryMaxLength = 120;
@@ -309,6 +310,26 @@ export type AssistantClarificationBlock = {
   fallbackText: string;
 };
 
+export type AssistantPurchaseRecommendationBlock = {
+  kind: "purchase_recommendation_list";
+  title: string;
+  subtitle: string;
+  mode: "buy_now" | "already_ordered" | "missing_minimum" | "all";
+  queryCode: string | null;
+  queryStatus: "FOUND" | "AMBIGUOUS" | "NOT_FOUND" | null;
+  primaryText: string;
+  summary: {
+    buyNowCount: number;
+    alreadyOrderedCount: number;
+    missingMinimumCount: number;
+  };
+  items: PurchaseRecommendationItem[];
+  totalCount: number;
+  remainingCount: number;
+  listHref: "/estoque?view=purchase-recommendations";
+  fallbackText: string;
+};
+
 export type AssistantStructuredBlock =
   | AssistantInventoryAlertsBlock
   | AssistantCatalogMediaBlock
@@ -317,6 +338,7 @@ export type AssistantStructuredBlock =
   | AssistantSupplierOrderDetailBlock
   | AssistantSupplierOrderAggregateBlock
   | AssistantSupplierOrderAmbiguityBlock
+  | AssistantPurchaseRecommendationBlock
   | AssistantClarificationBlock;
 
 const uuidPattern =
@@ -418,6 +440,12 @@ function isExpectedTargetHref(
   } catch {
     return false;
   }
+}
+
+function isSafePurchaseRecommendationHref(
+  value: unknown,
+): value is "/estoque?view=purchase-recommendations" {
+  return value === "/estoque?view=purchase-recommendations";
 }
 
 function isSafeSupplierOrdersHref(
@@ -860,11 +888,228 @@ function parseInventoryItemSummaryTarget(
   };
 }
 
+function parsePurchaseRecommendationItem(
+  value: unknown,
+): PurchaseRecommendationItem | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const expectedTypeLabel = {
+    SERVO: "Servoembreagem",
+    INSTALLATION_KIT: "Kit de instalação",
+    REPAIR_KIT: "Jogo de reparo",
+    LOOSE_PART: "Peça avulsa",
+    COMPLETE_BOX: "Caixa completa",
+  }[String(value.itemType)];
+  const aliases = Array.isArray(value.aliases) ? value.aliases : [];
+  const relatedOrders = Array.isArray(value.relatedOrders)
+    ? value.relatedOrders
+    : [];
+  const parsedOrders = relatedOrders.map((order) => {
+    if (
+      !isRecord(order) ||
+      typeof order.orderId !== "string" ||
+      !uuidPattern.test(order.orderId) ||
+      typeof order.negotiationNumber !== "string" ||
+      !order.negotiationNumber.trim() ||
+      typeof order.orderDate !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(order.orderDate) ||
+      !["PENDING", "PARTIAL", "COMPLETED", "CANCELLED"].includes(
+        String(order.status),
+      ) ||
+      (order.closureKind !== null &&
+        order.closureKind !== "FINALIZED" &&
+        order.closureKind !== "CANCELLED") ||
+      typeof order.codeSnapshot !== "string" ||
+      !order.codeSnapshot.trim() ||
+      !isNonnegativeInteger(order.pendingQuantity) ||
+      order.pendingQuantity === 0 ||
+      !isSafeSupplierOrdersHref(order.href, order.orderId)
+    ) {
+      return null;
+    }
+
+    return order;
+  });
+  const minimumStock = value.minimumStock;
+  const projectedStock = value.projectedStock;
+  const shortfall = value.shortfall;
+  const recommendedQuantity = value.recommendedQuantity;
+  const remainingGap = value.remainingGap;
+  if (
+    (value.targetKind !== "item" &&
+      value.targetKind !== "commercial_configuration") ||
+    typeof value.targetId !== "string" ||
+    !uuidPattern.test(value.targetId) ||
+    typeof value.primaryCode !== "string" ||
+    !value.primaryCode.trim() ||
+    !Array.isArray(value.aliases) ||
+    aliases.length > 30 ||
+    aliases.some(
+      (alias) => typeof alias !== "string" || !alias.trim(),
+    ) ||
+    new Set(aliases).size !== aliases.length ||
+    aliases.includes(value.primaryCode) ||
+    ![
+      "SERVO",
+      "INSTALLATION_KIT",
+      "REPAIR_KIT",
+      "LOOSE_PART",
+      "COMPLETE_BOX",
+    ].includes(String(value.itemType)) ||
+    typeof value.typeLabel !== "string" ||
+    value.typeLabel !== expectedTypeLabel ||
+    typeof value.description !== "string" ||
+    !value.description.trim() ||
+    !isNonnegativeInteger(value.currentStock) ||
+    (minimumStock !== null && !isNonnegativeInteger(minimumStock)) ||
+    !isNonnegativeInteger(value.pendingPurchaseQuantity) ||
+    (projectedStock !== null && !isNonnegativeInteger(projectedStock)) ||
+    (shortfall !== null && !isNonnegativeInteger(shortfall)) ||
+    (recommendedQuantity !== null &&
+      !isNonnegativeInteger(recommendedQuantity)) ||
+    (remainingGap !== null && !isNonnegativeInteger(remainingGap)) ||
+    !["BUY_NOW", "ALREADY_ORDERED", "MISSING_MINIMUM", "NO_ACTION"].includes(
+      String(value.group),
+    ) ||
+    (value.coverage !== null &&
+      value.coverage !== "SUFFICIENT" &&
+      value.coverage !== "INSUFFICIENT") ||
+    !isSafeInventoryHref(value.inventoryHref) ||
+    !isExpectedTargetHref(
+      value.inventoryHref,
+      value.targetKind,
+      value.targetId,
+      null,
+    ) ||
+    !Array.isArray(value.relatedOrders) ||
+    relatedOrders.length > 10 ||
+    parsedOrders.some((order) => order === null) ||
+    (value.targetKind === "commercial_configuration") !==
+      (value.itemType === "COMPLETE_BOX") ||
+    (minimumStock === null
+      ? value.group !== "MISSING_MINIMUM" ||
+        projectedStock !== null ||
+        shortfall !== null ||
+        recommendedQuantity !== null ||
+        remainingGap !== null ||
+        value.coverage !== null
+      : projectedStock !==
+          value.currentStock + value.pendingPurchaseQuantity ||
+        shortfall !==
+          Math.max(minimumStock - value.currentStock, 0) ||
+        remainingGap !==
+          Math.max(minimumStock - projectedStock, 0) ||
+        (value.group === "BUY_NOW" &&
+          (value.pendingPurchaseQuantity !== 0 ||
+            shortfall === 0 ||
+            recommendedQuantity !== shortfall ||
+            value.coverage !== null)) ||
+        (value.group === "ALREADY_ORDERED" &&
+          (value.pendingPurchaseQuantity === 0 ||
+            shortfall === 0 ||
+            recommendedQuantity !== 0 ||
+            value.coverage !==
+              (remainingGap === 0 ? "SUFFICIENT" : "INSUFFICIENT"))) ||
+        (value.group === "NO_ACTION" &&
+          (shortfall !== 0 ||
+            recommendedQuantity !== 0 ||
+            value.coverage !== null)) ||
+        value.group === "MISSING_MINIMUM")
+  ) {
+    return null;
+  }
+
+  return value as PurchaseRecommendationItem;
+}
+
 export function parseAssistantStructuredBlock(
   value: unknown,
 ): AssistantStructuredBlock | null {
   if (!isRecord(value)) {
     return null;
+  }
+
+  if (value.kind === "purchase_recommendation_list") {
+    const summary = value.summary;
+    const items = Array.isArray(value.items)
+      ? value.items.map(parsePurchaseRecommendationItem)
+      : [];
+    const queryCode =
+      typeof value.queryCode === "string"
+        ? value.queryCode.trim()
+        : value.queryCode === null
+          ? null
+          : undefined;
+    const queryStatus =
+      value.queryStatus === null ||
+      ["FOUND", "AMBIGUOUS", "NOT_FOUND"].includes(
+        String(value.queryStatus),
+      )
+        ? value.queryStatus
+        : undefined;
+
+    if (
+      typeof value.title !== "string" ||
+      !value.title.trim() ||
+      typeof value.subtitle !== "string" ||
+      !value.subtitle.trim() ||
+      !["buy_now", "already_ordered", "missing_minimum", "all"].includes(
+        String(value.mode),
+      ) ||
+      queryCode === undefined ||
+      queryStatus === undefined ||
+      (queryCode === null) !== (queryStatus === null) ||
+      !isRecord(summary) ||
+      !isNonnegativeInteger(summary.buyNowCount) ||
+      !isNonnegativeInteger(summary.alreadyOrderedCount) ||
+      !isNonnegativeInteger(summary.missingMinimumCount) ||
+      typeof value.primaryText !== "string" ||
+      !value.primaryText.trim() ||
+      !Array.isArray(value.items) ||
+      items.length > 10 ||
+      items.some((item) => item === null) ||
+      !isNonnegativeInteger(value.totalCount) ||
+      !isNonnegativeInteger(value.remainingCount) ||
+      value.totalCount !== items.length + value.remainingCount ||
+      !isSafePurchaseRecommendationHref(value.listHref) ||
+      typeof value.fallbackText !== "string" ||
+      !value.fallbackText.trim() ||
+      (queryStatus === "NOT_FOUND" && items.length !== 0) ||
+      (queryStatus === "FOUND" && items.length !== 1) ||
+      (queryStatus === "AMBIGUOUS" && items.length < 2) ||
+      (value.mode === "buy_now" &&
+        items.some((item) => item?.group !== "BUY_NOW")) ||
+      (value.mode === "already_ordered" &&
+        items.some((item) => item?.group !== "ALREADY_ORDERED")) ||
+      (value.mode === "missing_minimum" &&
+        items.some((item) => item?.group !== "MISSING_MINIMUM"))
+    ) {
+      return null;
+    }
+
+    return {
+      kind: "purchase_recommendation_list",
+      title: value.title.trim(),
+      subtitle: value.subtitle.trim(),
+      mode:
+        value.mode as AssistantPurchaseRecommendationBlock["mode"],
+      queryCode,
+      queryStatus:
+        queryStatus as AssistantPurchaseRecommendationBlock["queryStatus"],
+      primaryText: value.primaryText.trim(),
+      summary: {
+        buyNowCount: summary.buyNowCount,
+        alreadyOrderedCount: summary.alreadyOrderedCount,
+        missingMinimumCount: summary.missingMinimumCount,
+      },
+      items: items as PurchaseRecommendationItem[],
+      totalCount: value.totalCount,
+      remainingCount: value.remainingCount,
+      listHref: "/estoque?view=purchase-recommendations",
+      fallbackText: value.fallbackText.trim(),
+    };
   }
 
   if (value.kind === "assistant_clarification") {

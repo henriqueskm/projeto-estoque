@@ -11,6 +11,10 @@ import {
 } from "@/lib/assistant-data";
 import { consultAssistantSupplierOrders } from "@/lib/assistant-supplier-orders";
 import {
+  consultAssistantPurchaseRecommendations,
+  createPurchaseRecommendationClarificationBlock,
+} from "@/lib/assistant-purchase-recommendations";
+import {
   classifyAssistantIntent,
   extractCatalogMediaCode,
   extractExplicitItemQuery,
@@ -23,6 +27,7 @@ import {
   routeInventoryItemSummaryQuestion,
 } from "@/lib/ai/assistant-routing";
 import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
+import { routePurchaseRecommendationQuestion } from "@/lib/ai/purchase-recommendation-routing";
 import type {
   AssistantClarificationBlock,
   AssistantClarificationOption,
@@ -625,6 +630,8 @@ export async function answerAssistantQuestion(
   lastSupplierOrderCatalogCode: string | null,
   firstName: string | null,
 ): Promise<AssistantChatSuccess> {
+  const purchaseRecommendationRoute =
+    routePurchaseRecommendationQuestion(message);
   const intent = classifyAssistantIntent(message);
   const standaloneGreeting = getStandaloneGreeting(message);
 
@@ -632,6 +639,39 @@ export async function answerAssistantQuestion(
     return {
       message: `${standaloneGreeting}${firstName ? `, ${firstName}` : ""}. Como posso ajudar?`,
       contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  if (purchaseRecommendationRoute?.kind === "CLARIFICATION") {
+    const block = createPurchaseRecommendationClarificationBlock(
+      purchaseRecommendationRoute.queryCode,
+    );
+
+    return {
+      message: block.fallbackText,
+      structuredBlock: block,
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  if (purchaseRecommendationRoute?.kind === "QUERY") {
+    const block = await executeStockQuery(() =>
+      consultAssistantPurchaseRecommendations(
+        purchaseRecommendationRoute,
+      ),
+    );
+
+    return {
+      message: block.fallbackText,
+      structuredBlock: block,
+      contextItemQuery:
+        block.queryStatus === "FOUND"
+          ? (block.items[0]?.primaryCode ?? null)
+          : null,
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
