@@ -14,6 +14,7 @@ import {
 } from "react";
 import {
   assistantSessionStoragePrefix,
+  clearAssistantSessionStorage,
   getAssistantSessionStorageKey,
   parseAssistantSession,
   serializeAssistantSession,
@@ -88,6 +89,8 @@ export function AssistantConversationProvider({
     [userId],
   );
   const sessionRef = useRef<AssistantSessionState | null>(null);
+  const persistenceTimeoutRef = useRef<number | null>(null);
+  const isSigningOutRef = useRef(false);
 
   const currentSession = useMemo<AssistantSessionState | null>(
     () =>
@@ -119,6 +122,10 @@ export function AssistantConversationProvider({
 
   const writeSession = useCallback(
     (session: AssistantSessionState) => {
+      if (isSigningOutRef.current) {
+        return;
+      }
+
       try {
         const serialized = serializeAssistantSession(session);
 
@@ -137,6 +144,10 @@ export function AssistantConversationProvider({
 
   const persistNow = useCallback(
     (options?: PersistOptions) => {
+      if (isSigningOutRef.current) {
+        return;
+      }
+
       const session = sessionRef.current;
 
       if (!session) {
@@ -152,6 +163,32 @@ export function AssistantConversationProvider({
     },
     [writeSession],
   );
+
+  const clearAssistantSession = useCallback(() => {
+    isSigningOutRef.current = true;
+
+    if (persistenceTimeoutRef.current !== null) {
+      window.clearTimeout(persistenceTimeoutRef.current);
+      persistenceTimeoutRef.current = null;
+    }
+
+    const emptySession = createEmptySession();
+    sessionRef.current = emptySession;
+    setConversationId(emptySession.conversationId);
+    setMessages([]);
+    setDraft("");
+    setLastItemQuery(null);
+    setLastSupplierOrderId(null);
+    setLastSupplierOrderCatalogCode(null);
+    setScrollTop(0);
+
+    try {
+      clearAssistantSessionStorage(window.sessionStorage, userId);
+    } catch {
+      // O estado em memória permanece limpo mesmo quando o navegador bloqueia
+      // o acesso ao sessionStorage.
+    }
+  }, [userId]);
 
   const resetConversation = useCallback(() => {
     const nextSession = createEmptySession();
@@ -201,7 +238,7 @@ export function AssistantConversationProvider({
     const session = restoredSession ?? createEmptySession();
 
     window.queueMicrotask(() => {
-      if (isCancelled) {
+      if (isCancelled || isSigningOutRef.current) {
         return;
       }
 
@@ -224,22 +261,33 @@ export function AssistantConversationProvider({
   }, [storageKey, userId]);
 
   useEffect(() => {
-    if (!isHydrated || !currentSession) {
+    if (!isHydrated || !currentSession || isSigningOutRef.current) {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
+    if (persistenceTimeoutRef.current !== null) {
+      window.clearTimeout(persistenceTimeoutRef.current);
+    }
+
+    persistenceTimeoutRef.current = window.setTimeout(() => {
+      persistenceTimeoutRef.current = null;
+
+      if (isSigningOutRef.current) {
+        return;
+      }
+
       writeSession(currentSession);
     }, 300);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      if (persistenceTimeoutRef.current !== null) {
+        window.clearTimeout(persistenceTimeoutRef.current);
+        persistenceTimeoutRef.current = null;
+      }
+    };
   }, [currentSession, isHydrated, writeSession]);
 
   useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
     function handlePageHide() {
       persistNow();
     }
@@ -252,12 +300,7 @@ export function AssistantConversationProvider({
         return;
       }
 
-      try {
-        window.sessionStorage.removeItem(storageKey);
-      } catch {
-        // A separação pela chave de usuário continua impedindo vazamento entre
-        // contas mesmo quando o navegador bloqueia a remoção.
-      }
+      clearAssistantSession();
     }
 
     window.addEventListener("pagehide", handlePageHide);
@@ -267,7 +310,7 @@ export function AssistantConversationProvider({
       window.removeEventListener("pagehide", handlePageHide);
       document.removeEventListener("submit", handleLogoutSubmit, true);
     };
-  }, [isHydrated, persistNow, storageKey]);
+  }, [clearAssistantSession, persistNow]);
 
   const value = useMemo<AssistantConversationContextValue>(
     () => ({

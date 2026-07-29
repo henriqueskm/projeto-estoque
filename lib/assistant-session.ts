@@ -339,6 +339,25 @@ export function getAssistantSessionStorageKey(userId: string) {
   return `${assistantSessionStoragePrefix}:v${assistantSessionVersion}:${userId}`;
 }
 
+export function clearAssistantSessionStorage(
+  storage: Pick<Storage, "key" | "length" | "removeItem">,
+  userId: string,
+) {
+  storage.removeItem(getAssistantSessionStorageKey(userId));
+
+  for (let index = storage.length - 1; index >= 0; index -= 1) {
+    const key = storage.key(index);
+
+    if (
+      key &&
+      key.startsWith(`${assistantSessionStoragePrefix}:`) &&
+      key.endsWith(`:${userId}`)
+    ) {
+      storage.removeItem(key);
+    }
+  }
+}
+
 export function parseAssistantSession(
   rawValue: string,
 ): AssistantSessionState | null {
