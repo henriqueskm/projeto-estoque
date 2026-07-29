@@ -1,4 +1,7 @@
-import { assistantQueryMaxLength } from "@/lib/assistant-types";
+import {
+  assistantQueryMaxLength,
+  type AssistantInventoryItemSummaryMetric,
+} from "@/lib/assistant-types";
 
 export type AssistantIntent =
   | "UNSUPPORTED_WRITE"
@@ -8,6 +11,16 @@ export type AssistantIntent =
   | "ITEM_QUERY"
   | "GENERAL_CONVERSATION"
   | "AMBIGUOUS";
+
+export type AssistantInventoryItemRoute = {
+  queryCode: string;
+  metric: AssistantInventoryItemSummaryMetric;
+};
+
+export type AssistantClarificationRoute =
+  | { kind: "CATALOG_CODE"; code: string }
+  | { kind: "SUPPLIER_ORDERS"; contextual: boolean }
+  | { kind: "GENERIC" };
 
 export function normalizeAssistantText(value: string) {
   return value
@@ -131,6 +144,18 @@ export function isItemFollowUpMessage(message: string) {
     /^(e\s+)?(qual\s+e\s+)?(o\s+)?minimo\b/.test(normalizedMessage) ||
     /^(e\s+)?(as\s+|os\s+)?avuls(as|os)?\b/.test(normalizedMessage) ||
     /^(e\s+)?quant(as?|os?)\s+(estao|tem)\b.{0,30}\b(montad|avuls)/.test(
+      normalizedMessage,
+    ) ||
+    /^(e\s+)?(qual\s+e\s+)?(a\s+)?situacao\b/.test(normalizedMessage) ||
+    /^(e\s+)?(esta|ta)\s+(baixo|zerado)\b/.test(normalizedMessage) ||
+    /^(e\s+)?quanto\s+falta\b.{0,40}\bminimo\b/.test(normalizedMessage) ||
+    /^(e\s+)?(o\s+que\s+e|qual\s+e|descricao)\b/.test(
+      normalizedMessage,
+    ) ||
+    /^(e\s+)?(qual\s+)?(servo|kit|composicao)\b/.test(
+      normalizedMessage,
+    ) ||
+    /^(e\s+)?(mostre|mostrar|ver|abra|abrir)\b.{0,20}\b(foto|imagem)\b/.test(
       normalizedMessage,
     )
   );
@@ -270,16 +295,22 @@ function cleanQueryCandidate(value: string) {
 }
 
 export function extractExplicitItemQuery(message: string) {
+  const searchableMessage = message
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/([A-Z0-9])\s*-\s*([A-Z0-9])/gi, "$1-$2");
   const alphanumericCodes =
-    message.match(/\b(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9]+(?:-[A-Z0-9]+)*\b/gi) ??
+    searchableMessage.match(
+      /\b(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9]+(?:-[A-Z0-9]+)*\b/gi,
+    ) ??
     [];
 
   if (alphanumericCodes.length > 0) {
     return cleanQueryCandidate(alphanumericCodes.at(-1) ?? "");
   }
 
-  const numericCode = message.match(
-    /\b(?:codigo|item|servo|do|da|de)\s+(\d+)\b/i,
+  const numericCode = searchableMessage.match(
+    /\b(?:codigo|itens?|servos?|kits?|reparos?|pecas?|caixas?|suportes?|do|da|de)\s+(\d+)\b/i,
   )?.[1];
 
   if (numericCode) {
@@ -294,7 +325,7 @@ export function extractExplicitItemQuery(message: string) {
   ];
 
   for (const pattern of phrasePatterns) {
-    const candidate = message.match(pattern)?.[1];
+    const candidate = searchableMessage.match(pattern)?.[1];
     const cleanedCandidate = candidate ? cleanQueryCandidate(candidate) : null;
 
     if (cleanedCandidate) {
@@ -303,6 +334,163 @@ export function extractExplicitItemQuery(message: string) {
   }
 
   return null;
+}
+
+function isExactCatalogCode(value: string) {
+  return /^(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)*$/i.test(value);
+}
+
+export function isItemToSupplierOrdersFollowUp(message: string) {
+  return /^(?:e\s+)?(?:nos?|em)\s+pedidos?\s*[?!.]*$/i.test(
+    normalizeAssistantText(message),
+  );
+}
+
+export function routeAssistantClarification(
+  message: string,
+  hasSupplierOrderContext: boolean,
+): AssistantClarificationRoute | null {
+  const normalizedMessage = normalizeAssistantText(message);
+  const explicitQuery = extractExplicitItemQuery(message);
+  const normalizedCode = explicitQuery
+    ? normalizeCatalogCode(explicitQuery)
+    : null;
+  const hasExplicitDomain =
+    /\b(estoque|saldo|pedidos?|negociacao|foto|fotos|imagem|imagens|minimo|zerad[oa]s?|baix[oa]s?|reposicao|composicao|servo\s+e\s+kit|retirada|retirar|entrada)\b/.test(
+      normalizedMessage,
+    );
+  const asksAmbiguousCodeQuestion =
+    Boolean(normalizedCode && isExactCatalogCode(normalizedCode)) &&
+    !hasExplicitDomain &&
+    (/^(?:eu\s+)?tenho\b/.test(normalizedMessage) &&
+    !/\bquant(?:o|os|a|as)\b/.test(normalizedMessage)
+      ? true
+      : /\bquanto\s+tem\b/.test(normalizedMessage) ||
+        /\bsituacao\b/.test(normalizedMessage) ||
+        /\b(?:quero\s+)?(?:consultar|ver|veja|mostrar|mostre)\b/.test(
+          normalizedMessage,
+        ) ||
+        normalizeCatalogCode(
+          normalizedMessage.replace(/[?!.]+$/g, ""),
+        ) === normalizedCode);
+
+  if (asksAmbiguousCodeQuestion && normalizedCode) {
+    return { kind: "CATALOG_CODE", code: normalizedCode };
+  }
+
+  if (
+    hasSupplierOrderContext &&
+    /^(?:e\s+)?agora\s*[?!.]*$/.test(normalizedMessage)
+  ) {
+    return { kind: "SUPPLIER_ORDERS", contextual: true };
+  }
+
+  if (
+    /\b(?:quero|preciso|gostaria\s+de)\s+(?:consultar|ver|buscar|procurar)\s+(?:um\s+)?pedido\b/.test(
+      normalizedMessage,
+    ) ||
+    /^(?:consultar|ver|buscar|procurar)\s+(?:um\s+)?pedido\s*[?!.]*$/.test(
+      normalizedMessage,
+    )
+  ) {
+    return { kind: "SUPPLIER_ORDERS", contextual: false };
+  }
+
+  if (
+    /\bpreciso\s+de\s+ajuda\b/.test(normalizedMessage) ||
+    /\bnao\s+sei\s+(?:o\s+)?que\s+perguntar\b/.test(
+      normalizedMessage,
+    ) ||
+    /\bo\s+que\s+voce\s+(?:consegue|pode)\s+fazer\b/.test(
+      normalizedMessage,
+    ) ||
+    /\bcomo\s+voce\s+pode\s+me\s+ajudar\b/.test(normalizedMessage) ||
+    /\b(?:mostre|mostrar|ver)\s+(?:as\s+)?(?:opcoes|exemplos)\b/.test(
+      normalizedMessage,
+    )
+  ) {
+    return { kind: "GENERIC" };
+  }
+
+  return null;
+}
+
+export function routeInventoryItemSummaryQuestion(
+  message: string,
+  lastItemQuery: string | null,
+): AssistantInventoryItemRoute | null {
+  const normalizedMessage = normalizeAssistantText(message);
+
+  if (/\b(foto|fotos|imagem|imagens)\b/.test(normalizedMessage)) {
+    return null;
+  }
+
+  const explicitQuery = extractExplicitItemQuery(message);
+  const contextualQuery =
+    !explicitQuery &&
+    lastItemQuery &&
+    isItemFollowUpMessage(message)
+      ? lastItemQuery
+      : null;
+  const rawQuery = explicitQuery ?? contextualQuery;
+
+  if (!rawQuery) {
+    return null;
+  }
+
+  const queryCode = normalizeCatalogCode(rawQuery);
+
+  if (!queryCode || !isExactCatalogCode(queryCode)) {
+    return null;
+  }
+
+  const asksComposition =
+    /\b(composicao|forma(?:m|do|da|dos|das)|qual\s+servo|qual\s+kit|servo\s+e\s+kit)\b/.test(
+      normalizedMessage,
+    );
+  const asksDescription =
+    /\b(o\s+que\s+e|descricao|descreva)\b/.test(normalizedMessage) ||
+    /\bqual\s+e\b.{0,24}\b(codigo|item|servo|kit|reparo|peca|caixa|configuracao)\b/.test(
+      normalizedMessage,
+    );
+  const asksShortfall =
+    /\b(falta|faltam|faltando)\b.{0,45}\bminimo\b|\bminimo\b.{0,45}\b(falta|faltam|faltando)\b/.test(
+      normalizedMessage,
+    );
+  const asksMinimum = /\bminimo\b/.test(normalizedMessage);
+  const asksStatus =
+    /\b(baixo|baixos|baixa|baixas|zerado|zerados|zerada|zeradas|repor|reposicao|situacao)\b/.test(
+      normalizedMessage,
+    );
+  const asksStock =
+    /\b(quanto|quantos|quanta|quantas|tenho|temos|tem|possuo|possui|estoque|saldo|quantidade|disponivel|existe|existem|montad[ao]s?)\b/.test(
+      normalizedMessage,
+    );
+
+  const metric: AssistantInventoryItemSummaryMetric = asksComposition
+    ? "COMPOSITION"
+    : asksDescription
+      ? "DESCRIPTION"
+      : asksShortfall
+        ? "SHORTFALL"
+        : asksMinimum
+          ? "MINIMUM"
+          : asksStatus
+            ? "STATUS"
+            : "STOCK";
+
+  if (
+    !asksComposition &&
+    !asksDescription &&
+    !asksShortfall &&
+    !asksMinimum &&
+    !asksStatus &&
+    !asksStock
+  ) {
+    return null;
+  }
+
+  return { queryCode, metric };
 }
 
 export function getExplicitGreeting(message: string) {

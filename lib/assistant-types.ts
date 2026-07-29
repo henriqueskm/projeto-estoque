@@ -9,12 +9,14 @@ export type AssistantChatRequest = {
   message: string;
   lastItemQuery?: string;
   lastSupplierOrderId?: string;
+  lastSupplierOrderCatalogCode?: string;
 };
 
 export type AssistantChatSuccess = {
   message: string;
   contextItemQuery?: string | null;
   contextSupplierOrderId?: string | null;
+  contextSupplierOrderCatalogCode?: string | null;
   structuredBlock?: AssistantStructuredBlock;
 };
 
@@ -155,6 +157,50 @@ export type AssistantCatalogMediaBlock = {
   fallbackText: string;
 };
 
+export type AssistantInventoryItemSummaryMetric =
+  | "STOCK"
+  | "MINIMUM"
+  | "STATUS"
+  | "SHORTFALL"
+  | "DESCRIPTION"
+  | "COMPOSITION";
+
+export type AssistantInventoryItemSummaryTarget = {
+  targetKind: "item" | "commercial_configuration";
+  targetId: string;
+  displayCode: string;
+  itemType:
+    | PhysicalStockItemType
+    | "COMPLETE_BOX";
+  typeLabel: string;
+  description: string;
+  currentStock: number;
+  minimumStock: number | null;
+  stockUnitLabel: string;
+  status: "ZERO" | "LOW" | "OK" | "NO_MINIMUM";
+  statusLabel: string;
+  shortfall: number | null;
+  href: string;
+  mediaDescriptor: AssistantMediaDescriptor | null;
+  composition?: {
+    servoCode: string;
+    servoDescription: string;
+    installationKitCode: string;
+    installationKitDescription: string;
+  };
+};
+
+export type AssistantInventoryItemSummaryBlock = {
+  kind: "inventory_item_summary";
+  queryCode: string;
+  status: "FOUND" | "AMBIGUOUS" | "NOT_FOUND";
+  metric: AssistantInventoryItemSummaryMetric;
+  results: AssistantInventoryItemSummaryTarget[];
+  inventoryHref: string;
+  primaryText: string;
+  fallbackText: string;
+};
+
 export type AssistantSupplierOrderCard = {
   id: string;
   negotiationNumber: string;
@@ -184,6 +230,11 @@ export type AssistantSupplierOrderItemCard = {
   mediaDescriptor: AssistantMediaDescriptor | null;
 };
 
+export type AssistantSupplierOrderCatalogLine =
+  AssistantSupplierOrderItemCard & {
+    supplierOrderId: string;
+  };
+
 export type AssistantSupplierOrderListBlock = {
   kind: "supplier_order_list";
   title: string;
@@ -191,6 +242,8 @@ export type AssistantSupplierOrderListBlock = {
   totalCount: number;
   remainingCount: number;
   orders: AssistantSupplierOrderCard[];
+  catalogCode: string | null;
+  catalogLines: AssistantSupplierOrderCatalogLine[];
   ordersHref: string;
   fallbackText: string;
 };
@@ -200,6 +253,7 @@ export type AssistantSupplierOrderDetailBlock = {
   title: string;
   order: AssistantSupplierOrderCard;
   items: AssistantSupplierOrderItemCard[];
+  catalogCode: string | null;
   hiddenItemCount: number;
   fallbackText: string;
 };
@@ -214,6 +268,13 @@ export type AssistantSupplierOrderAggregateBlock = {
   waitingPickupQuantity: number;
   stockedQuantity: number;
   waitingStockQuantity: number;
+  catalogCode: string | null;
+  primaryMetric:
+    | "ORDER_COUNT"
+    | "ORDERED_UNITS"
+    | "PICKED_UNITS"
+    | "WAITING_PICKUP_UNITS"
+    | "WAITING_STOCK_UNITS";
   ordersHref: string;
   fallbackText: string;
 };
@@ -227,13 +288,36 @@ export type AssistantSupplierOrderAmbiguityBlock = {
   fallbackText: string;
 };
 
+export type AssistantClarificationCategory =
+  | "inventory"
+  | "supplier_orders"
+  | "replenishment"
+  | "media";
+
+export type AssistantClarificationOption = {
+  id: string;
+  label: string;
+  prompt: string;
+  category: AssistantClarificationCategory;
+};
+
+export type AssistantClarificationBlock = {
+  kind: "assistant_clarification";
+  title: string;
+  message?: string;
+  options: AssistantClarificationOption[];
+  fallbackText: string;
+};
+
 export type AssistantStructuredBlock =
   | AssistantInventoryAlertsBlock
   | AssistantCatalogMediaBlock
+  | AssistantInventoryItemSummaryBlock
   | AssistantSupplierOrderListBlock
   | AssistantSupplierOrderDetailBlock
   | AssistantSupplierOrderAggregateBlock
-  | AssistantSupplierOrderAmbiguityBlock;
+  | AssistantSupplierOrderAmbiguityBlock
+  | AssistantClarificationBlock;
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -453,6 +537,26 @@ function parseSupplierOrderItemCard(
   };
 }
 
+function parseSupplierOrderCatalogLine(
+  value: unknown,
+): AssistantSupplierOrderCatalogLine | null {
+  const item = parseSupplierOrderItemCard(value);
+
+  if (
+    !item ||
+    !isRecord(value) ||
+    typeof value.supplierOrderId !== "string" ||
+    !uuidPattern.test(value.supplierOrderId)
+  ) {
+    return null;
+  }
+
+  return {
+    ...item,
+    supplierOrderId: value.supplierOrderId,
+  };
+}
+
 function parseCompatibleKitOption(
   value: unknown,
 ): CompatibleKitImageOption | null {
@@ -609,11 +713,223 @@ function parseCatalogMediaTarget(
   };
 }
 
+function parseInventoryItemSummaryTarget(
+  value: unknown,
+): AssistantInventoryItemSummaryTarget | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const mediaDescriptor = parseMediaDescriptor(value.mediaDescriptor);
+  const minimumStock =
+    value.minimumStock === null && value.status === "NO_MINIMUM"
+      ? null
+      : value.minimumStock;
+  const shortfall =
+    value.shortfall === null && minimumStock === null
+      ? null
+      : value.shortfall;
+  const composition = value.composition;
+  const itemType = String(
+    value.itemType,
+  ) as AssistantInventoryItemSummaryTarget["itemType"];
+  const expectedTypeLabel = {
+    SERVO: "Servoembreagem",
+    INSTALLATION_KIT: "Kit de instalação",
+    REPAIR_KIT: "Jogo de reparo",
+    LOOSE_PART: "Peça avulsa",
+    COMPLETE_BOX: "Caixa completa",
+  }[itemType];
+  const expectedStatusLabel = {
+    ZERO: "Zerado",
+    LOW: "Baixo",
+    OK: "Em estoque",
+    NO_MINIMUM: "Mínimo não definido",
+  }[String(value.status)];
+  const expectedStockUnitLabel =
+    itemType === "COMPLETE_BOX"
+      ? value.currentStock === 1
+        ? "caixa montada"
+        : "caixas montadas"
+      : itemType === "SERVO"
+        ? value.currentStock === 1
+          ? "Servoembreagem"
+          : "Servoembreagens"
+        : itemType === "INSTALLATION_KIT"
+          ? value.currentStock === 1
+            ? "Kit de instalação"
+            : "Kits de instalação"
+          : itemType === "REPAIR_KIT"
+            ? value.currentStock === 1
+              ? "Jogo de reparo"
+              : "Jogos de reparo"
+            : itemType === "LOOSE_PART"
+              ? value.currentStock === 1
+                ? "unidade"
+                : "unidades"
+              : null;
+
+  if (
+    (value.targetKind !== "item" &&
+      value.targetKind !== "commercial_configuration") ||
+    typeof value.targetId !== "string" ||
+    !uuidPattern.test(value.targetId) ||
+    typeof value.displayCode !== "string" ||
+    !value.displayCode.trim() ||
+    ![
+      "SERVO",
+      "INSTALLATION_KIT",
+      "REPAIR_KIT",
+      "LOOSE_PART",
+      "COMPLETE_BOX",
+    ].includes(String(value.itemType)) ||
+    typeof value.typeLabel !== "string" ||
+    value.typeLabel !== expectedTypeLabel ||
+    typeof value.description !== "string" ||
+    !value.description.trim() ||
+    !isNonnegativeInteger(value.currentStock) ||
+    (minimumStock !== null && !isNonnegativeInteger(minimumStock)) ||
+    typeof value.stockUnitLabel !== "string" ||
+    value.stockUnitLabel !== expectedStockUnitLabel ||
+    !["ZERO", "LOW", "OK", "NO_MINIMUM"].includes(
+      String(value.status),
+    ) ||
+    typeof value.statusLabel !== "string" ||
+    value.statusLabel !== expectedStatusLabel ||
+    (shortfall !== null && !isNonnegativeInteger(shortfall)) ||
+    (minimumStock === null
+      ? value.status !== "NO_MINIMUM" || shortfall !== null
+      : value.status === "NO_MINIMUM" ||
+        shortfall !==
+          Math.max(minimumStock - value.currentStock, 0)) ||
+    (minimumStock !== null &&
+      ((value.currentStock === 0 && value.status !== "ZERO") ||
+        (value.currentStock > 0 &&
+          value.currentStock <= minimumStock &&
+          value.status !== "LOW") ||
+        (value.currentStock > minimumStock &&
+          value.status !== "OK"))) ||
+    !isSafeInventoryHref(value.href) ||
+    !isExpectedTargetHref(
+      value.href,
+      value.targetKind,
+      value.targetId,
+      null,
+    ) ||
+    mediaDescriptor === undefined ||
+    (value.targetKind === "commercial_configuration") !==
+      (itemType === "COMPLETE_BOX") ||
+    (value.targetKind === "commercial_configuration" &&
+      (!isRecord(composition) ||
+        typeof composition.servoCode !== "string" ||
+        !composition.servoCode.trim() ||
+        typeof composition.servoDescription !== "string" ||
+        !composition.servoDescription.trim() ||
+        typeof composition.installationKitCode !== "string" ||
+        !composition.installationKitCode.trim() ||
+        typeof composition.installationKitDescription !== "string" ||
+        !composition.installationKitDescription.trim())) ||
+    (value.targetKind === "item" && composition !== undefined)
+  ) {
+    return null;
+  }
+
+  return {
+    targetKind: value.targetKind,
+    targetId: value.targetId,
+    displayCode: value.displayCode,
+    itemType:
+      value.itemType as AssistantInventoryItemSummaryTarget["itemType"],
+    typeLabel: value.typeLabel,
+    description: value.description,
+    currentStock: value.currentStock,
+    minimumStock,
+    stockUnitLabel: value.stockUnitLabel,
+    status:
+      value.status as AssistantInventoryItemSummaryTarget["status"],
+    statusLabel: value.statusLabel,
+    shortfall,
+    href: value.href,
+    mediaDescriptor,
+    ...(value.targetKind === "commercial_configuration"
+      ? {
+          composition:
+            composition as AssistantInventoryItemSummaryTarget["composition"],
+        }
+      : {}),
+  };
+}
+
 export function parseAssistantStructuredBlock(
   value: unknown,
 ): AssistantStructuredBlock | null {
   if (!isRecord(value)) {
     return null;
+  }
+
+  if (value.kind === "assistant_clarification") {
+    const options = Array.isArray(value.options) ? value.options : [];
+    const parsedOptions = options.map((option) => {
+      if (
+        !isRecord(option) ||
+        typeof option.id !== "string" ||
+        !/^[a-z][a-z0-9-]{0,63}$/.test(option.id) ||
+        typeof option.label !== "string" ||
+        !option.label.trim() ||
+        option.label.length > 60 ||
+        typeof option.prompt !== "string" ||
+        !option.prompt.trim() ||
+        option.prompt.length > 200 ||
+        ![
+          "inventory",
+          "supplier_orders",
+          "replenishment",
+          "media",
+        ].includes(String(option.category))
+      ) {
+        return null;
+      }
+
+      return {
+        id: option.id,
+        label: option.label.trim(),
+        prompt: option.prompt.trim(),
+        category:
+          option.category as AssistantClarificationCategory,
+      };
+    });
+    const ids = parsedOptions.map((option) => option?.id);
+    const prompts = parsedOptions.map((option) => option?.prompt);
+
+    if (
+      typeof value.title !== "string" ||
+      !value.title.trim() ||
+      value.title.length > 120 ||
+      (value.message !== undefined &&
+        (typeof value.message !== "string" ||
+          !value.message.trim() ||
+          value.message.length > 240)) ||
+      options.length === 0 ||
+      options.length > 6 ||
+      parsedOptions.some((option) => option === null) ||
+      new Set(ids).size !== ids.length ||
+      new Set(prompts).size !== prompts.length ||
+      typeof value.fallbackText !== "string" ||
+      !value.fallbackText.trim() ||
+      value.fallbackText.length > 1000
+    ) {
+      return null;
+    }
+
+    return {
+      kind: "assistant_clarification",
+      title: value.title.trim(),
+      ...(typeof value.message === "string"
+        ? { message: value.message.trim() }
+        : {}),
+      options: parsedOptions as AssistantClarificationOption[],
+      fallbackText: value.fallbackText.trim(),
+    };
   }
 
   if (value.kind === "inventory_alerts") {
@@ -697,6 +1013,54 @@ export function parseAssistantStructuredBlock(
     };
   }
 
+  if (value.kind === "inventory_item_summary") {
+    const results = Array.isArray(value.results)
+      ? value.results.map(parseInventoryItemSummaryTarget)
+      : [];
+
+    if (
+      typeof value.queryCode !== "string" ||
+      !value.queryCode.trim() ||
+      !["FOUND", "AMBIGUOUS", "NOT_FOUND"].includes(
+        String(value.status),
+      ) ||
+      ![
+        "STOCK",
+        "MINIMUM",
+        "STATUS",
+        "SHORTFALL",
+        "DESCRIPTION",
+        "COMPOSITION",
+      ].includes(String(value.metric)) ||
+      !Array.isArray(value.results) ||
+      results.some((result) => result === null) ||
+      (value.status === "NOT_FOUND" && results.length !== 0) ||
+      (value.status === "FOUND" && results.length !== 1) ||
+      (value.status === "AMBIGUOUS" && results.length < 2) ||
+      !isSafeInventoryHref(value.inventoryHref) ||
+      typeof value.primaryText !== "string" ||
+      !value.primaryText.trim() ||
+      typeof value.fallbackText !== "string" ||
+      !value.fallbackText.trim()
+    ) {
+      return null;
+    }
+
+    return {
+      kind: "inventory_item_summary",
+      queryCode: value.queryCode,
+      status:
+        value.status as AssistantInventoryItemSummaryBlock["status"],
+      metric:
+        value.metric as AssistantInventoryItemSummaryBlock["metric"],
+      results:
+        results as AssistantInventoryItemSummaryTarget[],
+      inventoryHref: value.inventoryHref,
+      primaryText: value.primaryText,
+      fallbackText: value.fallbackText,
+    };
+  }
+
   if (
     value.kind === "supplier_order_list" ||
     value.kind === "supplier_order_ambiguity"
@@ -704,6 +1068,17 @@ export function parseAssistantStructuredBlock(
     const orders = Array.isArray(value.orders)
       ? value.orders.map(parseSupplierOrderCard)
       : [];
+    const catalogLines =
+      value.kind === "supplier_order_list" &&
+      Array.isArray(value.catalogLines)
+        ? value.catalogLines.map(parseSupplierOrderCatalogLine)
+        : [];
+    const catalogCode =
+      typeof value.catalogCode === "string"
+        ? value.catalogCode
+        : value.catalogCode === null
+          ? null
+          : undefined;
 
     if (
       typeof value.title !== "string" ||
@@ -740,7 +1115,37 @@ export function parseAssistantStructuredBlock(
       typeof value.filtersSummary !== "string" ||
       !isNonnegativeInteger(value.totalCount) ||
       !isNonnegativeInteger(value.remainingCount) ||
-      value.totalCount !== orders.length + value.remainingCount
+      value.totalCount !== orders.length + value.remainingCount ||
+      catalogCode === undefined ||
+      (typeof catalogCode === "string" && !catalogCode.trim()) ||
+      !Array.isArray(value.catalogLines) ||
+      catalogLines.some((line) => line === null) ||
+      catalogLines.length > 30 ||
+      (catalogCode === null && catalogLines.length !== 0) ||
+      (typeof catalogCode === "string" &&
+        (catalogLines.some(
+          (line) =>
+            line?.displayCode
+              .trim()
+              .replace(/\s+/g, " ")
+              .toLocaleUpperCase("pt-BR") !==
+            catalogCode
+              .trim()
+              .replace(/\s+/g, " ")
+              .toLocaleUpperCase("pt-BR"),
+        ) ||
+          orders.some(
+            (order) =>
+              !catalogLines.some(
+                (line) => line?.supplierOrderId === order?.id,
+              ),
+          ) ||
+          catalogLines.some(
+            (line) =>
+              !orders.some(
+                (order) => order?.id === line?.supplierOrderId,
+              ),
+          )))
     ) {
       return null;
     }
@@ -752,6 +1157,9 @@ export function parseAssistantStructuredBlock(
       totalCount: value.totalCount,
       remainingCount: value.remainingCount,
       orders: orders as AssistantSupplierOrderCard[],
+      catalogCode,
+      catalogLines:
+        catalogLines as AssistantSupplierOrderCatalogLine[],
       ordersHref: value.ordersHref,
       fallbackText: value.fallbackText,
     };
@@ -770,6 +1178,9 @@ export function parseAssistantStructuredBlock(
       !Array.isArray(value.items) ||
       items.some((item) => item === null) ||
       items.length > 20 ||
+      (value.catalogCode !== null &&
+        (typeof value.catalogCode !== "string" ||
+          !value.catalogCode.trim())) ||
       !isNonnegativeInteger(value.hiddenItemCount) ||
       typeof value.fallbackText !== "string"
     ) {
@@ -781,6 +1192,7 @@ export function parseAssistantStructuredBlock(
       title: value.title,
       order,
       items: items as AssistantSupplierOrderItemCard[],
+      catalogCode: value.catalogCode,
       hiddenItemCount: value.hiddenItemCount,
       fallbackText: value.fallbackText,
     };
@@ -797,6 +1209,16 @@ export function parseAssistantStructuredBlock(
       !isNonnegativeInteger(value.waitingPickupQuantity) ||
       !isNonnegativeInteger(value.stockedQuantity) ||
       !isNonnegativeInteger(value.waitingStockQuantity) ||
+      (value.catalogCode !== null &&
+        (typeof value.catalogCode !== "string" ||
+          !value.catalogCode.trim())) ||
+      ![
+        "ORDER_COUNT",
+        "ORDERED_UNITS",
+        "PICKED_UNITS",
+        "WAITING_PICKUP_UNITS",
+        "WAITING_STOCK_UNITS",
+      ].includes(String(value.primaryMetric)) ||
       !isSafeSupplierOrdersHref(value.ordersHref) ||
       typeof value.fallbackText !== "string"
     ) {
@@ -813,6 +1235,9 @@ export function parseAssistantStructuredBlock(
       waitingPickupQuantity: value.waitingPickupQuantity,
       stockedQuantity: value.stockedQuantity,
       waitingStockQuantity: value.waitingStockQuantity,
+      catalogCode: value.catalogCode,
+      primaryMetric:
+        value.primaryMetric as AssistantSupplierOrderAggregateBlock["primaryMetric"],
       ordersHref: value.ordersHref,
       fallbackText: value.fallbackText,
     };

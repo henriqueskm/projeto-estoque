@@ -23,7 +23,8 @@ type CommercialConfigurationImageProps = {
     | "menu-item"
     | "text-link"
     | "icon-button"
-    | "selector-action";
+    | "selector-action"
+    | "assistant-action";
 };
 
 const minimumZoom = 1;
@@ -117,6 +118,7 @@ export function CommercialConfigurationImage({
   const isTextLink = triggerVariant === "text-link";
   const isIconButton = triggerVariant === "icon-button";
   const isSelectorAction = triggerVariant === "selector-action";
+  const isAssistantAction = triggerVariant === "assistant-action";
   const actionLabel =
     triggerLabel ?? `Ver foto do código ${codeLabel}`;
 
@@ -134,7 +136,7 @@ export function CommercialConfigurationImage({
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         aria-label={
-          isIconButton || isSelectorAction
+          isIconButton || isSelectorAction || isAssistantAction
             ? actionLabel
             : `${isMenuItem || isTextLink ? "Visualizar" : "Ampliar"} ${altText.toLocaleLowerCase("pt-BR")}`
         }
@@ -146,6 +148,8 @@ export function CommercialConfigurationImage({
               ? "nk-focus mt-0.5 inline-flex min-h-11 items-center rounded-lg px-0.5 text-[0.65rem] font-bold text-violet-800"
               : isIconButton
                 ? "nk-focus inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-800 transition hover:border-violet-400 hover:bg-violet-100"
+                : isAssistantAction
+                  ? "nk-focus inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-900 transition hover:border-violet-400 hover:bg-violet-100"
                 : isSelectorAction
                   ? "nk-focus inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
                   : `nk-focus group mt-4 block overflow-hidden rounded-xl border border-border-neutral bg-app-background text-left shadow-sm transition hover:border-brand-gold-dark ${
@@ -161,6 +165,8 @@ export function CommercialConfigurationImage({
           </span>
         ) : isIconButton ? (
           <EyeIcon className="size-4" />
+        ) : isAssistantAction ? (
+          "Ver foto"
         ) : isSelectorAction ? (
           "Ver foto"
         ) : (

@@ -102,6 +102,10 @@ export function AssistantHome({
   const [lastSupplierOrderId, setLastSupplierOrderId] = useState<
     string | null
   >(null);
+  const [
+    lastSupplierOrderCatalogCode,
+    setLastSupplierOrderCatalogCode,
+  ] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [isRefreshingStock, startStockRefresh] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -264,19 +268,13 @@ export function AssistantHome({
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!canSubmit || requestInFlightRef.current) {
-      return;
-    }
-
-    const submittedMessage = message.trim();
-
-    if (!submittedMessage) {
-      setFeedback(
-        "Análise de imagens será habilitada em uma próxima etapa.",
-      );
+  async function sendAssistantMessage(submittedMessage: string) {
+    if (
+      isInteractionLocked ||
+      requestInFlightRef.current ||
+      !submittedMessage ||
+      submittedMessage.length > assistantMessageMaxLength
+    ) {
       return;
     }
 
@@ -306,6 +304,9 @@ export function AssistantHome({
         message: submittedMessage,
         ...(lastItemQuery ? { lastItemQuery } : {}),
         ...(lastSupplierOrderId ? { lastSupplierOrderId } : {}),
+        ...(lastSupplierOrderCatalogCode
+          ? { lastSupplierOrderCatalogCode }
+          : {}),
       };
       const response = await fetch("/api/assistant/chat", {
         method: "POST",
@@ -337,6 +338,24 @@ export function AssistantHome({
           typeof contextItemQuery === "string" &&
             contextItemQuery.trim()
             ? contextItemQuery.trim()
+            : null,
+        );
+      }
+
+      if (
+        response.ok &&
+        responseBody &&
+        Object.prototype.hasOwnProperty.call(
+          responseBody,
+          "contextSupplierOrderCatalogCode",
+        )
+      ) {
+        const contextSupplierOrderCatalogCode =
+          responseBody.contextSupplierOrderCatalogCode;
+        setLastSupplierOrderCatalogCode(
+          typeof contextSupplierOrderCatalogCode === "string" &&
+            contextSupplierOrderCatalogCode.trim()
+            ? contextSupplierOrderCatalogCode.trim()
             : null,
         );
       }
@@ -389,6 +408,25 @@ export function AssistantHome({
         router.refresh();
       });
     }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canSubmit || requestInFlightRef.current) {
+      return;
+    }
+
+    const submittedMessage = message.trim();
+
+    if (!submittedMessage) {
+      setFeedback(
+        "Análise de imagens será habilitada em uma próxima etapa.",
+      );
+      return;
+    }
+
+    void sendAssistantMessage(submittedMessage);
   }
 
   function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -524,6 +562,7 @@ export function AssistantHome({
                     setMessages([]);
                     setLastItemQuery(null);
                     setLastSupplierOrderId(null);
+                    setLastSupplierOrderCatalogCode(null);
                     setFeedback(null);
                     window.requestAnimationFrame(() =>
                       textareaRef.current?.focus(),
@@ -566,6 +605,10 @@ export function AssistantHome({
                       chatMessage.structuredBlock ? (
                         <AssistantStructuredBlockView
                           block={chatMessage.structuredBlock}
+                          disabled={isInteractionLocked}
+                          onPromptSelect={(prompt) => {
+                            void sendAssistantMessage(prompt);
+                          }}
                         />
                       ) : (
                         <AssistantMessageContent

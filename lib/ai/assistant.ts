@@ -4,6 +4,7 @@ import { ApiError, GoogleGenAI, type Interactions } from "@google/genai";
 import {
   AssistantDataError,
   consultAssistantCatalogMedia,
+  consultAssistantInventoryItemSummary,
   consultAssistantItem,
   consultAssistantLowStock,
   consultAssistantStockSummary,
@@ -15,10 +16,15 @@ import {
   extractExplicitItemQuery,
   getExplicitGreeting,
   isItemFollowUpMessage,
+  isItemToSupplierOrdersFollowUp,
   normalizeAssistantText,
+  routeAssistantClarification,
+  routeInventoryItemSummaryQuestion,
 } from "@/lib/ai/assistant-routing";
 import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
 import type {
+  AssistantClarificationBlock,
+  AssistantClarificationOption,
   AssistantChatSuccess,
   AssistantCommercialConfigurationResult,
   AssistantItemLookupResult,
@@ -47,10 +53,8 @@ const providerTimeoutMs = 20_000;
 const requestTimeoutMs = 30_000;
 const unsupportedWriteResponse =
   "Essa operação ainda não está habilitada pelo Assistente. No momento posso apenas consultar informações do estoque. Nenhuma operação foi executada.";
-const ambiguousIntentResponse =
-  "Não entendi bem o que você precisa. Quer consultar um item, ver o resumo do estoque ou conferir o que precisa de reposição?";
-const missingItemContextResponse =
-  "Qual caixa, item ou configuração você quer consultar?";
+const clarificationFallbackText =
+  "Posso ajudar com consultas de Estoque, Pedidos, fotos e reposição. Exemplos: “Quantos 1H tenho?”, “Mostre o pedido Teste 04” ou “Quais itens estão zerados?”";
 
 const assistantInstructions = `Você é o Assistente IA do Negócios K.
 
@@ -90,6 +94,204 @@ function ensureExplicitGreeting(
   }
 
   return `${greeting}${firstName ? `, ${firstName}` : ""}.\n\n${answer}`;
+}
+
+function clarificationOption(
+  id: string,
+  label: string,
+  prompt: string,
+  category: AssistantClarificationOption["category"],
+): AssistantClarificationOption {
+  return { id, label, prompt, category };
+}
+
+function createGenericClarificationBlock(): AssistantClarificationBlock {
+  return {
+    kind: "assistant_clarification",
+    title: "Como posso ajudar?",
+    message: "Escolha uma pergunta ou escreva algo parecido.",
+    options: [
+      clarificationOption(
+        "inventory-balance",
+        "Consultar saldo",
+        "Quantos 1H tenho?",
+        "inventory",
+      ),
+      clarificationOption(
+        "inventory-status",
+        "Ver situação",
+        "O 3A está zerado?",
+        "inventory",
+      ),
+      clarificationOption(
+        "supplier-order-number",
+        "Buscar negociação",
+        "Mostre o pedido Teste 04",
+        "supplier_orders",
+      ),
+      clarificationOption(
+        "supplier-order-partial",
+        "Ver Pedidos parciais",
+        "Quais pedidos estão parciais?",
+        "supplier_orders",
+      ),
+      clarificationOption(
+        "catalog-photo",
+        "Consultar foto",
+        "Quero ver a foto do 1B",
+        "media",
+      ),
+      clarificationOption(
+        "inventory-replenishment",
+        "Ver reposição",
+        "Quais itens precisam de reposição?",
+        "replenishment",
+      ),
+    ],
+    fallbackText: clarificationFallbackText,
+  };
+}
+
+function createSupplierOrderClarificationBlock(
+  contextual: boolean,
+): AssistantClarificationBlock {
+  if (contextual) {
+    return {
+      kind: "assistant_clarification",
+      title: "O que você quer consultar neste Pedido?",
+      message: "Escolha uma continuação para a consulta atual.",
+      options: [
+        clarificationOption(
+          "current-order-pickup",
+          "Ver retirada pendente",
+          "Quais itens ainda faltam retirar?",
+          "supplier_orders",
+        ),
+        clarificationOption(
+          "current-order-stock",
+          "Ver entrada pendente",
+          "Quanto falta entrar no estoque?",
+          "supplier_orders",
+        ),
+        clarificationOption(
+          "current-order-open",
+          "Abrir este Pedido",
+          "Abra esse pedido",
+          "supplier_orders",
+        ),
+      ],
+      fallbackText:
+        "Posso mostrar os itens que faltam retirar, a quantidade que falta entrar no estoque ou abrir o Pedido atual.",
+    };
+  }
+
+  return {
+    kind: "assistant_clarification",
+    title: "Qual Pedido você deseja consultar?",
+    message: "Escolha uma opção ou informe o número da negociação.",
+    options: [
+      clarificationOption(
+        "order-negotiation",
+        "Buscar por negociação",
+        "Mostre o pedido Teste 04",
+        "supplier_orders",
+      ),
+      clarificationOption(
+        "order-partial",
+        "Ver Pedidos parciais",
+        "Quais pedidos estão parciais?",
+        "supplier_orders",
+      ),
+      clarificationOption(
+        "order-pending",
+        "Ver Pedidos pendentes",
+        "Quais pedidos estão pendentes?",
+        "supplier_orders",
+      ),
+      clarificationOption(
+        "order-stock-pending",
+        "Ver entrada pendente",
+        "Quais pedidos têm entrada pendente no estoque?",
+        "supplier_orders",
+      ),
+      clarificationOption(
+        "order-code",
+        "Buscar código",
+        "Quais pedidos têm o código 1H?",
+        "supplier_orders",
+      ),
+    ],
+    fallbackText:
+      "Posso buscar Pedidos por negociação, situação, retirada pendente, entrada pendente ou código do item.",
+  };
+}
+
+async function createCatalogCodeClarificationBlock(
+  code: string,
+): Promise<AssistantClarificationBlock> {
+  const summary = await executeStockQuery(() =>
+    consultAssistantInventoryItemSummary(code, "STOCK"),
+  );
+  const hasCatalogResult = summary.results.length > 0;
+  const hasMedia = summary.results.some(
+    (result) => result.mediaDescriptor !== null,
+  );
+  const hasComposition = summary.results.some(
+    (result) => result.composition !== undefined,
+  );
+  const options: AssistantClarificationOption[] = [];
+
+  if (hasCatalogResult) {
+    options.push(
+      clarificationOption(
+        "code-inventory",
+        "Ver saldo no Estoque",
+        `Quantos ${code} tenho?`,
+        "inventory",
+      ),
+    );
+  }
+
+  options.push(
+    clarificationOption(
+      "code-supplier-orders",
+      "Ver nos Pedidos",
+      `Tenho ${code} nos pedidos?`,
+      "supplier_orders",
+    ),
+  );
+
+  if (hasMedia) {
+    options.push(
+      clarificationOption(
+        "code-photo",
+        "Ver foto",
+        `Quero ver a foto do ${code}`,
+        "media",
+      ),
+    );
+  }
+
+  if (hasComposition) {
+    options.push(
+      clarificationOption(
+        "code-composition",
+        "Ver composição",
+        `Qual servo e kit formam o ${code}?`,
+        "inventory",
+      ),
+    );
+  }
+
+  return {
+    kind: "assistant_clarification",
+    title: `O que você quer consultar sobre o Cód. ${code}?`,
+    message: hasCatalogResult
+      ? "Escolha uma opção para continuar."
+      : "Não encontrei esse código no catálogo atual. Ainda posso procurá-lo nos Pedidos.",
+    options,
+    fallbackText: `Escolha onde deseja consultar o Cód. ${code}: Estoque, Pedidos${hasMedia ? ", foto" : ""}${hasComposition ? " ou composição" : ""}.`,
+  };
 }
 
 function getGeminiConfiguration() {
@@ -419,6 +621,7 @@ export async function answerAssistantQuestion(
   message: string,
   lastItemQuery: string | null,
   lastSupplierOrderId: string | null,
+  lastSupplierOrderCatalogCode: string | null,
   firstName: string | null,
 ): Promise<AssistantChatSuccess> {
   const intent = classifyAssistantIntent(message);
@@ -433,15 +636,75 @@ export async function answerAssistantQuestion(
     };
   }
 
-  const supplierOrderRoute = routeSupplierOrderQuestion(
+  const clarificationRoute = routeAssistantClarification(
     message,
+    Boolean(lastSupplierOrderId),
+  );
+
+  if (clarificationRoute?.kind === "CATALOG_CODE") {
+    const block = await createCatalogCodeClarificationBlock(
+      clarificationRoute.code,
+    );
+
+    return {
+      message: block.fallbackText,
+      structuredBlock: block,
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  if (clarificationRoute?.kind === "SUPPLIER_ORDERS") {
+    const block = createSupplierOrderClarificationBlock(
+      clarificationRoute.contextual,
+    );
+
+    return {
+      message: block.fallbackText,
+      structuredBlock: block,
+      ...(clarificationRoute.contextual
+        ? {}
+        : {
+            contextItemQuery: null,
+            contextSupplierOrderId: null,
+            contextSupplierOrderCatalogCode: null,
+          }),
+    };
+  }
+
+  if (clarificationRoute?.kind === "GENERIC") {
+    const block = createGenericClarificationBlock();
+
+    return {
+      message: block.fallbackText,
+      structuredBlock: block,
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  const supplierOrderMessage =
+    lastItemQuery && isItemToSupplierOrdersFollowUp(message)
+      ? `Tenho ${lastItemQuery} nos pedidos?`
+      : message;
+  const supplierOrderRoute = routeSupplierOrderQuestion(
+    supplierOrderMessage,
     lastSupplierOrderId,
+    new Date(),
+    lastSupplierOrderCatalogCode,
   );
 
   if (supplierOrderRoute.kind === "NEEDS_ORDER_CONTEXT") {
+    const block = createSupplierOrderClarificationBlock(false);
+
     return {
-      message: supplierOrderRoute.message,
+      message: block.fallbackText,
+      structuredBlock: block,
+      contextItemQuery: null,
       contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
     };
   }
 
@@ -453,17 +716,47 @@ export async function answerAssistantQuestion(
     return {
       message: result.block.fallbackText,
       structuredBlock: result.block,
+      contextItemQuery: null,
       contextSupplierOrderId: result.contextSupplierOrderId,
+      contextSupplierOrderCatalogCode:
+        supplierOrderRoute.query.catalogCode,
+    };
+  }
+
+  const inventoryItemRoute = routeInventoryItemSummaryQuestion(
+    message,
+    lastItemQuery,
+  );
+
+  if (inventoryItemRoute) {
+    const summaryBlock = await executeStockQuery(() =>
+      consultAssistantInventoryItemSummary(
+        inventoryItemRoute.queryCode,
+        inventoryItemRoute.metric,
+      ),
+    );
+
+    return {
+      message: summaryBlock.fallbackText,
+      structuredBlock: summaryBlock,
+      contextItemQuery:
+        summaryBlock.status === "FOUND"
+          ? (summaryBlock.results[0]?.displayCode ?? null)
+          : null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
     };
   }
 
   if (intent === "AMBIGUOUS") {
+    const block = createGenericClarificationBlock();
+
     return {
-      message: ensureExplicitGreeting(
-        ambiguousIntentResponse,
-        message,
-        firstName,
-      ),
+      message: block.fallbackText,
+      structuredBlock: block,
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
     };
   }
 
@@ -489,7 +782,11 @@ export async function answerAssistantQuestion(
   }
 
   if (intent === "CATALOG_MEDIA") {
-    const catalogCode = extractCatalogMediaCode(message);
+    const catalogCode =
+      extractCatalogMediaCode(message) ??
+      (lastItemQuery && isItemFollowUpMessage(message)
+        ? lastItemQuery
+        : null);
 
     if (!catalogCode) {
       return {
@@ -510,6 +807,8 @@ export async function answerAssistantQuestion(
         mediaBlock.status === "FOUND"
           ? (mediaBlock.results[0]?.displayCode ?? null)
           : null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
     };
   }
 
@@ -522,13 +821,14 @@ export async function answerAssistantQuestion(
   const query = resolveItemQuery(message, lastItemQuery);
 
   if (!query) {
+    const block = createGenericClarificationBlock();
+
     return {
-      message: ensureExplicitGreeting(
-        missingItemContextResponse,
-        message,
-        firstName,
-      ),
+      message: block.fallbackText,
+      structuredBlock: block,
       contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
     };
   }
 
@@ -542,6 +842,8 @@ export async function answerAssistantQuestion(
         firstName,
       ),
       contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
     };
   }
 
@@ -552,6 +854,8 @@ export async function answerAssistantQuestion(
     return {
       message: ensureExplicitGreeting(directAnswer, message, firstName),
       contextItemQuery,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
     };
   }
 
@@ -562,5 +866,7 @@ export async function answerAssistantQuestion(
       message,
     }),
     contextItemQuery,
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
   };
 }

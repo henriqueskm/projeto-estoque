@@ -6,6 +6,7 @@ import {
   type AssistantSupplierOrderAggregateBlock,
   type AssistantSupplierOrderAmbiguityBlock,
   type AssistantSupplierOrderCard,
+  type AssistantSupplierOrderCatalogLine,
   type AssistantSupplierOrderDetailBlock,
   type AssistantSupplierOrderItemCard,
   type AssistantSupplierOrderListBlock,
@@ -109,6 +110,29 @@ function fallbackListText(
     ...orders.map(
       (order) =>
         `- ${order.negotiationNumber}: ${order.status}, ${order.waitingPickupQuantity} para retirar e ${order.waitingStockQuantity} para entrada.`,
+    ),
+  ].join("\n");
+}
+
+function fallbackCatalogListText(
+  catalogCode: string,
+  totalCount: number,
+  orders: SupplierOrderSummary[],
+  catalogLines: AssistantSupplierOrderCatalogLine[],
+) {
+  if (totalCount === 0) {
+    return `Nenhum pedido contém o Cód. ${catalogCode}.`;
+  }
+
+  return [
+    `Pedidos com Cód. ${catalogCode}: ${totalCount} pedido${totalCount === 1 ? "" : "s"} encontrado${totalCount === 1 ? "" : "s"}.`,
+    ...orders.flatMap((order) =>
+      catalogLines
+        .filter((line) => line.supplierOrderId === order.id)
+        .map(
+          (line) =>
+            `- Pedido ${order.negotiationNumber}: solicitado ${line.orderedQuantity}, retirado ${line.pickedQuantity}, para retirar ${line.waitingPickupQuantity} e aguardando entrada ${line.waitingStockQuantity}.`,
+        ),
     ),
   ].join("\n");
 }
@@ -293,6 +317,7 @@ function buildListBlock(
   query: SupplierOrderAssistantQuery,
   summaries: SupplierOrderSummary[],
   totalCount: number,
+  catalogLines: AssistantSupplierOrderCatalogLine[],
 ): AssistantSupplierOrderListBlock {
   const view = resolvePrimaryView(query, summaries);
   const title = getListTitle(query);
@@ -310,17 +335,30 @@ function buildListBlock(
     totalCount,
     remainingCount: Math.max(0, totalCount - summaries.length),
     orders: summaries.map(toOrderCard),
+    catalogCode: query.catalogCode,
+    catalogLines,
     ordersHref: ordersHref(view),
     fallbackText:
       totalCount === 0 && query.negotiationNumber
         ? `Não encontrei um pedido com a negociação “${query.negotiationNumber}”.`
-        : fallbackListText(title, totalCount, summaries),
+        : query.catalogCode
+          ? fallbackCatalogListText(
+              query.catalogCode,
+              totalCount,
+              summaries,
+              catalogLines,
+            )
+          : fallbackListText(title, totalCount, summaries),
   };
 }
 
 function getListTitle(query: SupplierOrderAssistantQuery) {
   if (query.negotiationNumber) {
     return "Pedido não encontrado";
+  }
+
+  if (query.catalogCode) {
+    return `Pedidos com Cód. ${query.catalogCode}`;
   }
 
   const statusTitle =
@@ -345,9 +383,7 @@ function getListTitle(query: SupplierOrderAssistantQuery) {
       ? "Pedidos ativos"
       : query.view === "history"
         ? "Pedidos no Histórico"
-        : query.catalogCode
-          ? `Pedidos com Cód. ${query.catalogCode}`
-          : query.dateFrom || query.dateTo
+        : query.dateFrom || query.dateTo
             ? "Pedidos do período"
             : "Pedidos encontrados");
 
@@ -662,6 +698,58 @@ function toItemCard(
   };
 }
 
+async function loadCatalogLinesForOrders(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  summaries: SupplierOrderSummary[],
+  catalogCode: string | null,
+): Promise<AssistantSupplierOrderCatalogLine[]> {
+  if (!catalogCode || summaries.length === 0) {
+    return [];
+  }
+
+  const result = await supabase
+    .from("supplier_order_item_details")
+    .select(supplierOrderItemSelect)
+    .in(
+      "supplier_order_id",
+      summaries.map((summary) => summary.id),
+    )
+    .or(
+      `code_snapshot.ilike.${catalogCode},commercial_code_snapshot.ilike.${catalogCode}`,
+    )
+    .order("supplier_order_id", { ascending: true })
+    .order("position", { ascending: true })
+    .limit(31);
+
+  if (result.error || (result.data?.length ?? 0) > 30) {
+    throw new AssistantDataError();
+  }
+
+  const lines = ((result.data ?? []) as SupplierOrderItemRow[])
+    .map(mapSupplierOrderItem)
+    .filter((item): item is SupplierOrderItem => Boolean(item))
+    .map((item) => {
+      const card = toItemCard(item, null);
+
+      return {
+        ...card,
+        displayCode: catalogCode,
+        supplierOrderId: item.supplierOrderId,
+      };
+    });
+
+  if (
+    summaries.some(
+      (summary) =>
+        !lines.some((line) => line.supplierOrderId === summary.id),
+    )
+  ) {
+    throw new AssistantDataError();
+  }
+
+  return lines;
+}
+
 async function buildDetailBlock(
   supabase: Awaited<ReturnType<typeof createClient>>,
   order: SupplierOrderSummary,
@@ -680,8 +768,17 @@ async function buildDetailBlock(
     items: items.map((item) =>
       toItemCard(item, mediaByItemId.get(item.id) ?? null),
     ),
+    catalogCode: query.catalogCode,
     hiddenItemCount,
-    fallbackText: `Pedido ${order.negotiationNumber}: ${order.orderedQuantity} unidades pedidas, ${order.pickedQuantity} retiradas, ${order.waitingPickupQuantity} para retirar e ${order.waitingStockQuantity} para entrada.`,
+    fallbackText:
+      query.catalogCode && items.length > 0
+        ? `Pedido ${order.negotiationNumber}, Cód. ${query.catalogCode}: ${items
+            .map(
+              (item) =>
+                `${item.orderedQuantity} solicitadas, ${item.pickedQuantity} retiradas, ${item.waitingPickupQuantity} para retirar e ${item.waitingStockQuantity} aguardando entrada`,
+            )
+            .join("; ")}.`
+        : `Pedido ${order.negotiationNumber}: ${order.orderedQuantity} unidades pedidas, ${order.pickedQuantity} retiradas, ${order.waitingPickupQuantity} para retirar e ${order.waitingStockQuantity} para entrada.`,
   };
 }
 
@@ -720,12 +817,20 @@ function buildAggregateBlock(
 
   return {
     kind: "supplier_order_aggregate",
-    title: "Resumo dos pedidos",
-    filtersSummary: query.description,
+    title: query.catalogCode
+      ? `Cód. ${query.catalogCode} nos Pedidos`
+      : "Resumo dos pedidos",
+    filtersSummary: query.catalogCode
+      ? `${summaries.length} pedido${summaries.length === 1 ? " encontrado" : "s encontrados"}`
+      : query.description,
     orderCount: summaries.length,
     ...totals,
+    catalogCode: query.catalogCode,
+    primaryMetric: query.aggregateMetric ?? "ORDER_COUNT",
     ordersHref: ordersHref(view),
-    fallbackText: `${summaries.length} pedido${summaries.length === 1 ? "" : "s"}: ${totals.orderedQuantity} unidades pedidas, ${totals.pickedQuantity} retiradas, ${totals.waitingPickupQuantity} para retirar e ${totals.waitingStockQuantity} para entrada.`,
+    fallbackText: query.catalogCode
+      ? `Cód. ${query.catalogCode} em ${summaries.length} pedido${summaries.length === 1 ? "" : "s"}: solicitado ${totals.orderedQuantity}, retirado ${totals.pickedQuantity}, para retirar ${totals.waitingPickupQuantity} e aguardando entrada ${totals.waitingStockQuantity}.`
+      : `${summaries.length} pedido${summaries.length === 1 ? "" : "s"}: ${totals.orderedQuantity} unidades pedidas, ${totals.pickedQuantity} retiradas, ${totals.waitingPickupQuantity} para retirar e ${totals.waitingStockQuantity} para entrada.`,
   };
 }
 
@@ -827,8 +932,19 @@ export async function consultAssistantSupplierOrders(
     };
   }
 
+  const catalogLines = await loadCatalogLinesForOrders(
+    supabase,
+    summaries,
+    query.catalogCode,
+  );
+
   return {
-    block: buildListBlock(query, summaries, totalCount),
+    block: buildListBlock(
+      query,
+      summaries,
+      totalCount,
+      catalogLines,
+    ),
     contextSupplierOrderId:
       totalCount === 1 && summaries.length === 1 ? summaries[0].id : null,
   };

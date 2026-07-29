@@ -143,13 +143,16 @@ export async function POST(request: Request) {
     typeof bodyRecord.message === "string" ? bodyRecord.message.trim() : "";
   const rawLastItemQuery = bodyRecord.lastItemQuery;
   const rawLastSupplierOrderId = bodyRecord.lastSupplierOrderId;
+  const rawLastSupplierOrderCatalogCode =
+    bodyRecord.lastSupplierOrderCatalogCode;
 
   if (
     bodyKeys.some(
       (key) =>
         key !== "message" &&
         key !== "lastItemQuery" &&
-        key !== "lastSupplierOrderId",
+        key !== "lastSupplierOrderId" &&
+        key !== "lastSupplierOrderCatalogCode",
     ) ||
     !bodyKeys.includes("message")
   ) {
@@ -180,12 +183,28 @@ export async function POST(request: Request) {
     )
       ? normalizedLastSupplierOrderId
       : null;
+  const normalizedLastSupplierOrderCatalogCode =
+    typeof rawLastSupplierOrderCatalogCode === "string"
+      ? rawLastSupplierOrderCatalogCode
+          .trim()
+          .replace(/\s+/g, " ")
+          .toLocaleUpperCase("pt-BR")
+      : "";
+  const lastSupplierOrderCatalogCode =
+    normalizedLastSupplierOrderCatalogCode.length <=
+      assistantQueryMaxLength &&
+    /^(?=.*\d)[A-Z0-9]+(?:[ -][A-Z0-9]+)*$/.test(
+      normalizedLastSupplierOrderCatalogCode,
+    )
+      ? normalizedLastSupplierOrderCatalogCode
+      : null;
 
   try {
     const answer = await answerAssistantQuestion(
       message,
       lastItemQuery,
       lastSupplierOrderId,
+      lastSupplierOrderCatalogCode,
       authentication.firstName,
     );
 

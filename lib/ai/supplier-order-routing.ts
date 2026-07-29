@@ -409,7 +409,7 @@ export function normalizeNegotiationNumber(value: string) {
 function extractNegotiationNumber(rawMessage: string) {
   const searchableMessage = rawMessage.trim();
   const match = searchableMessage.match(
-    /\b(?:pedido|negocia(?:ção|cao))\b(?:\s+(?:n|número|numero)\b)?\s*[º°#:]?\s*(.+?)\s*[?!.;,]*$/iu,
+    /\b(?:pedido|negocia(?:ção|cao))\b(?:\s+(?:n|número|numero)\b)?\s*[º°#:]?\s*(.+?)(?=\s*,|\s*[?!.;]*$)/iu,
   );
   const withoutLeadingPreposition = match?.[1]
     ?.replace(/^(?:no|na|do|da|de)\s+/i, "")
@@ -431,31 +431,78 @@ function extractNegotiationNumber(rawMessage: string) {
 }
 
 function extractCatalogCode(message: string) {
+  const catalogCodePattern =
+    "((?:[a-z]+\\s+\\d+)|(?=[a-z0-9-]*\\d)[a-z0-9]+(?:-[a-z0-9]+)*)";
   const explicitMatch = message.match(
-    /\b(?:codigo|item|produto)\s+(?:do|da|de)?\s*([a-z0-9][a-z0-9-]{0,119})\b/,
+    new RegExp(
+      `\\b(?:codigo|item|produto)\\s+(?:do|da|de)?\\s*${catalogCodePattern}\\b`,
+    ),
   );
-  if (explicitMatch && /\d/.test(explicitMatch[1])) {
-    return explicitMatch[1].toLocaleUpperCase("pt-BR");
+  if (explicitMatch?.[1]) {
+    return explicitMatch[1]
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLocaleUpperCase("pt-BR");
   }
 
-  const contextualMatch = message.match(
-    /\b(?:com|possui|possuem|inclui|incluem|contem)\s+((?=[a-z0-9-]*\d)(?=[a-z0-9-]*[a-z])[a-z0-9]+(?:-[a-z0-9]+)*)\b/,
-  );
-  return contextualMatch?.[1]?.toLocaleUpperCase("pt-BR") ?? null;
+  const contextualPatterns = [
+    new RegExp(
+      `\\b(?:com|tenho|tem|temos|existe|aparece|possu(?:i|em)|inclu(?:i|em)|contem)\\s+(?:o\\s+|a\\s+)?${catalogCodePattern}\\b`,
+    ),
+    new RegExp(
+      `\\b(?:pedi|solicitad[oa]s?|retirad[oa]s?|retirar)\\s+(?:do|da|de|o|a)?\\s*${catalogCodePattern}\\b`,
+    ),
+    new RegExp(
+      `\\b(?:do|da|de)\\s+${catalogCodePattern}\\s+(?:nos?\\s+pedidos?|aguarda|aguardam|espera|esperam)\\b`,
+    ),
+  ];
+
+  for (const pattern of contextualPatterns) {
+    const match = message.match(pattern)?.[1];
+
+    if (match) {
+      return match
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLocaleUpperCase("pt-BR");
+    }
+  }
+
+  return null;
 }
 
-function isSupplierOrderMessage(message: string, hasContext: boolean) {
+function isCatalogCodeFollowUp(message: string) {
+  return (
+    /^(?:e\s+)?quanto\b.{0,45}\b(pedi|pedido|solicitad[oa]s?|retirad[oa]s?|retirar|entrada|estoque)\b/.test(
+      message,
+    ) ||
+    /^(?:e\s+)?(?:o\s+que|qual|quais|tem|existe)\b.{0,35}\b(retirad[oa]s?|entrada|falta)\b/.test(
+      message,
+    )
+  );
+}
+
+function isSupplierOrderMessage(
+  message: string,
+  hasContext: boolean,
+  hasCatalogContext: boolean,
+) {
   return (
     /\b(pedido|pedidos|pedida|pedidas|negociacao|negociacoes|fornecedor|fornecedores)\b/.test(
       message,
     ) ||
     /\bparcialmente\s+retirados?\b/.test(message) ||
+    /\bquanto\s+(?:eu\s+)?pedi\b/.test(message) ||
+    /\bquanto\b.{0,45}\b(retirad[oa]s?|retirar|aguarda(?:m)?\s+entrada)\b/.test(
+      message,
+    ) ||
+    (hasCatalogContext && isCatalogCodeFollowUp(message)) ||
     (hasContext &&
       /^(?:e\s+)?(?:quais\s+)?itens?\b.{0,40}\b(falta|faltam|retirar|entrada)\b/.test(
         message,
       )) ||
     (hasContext &&
-      /^(?:e\s+)?quanto\b.{0,35}\b(entrar|entrada|retirar)\b/.test(
+      /^(?:e\s+)?quanto\b.{0,35}\b(entrar|entrada|retirar|retirad[oa]s?|solicitad[oa]s?)\b/.test(
         message,
       )) ||
     (hasContext &&
@@ -472,15 +519,25 @@ export function routeSupplierOrderQuestion(
   rawMessage: string,
   supplierOrderId: string | null,
   now = new Date(),
+  supplierOrderCatalogCode: string | null = null,
 ): SupplierOrderRoutingResult {
   const message = normalizeText(rawMessage);
   const hasContext = Boolean(supplierOrderId);
+  const hasCatalogContext = Boolean(supplierOrderCatalogCode);
 
-  if (!isSupplierOrderMessage(message, hasContext)) {
+  if (
+    !isSupplierOrderMessage(message, hasContext, hasCatalogContext)
+  ) {
     return { kind: "NOT_ORDER_QUERY" };
   }
 
   const explicitNegotiation = extractNegotiationNumber(rawMessage);
+  const extractedCatalogCode = extractCatalogCode(message);
+  const catalogCode =
+    extractedCatalogCode ??
+    (supplierOrderCatalogCode && isCatalogCodeFollowUp(message)
+      ? supplierOrderCatalogCode
+      : null);
   const asksUnnamedOrderDetail =
     !explicitNegotiation &&
     /\bpedido\b/.test(message) &&
@@ -498,12 +555,17 @@ export function routeSupplierOrderQuestion(
     /^(?:e\s+)?(?:quais\s+)?itens?\b.{0,40}\b(falta|faltam|retirar|entrada)\b/.test(
       message,
     ) ||
-    /^(?:e\s+)?quanto\b.{0,35}\b(entrar|entrada|retirar)\b/.test(
+    /^(?:e\s+)?quanto\b.{0,35}\b(entrar|entrada|retirar|retirad[oa]s?|solicitad[oa]s?)\b/.test(
       message,
     ) ||
     asksUnnamedOrderDetail;
 
-  if (refersToCurrentOrder && !explicitNegotiation && !supplierOrderId) {
+  if (
+    refersToCurrentOrder &&
+    !explicitNegotiation &&
+    !supplierOrderId &&
+    !catalogCode
+  ) {
     return {
       kind: "NEEDS_ORDER_CONTEXT",
       message:
@@ -586,8 +648,29 @@ export function routeSupplierOrderQuestion(
     /\b(quantos|quantas|total)\b/.test(message) &&
     /\b(pedidos?|unidades?)\b/.test(message);
   let aggregateMetric: SupplierOrderAggregateMetric | null = null;
+  const catalogAggregateMetric =
+    catalogCode &&
+    (/\bquanto\b.{0,40}\b(aguarda|aguardam|entrada|estoque)\b/.test(
+      message,
+    ) ||
+      /\b(aguarda|aguardam)\b.{0,30}\bentrada\b/.test(message))
+      ? "WAITING_STOCK_UNITS"
+      : catalogCode &&
+          /\bquanto\b.{0,40}\b(falta|faltam|retirar)\b/.test(message)
+        ? "WAITING_PICKUP_UNITS"
+        : catalogCode &&
+            /\bquanto\b.{0,40}\b(retirad[oa]s?)\b/.test(message)
+          ? "PICKED_UNITS"
+          : catalogCode &&
+              /\bquanto\b.{0,40}\b(pedi|pedido|solicitad[oa]s?)\b/.test(
+                message,
+              )
+            ? "ORDERED_UNITS"
+            : null;
 
-  if (asksCount) {
+  if (catalogAggregateMetric) {
+    aggregateMetric = catalogAggregateMetric;
+  } else if (asksCount) {
     if (/\b(unidades?)\b/.test(message)) {
       aggregateMetric = hasWaitingStock
         ? "WAITING_STOCK_UNITS"
@@ -636,6 +719,7 @@ export function routeSupplierOrderQuestion(
       ? "closed_at"
       : "order_date";
   const descriptionParts = [
+    catalogCode ? `Cód. ${catalogCode}` : null,
     view === "active"
       ? "ativos"
       : view === "history"
@@ -667,9 +751,11 @@ export function routeSupplierOrderQuestion(
   return {
     kind: "ORDER_QUERY",
     query: {
-      mode: aggregateMetric
-        ? "AGGREGATE"
-        : asksDetails
+      mode: explicitNegotiation
+        ? "DETAIL"
+        : aggregateMetric
+          ? "AGGREGATE"
+          : asksDetails
           ? "DETAIL"
           : "LIST",
       view,
@@ -686,7 +772,7 @@ export function routeSupplierOrderQuestion(
       hasWaitingPickup,
       hasWaitingStock,
       fullyStockedAfterPickup,
-      catalogCode: extractCatalogCode(message),
+      catalogCode,
       sort,
       aggregateMetric,
       lineFocus,

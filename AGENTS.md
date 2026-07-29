@@ -888,8 +888,36 @@ Enquanto não existir uma administração completa de usuários:
   `order` contendo um UUID real;
 - contexto de pedido é efêmero, separado do contexto de estoque e somente pode
   ser definido depois que um único pedido real for resolvido;
+- consultas por código dentro de Pedidos usam correspondência exata nos
+  snapshots da linha e não expandem automaticamente para aliases equivalentes;
+- quando um código é filtrado, os cards e agregados mostram as quantidades
+  oficiais das linhas correspondentes, nunca os totais gerais do Pedido como
+  se pertencessem ao código;
+- o contexto efêmero de código em Pedidos é separado tanto do contexto de
+  Pedido quanto do contexto de item no Estoque;
 - a Assistente nunca cria, edita, cancela, finaliza, retira ou lança estoque de
   um pedido.
+
+## 40. Consultas exatas de itens pela Assistente IA
+
+- consultas exatas de item ou Caixa completa usam o bloco estruturado
+  `inventory_item_summary`, construído pelo backend com dados reais;
+- o card exibe `Cód.` antes do código e usa o estoque atual como métrica
+  principal nas perguntas de quantidade;
+- estoque mínimo e situação seguem as mesmas regras oficiais usadas pelos
+  alertas de estoque;
+- Caixa completa mostra somente o saldo da configuração física montada;
+- Servoembreagem e Kit de instalação mostram o saldo físico do item, sem
+  transformar o alvo em configuração;
+- aliases comerciais compartilham o mesmo alvo físico, saldo e foto;
+- fotos compatíveis de Kit de instalação servem somente para visualização e
+  não alteram o alvo do item;
+- consultas claras por quantidade, mínimo, situação, diferença para o mínimo,
+  descrição e composição são determinísticas e não usam Gemini;
+- IDs, links internos, estoque, mínimo, descrição, composição e mídia são
+  resolvidos e validados pelo backend;
+- o contexto de item é efêmero, não é persistido e permanece separado do
+  contexto de Pedido.
 
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know

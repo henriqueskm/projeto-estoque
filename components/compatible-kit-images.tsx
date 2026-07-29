@@ -16,11 +16,13 @@ import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 type CompatibleKitImagesProps = {
   kitCode: string;
   options: CompatibleKitImageOption[];
+  triggerVariant?: "icon-button" | "assistant-action";
 };
 
 export function CompatibleKitImages({
   kitCode,
   options,
+  triggerVariant = "icon-button",
 }: CompatibleKitImagesProps) {
   const [isOpen, setIsOpen] = useState(false);
   const titleId = useId();
@@ -103,7 +105,7 @@ export function CompatibleKitImages({
         commercialCodes={option.commercialCodes}
         imageUrl={option.imageUrl}
         triggerLabel={actionLabel}
-        triggerVariant="icon-button"
+        triggerVariant={triggerVariant}
       />
     );
   }
@@ -121,9 +123,17 @@ export function CompatibleKitImages({
           event.stopPropagation();
           setIsOpen(true);
         }}
-        className="nk-focus inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-800 transition hover:border-violet-400 hover:bg-violet-100"
+        className={
+          triggerVariant === "assistant-action"
+            ? "nk-focus inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-900 transition hover:border-violet-400 hover:bg-violet-100"
+            : "nk-focus inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-800 transition hover:border-violet-400 hover:bg-violet-100"
+        }
       >
-        <EyeIcon className="size-4" />
+        {triggerVariant === "assistant-action" ? (
+          "Ver fotos"
+        ) : (
+          <EyeIcon className="size-4" />
+        )}
       </button>
 
       {isOpen
