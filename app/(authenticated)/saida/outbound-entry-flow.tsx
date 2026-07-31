@@ -146,7 +146,8 @@ function CatalogAddButton({
   onAdd: () => void;
   variant: "physical" | "commercial";
 }) {
-  const addLabel = variant === "physical" ? "Adicionar item" : "Adicionar caixa";
+  const addLabel =
+    variant === "physical" ? "Adicionar item" : "Adicionar Servo com kit";
 
   return (
     <button
@@ -269,7 +270,7 @@ function CommercialCatalogTable({
     <div className="relative mt-4 rounded-xl border border-violet-200 bg-surface shadow-sm">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
-          Caixas com kit disponíveis para adicionar à saída
+          Servos com kit disponíveis para adicionar à saída
         </caption>
         <thead>
           <tr>
@@ -321,11 +322,11 @@ function CommercialCatalogTable({
                   <p className="text-[0.65rem] leading-4 font-bold text-violet-900 sm:text-xs">
                     Montadas: {numberFormatter.format(option.assembledBalance)}
                     {option.aliases.length > 0
-                      ? ` · Mesma caixa: ${option.aliases.join(" / ")}`
+                      ? ` · Mesmo Servo com kit: ${option.aliases.join(" / ")}`
                       : ""}
                   </p>
                   <p className="text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                    Avulsos: servo {numberFormatter.format(option.servo.balance)} · kit {numberFormatter.format(option.installationKit.balance)}
+                    Componentes separados: servo {numberFormatter.format(option.servo.balance)} · kit {numberFormatter.format(option.installationKit.balance)}
                   </p>
                   <CommercialConfigurationImage
                     commercialCodes={[option.code, ...option.aliases]}
@@ -1211,7 +1212,7 @@ export function OutboundEntryFlow({
 
             <StockFlowSection
               id="outbound-commercial-section"
-              title="Caixa com kit"
+              title="Servo com kit"
               description="Configurações identificadas por código comercial"
               count={catalog.commercialCodes.length}
               isOpen={openSection === "commercial"}

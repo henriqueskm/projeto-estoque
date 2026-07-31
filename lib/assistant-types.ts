@@ -1,10 +1,24 @@
 import type { PhysicalStockItemType } from "@/lib/stock-calculations";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
+import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
+import { normalizeServoModel } from "@/lib/servo-model-search";
 
 export const assistantMessageMaxLength = 2000;
 export const assistantQueryMaxLength = 120;
 export const assistantRequestMaxCharacters = 4096;
+
+export type AssistantServoModelInventoryAction =
+  | {
+      action: "show_servo_model_inventory_breakdown";
+      normalizedModel: string;
+    }
+  | {
+      action: "show_servo_model_inventory_target";
+      normalizedModel: string;
+      targetKind: "item" | "commercial_configuration";
+      targetId: string;
+    };
 
 export type AssistantChatRequest = {
   message: string;
@@ -12,6 +26,7 @@ export type AssistantChatRequest = {
   lastSupplierOrderId?: string;
   lastSupplierOrderCatalogCode?: string;
   selectedSupplierOrderItemId?: string;
+  inventoryAction?: AssistantServoModelInventoryAction;
 };
 
 export type AssistantChatSuccess = {
@@ -203,6 +218,31 @@ export type AssistantInventoryItemSummaryBlock = {
   fallbackText: string;
 };
 
+export type AssistantServoModelConfigurationTarget = {
+  target: AssistantInventoryItemSummaryTarget & {
+    targetKind: "commercial_configuration";
+    itemType: "COMPLETE_BOX";
+  };
+  aliases: string[];
+};
+
+export type AssistantServoModelInventoryBreakdownBlock = {
+  kind: "servo_model_inventory_breakdown";
+  model: {
+    official: string;
+    normalized: string;
+  };
+  bareServo: (AssistantInventoryItemSummaryTarget & {
+    targetKind: "item";
+    itemType: "SERVO";
+  }) | null;
+  configurations: AssistantServoModelConfigurationTarget[];
+  totalConfigurations: number;
+  remainingConfigurations: number;
+  inventoryHref: string;
+  fallbackText: string;
+};
+
 export type AssistantSupplierOrderCard = {
   id: string;
   negotiationNumber: string;
@@ -304,6 +344,7 @@ export type AssistantClarificationOption = {
   description?: string;
   contextSupplierOrderId?: string;
   contextSupplierOrderItemId?: string;
+  action?: AssistantServoModelInventoryAction;
 };
 
 export type AssistantClarificationBlock = {
@@ -440,6 +481,7 @@ export type AssistantStructuredBlock =
   | AssistantInventoryAlertsBlock
   | AssistantCatalogMediaBlock
   | AssistantInventoryItemSummaryBlock
+  | AssistantServoModelInventoryBreakdownBlock
   | AssistantSupplierOrderListBlock
   | AssistantSupplierOrderDetailBlock
   | AssistantSupplierOrderAggregateBlock
@@ -458,6 +500,55 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonnegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+export function parseAssistantServoModelInventoryAction(
+  value: unknown,
+): AssistantServoModelInventoryAction | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const normalizedModel =
+    typeof value.normalizedModel === "string"
+      ? value.normalizedModel.trim()
+      : "";
+
+  if (
+    !normalizedModel ||
+    normalizedModel.length > assistantQueryMaxLength ||
+    normalizeServoModel(normalizedModel) !== normalizedModel
+  ) {
+    return null;
+  }
+
+  if (
+    value.action === "show_servo_model_inventory_breakdown" &&
+    Object.keys(value).length === 2
+  ) {
+    return {
+      action: value.action,
+      normalizedModel,
+    };
+  }
+
+  if (
+    value.action === "show_servo_model_inventory_target" &&
+    Object.keys(value).length === 4 &&
+    (value.targetKind === "item" ||
+      value.targetKind === "commercial_configuration") &&
+    typeof value.targetId === "string" &&
+    uuidPattern.test(value.targetId)
+  ) {
+    return {
+      action: value.action,
+      normalizedModel,
+      targetKind: value.targetKind,
+      targetId: value.targetId.toLowerCase(),
+    };
+  }
+
+  return null;
 }
 
 function isSafeSignedImageUrl(value: unknown): value is string {
@@ -896,11 +987,11 @@ function parseInventoryItemSummaryTarget(
     value.itemType,
   ) as AssistantInventoryItemSummaryTarget["itemType"];
   const expectedTypeLabel = {
-    SERVO: "Servoembreagem",
+    SERVO: customerFacingInventoryLabels.looseServo,
     INSTALLATION_KIT: "Kit de instalação",
     REPAIR_KIT: "Jogo de reparo",
     LOOSE_PART: "Peça avulsa",
-    COMPLETE_BOX: "Caixa completa",
+    COMPLETE_BOX: customerFacingInventoryLabels.completeServoKit,
   }[itemType];
   const expectedStatusLabel = {
     ZERO: "Zerado",
@@ -911,12 +1002,12 @@ function parseInventoryItemSummaryTarget(
   const expectedStockUnitLabel =
     itemType === "COMPLETE_BOX"
       ? value.currentStock === 1
-        ? "caixa montada"
-        : "caixas montadas"
+        ? "Servo com kit montado"
+        : "Servos com kit montados"
       : itemType === "SERVO"
         ? value.currentStock === 1
-          ? "Servoembreagem"
-          : "Servoembreagens"
+          ? customerFacingInventoryLabels.looseServo
+          : customerFacingInventoryLabels.looseServos
         : itemType === "INSTALLATION_KIT"
           ? value.currentStock === 1
             ? "Kit de instalação"
@@ -1022,6 +1113,102 @@ function parseInventoryItemSummaryTarget(
   };
 }
 
+function parseServoModelInventoryBreakdown(
+  value: Record<string, unknown>,
+): AssistantServoModelInventoryBreakdownBlock | null {
+  const model = value.model;
+  const bareServo =
+    value.bareServo === null
+      ? null
+      : parseInventoryItemSummaryTarget(value.bareServo);
+  const configurationEntries = Array.isArray(value.configurations)
+    ? value.configurations.map((entry) => {
+        if (!isRecord(entry) || !Array.isArray(entry.aliases)) {
+          return null;
+        }
+
+        const target = parseInventoryItemSummaryTarget(entry.target);
+        const aliases = entry.aliases.filter(
+          (alias): alias is string =>
+            typeof alias === "string" && Boolean(alias.trim()),
+        );
+        const normalizedAliases = aliases.map((alias) =>
+          alias.trim().toLocaleUpperCase("pt-BR"),
+        );
+
+        if (
+          !target ||
+          target.targetKind !== "commercial_configuration" ||
+          target.itemType !== "COMPLETE_BOX" ||
+          aliases.length === 0 ||
+          aliases.length > 8 ||
+          aliases.length !== entry.aliases.length ||
+          new Set(normalizedAliases).size !== aliases.length ||
+          !normalizedAliases.includes(
+            target.displayCode.toLocaleUpperCase("pt-BR"),
+          )
+        ) {
+          return null;
+        }
+
+        return {
+          target: target as AssistantServoModelConfigurationTarget["target"],
+          aliases: aliases.map((alias) => alias.trim()),
+        };
+      })
+    : [];
+  const officialModel =
+    isRecord(model) && typeof model.official === "string"
+      ? model.official.trim()
+      : "";
+  const normalizedModel =
+    isRecord(model) && typeof model.normalized === "string"
+      ? model.normalized.trim()
+      : "";
+
+  if (
+    !officialModel ||
+    officialModel.length > assistantQueryMaxLength ||
+    !normalizedModel ||
+    normalizeServoModel(officialModel) !== normalizedModel ||
+    normalizeServoModel(normalizedModel) !== normalizedModel ||
+    (bareServo !== null &&
+      (bareServo.targetKind !== "item" ||
+        bareServo.itemType !== "SERVO")) ||
+    !Array.isArray(value.configurations) ||
+    configurationEntries.length > 6 ||
+    configurationEntries.some((entry) => entry === null) ||
+    new Set(
+      configurationEntries.map((entry) => entry?.target.targetId),
+    ).size !== configurationEntries.length ||
+    !isNonnegativeInteger(value.totalConfigurations) ||
+    !isNonnegativeInteger(value.remainingConfigurations) ||
+    value.totalConfigurations !==
+      configurationEntries.length + value.remainingConfigurations ||
+    bareServo === null && value.totalConfigurations === 0 ||
+    value.inventoryHref !== "/estoque" ||
+    typeof value.fallbackText !== "string" ||
+    !value.fallbackText.trim()
+  ) {
+    return null;
+  }
+
+  return {
+    kind: "servo_model_inventory_breakdown",
+    model: {
+      official: officialModel,
+      normalized: normalizedModel,
+    },
+    bareServo: bareServo as AssistantServoModelInventoryBreakdownBlock["bareServo"],
+    configurations:
+      configurationEntries as AssistantServoModelConfigurationTarget[],
+    totalConfigurations: value.totalConfigurations,
+    remainingConfigurations: value.remainingConfigurations,
+    inventoryHref: "/estoque",
+    fallbackText: value.fallbackText.trim(),
+  };
+}
+
 function parsePurchaseRecommendationItem(
   value: unknown,
 ): PurchaseRecommendationItem | null {
@@ -1030,11 +1217,11 @@ function parsePurchaseRecommendationItem(
   }
 
   const expectedTypeLabel = {
-    SERVO: "Servoembreagem",
+    SERVO: customerFacingInventoryLabels.looseServo,
     INSTALLATION_KIT: "Kit de instalação",
     REPAIR_KIT: "Jogo de reparo",
     LOOSE_PART: "Peça avulsa",
-    COMPLETE_BOX: "Caixa completa",
+    COMPLETE_BOX: customerFacingInventoryLabels.completeServoKit,
   }[String(value.itemType)];
   const aliases = Array.isArray(value.aliases) ? value.aliases : [];
   const relatedOrders = Array.isArray(value.relatedOrders)
@@ -1558,6 +1745,11 @@ export function parseAssistantStructuredBlock(
   if (value.kind === "assistant_clarification") {
     const options = Array.isArray(value.options) ? value.options : [];
     const parsedOptions = options.map((option) => {
+      const action =
+        isRecord(option) && option.action !== undefined
+          ? parseAssistantServoModelInventoryAction(option.action)
+          : undefined;
+
       if (
         !isRecord(option) ||
         typeof option.id !== "string" ||
@@ -1580,6 +1772,7 @@ export function parseAssistantStructuredBlock(
             !uuidPattern.test(option.contextSupplierOrderItemId))) ||
         (option.contextSupplierOrderItemId !== undefined &&
           option.contextSupplierOrderId === undefined) ||
+        (option.action !== undefined && action === null) ||
         ![
           "inventory",
           "supplier_orders",
@@ -1611,6 +1804,7 @@ export function parseAssistantStructuredBlock(
                 option.contextSupplierOrderItemId.toLowerCase(),
             }
           : {}),
+        ...(action ? { action } : {}),
       };
     });
     const ids = parsedOptions.map((option) => option?.id);
@@ -1620,6 +1814,9 @@ export function parseAssistantStructuredBlock(
             option.prompt,
             option.contextSupplierOrderId ?? "",
             option.contextSupplierOrderItemId ?? "",
+            option.action
+              ? JSON.stringify(option.action)
+              : "",
           ].join(":")
         : null,
     );
@@ -1782,6 +1979,10 @@ export function parseAssistantStructuredBlock(
       primaryText: value.primaryText,
       fallbackText: value.fallbackText,
     };
+  }
+
+  if (value.kind === "servo_model_inventory_breakdown") {
+    return parseServoModelInventoryBreakdown(value);
   }
 
   if (

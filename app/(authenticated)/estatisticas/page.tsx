@@ -235,12 +235,12 @@ function OutboundCategories({
 }) {
   const rows = [
     {
-      label: "Caixas completas",
+      label: "Servos com kit",
       quantity: categories.completeBoxes,
       tone: "bg-violet-700",
     },
     {
-      label: "Servos avulsos",
+      label: "Servos sem kit",
       quantity: categories.looseServos,
       tone: "bg-slate-800",
     },
@@ -322,7 +322,7 @@ function PeriodHighlights({
   if (highlights.configuration) {
     rows.push({
       key: "configuration",
-      label: "Caixa mais saída",
+      label: "Servo com kit mais saído",
       code:
         highlights.configuration.aliases.join(" / ") ||
         "Sem código comercial ativo",
@@ -332,7 +332,7 @@ function PeriodHighlights({
   }
 
   const itemHighlights = [
-    ["loose-servo", "Servo avulso mais saído", highlights.looseServo],
+    ["loose-servo", "Servo sem kit mais saído", highlights.looseServo],
     [
       "loose-kit",
       "Kit avulso mais saído",
@@ -469,7 +469,7 @@ function ConfigurationRanking({
 }) {
   return (
     <section className="rounded-2xl border border-border-neutral bg-surface p-4">
-      <h3 className="font-black text-text-primary">Caixas completas mais saídas</h3>
+      <h3 className="font-black text-text-primary">Servos com kit mais saídos</h3>
       <p className="mt-1 text-xs leading-5 font-semibold text-text-muted">
         Agrupadas pela configuração física; aliases não duplicam quantidades.
       </p>
@@ -561,7 +561,7 @@ function UnmovedSection({
         </details>
         <details className="rounded-xl border border-border-neutral bg-app-background p-3">
           <summary className="nk-focus cursor-pointer rounded-lg text-sm font-black text-text-primary">
-            Caixas completas · {quantityFormatter.format(configurationCount)}
+            Servos com kit · {quantityFormatter.format(configurationCount)}
           </summary>
           {configurations.length === 0 ? (
             <p className="mt-3 text-sm text-text-muted">
@@ -729,7 +729,7 @@ export default async function StatisticsPage({
                 Com kit vs. sem kit
               </h2>
               <p className="mt-1 text-xs leading-5 font-semibold text-text-muted">
-                Considera somente caixas completas e servos que saíram
+                Considera somente Servos com kit e servos que saíram
                 avulsos. Kits avulsos, reparos e peças entram no total geral,
                 mas não nesta comparação.
               </p>
@@ -808,18 +808,18 @@ export default async function StatisticsPage({
                 items={statistics.rankings.configurations}
               />
               <ItemRanking
-                title="Servos avulsos mais saídos"
+                title="Servos sem kit mais saídos"
                 description="Vendidos diretamente, sem kit."
                 items={statistics.rankings.looseServos}
               />
               <ItemRanking
-                title="Kits usados em caixas"
+                title="Kits usados em Servos com kit"
                 description="Consumidos por montagens internas."
                 items={statistics.rankings.kitsUsedInAssemblies}
               />
               <ItemRanking
                 title="Kits saídos avulsos"
-                description="Saídas externas sem caixa completa."
+                description="Saídas externas de kits avulsos."
                 items={statistics.rankings.looseKits}
               />
               <ItemRanking

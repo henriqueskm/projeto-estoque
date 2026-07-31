@@ -308,7 +308,7 @@ function mapConfigurationOperationRpcError(
     normalizedMessage.includes("commercial code") &&
     normalizedMessage.includes("does not belong")
   ) {
-    return "O código comercial não pertence mais a esta Caixa completa. Atualize a página e tente novamente.";
+    return "O código comercial não pertence mais a este Servo com kit. Atualize a página e tente novamente.";
   }
 
   if (operationType === "ASSEMBLY") {
@@ -316,21 +316,21 @@ function mapConfigurationOperationRpcError(
       normalizedMessage.includes("no stock balance") ||
       normalizedMessage.includes("insufficient stock")
     ) {
-      return "Sem saldo avulso suficiente para montar esta caixa. Atualize a página e confira os saldos.";
+      return "Sem saldo suficiente dos componentes para montar este Servo com kit. Atualize a página e confira os saldos.";
     }
 
     if (normalizedMessage.includes("inactive")) {
-      return "Esta caixa ou um dos componentes está inativo e não pode ser montado.";
+      return "Este Servo com kit ou um dos componentes está inativo e não pode ser montado.";
     }
   } else if (
     normalizedMessage.includes("no assembled stock balance") ||
     normalizedMessage.includes("insufficient assembled stock")
   ) {
-    return "Não há Caixas completas suficientes para esta desmontagem. Atualize a página e confira o saldo.";
+    return "Não há Servos com kit suficientes para esta desmontagem. Atualize a página e confira o saldo.";
   }
 
   if (normalizedMessage.includes("does not exist")) {
-    return "Esta Caixa completa não está mais disponível. Atualize a página.";
+    return "Este Servo com kit não está mais disponível. Atualize a página.";
   }
 
   if (code === "22003") {
@@ -700,7 +700,7 @@ async function performConfigurationOperation(
 
     if (configurationError || !configuration) {
       return configurationOperationError(
-        "Esta Caixa completa não está mais disponível. Atualize a página.",
+        "Este Servo com kit não está mais disponível. Atualize a página.",
       );
     }
 
@@ -711,7 +711,7 @@ async function performConfigurationOperation(
 
     if (componentsError) {
       return configurationOperationError(
-        "Não foi possível validar os componentes desta Caixa completa. Atualize a página.",
+        "Não foi possível validar os componentes deste Servo com kit. Atualize a página.",
       );
     }
 
@@ -727,7 +727,7 @@ async function performConfigurationOperation(
       installationKit?.item_type !== "INSTALLATION_KIT"
     ) {
       return configurationOperationError(
-        "Os componentes desta Caixa completa não estão disponíveis. Atualize a página.",
+        "Os componentes deste Servo com kit não estão disponíveis. Atualize a página.",
       );
     }
 
@@ -738,7 +738,7 @@ async function performConfigurationOperation(
         !installationKit.is_active)
     ) {
       return configurationOperationError(
-        "Esta caixa ou um dos componentes está inativo e não pode ser montado.",
+        "Este Servo com kit ou um dos componentes está inativo e não pode ser montado.",
       );
     }
 
@@ -752,7 +752,7 @@ async function performConfigurationOperation(
 
       if (aliasError || !alias) {
         return configurationOperationError(
-          "O código comercial não pertence mais a esta Caixa completa. Atualize a página.",
+          "O código comercial não pertence mais a este Servo com kit. Atualize a página.",
         );
       }
     }

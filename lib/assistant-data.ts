@@ -1,5 +1,12 @@
 import "server-only";
 
+import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
+import {
+  matchesCatalogDescription,
+  matchesServoModel,
+  normalizeCatalogSearchText,
+  normalizeServoModel,
+} from "@/lib/servo-model-search";
 import {
   assistantQueryMaxLength,
   type AssistantCatalogMediaBlock,
@@ -13,6 +20,7 @@ import {
   type AssistantItemLookupResult,
   type AssistantMediaDescriptor,
   type AssistantPhysicalItemResult,
+  type AssistantServoModelInventoryBreakdownBlock,
   type AssistantStockAttentionItem,
   type AssistantStockSummaryResult,
 } from "@/lib/assistant-types";
@@ -92,11 +100,7 @@ export class AssistantDataError extends Error {
 }
 
 function normalizeSearch(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLocaleLowerCase("pt-BR");
+  return normalizeCatalogSearchText(value);
 }
 
 function compareCodes(first: string, second: string) {
@@ -112,15 +116,6 @@ function getLookupResultCode(
   return result.kind === "COMMERCIAL_CONFIGURATION"
     ? result.matched_commercial_code
     : result.code;
-}
-
-function matchesSearch(
-  normalizedQuery: string,
-  values: Array<string | null | undefined>,
-) {
-  return values.some((value) =>
-    value ? normalizeSearch(value).includes(normalizedQuery) : false,
-  );
 }
 
 async function loadAssistantStockSnapshot(): Promise<AssistantStockSnapshot> {
@@ -367,7 +362,7 @@ function buildLookupCatalog(snapshot: AssistantStockSnapshot) {
 }
 
 const physicalItemTypeLabels: Record<PhysicalStockItemType, string> = {
-  SERVO: "Servoembreagem",
+  SERVO: customerFacingInventoryLabels.looseServo,
   INSTALLATION_KIT: "Kit de instalação",
   REPAIR_KIT: "Jogo de reparo",
   LOOSE_PART: "Peça avulsa",
@@ -586,24 +581,36 @@ export async function consultAssistantItem(
     };
   }
 
+  const hasExactServoModelMatch =
+    physicalItems.some(
+      (item) =>
+        item.kind === "SERVO" && matchesServoModel(query, item.model),
+    ) ||
+    configurations.some((configuration) =>
+      matchesServoModel(query, configuration.servo.model),
+    );
   const matchingPhysicalItems = physicalItems.filter((item) =>
-    matchesSearch(normalizedQuery, [
-      item.code,
-      item.description,
-      item.model,
-    ]),
+    normalizeSearch(item.code) === normalizedQuery ||
+    (item.kind === "SERVO" && matchesServoModel(query, item.model)) ||
+    (!hasExactServoModelMatch &&
+      matchesCatalogDescription(query, item.description)),
   );
   const matchingConfigurations = configurations
     .filter((configuration) =>
-      matchesSearch(normalizedQuery, [
-        ...configuration.aliases,
-        configuration.description,
-        configuration.servo.code,
-        configuration.servo.description,
-        configuration.servo.model,
-        configuration.installation_kit.code,
-        configuration.installation_kit.description,
-      ]),
+      configuration.aliases.some(
+        (alias) => normalizeSearch(alias) === normalizedQuery,
+      ) ||
+      matchesServoModel(query, configuration.servo.model) ||
+      (!hasExactServoModelMatch &&
+        (matchesCatalogDescription(query, configuration.description) ||
+          matchesCatalogDescription(
+            query,
+            configuration.servo.description,
+          ) ||
+          matchesCatalogDescription(
+            query,
+            configuration.installation_kit.description,
+          ))),
     )
     .map((configuration) => ({
       ...configuration,
@@ -1020,7 +1027,7 @@ export async function consultAssistantCatalogMedia(
       targetId: configuration.configuration_id,
       displayCode: configuration.matched_commercial_code,
       description: configuration.description,
-      typeLabel: "Caixa completa",
+      typeLabel: customerFacingInventoryLabels.completeServoKit,
       href: buildInventoryTargetHref(
         "commercial_configuration",
         configuration.configuration_id,
@@ -1111,9 +1118,13 @@ function getSummaryStockUnitLabel(
 ) {
   switch (type) {
     case "COMPLETE_BOX":
-      return quantity === 1 ? "caixa montada" : "caixas montadas";
+      return quantity === 1
+        ? "Servo com kit montado"
+        : "Servos com kit montados";
     case "SERVO":
-      return quantity === 1 ? "Servoembreagem" : "Servoembreagens";
+      return quantity === 1
+        ? customerFacingInventoryLabels.looseServo
+        : customerFacingInventoryLabels.looseServos;
     case "INSTALLATION_KIT":
       return quantity === 1
         ? "Kit de instalação"
@@ -1150,13 +1161,13 @@ function getInventorySummaryPrimaryText(
       return `O código ${code} é ${target.description}, classificado como ${target.typeLabel}.`;
     case "COMPOSITION":
       return target.composition
-        ? `A Caixa completa ${code} é formada pela Servoembreagem ${target.composition.servoCode} e pelo Kit de instalação ${target.composition.installationKitCode}.`
-        : `O código ${code} é um item avulso e não representa uma Caixa completa.`;
+        ? `O Servo com kit ${code} é formado pelo Servo ${target.composition.servoCode} e pelo Kit de instalação ${target.composition.installationKitCode}.`
+        : `O código ${code} é um item sem kit e não representa um Servo com kit.`;
     case "STOCK":
       if (target.itemType === "COMPLETE_BOX") {
         return target.currentStock === 1
-          ? `Você possui 1 Caixa completa ${code} montada.`
-          : `Você possui ${target.currentStock} Caixas completas ${code} montadas.`;
+          ? `Você possui 1 Servo com kit ${code} montado.`
+          : `Você possui ${target.currentStock} Servos com kit ${code} montados.`;
       }
 
       if (target.itemType === "LOOSE_PART") {
@@ -1173,10 +1184,175 @@ function getInventorySummaryFallback(
   const minimum =
     target.minimumStock === null ? "não definido" : target.minimumStock;
   const composition = target.composition
-    ? ` Servoembreagem ${target.composition.servoCode}, ${target.composition.servoDescription}; Kit de instalação ${target.composition.installationKitCode}, ${target.composition.installationKitDescription}.`
+    ? ` Servo ${target.composition.servoCode}, ${target.composition.servoDescription}; Kit de instalação ${target.composition.installationKitCode}, ${target.composition.installationKitDescription}.`
     : "";
 
   return `Código ${target.displayCode}, ${target.typeLabel}, ${target.description}. Estoque atual: ${target.currentStock} ${target.stockUnitLabel}. Mínimo: ${minimum}. Situação: ${target.statusLabel}.${composition}`;
+}
+
+const maximumServoModelConfigurations = 6;
+
+export async function consultAssistantServoModelInventory(
+  rawModel: string,
+): Promise<AssistantServoModelInventoryBreakdownBlock | null> {
+  const normalizedModel = normalizeServoModel(rawModel);
+
+  if (
+    !normalizedModel ||
+    rawModel.trim().length > assistantQueryMaxLength
+  ) {
+    return null;
+  }
+
+  const snapshot = await loadAssistantStockSnapshot();
+  const { physicalItems, configurations } = buildLookupCatalog(snapshot);
+  const matchingServos = physicalItems
+    .filter(
+      (item): item is AssistantPhysicalItemResult & { kind: "SERVO" } =>
+        item.kind === "SERVO" &&
+        matchesServoModel(normalizedModel, item.model),
+    )
+    .sort((first, second) => compareCodes(first.code, second.code));
+  const matchingConfigurations = configurations
+    .filter((configuration) =>
+      matchesServoModel(normalizedModel, configuration.servo.model),
+    )
+    .sort(
+      (first, second) =>
+        compareCodes(first.aliases[0], second.aliases[0]) ||
+        first.configuration_id.localeCompare(second.configuration_id),
+    );
+
+  if (
+    matchingServos.length > 1 ||
+    (matchingServos.length === 0 &&
+      matchingConfigurations.length === 0)
+  ) {
+    return null;
+  }
+
+  const officialModel =
+    matchingServos[0]?.model?.trim() ||
+    matchingConfigurations[0]?.servo.model?.trim();
+
+  if (
+    !officialModel ||
+    normalizeServoModel(officialModel) !== normalizedModel
+  ) {
+    return null;
+  }
+
+  const bareServo = matchingServos[0]
+    ? ({
+        targetKind: "item",
+        targetId: matchingServos[0].item_id,
+        displayCode: matchingServos[0].code,
+        itemType: "SERVO",
+        typeLabel: customerFacingInventoryLabels.looseServo,
+        description: officialModel,
+        currentStock: matchingServos[0].loose_quantity,
+        minimumStock:
+          matchingServos[0].minimum_stock > 0
+            ? matchingServos[0].minimum_stock
+            : null,
+        stockUnitLabel: getSummaryStockUnitLabel(
+          "SERVO",
+          matchingServos[0].loose_quantity,
+        ),
+        ...getInventorySummaryStatus(
+          matchingServos[0].loose_quantity,
+          matchingServos[0].minimum_stock > 0
+            ? matchingServos[0].minimum_stock
+            : null,
+        ),
+        href: buildInventoryTargetHref(
+          "item",
+          matchingServos[0].item_id,
+        ),
+        mediaDescriptor: null,
+      } satisfies NonNullable<
+        AssistantServoModelInventoryBreakdownBlock["bareServo"]
+      >)
+    : null;
+  const configurationTargets = matchingConfigurations.map(
+    (configuration) => {
+      const minimumStock =
+        configuration.minimum_stock > 0
+          ? configuration.minimum_stock
+          : null;
+      const target = {
+        targetKind: "commercial_configuration" as const,
+        targetId: configuration.configuration_id,
+        displayCode: configuration.aliases[0],
+        itemType: "COMPLETE_BOX" as const,
+        typeLabel: customerFacingInventoryLabels.completeServoKit,
+        description: `${officialModel} + ${configuration.installation_kit.code}`,
+        currentStock: configuration.assembled_quantity,
+        minimumStock,
+        stockUnitLabel: getSummaryStockUnitLabel(
+          "COMPLETE_BOX",
+          configuration.assembled_quantity,
+        ),
+        ...getInventorySummaryStatus(
+          configuration.assembled_quantity,
+          minimumStock,
+        ),
+        href: buildInventoryTargetHref(
+          "commercial_configuration",
+          configuration.configuration_id,
+        ),
+        mediaDescriptor: null,
+        composition: {
+          servoCode: configuration.servo.code,
+          servoDescription: configuration.servo.description,
+          installationKitCode: configuration.installation_kit.code,
+          installationKitDescription:
+            configuration.installation_kit.description,
+        },
+      };
+
+      return {
+        target,
+        aliases: configuration.aliases,
+      };
+    },
+  );
+  const shownConfigurations = configurationTargets.slice(
+    0,
+    maximumServoModelConfigurations,
+  );
+  const fallbackLines = [
+    `Estoque do modelo ${officialModel}.`,
+    ...(bareServo
+      ? [
+          `${customerFacingInventoryLabels.looseServo}, Cód. ${bareServo.displayCode}: ${bareServo.currentStock}.`,
+        ]
+      : []),
+    ...shownConfigurations.map(
+      ({ target, aliases }) =>
+        `${customerFacingInventoryLabels.completeServoKit}, Cód. ${aliases.join(" / ")}: ${target.currentStock}.`,
+    ),
+    ...(configurationTargets.length > shownConfigurations.length
+      ? [
+          `Mais ${configurationTargets.length - shownConfigurations.length} configurações disponíveis no Estoque.`,
+        ]
+      : []),
+  ];
+
+  return {
+    kind: "servo_model_inventory_breakdown",
+    model: {
+      official: officialModel,
+      normalized: normalizedModel,
+    },
+    bareServo,
+    configurations: shownConfigurations,
+    totalConfigurations: configurationTargets.length,
+    remainingConfigurations:
+      configurationTargets.length - shownConfigurations.length,
+    inventoryHref: "/estoque",
+    fallbackText: fallbackLines.join("\n"),
+  };
 }
 
 export async function consultAssistantInventoryItemSummary(
@@ -1269,7 +1445,7 @@ export async function consultAssistantInventoryItemSummary(
         targetId: configuration.configuration_id,
         displayCode: configuration.matched_commercial_code,
         itemType: "COMPLETE_BOX",
-        typeLabel: "Caixa completa",
+        typeLabel: customerFacingInventoryLabels.completeServoKit,
         description: configuration.description,
         currentStock,
         minimumStock,

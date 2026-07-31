@@ -610,7 +610,9 @@ export function routeSupplierOrderQuestion(
     view = "history";
   }
   if (/\bhistorico\b|\bencerrados?\b/.test(message)) view = "history";
-  if (/\bativos?\b|\bem aberto\b/.test(message)) view = "active";
+  if (/\bativos?\b|\bem aberto\b|\bem andamento\b/.test(message)) {
+    view = "active";
+  }
 
   const hasWaitingPickup =
     /\b(aguardando|aguardam|pendente|pendentes|falta|faltam)\b.{0,35}\b(retirada|retirar|buscar)\b/.test(

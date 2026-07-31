@@ -257,7 +257,7 @@ export function InventoryAdjustmentDialog({
           <div className="rounded-xl border border-border-neutral px-3 py-3">
             <dt className="text-xs font-bold uppercase tracking-wide text-text-muted">
               {target.kind === "CONFIGURATION"
-                ? "Caixas completas atuais"
+                ? "Servos com kit atuais"
                 : isLooseComponent
                   ? "Saldo avulso atual"
                   : "Saldo atual"}
@@ -269,7 +269,7 @@ export function InventoryAdjustmentDialog({
           {isLooseComponent && target.kind === "ITEM" ? (
             <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-3">
               <dt className="text-xs font-bold uppercase tracking-wide text-violet-800">
-                Em caixas completas
+                Em Servos com kit
               </dt>
               <dd className="mt-1 font-mono text-xl font-black text-text-primary">
                 {target.mountedQuantity}
@@ -438,8 +438,8 @@ export function MinimumStockDialog({
           {target.kind === "CONFIGURATION" ? (
             <p className="mt-2 text-xs leading-5 font-semibold text-violet-800">
               {target.commercialCodes.length > 1
-                ? "Estes códigos representam a mesma Caixa completa e compartilham um único estoque mínimo."
-                : "O estoque mínimo pertence à Caixa completa, não ao alias comercial."}
+                ? "Estes códigos representam o mesmo Servo com kit e compartilham um único estoque mínimo."
+                : "O estoque mínimo pertence ao Servo com kit, não ao alias comercial."}
             </p>
           ) : null}
         </div>
@@ -548,12 +548,12 @@ export function ConfigurationOperationDialog({
     target.installationKit.isActive;
   const operationUnavailableMessage = isAssembly
     ? !assemblyStatusAvailable
-      ? "Esta caixa ou um dos componentes está inativo e não pode ser montado."
+      ? "Este Servo com kit ou um dos componentes está inativo e não pode ser montado."
       : maximumQuantity <= 0
-        ? "Sem saldo avulso suficiente para montar esta caixa."
+        ? "Sem saldo suficiente dos componentes para montar este Servo com kit."
         : null
     : maximumQuantity <= 0
-      ? "Não há Caixas completas disponíveis para desmontar."
+      ? "Não há Servos com kit disponíveis para desmontar."
       : null;
 
   useAccessibleDialog(dialogRef, quantityInputRef, isPending, onClose);
@@ -631,7 +631,7 @@ export function ConfigurationOperationDialog({
           : "";
 
         onSuccess(
-          `Operação confirmada. ${operationLabel} de ${receipt.quantity}. Servo avulso: ${receipt.servoQuantityBefore} → ${receipt.servoQuantityAfter}. Kit avulso: ${receipt.kitQuantityBefore} → ${receipt.kitQuantityAfter}. Caixas completas: ${receipt.configurationQuantityBefore} → ${receipt.configurationQuantityAfter}.${commercialCodeLabel}`,
+          `Operação confirmada. ${operationLabel} de ${receipt.quantity}. Servo sem kit: ${receipt.servoQuantityBefore} → ${receipt.servoQuantityAfter}. Kit avulso: ${receipt.kitQuantityBefore} → ${receipt.kitQuantityAfter}. Servos com kit: ${receipt.configurationQuantityBefore} → ${receipt.configurationQuantityAfter}.${commercialCodeLabel}`,
         );
       } catch {
         setError(
@@ -648,7 +648,7 @@ export function ConfigurationOperationDialog({
       dialogRef={dialogRef}
       titleId={titleId}
       descriptionId={descriptionId}
-      title={isAssembly ? "Montar Caixa completa" : "Desmontar Caixa completa"}
+      title={isAssembly ? "Montar Servo com kit" : "Desmontar Servo com kit"}
       isPending={isPending}
       onClose={onClose}
       wide
@@ -660,7 +660,7 @@ export function ConfigurationOperationDialog({
       >
         <div id={descriptionId} className="rounded-xl bg-app-background p-4">
           <p className="text-xs font-bold uppercase tracking-wide text-text-muted">
-            Caixa completa
+            Servo com kit
           </p>
           <p className="mt-1 font-mono text-lg font-black text-violet-900">
             {target.commercialCodes.length > 0
@@ -684,7 +684,7 @@ export function ConfigurationOperationDialog({
               {target.servo.description}
             </p>
             <p className="mt-2 text-sm font-bold text-text-primary">
-              Saldo avulso atual: {target.servo.looseQuantity}
+              Saldo sem kit atual: {target.servo.looseQuantity}
             </p>
           </article>
 
@@ -699,13 +699,13 @@ export function ConfigurationOperationDialog({
               {target.installationKit.description}
             </p>
             <p className="mt-2 text-sm font-bold text-text-primary">
-              Saldo avulso atual: {target.installationKit.looseQuantity}
+              Saldo separado atual: {target.installationKit.looseQuantity}
             </p>
           </article>
 
           <article className="rounded-xl border border-violet-200 bg-violet-50 p-3">
             <p className="text-xs font-bold uppercase tracking-wide text-violet-800">
-              Caixas completas atuais
+              Servos com kit atuais
             </p>
             <p className="mt-2 font-mono text-2xl font-black text-text-primary">
               {target.assembledQuantity}
@@ -795,7 +795,7 @@ export function ConfigurationOperationDialog({
             <dl className="mt-3 grid gap-2 sm:grid-cols-3">
               <div className="rounded-xl bg-surface p-3">
                 <dt className="text-xs font-bold text-text-muted">
-                  {isAssembly ? "Servo avulso" : "Caixas completas"}
+                  {isAssembly ? "Servo sem kit" : "Servos com kit"}
                 </dt>
                 <dd className="mt-1 font-mono font-black text-text-primary">
                   {isAssembly
@@ -805,7 +805,7 @@ export function ConfigurationOperationDialog({
               </div>
               <div className="rounded-xl bg-surface p-3">
                 <dt className="text-xs font-bold text-text-muted">
-                  {isAssembly ? "Kit avulso" : "Servo avulso"}
+                  {isAssembly ? "Kit avulso" : "Servo sem kit"}
                 </dt>
                 <dd className="mt-1 font-mono font-black text-text-primary">
                   {isAssembly
@@ -815,7 +815,7 @@ export function ConfigurationOperationDialog({
               </div>
               <div className="rounded-xl bg-surface p-3">
                 <dt className="text-xs font-bold text-text-muted">
-                  {isAssembly ? "Caixas completas" : "Kit avulso"}
+                  {isAssembly ? "Servos com kit" : "Kit avulso"}
                 </dt>
                 <dd className="mt-1 font-mono font-black text-text-primary">
                   {isAssembly
@@ -848,7 +848,7 @@ export function ConfigurationOperationDialog({
               setDescription(event.target.value);
               markPayloadChanged();
             }}
-            placeholder="Ex.: reorganização das caixas na prateleira"
+            placeholder="Ex.: reorganização dos Servos com kit na prateleira"
             className="nk-field w-full resize-y rounded-xl border px-3 py-3 text-base outline-none"
           />
           <span className="mt-1 block text-right text-xs text-text-muted">

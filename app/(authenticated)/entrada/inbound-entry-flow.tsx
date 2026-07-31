@@ -164,7 +164,7 @@ function OptionBadge({ option }: { option: InboundCatalogOption }) {
     </span>
   ) : (
     <span className="inline-flex rounded-full bg-violet-200 px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-violet-950 uppercase">
-      Caixa com kit
+      Servo com kit
     </span>
   );
 }
@@ -184,7 +184,8 @@ function CatalogAddButton({
   variant: "physical" | "commercial";
 }) {
   const selectedLabel = variant === "physical" ? "Adicionado" : "Adicionada";
-  const addLabel = variant === "physical" ? "Adicionar item" : "Adicionar caixa";
+  const addLabel =
+    variant === "physical" ? "Adicionar item" : "Adicionar Servo com kit";
 
   return (
     <button
@@ -307,7 +308,7 @@ function CommercialCatalogTable({
     <div className="relative mt-4 rounded-xl border border-violet-200 bg-surface shadow-sm">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
-          Caixas com kit disponíveis para adicionar à entrada
+          Servos com kit disponíveis para adicionar à entrada
         </caption>
         <thead>
           <tr>
@@ -359,7 +360,7 @@ function CommercialCatalogTable({
                   <p className="text-[0.65rem] leading-4 font-bold text-violet-900 sm:text-xs">
                     Montadas: {numberFormatter.format(option.assembledBalance)}
                     {option.aliases.length > 0
-                      ? ` · Mesma caixa: ${option.aliases.join(" / ")}`
+                      ? ` · Mesmo Servo com kit: ${option.aliases.join(" / ")}`
                       : ""}
                   </p>
                   <CommercialConfigurationImage
@@ -1001,7 +1002,7 @@ export function InboundEntryFlow({
           </div>
           <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
             <p className="text-xs font-black tracking-wide text-violet-800 uppercase">
-              Caixas com kit
+              Servos com kit
             </p>
             <p className="mt-1 text-2xl font-black text-violet-950">
               {numberFormatter.format(receipt.commercialQuantity)}
@@ -1009,7 +1010,7 @@ export function InboundEntryFlow({
           </div>
         </div>
         <p className="mt-3 text-xs font-semibold text-text-muted">
-          “Unidades informadas” soma as quantidades das linhas. Cada caixa
+          “Unidades informadas” soma as quantidades das linhas. Cada Servo com kit
           comercial conta como uma unidade, não como dois componentes.
         </p>
 
@@ -1145,7 +1146,7 @@ export function InboundEntryFlow({
                 id="inbound-review-boxes"
                 className="text-lg font-black text-text-primary"
               >
-                Caixas recebidas com kit
+                Servos recebidos com kit
               </h3>
               <div className="mt-3 space-y-3">
                 {preview.commercialLines.map((line) => (
@@ -1203,7 +1204,7 @@ export function InboundEntryFlow({
                     }`}
                   >
                     <p className="text-xs font-black tracking-wide text-violet-800 uppercase">
-                      Caixas montadas — impacto consolidado
+                      Servos com kit — impacto consolidado
                     </p>
                     <p className="mt-1 font-mono text-lg font-black text-violet-950">
                       {impact.requestedCodes.join(" + ")}
@@ -1211,7 +1212,7 @@ export function InboundEntryFlow({
                     <p className="mt-1 text-xs font-semibold text-text-muted">
                       {impact.requestedCodes.length > 1
                         ? "Os aliases selecionados compartilham o mesmo saldo montado."
-                        : "Saldo atual e previsto das caixas montadas."}
+                        : "Saldo atual e previsto dos Servos com kit."}
                     </p>
                     <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
                       <div className="rounded-xl bg-surface p-2.5">
@@ -1250,7 +1251,7 @@ export function InboundEntryFlow({
               </div>
 
               <div className="mt-4 rounded-2xl border border-violet-300 bg-violet-100/70 p-4 text-sm font-bold text-violet-950">
-                As caixas comerciais serão registradas como já montadas. Os
+                Os Servos com kit serão registrados como já montados. Os
                 componentes não serão adicionados ao estoque separado.
               </div>
             </section>
@@ -1350,12 +1351,12 @@ export function InboundEntryFlow({
               Etapa 1 de 2
             </p>
             <h2 className="mt-1 text-xl font-black text-text-primary">
-              Selecione peças ou caixas
+              Selecione peças ou Servos com kit
             </h2>
           </div>
 
           <div className="mt-5 rounded-2xl border border-brand-gold/40 bg-brand-gold-soft/55 p-4 text-sm font-bold text-brand-charcoal">
-            Use o código comercial quando a caixa chegar com servo e kit. Se
+            Use o código comercial quando o Servo chegar com kit. Se
             as peças chegarem separadas, adicione os códigos físicos.
           </div>
 
@@ -1387,7 +1388,7 @@ export function InboundEntryFlow({
 
             <StockFlowSection
               id="inbound-commercial-section"
-              title="Caixa com kit"
+              title="Servo com kit"
               description="Configurações identificadas por código comercial"
               count={catalog.commercialCodes.length}
               isOpen={openSection === "commercial"}
@@ -1418,7 +1419,7 @@ export function InboundEntryFlow({
             <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
               <h3 className="font-black text-text-primary">Carrinho vazio</h3>
               <p className="mt-1 text-sm font-semibold text-text-muted">
-                Adicione itens separados ou caixas com kit para continuar.
+                Adicione itens separados ou Servos com kit para continuar.
               </p>
             </div>
           ) : (

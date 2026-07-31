@@ -1,5 +1,6 @@
 import "server-only";
 
+import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import {
   buildPurchaseRecommendations,
   findPurchaseRecommendationItemsByCode,
@@ -58,7 +59,7 @@ type ConfigurationBalanceRow = {
 };
 
 const physicalTypeLabels = {
-  SERVO: "Servoembreagem",
+  SERVO: customerFacingInventoryLabels.looseServo,
   INSTALLATION_KIT: "Kit de instalação",
   REPAIR_KIT: "Jogo de reparo",
   LOOSE_PART: "Peça avulsa",
@@ -224,7 +225,7 @@ export async function loadPurchaseRecommendations(): Promise<PurchaseRecommendat
         primaryCode: aliases[0],
         aliases: aliases.slice(1),
         itemType: "COMPLETE_BOX",
-        typeLabel: "Caixa completa",
+        typeLabel: customerFacingInventoryLabels.completeServoKit,
         description:
           configuration.description?.trim() ||
           `${servo.description} + ${installationKit.code}`,

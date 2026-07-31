@@ -56,12 +56,12 @@ const physicalGroups: PhysicalGroupDefinition[] = [
   {
     itemType: "SERVO",
     title: "Servoembreagens",
-    description: "Servos avulsos e presentes em caixas",
+    description: "Servos sem kit e presentes em conjuntos montados",
   },
   {
     itemType: "INSTALLATION_KIT",
     title: "Kits de instalação",
-    description: "Kits separados e presentes em caixas",
+    description: "Kits separados e presentes em Servos com kit",
   },
   {
     itemType: "REPAIR_KIT",
@@ -251,9 +251,9 @@ function PhysicalBalanceSummary({ item }: { item: InventoryPhysicalItem }) {
 
   if (item.itemType === "INSTALLATION_KIT") {
     return (
-      <span title="Kits separados e kits presentes dentro de caixas montadas">
+      <span title="Kits separados e kits presentes em Servos com kit montados">
         {quantityFormatter.format(item.looseQuantity)} separados ·{" "}
-        {quantityFormatter.format(item.mountedQuantity)} em caixas
+        {quantityFormatter.format(item.mountedQuantity)} em Servos com kit
       </span>
     );
   }
@@ -462,7 +462,7 @@ function ConfigurationTable({
     <div className="relative bg-surface">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
-          Caixas completas, saldos montados, estoque mínimo e ações disponíveis
+          Servos com kit, saldos montados, estoque mínimo e ações disponíveis
         </caption>
         <thead>
           <tr>
@@ -483,7 +483,7 @@ function ConfigurationTable({
               className={`${stickyHeaderClassName} w-[14%] text-right sm:w-[12%]`}
             >
               <span className="sm:hidden">Qtd.</span>
-              <span className="hidden sm:inline">Caixas</span>
+              <span className="hidden sm:inline">Com kit</span>
             </th>
             <th
               scope="col"
@@ -795,11 +795,11 @@ export function InventoryWorkspace({
 
   const summaryCards = [
     {
-      label: "Caixas completas",
+      label: "Servos com kit",
       value: inventory.summary.completeBoxesTotal,
     },
     {
-      label: "Servos avulsos",
+      label: "Servos sem kit",
       value: inventory.summary.looseServoTotal,
     },
     {
@@ -1071,7 +1071,7 @@ export function InventoryWorkspace({
               id="configurations-title"
               className="text-lg font-black text-text-primary sm:text-xl"
             >
-              Caixas completas
+              Servos com kit
             </h2>
           </div>
           <span className="text-right text-xs font-bold text-text-muted">
@@ -1108,7 +1108,7 @@ export function InventoryWorkspace({
           })}
           {configurationFamilies.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border-neutral bg-surface px-4 py-5 text-sm text-text-muted">
-              Nenhuma caixa completa corresponde aos filtros.
+              Nenhum Servo com kit corresponde aos filtros.
             </p>
           ) : null}
         </div>

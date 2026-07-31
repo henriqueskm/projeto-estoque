@@ -2,6 +2,7 @@ import {
   assistantQueryMaxLength,
   type AssistantInventoryItemSummaryMetric,
 } from "@/lib/assistant-types";
+import { extractServoModelCandidate } from "@/lib/servo-model-search";
 
 export type AssistantIntent =
   | "UNSUPPORTED_WRITE"
@@ -185,8 +186,20 @@ function hasItemQueryIntent(message: string) {
       message,
     ) ||
     /\b(tenho|temos|tem|possuo|possui)\s+\d+\s*[?.!]*$/.test(message);
+  const hasServoModelCandidate = Boolean(
+    extractServoModelCandidate(message),
+  );
+  const hasModelStatusCue =
+    hasServoModelCandidate &&
+    /\b(esta|estao|baixo|baixa|zerado|zerada|minimo|estoque)\b/.test(
+      message,
+    );
 
-  return hasQueryCue && (hasStockConcept || hasBusinessCode);
+  return (
+    (hasQueryCue &&
+      (hasStockConcept || hasBusinessCode || hasServoModelCandidate)) ||
+    hasModelStatusCue
+  );
 }
 
 function hasGeneralConversationIntent(message: string) {
@@ -299,6 +312,76 @@ export function extractExplicitItemQuery(message: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/([A-Z0-9])\s*-\s*([A-Z0-9])/gi, "$1-$2");
+  const numericCode = searchableMessage.match(
+    /\b(?:codigo|cod\.?|itens?|servos?|kits?|reparos?|pecas?|caixas?|suportes?|do|da|de)\s+(\d+)\b/i,
+  )?.[1];
+
+  if (numericCode) {
+    return numericCode;
+  }
+
+  const servoModelCandidate = extractServoModelCandidate(message);
+
+  if (servoModelCandidate) {
+    const modelIndex = searchableMessage
+      .toLocaleLowerCase("pt-BR")
+      .indexOf(servoModelCandidate.toLocaleLowerCase("pt-BR"));
+    const suffixText = searchableMessage
+      .slice(modelIndex + servoModelCandidate.length)
+      .trim();
+    const ignoredSuffixes = new Set([
+      "abaixo",
+      "avulso",
+      "avulsos",
+      "com",
+      "da",
+      "de",
+      "do",
+      "e",
+      "em",
+      "esta",
+      "estoque",
+      "existe",
+      "modelo",
+      "montado",
+      "montados",
+      "na",
+      "nas",
+      "no",
+      "nos",
+      "para",
+      "pedido",
+      "pedidos",
+      "possuo",
+      "sem",
+      "tem",
+      "tenho",
+    ]);
+    const suffixParts: string[] = [];
+
+    for (const part of suffixText.split(/\s+/).slice(0, 3)) {
+      const cleanedPart = part.replace(/^[^\p{L}\p{N}]+|[?!.;,]+$/gu, "");
+      const normalizedPart = normalizeAssistantText(cleanedPart);
+
+      if (
+        !cleanedPart ||
+        ignoredSuffixes.has(normalizedPart) ||
+        !/^[\p{L}\p{N}/_-]+$/u.test(cleanedPart)
+      ) {
+        break;
+      }
+
+      suffixParts.push(cleanedPart);
+    }
+
+    const candidate =
+      suffixParts.length > 0
+        ? `${servoModelCandidate} ${suffixParts.join(" ")}`
+        : servoModelCandidate;
+
+    return cleanQueryCandidate(candidate);
+  }
+
   const alphanumericCodes =
     searchableMessage.match(
       /\b(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9]+(?:-[A-Z0-9]+)*\b/gi,
@@ -307,14 +390,6 @@ export function extractExplicitItemQuery(message: string) {
 
   if (alphanumericCodes.length > 0) {
     return cleanQueryCandidate(alphanumericCodes.at(-1) ?? "");
-  }
-
-  const numericCode = searchableMessage.match(
-    /\b(?:codigo|itens?|servos?|kits?|reparos?|pecas?|caixas?|suportes?|do|da|de)\s+(\d+)\b/i,
-  )?.[1];
-
-  if (numericCode) {
-    return numericCode;
   }
 
   const phrasePatterns = [
@@ -435,6 +510,10 @@ export function routeInventoryItemSummaryQuestion(
   const rawQuery = explicitQuery ?? contextualQuery;
 
   if (!rawQuery) {
+    return null;
+  }
+
+  if (extractServoModelCandidate(rawQuery)) {
     return null;
   }
 

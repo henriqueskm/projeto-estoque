@@ -358,8 +358,8 @@ function buildBatchSummary(
         ),
         pluralized(
           commercialQuantity,
-          "caixa com kit",
-          "caixas com kit",
+          "Servo com kit",
+          "Servos com kit",
         ),
       ].join(" · ");
     }
@@ -373,8 +373,8 @@ function buildBatchSummary(
         ),
         pluralized(
           commercialQuantity,
-          "caixa com kit",
-          "caixas com kit",
+          "Servo com kit",
+          "Servos com kit",
         ),
       ].join(" · ");
     }
@@ -431,7 +431,11 @@ function buildBatchSummary(
         ),
       );
       segments.push(
-        pluralized(commercialQuantity, "caixa solicitada", "caixas solicitadas"),
+        pluralized(
+          commercialQuantity,
+          "Servo com kit solicitado",
+          "Servos com kit solicitados",
+        ),
       );
     }
 
@@ -464,8 +468,8 @@ function buildBatchSummary(
     fallbackSegments.push(
       pluralized(
         configurationMovements.length,
-        "movimento em caixa",
-        "movimentos em caixas",
+        "movimento em Servo com kit",
+        "movimentos em Servos com kit",
       ),
     );
   }

@@ -35,6 +35,7 @@ import {
   TrashIcon,
 } from "@/components/icons";
 import { getServoFamilyLabel } from "@/lib/inventory-family";
+import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type {
   CreateSupplierOrderInput,
@@ -137,7 +138,7 @@ const statusDetails: Record<
 };
 
 const orderItemTypeLabels = {
-  SERVO: "Servoembreagem",
+  SERVO: customerFacingInventoryLabels.looseServo,
   INSTALLATION_KIT: "Kit de instalação",
   REPAIR_KIT: "Jogo de reparo",
   LOOSE_PART: "Peça avulsa",
@@ -295,7 +296,7 @@ function lineIdentity(line: DraftLine) {
 
 function itemTypeLabel(itemType: SupplierOrderItem["itemTypeSnapshot"]) {
   return itemType === "COMMERCIAL_CONFIGURATION"
-    ? "Caixa completa"
+    ? customerFacingInventoryLabels.completeServoKit
     : orderItemTypeLabels[itemType];
 }
 
@@ -303,7 +304,8 @@ function compactItemTypeLabel(
   itemType: SupplierOrderItem["itemTypeSnapshot"],
 ) {
   const labels = {
-    COMMERCIAL_CONFIGURATION: "Caixa",
+    COMMERCIAL_CONFIGURATION:
+      customerFacingInventoryLabels.completeServoKit,
     SERVO: "Servo",
     INSTALLATION_KIT: "Kit",
     REPAIR_KIT: "Reparo",
@@ -1039,7 +1041,7 @@ function OrderFormDialog({
         imageUrl: configuration.imageUrl,
         compatibleKitImages: [],
         model: configuration.servoModel,
-        typeLabel: "Caixa completa",
+        typeLabel: customerFacingInventoryLabels.completeServoKit,
         quantity: 1,
         notes: "",
         pickedQuantity: 0,
@@ -1255,7 +1257,7 @@ function OrderFormDialog({
                   Itens do pedido
                 </h3>
                 <p className="text-xs font-semibold text-text-muted">
-                  Quantidade solicitada por item ou caixa.
+                  Quantidade solicitada por item ou Servo com kit.
                 </p>
               </div>
               <span className="rounded-full bg-app-background px-3 py-1 text-xs font-black text-text-muted">
@@ -1528,7 +1530,7 @@ function OrderFormDialog({
                 >
                   <span>
                     <span className="block text-sm font-black text-text-primary">
-                      Caixas completas
+                      Servos com kit
                     </span>
                     <span className="text-xs font-semibold text-text-muted">
                       {quantityFormatter.format(filteredConfigurations.length)}{" "}
@@ -1554,7 +1556,7 @@ function OrderFormDialog({
                   >
                     {configurationFamilies.length === 0 ? (
                       <p className="rounded-lg bg-white p-3 text-sm font-semibold text-text-muted">
-                        Nenhuma caixa completa encontrada.
+                        Nenhum Servo com kit encontrado.
                       </p>
                     ) : (
                       <div className="space-y-2">

@@ -39,6 +39,7 @@ import {
   type AssistantSupplierOrderPickupPreviewBlock,
   type AssistantSupplierOrderPickupConfirmationResult,
   type AssistantSupplierOrderPickupResultBlock,
+  type AssistantServoModelInventoryAction,
 } from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
@@ -73,40 +74,40 @@ const initialSuggestions: AssistantClarificationBlock = {
   message: "Escolha uma sugestão ou escreva sua pergunta abaixo.",
   options: [
     {
-      id: "initial-inventory-balance",
-      label: "Consultar saldo",
-      prompt: "Quantos 1H tenho?",
-      category: "inventory",
-    },
-    {
-      id: "initial-inventory-zero",
-      label: "Ver itens zerados",
-      prompt: "Quais itens estão zerados?",
-      category: "inventory",
-    },
-    {
-      id: "initial-order-number",
-      label: "Buscar negociação",
-      prompt: "Mostre o pedido Teste 04",
-      category: "supplier_orders",
-    },
-    {
-      id: "initial-order-partial",
-      label: "Ver Pedidos parciais",
-      prompt: "Quais pedidos estão parciais?",
-      category: "supplier_orders",
-    },
-    {
-      id: "initial-catalog-photo",
-      label: "Consultar foto",
-      prompt: "Quero ver a foto do 1B",
-      category: "media",
-    },
-    {
       id: "initial-replenishment",
-      label: "Ver reposição",
-      prompt: "Quais itens precisam de reposição?",
+      label: "Ver o que comprar",
+      prompt: "O que preciso comprar?",
       category: "replenishment",
+    },
+    {
+      id: "initial-inventory-minimum",
+      label: "Ver abaixo do mínimo",
+      prompt: "Quais itens estão abaixo do estoque mínimo?",
+      category: "inventory",
+    },
+    {
+      id: "initial-order-pickup",
+      label: "Ver retiradas pendentes",
+      prompt: "Quais Pedidos ainda têm itens para retirar?",
+      category: "supplier_orders",
+    },
+    {
+      id: "initial-order-purchased",
+      label: "Ver itens comprados",
+      prompt: "Quais itens já foram comprados?",
+      category: "supplier_orders",
+    },
+    {
+      id: "initial-inventory-without-minimum",
+      label: "Ver sem mínimo",
+      prompt: "Quais produtos estão sem estoque mínimo?",
+      category: "inventory",
+    },
+    {
+      id: "initial-order-active",
+      label: "Ver Pedidos em andamento",
+      prompt: "Mostre meus Pedidos em andamento.",
+      category: "supplier_orders",
     },
   ],
   fallbackText:
@@ -185,7 +186,7 @@ export function AssistantHome({
     !isComposerLocked &&
     Boolean(draft.trim() || attachment);
   const stockItems = [
-    ["Caixas", summary?.completeBoxesTotal],
+    ["Servos com kit", summary?.completeBoxesTotal],
     ["Servos", summary?.looseServoTotal],
     ["Kits", summary?.looseKitTotal],
     ["Reparos", summary?.repairKitTotal],
@@ -435,6 +436,7 @@ export function AssistantHome({
     context?: {
       supplierOrderId?: string;
       supplierOrderItemId?: string;
+      inventoryAction?: AssistantServoModelInventoryAction;
     },
   ) {
     if (
@@ -484,6 +486,9 @@ export function AssistantHome({
               selectedSupplierOrderItemId:
                 context.supplierOrderItemId,
             }
+          : {}),
+        ...(context?.inventoryAction
+          ? { inventoryAction: context.inventoryAction }
           : {}),
       };
       const response = await fetch("/api/assistant/chat", {

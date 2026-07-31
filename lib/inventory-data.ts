@@ -12,6 +12,7 @@ import {
 } from "@/lib/stock-calculations";
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 import { createCompatibleKitImageMap } from "@/lib/compatible-kit-images";
+import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { createClient } from "@/lib/supabase/server";
 
 type ItemRow = {
@@ -63,7 +64,7 @@ type InventoryCommercialConfigurationDraft = Omit<
 };
 
 const physicalItemTypeLabels: Record<PhysicalStockItemType, string> = {
-  SERVO: "Servoembreagem",
+  SERVO: customerFacingInventoryLabels.looseServo,
   INSTALLATION_KIT: "Kit de instalação",
   REPAIR_KIT: "Jogo de reparo",
   LOOSE_PART: "Peça avulsa",

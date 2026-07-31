@@ -24,6 +24,8 @@ import type {
   AssistantSupplierOrderListBlock,
   AssistantSupplierOrderPickupPreviewBlock,
   AssistantSupplierOrderPickupResultBlock,
+  AssistantServoModelInventoryAction,
+  AssistantServoModelInventoryBreakdownBlock,
   AssistantStructuredBlock,
 } from "@/lib/assistant-types";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
@@ -438,6 +440,116 @@ function InventoryItemSummaryBlock({
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+function ServoModelBreakdownTarget({
+  target,
+  codes,
+}: {
+  target: AssistantInventoryItemSummaryTarget;
+  codes: string[];
+}) {
+  return (
+    <article className="min-w-0 rounded-xl border border-border-neutral bg-surface p-3 shadow-sm">
+      <header className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <span className="text-[0.68rem] font-black tracking-[0.1em] text-text-muted uppercase">
+          {target.typeLabel}
+        </span>
+        <span className="max-w-full break-words rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-black whitespace-normal text-text-primary">
+          Cód. {codes.join(" / ")}
+        </span>
+      </header>
+      <p className="mt-2 break-words text-sm font-black text-text-primary">
+        {target.description}
+      </p>
+      <dl className="mt-3 grid grid-cols-3 gap-1.5 border-y border-border-neutral py-2.5">
+        <div className="min-w-0">
+          <dt className="text-[0.58rem] font-black tracking-wide text-text-muted uppercase">
+            Estoque
+          </dt>
+          <dd className="mt-0.5 text-lg font-black tabular-nums text-text-primary">
+            {quantityFormatter.format(target.currentStock)}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-[0.58rem] font-black tracking-wide text-text-muted uppercase">
+            Mínimo
+          </dt>
+          <dd className="mt-0.5 break-words text-sm font-black text-text-primary">
+            {target.minimumStock === null
+              ? "Não definido"
+              : quantityFormatter.format(target.minimumStock)}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-[0.58rem] font-black tracking-wide text-text-muted uppercase">
+            Situação
+          </dt>
+          <dd
+            className={`mt-0.5 inline-flex max-w-full justify-center rounded-full px-2 py-0.5 text-center text-[0.62rem] leading-tight font-black whitespace-normal ${inventoryStatusClasses[target.status]}`}
+          >
+            {target.statusLabel}
+          </dd>
+        </div>
+      </dl>
+      <Link
+        href={target.href}
+        className="nk-focus mt-2.5 inline-flex min-h-11 items-center justify-center rounded-xl border border-border-neutral px-3 text-xs font-black text-text-primary transition hover:bg-app-background"
+      >
+        Abrir no Estoque
+      </Link>
+    </article>
+  );
+}
+
+function ServoModelInventoryBreakdown({
+  block,
+}: {
+  block: AssistantServoModelInventoryBreakdownBlock;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[0.68rem] font-black tracking-[0.12em] text-brand-gold-dark uppercase">
+        Estoque por modelo
+      </p>
+      <h3 className="mt-0.5 break-words text-base font-black text-text-primary sm:text-lg">
+        Estoque do modelo {block.model.official}
+      </h3>
+      <p className="mt-1 text-xs font-semibold text-text-muted">
+        Cada saldo físico é mostrado separadamente.
+      </p>
+      <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+        {block.bareServo ? (
+          <ServoModelBreakdownTarget
+            target={block.bareServo}
+            codes={[block.bareServo.displayCode]}
+          />
+        ) : null}
+        {block.configurations.map(({ target, aliases }) => (
+          <ServoModelBreakdownTarget
+            key={target.targetId}
+            target={target}
+            codes={aliases}
+          />
+        ))}
+      </div>
+      {block.remainingConfigurations > 0 ? (
+        <p className="mt-2 text-xs font-semibold text-text-muted">
+          Mais {block.remainingConfigurations}{" "}
+          {block.remainingConfigurations === 1
+            ? "configuração disponível"
+            : "configurações disponíveis"}{" "}
+          no Estoque.
+        </p>
+      ) : null}
+      <Link
+        href={block.inventoryHref}
+        className="nk-focus mt-3 inline-flex min-h-11 items-center rounded-xl bg-brand-charcoal px-3 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
+      >
+        Ver todos no Estoque
+      </Link>
     </div>
   );
 }
@@ -1588,6 +1700,7 @@ function AssistantClarification({
     context?: {
       supplierOrderId?: string;
       supplierOrderItemId?: string;
+      inventoryAction?: AssistantServoModelInventoryAction;
     },
   ) => void;
 }) {
@@ -1636,6 +1749,9 @@ function AssistantClarification({
                                 option.contextSupplierOrderItemId,
                             }
                           : {}),
+                        ...(option.action
+                          ? { inventoryAction: option.action }
+                          : {}),
                       })
                     }
                     aria-label={`Enviar sugestão: ${option.prompt}`}
@@ -1682,6 +1798,7 @@ export function AssistantStructuredBlockView({
     context?: {
       supplierOrderId?: string;
       supplierOrderItemId?: string;
+      inventoryAction?: AssistantServoModelInventoryAction;
     },
   ) => void;
   onPickupConfirm?: (
@@ -1726,6 +1843,8 @@ export function AssistantStructuredBlockView({
       return <InventoryAlertsBlock block={block} />;
     case "inventory_item_summary":
       return <InventoryItemSummaryBlock block={block} />;
+    case "servo_model_inventory_breakdown":
+      return <ServoModelInventoryBreakdown block={block} />;
     case "catalog_media":
       return <CatalogMediaBlock block={block} />;
     case "supplier_order_list":

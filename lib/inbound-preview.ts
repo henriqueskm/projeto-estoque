@@ -166,7 +166,7 @@ export function buildInboundPreview(
     .filter((impact) => !impact.isValid)
     .forEach((impact) => {
       errors.push(
-        `A entrada das caixas ${impact.requestedCodes.join(", ")} excede o limite permitido para a configuração.`,
+        `A entrada dos Servos com kit ${impact.requestedCodes.join(", ")} excede o limite permitido para a configuração.`,
       );
     });
 
@@ -175,7 +175,7 @@ export function buildInboundPreview(
   }
 
   if (!Number.isSafeInteger(commercialQuantity)) {
-    errors.push("O total de caixas com kit excede o limite permitido.");
+    errors.push("O total de Servos com kit excede o limite permitido.");
   }
 
   return {

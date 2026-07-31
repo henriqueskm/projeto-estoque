@@ -3,6 +3,7 @@ import {
   assistantMessageMaxLength,
   assistantQueryMaxLength,
   assistantRequestMaxCharacters,
+  parseAssistantServoModelInventoryAction,
   type AssistantChatError,
   type AssistantChatSuccess,
 } from "@/lib/assistant-types";
@@ -168,6 +169,7 @@ export async function POST(request: Request) {
     bodyRecord.lastSupplierOrderCatalogCode;
   const rawSelectedSupplierOrderItemId =
     bodyRecord.selectedSupplierOrderItemId;
+  const rawInventoryAction = bodyRecord.inventoryAction;
 
   if (
     bodyKeys.some(
@@ -176,7 +178,8 @@ export async function POST(request: Request) {
         key !== "lastItemQuery" &&
         key !== "lastSupplierOrderId" &&
         key !== "lastSupplierOrderCatalogCode" &&
-        key !== "selectedSupplierOrderItemId",
+        key !== "selectedSupplierOrderItemId" &&
+        key !== "inventoryAction",
     ) ||
     !bodyKeys.includes("message")
   ) {
@@ -232,6 +235,14 @@ export async function POST(request: Request) {
     )
       ? normalizedSelectedSupplierOrderItemId
       : null;
+  const inventoryAction =
+    rawInventoryAction === undefined
+      ? null
+      : parseAssistantServoModelInventoryAction(rawInventoryAction);
+
+  if (rawInventoryAction !== undefined && !inventoryAction) {
+    return errorResponse("A opção selecionada não é válida.", 400);
+  }
 
   try {
     const answer = await answerAssistantQuestion(
@@ -243,6 +254,7 @@ export async function POST(request: Request) {
       authentication.userId,
       authentication.profileName,
       selectedSupplierOrderItemId,
+      inventoryAction,
     );
 
     return NextResponse.json<AssistantChatSuccess>(answer);

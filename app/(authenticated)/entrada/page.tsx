@@ -33,7 +33,7 @@ export default async function InboundPage() {
               Entrada manual
             </h1>
             <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-200 sm:text-base">
-              Registre peças recebidas separadas e caixas completas por código
+              Registre peças recebidas separadas e Servos com kit por código
               comercial na mesma operação.
             </p>
           </div>

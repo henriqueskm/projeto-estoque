@@ -36,11 +36,14 @@ const catalogCodeCapture =
   "((?=[a-z0-9-]*\\d)[a-z0-9]+(?:-[a-z0-9]+)*)";
 const quantityCapture = "(\\d{1,10}|uma?|um)";
 
-function normalizeText(value: string) {
+export function normalizeAssistantCommandText(value: string) {
   return value
-    .normalize("NFD")
+    .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("pt-BR")
+    .replace(/\bcod(?:igo)?\b\.?/g, "codigo")
+    .replace(/[º°]/g, " ")
+    .replace(/[.,;:!?()[\]{}"'“”‘’`]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -80,18 +83,24 @@ function normalizeNegotiationNumber(value: string) {
   return negotiationNumber;
 }
 
-function extractNegotiationNumber(rawMessage: string) {
-  const match = rawMessage.match(
-    /\bpedido\b(?:\s+(?:n|número|numero)\b)?\s*[º°#:]?\s*(.+?)(?=\s+como\s+retirad[oa]s?\b|[?!.;]*$)/iu,
+function extractNegotiationNumber(message: string) {
+  const match = message.match(
+    /\bpedido\b(?:\s+(?:n|numero)\b)?\s+(.+)$/,
   );
-  const candidate = match?.[1]
-    ?.replace(/^(?:no|na|do|da|de)\s+/iu, "")
-    .trim();
+  const remainder = match?.[1]?.trim();
 
-  if (!candidate) {
+  if (!remainder) {
     return null;
   }
 
+  const commandBoundary = remainder.search(
+    /\s+(?=(?:retire|retirar|marque|marcar|acrescente|registr(?:e|ar)|defina|definir|deixe|deixar)\b|mais\s+(?:\d{1,10}|uma?|um)\b)/,
+  );
+  const candidate = (
+    commandBoundary >= 0
+      ? remainder.slice(0, commandBoundary)
+      : remainder
+  ).trim();
   const normalized = normalizeNegotiationNumber(candidate);
 
   if (
@@ -104,21 +113,96 @@ function extractNegotiationNumber(rawMessage: string) {
   return normalized;
 }
 
-function parseLineMatch(
-  match: RegExpMatchArray | null,
-): {
-  requestedQuantity: number;
-  catalogCode: string;
-} | null {
-  if (!match) {
-    return null;
+function extractCatalogCode(message: string) {
+  const explicitCode = message.match(
+    new RegExp(`\\bcodigo\\s+${catalogCodeCapture}\\b`),
+  )?.[1];
+
+  if (explicitCode) {
+    return normalizeCatalogCode(explicitCode);
   }
 
-  const requestedQuantity = parseQuantity(match[1]);
-  const catalogCode = normalizeCatalogCode(match[2]);
+  const contextualCodes = Array.from(
+    message.matchAll(
+      new RegExp(
+        `\\b(?:do|da|de)\\s+${catalogCodeCapture}\\b`,
+        "g",
+      ),
+    ),
+  );
 
-  return requestedQuantity && catalogCode
-    ? { requestedQuantity, catalogCode }
+  for (const match of contextualCodes) {
+    const code = normalizeCatalogCode(match[1]);
+
+    if (code) {
+      return code;
+    }
+  }
+
+  return null;
+}
+
+function extractQuantity(
+  message: string,
+  patterns: RegExp[],
+) {
+  for (const pattern of patterns) {
+    const candidate = message.match(pattern)?.[1];
+    const quantity = candidate ? parseQuantity(candidate) : null;
+
+    if (quantity) {
+      return quantity;
+    }
+  }
+
+  return null;
+}
+
+function extractPickupMode(message: string):
+  | {
+      mode: "increment" | "set_total";
+      requestedQuantity: number;
+    }
+  | null {
+  const setTotalQuantity = extractQuantity(message, [
+    new RegExp(
+      `\\b(?:defina|definir)\\s+(?:o\\s+)?total\\s+retirado\\b.*?\\b(?:como|em)\\s+${quantityCapture}\\b`,
+    ),
+    new RegExp(
+      `\\b(?:deixe|deixar)\\s+(?:o\\s+)?total(?:\\s+retirado)?\\s+em\\s+${quantityCapture}\\b`,
+    ),
+    new RegExp(
+      `\\b(?:marque|marcar)\\s+(?:o\\s+)?total(?:\\s+retirado)?\\s+como\\s+${quantityCapture}\\b`,
+    ),
+    new RegExp(
+      `\\b(?:marque|marcar)\\s+${quantityCapture}(?:\\s+unidades?)?\\b.*?\\bcomo\\s+retirad[oa]s?\\b`,
+    ),
+    new RegExp(
+      `\\b(?:registre|registrar)\\s+${quantityCapture}(?:\\s+unidades?)?\\s+no\\s+total\\s+retirado\\b`,
+    ),
+  ]);
+
+  if (setTotalQuantity) {
+    return {
+      mode: "set_total",
+      requestedQuantity: setTotalQuantity,
+    };
+  }
+
+  const incrementQuantity = extractQuantity(message, [
+    new RegExp(
+      `\\b(?:retire|retirar|marque|marcar|registre|registrar)\\b.*?\\bmais\\s+${quantityCapture}\\b`,
+    ),
+    new RegExp(
+      `\\bacrescente\\s+${quantityCapture}(?:\\s+unidades?)?(?:\\s+(?:como\\s+)?retirad[oa]s?)?\\b`,
+    ),
+  ]);
+
+  return incrementQuantity
+    ? {
+        mode: "increment",
+        requestedQuantity: incrementQuantity,
+      }
     : null;
 }
 
@@ -154,7 +238,7 @@ export function createSupplierOrderPickupPrompt(
 export function routeSupplierOrderPickupAction(
   rawMessage: string,
 ): SupplierOrderPickupRoutingResult {
-  const message = normalizeText(rawMessage);
+  const message = normalizeAssistantCommandText(rawMessage);
 
   if (!message) {
     return { kind: "NOT_PICKUP_ACTION" };
@@ -184,7 +268,7 @@ export function routeSupplierOrderPickupAction(
     return { kind: "NOT_PICKUP_ACTION" };
   }
 
-  const negotiationNumber = extractNegotiationNumber(rawMessage);
+  const negotiationNumber = extractNegotiationNumber(message);
   const markAll =
     /\b(?:marque|marcar|retire|retirar)\s+(?:tudo|todos\s+os\s+itens|todo\s+o\s+saldo\s+restante)\b/.test(
       message,
@@ -205,80 +289,38 @@ export function routeSupplierOrderPickupAction(
     };
   }
 
-  const incrementPatterns = [
-    new RegExp(
-      `\\b(?:retire|retirar|marque|marcar)\\s+mais\\s+${quantityCapture}(?:\\s+unidades?)?\\s+(?:do|da|de)\\s+(?:codigo\\s+)?${catalogCodeCapture}\\b`,
-    ),
-    new RegExp(
-      `\\bacrescente\\s+${quantityCapture}(?:\\s+unidades?)?\\s+(?:retirad[oa]s?\\s+)?(?:do|da|de)\\s+(?:codigo\\s+)?${catalogCodeCapture}\\b`,
-    ),
-  ];
+  const catalogCode = extractCatalogCode(message);
+  const pickupMode = extractPickupMode(message);
 
-  for (const pattern of incrementPatterns) {
-    const line = parseLineMatch(message.match(pattern));
-
-    if (line) {
-      return {
-        kind: "PICKUP_ACTION",
-        request: {
-          mode: "increment",
-          catalogCode: line.catalogCode,
-          requestedQuantity: line.requestedQuantity,
-          negotiationNumber,
-        },
-      };
-    }
+  if (pickupMode && catalogCode) {
+    return {
+      kind: "PICKUP_ACTION",
+      request: {
+        mode: pickupMode.mode,
+        catalogCode,
+        requestedQuantity: pickupMode.requestedQuantity,
+        negotiationNumber,
+      },
+    };
   }
 
-  const setTotalPatterns = [
+  const ambiguousQuantity = extractQuantity(message, [
     new RegExp(
-      `\\b(?:defina|definir|deixe|deixar)\\s+(?:o\\s+)?total\\s+retirado\\s+(?:do|da|de)\\s+(?:codigo\\s+)?${catalogCodeCapture}\\s+(?:como|em)\\s+${quantityCapture}\\b`,
+      `\\b(?:retire|retirar|marque|marcar)\\s+${quantityCapture}\\b`,
     ),
-    new RegExp(
-      `\\b(?:marque|marcar)\\s+${quantityCapture}(?:\\s+unidades?)?\\s+(?:do|da|de)\\s+(?:codigo\\s+)?${catalogCodeCapture}\\s+como\\s+retirad[oa]s?\\b`,
-    ),
-  ];
+  ]);
 
-  for (const [index, pattern] of setTotalPatterns.entries()) {
-    const match = message.match(pattern);
-    const reorderedMatch =
-      index === 0 && match
-        ? ([match[0], match[2], match[1]] as RegExpMatchArray)
-        : match;
-    const line = parseLineMatch(reorderedMatch);
-
-    if (line) {
-      return {
-        kind: "PICKUP_ACTION",
-        request: {
-          mode: "set_total",
-          catalogCode: line.catalogCode,
-          requestedQuantity: line.requestedQuantity,
-          negotiationNumber,
-        },
-      };
-    }
-  }
-
-  const ambiguous = parseLineMatch(
-    message.match(
-      new RegExp(
-        `\\b(?:retire|retirar|marque|marcar)\\s+${quantityCapture}(?:\\s+unidades?)?\\s+(?:do|da|de)\\s+(?:codigo\\s+)?${catalogCodeCapture}\\b`,
-      ),
-    ),
-  );
-
-  if (ambiguous) {
+  if (ambiguousQuantity && catalogCode) {
     return {
       kind: "AMBIGUOUS_PICKUP_MODE",
-      catalogCode: ambiguous.catalogCode,
-      requestedQuantity: ambiguous.requestedQuantity,
+      catalogCode,
+      requestedQuantity: ambiguousQuantity,
       negotiationNumber,
     };
   }
 
   if (
-    /\b(?:retire|retirar|marque|marcar|acrescente|defina|definir|deixe|deixar)\b/.test(
+    /\b(?:retire|retirar|marque|marcar|acrescente|registre|registrar|defina|definir|deixe|deixar)\b/.test(
       message,
     )
   ) {

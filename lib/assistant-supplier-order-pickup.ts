@@ -46,6 +46,11 @@ import type {
   SupplierOrderItem,
   SupplierOrderSummary,
 } from "@/lib/supplier-orders-types";
+import {
+  matchesCatalogDescription,
+  matchesServoModel,
+  normalizeCatalogSearchText,
+} from "@/lib/servo-model-search";
 import { createClient } from "@/lib/supabase/server";
 
 const maximumAmbiguityOptions = 6;
@@ -63,15 +68,57 @@ type PreviewContext = {
   selectedSupplierOrderItemId: string | null;
 };
 
-function normalizedCode(value: string) {
-  return value
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLocaleUpperCase("pt-BR");
-}
-
 function displayCode(item: SupplierOrderItem) {
   return item.commercialCodeSnapshot ?? item.codeSnapshot;
+}
+
+function pickupLineMatchPriority(
+  item: SupplierOrderItem,
+  catalogSearch: string,
+) {
+  const normalizedSearch = normalizeCatalogSearchText(catalogSearch);
+
+  if (
+    normalizeCatalogSearchText(displayCode(item)) === normalizedSearch ||
+    normalizeCatalogSearchText(item.codeSnapshot) === normalizedSearch
+  ) {
+    return 1;
+  }
+
+  if (matchesServoModel(catalogSearch, item.modelSnapshot)) {
+    return 2;
+  }
+
+  return matchesCatalogDescription(
+    catalogSearch,
+    item.descriptionSnapshot,
+  )
+    ? 3
+    : null;
+}
+
+function filterPickupLines(
+  items: SupplierOrderItem[],
+  catalogSearch: string,
+) {
+  const candidates = items
+    .map((item) => ({
+      item,
+      priority: pickupLineMatchPriority(item, catalogSearch),
+    }))
+    .filter(
+      (
+        candidate,
+      ): candidate is { item: SupplierOrderItem; priority: number } =>
+        candidate.priority !== null,
+    );
+  const bestPriority = Math.min(
+    ...candidates.map((candidate) => candidate.priority),
+  );
+
+  return candidates
+    .filter((candidate) => candidate.priority === bestPriority)
+    .map((candidate) => candidate.item);
 }
 
 function isEligibleOrder(order: SupplierOrderSummary) {
@@ -280,9 +327,6 @@ function createModeClarification(
     negotiationNumber: string | null;
   },
 ): AssistantClarificationBlock {
-  const suffix = request.negotiationNumber
-    ? ` no Pedido ${request.negotiationNumber}`
-    : " deste Pedido";
   const quantityLabel = `${request.requestedQuantity} unidade${request.requestedQuantity === 1 ? "" : "s"}`;
 
   return {
@@ -294,13 +338,23 @@ function createModeClarification(
       {
         id: "pickup-increment",
         label: `Retirar mais ${quantityLabel}`,
-        prompt: `Retire mais ${quantityLabel} do Cód. ${request.catalogCode}${suffix}.`,
+        prompt: createSupplierOrderPickupPrompt({
+          mode: "increment",
+          catalogCode: request.catalogCode,
+          requestedQuantity: request.requestedQuantity,
+          negotiationNumber: request.negotiationNumber,
+        }),
         category: "supplier_orders",
       },
       {
         id: "pickup-set-total",
         label: `Definir o total como ${request.requestedQuantity}`,
-        prompt: `Defina o total retirado do Cód. ${request.catalogCode} como ${request.requestedQuantity}${suffix}.`,
+        prompt: createSupplierOrderPickupPrompt({
+          mode: "set_total",
+          catalogCode: request.catalogCode,
+          requestedQuantity: request.requestedQuantity,
+          negotiationNumber: request.negotiationNumber,
+        }),
         category: "supplier_orders",
       },
       {
@@ -473,24 +527,51 @@ async function findOrdersContainingCode(
   supabase: SupabaseServerClient,
   code: string,
 ) {
-  const linesResult = await supabase
+  const exactResult = await supabase
     .from("supplier_order_item_details")
     .select(supplierOrderItemSelect)
     .or(
       `code_snapshot.ilike.${code},commercial_code_snapshot.ilike.${code}`,
     )
-    .limit(101);
+    .limit(1001);
 
-  if (linesResult.error || (linesResult.data?.length ?? 0) > 100) {
+  if (exactResult.error || (exactResult.data?.length ?? 0) > 1000) {
     return { candidates: [], failed: true };
   }
 
-  const lines = ((linesResult.data ?? []) as SupplierOrderItemRow[])
+  const exactLines = (
+    (exactResult.data ?? []) as SupplierOrderItemRow[]
+  )
     .map(mapSupplierOrderItem)
     .filter(
       (item): item is SupplierOrderItem =>
-        Boolean(item) && normalizedCode(displayCode(item!)) === code,
+        Boolean(item) &&
+        pickupLineMatchPriority(item!, code) === 1,
     );
+  let lines = exactLines;
+
+  if (lines.length === 0) {
+    const linesResult = await supabase
+      .from("supplier_order_item_details")
+      .select(supplierOrderItemSelect)
+      .limit(1001);
+
+    if (
+      linesResult.error ||
+      (linesResult.data?.length ?? 0) > 1000
+    ) {
+      return { candidates: [], failed: true };
+    }
+
+    lines = filterPickupLines(
+      ((linesResult.data ?? []) as SupplierOrderItemRow[])
+        .map(mapSupplierOrderItem)
+        .filter(
+          (item): item is SupplierOrderItem => Boolean(item),
+        ),
+      code,
+    );
+  }
   const orderIds = Array.from(
     new Set(lines.map((line) => line.supplierOrderId)),
   );
@@ -605,7 +686,7 @@ function createLineAmbiguity(
     }));
   const block: AssistantClarificationBlock = {
     kind: "assistant_clarification",
-    title: `Qual linha do Cód. ${request.catalogCode} deseja alterar?`,
+    title: `Qual linha correspondente a ${request.catalogCode} deseja alterar?`,
     message:
       lines.length > maximumAmbiguityOptions
         ? `O Pedido possui mais de ${maximumAmbiguityOptions} linhas com esse código. Abra o Pedido para revisar.`
@@ -954,11 +1035,9 @@ export async function createAssistantSupplierOrderPickupPreview(
         orderId,
         request.mode === "mark_all"
           ? items
-          : items.filter(
-              (item) =>
-                normalizedCode(displayCode(item)) ===
-                request.catalogCode,
-            ),
+          : request.catalogCode
+            ? filterPickupLines(items, request.catalogCode)
+            : [],
       );
     });
 
@@ -1000,15 +1079,14 @@ export async function createAssistantSupplierOrderPickupPreview(
     );
   }
 
-  const matchingLines = itemsResult.items.filter(
-    (item) =>
-      normalizedCode(displayCode(item)) === request.catalogCode,
-  );
+  const matchingLines = request.catalogCode
+    ? filterPickupLines(itemsResult.items, request.catalogCode)
+    : [];
 
   if (matchingLines.length === 0) {
     return actionErrorResponse(
       "Linha não encontrada",
-      `O Pedido não possui uma linha registrada como Cód. ${request.catalogCode}.`,
+      `O Pedido não possui uma linha correspondente a ${request.catalogCode}.`,
       order,
     );
   }

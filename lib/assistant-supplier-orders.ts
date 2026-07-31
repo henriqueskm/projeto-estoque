@@ -26,6 +26,12 @@ import type {
   SupplierOrderItem,
   SupplierOrderSummary,
 } from "@/lib/supplier-orders-types";
+import {
+  matchesCatalogDescription,
+  matchesServoModel,
+  normalizeCatalogSearchText,
+} from "@/lib/servo-model-search";
+import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { createClient } from "@/lib/supabase/server";
 
 const listLimit = 10;
@@ -80,6 +86,99 @@ function ordersHref(view: "active" | "history") {
 function orderHref(order: SupplierOrderSummary) {
   const view = order.isInHistory ? "history" : "active";
   return `/pedidos?view=${view}&order=${encodeURIComponent(order.id)}`;
+}
+
+function catalogSearchPriority(
+  item: SupplierOrderItem,
+  catalogSearch: string,
+) {
+  const normalizedSearch = normalizeCatalogSearchText(catalogSearch);
+
+  if (
+    normalizeCatalogSearchText(item.codeSnapshot) === normalizedSearch ||
+    (item.commercialCodeSnapshot
+      ? normalizeCatalogSearchText(item.commercialCodeSnapshot) ===
+        normalizedSearch
+      : false)
+  ) {
+    return 1;
+  }
+
+  if (matchesServoModel(catalogSearch, item.modelSnapshot)) {
+    return 2;
+  }
+
+  return matchesCatalogDescription(
+    catalogSearch,
+    item.descriptionSnapshot,
+  )
+    ? 3
+    : null;
+}
+
+async function loadCatalogSearchItems(
+  supabase: SupabaseServerClient,
+  catalogSearch: string,
+) {
+  const exactResult = await supabase
+    .from("supplier_order_item_details")
+    .select(supplierOrderItemSelect)
+    .or(
+      `code_snapshot.ilike.${catalogSearch},commercial_code_snapshot.ilike.${catalogSearch}`,
+    )
+    .limit(aggregateSafetyLimit + 1);
+
+  if (
+    exactResult.error ||
+    (exactResult.data?.length ?? 0) > aggregateSafetyLimit
+  ) {
+    throw new AssistantDataError();
+  }
+
+  const exactItems = (
+    (exactResult.data ?? []) as SupplierOrderItemRow[]
+  )
+    .map(mapSupplierOrderItem)
+    .filter(
+      (item): item is SupplierOrderItem =>
+        Boolean(item) &&
+        catalogSearchPriority(item!, catalogSearch) === 1,
+    );
+
+  if (exactItems.length > 0) {
+    return exactItems;
+  }
+
+  const result = await supabase
+    .from("supplier_order_item_details")
+    .select(supplierOrderItemSelect)
+    .limit(aggregateSafetyLimit + 1);
+
+  if (result.error || (result.data?.length ?? 0) > aggregateSafetyLimit) {
+    throw new AssistantDataError();
+  }
+
+  const mappedItems = ((result.data ?? []) as SupplierOrderItemRow[])
+    .map(mapSupplierOrderItem)
+    .filter((item): item is SupplierOrderItem => Boolean(item));
+  const prioritizedItems = mappedItems
+    .map((item) => ({
+      item,
+      priority: catalogSearchPriority(item, catalogSearch),
+    }))
+    .filter(
+      (
+        candidate,
+      ): candidate is { item: SupplierOrderItem; priority: number } =>
+        candidate.priority !== null,
+    );
+  const bestPriority = Math.min(
+    ...prioritizedItems.map((candidate) => candidate.priority),
+  );
+
+  return prioritizedItems
+    .filter((candidate) => candidate.priority === bestPriority)
+    .map((candidate) => candidate.item);
 }
 
 function toOrderCard(order: SupplierOrderSummary): AssistantSupplierOrderCard {
@@ -226,49 +325,21 @@ function applySummaryFilters(
   }
 }
 
-async function findOrderIdsByCatalogCode(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  catalogCode: string | null,
-) {
-  if (!catalogCode) {
-    return null;
-  }
-
-  const [codeResult, commercialCodeResult] = await Promise.all([
-    supabase
-      .from("supplier_order_item_details")
-      .select("supplier_order_id")
-      .ilike("code_snapshot", catalogCode),
-    supabase
-      .from("supplier_order_item_details")
-      .select("supplier_order_id")
-      .ilike("commercial_code_snapshot", catalogCode),
-  ]);
-
-  if (codeResult.error || commercialCodeResult.error) {
-    throw new AssistantDataError();
-  }
-
-  return Array.from(
-    new Set(
-      [...(codeResult.data ?? []), ...(commercialCodeResult.data ?? [])].map(
-        (row) => row.supplier_order_id as string,
-      ),
-    ),
-  );
-}
-
 async function loadSummaries(
   supabase: Awaited<ReturnType<typeof createClient>>,
   query: SupplierOrderAssistantQuery,
 ) {
-  const catalogOrderIds = await findOrderIdsByCatalogCode(
-    supabase,
-    query.catalogCode,
-  );
+  const catalogItems = query.catalogCode
+    ? await loadCatalogSearchItems(supabase, query.catalogCode)
+    : null;
+  const catalogOrderIds = catalogItems
+    ? Array.from(
+        new Set(catalogItems.map((item) => item.supplierOrderId)),
+      )
+    : null;
 
   if (catalogOrderIds?.length === 0) {
-    return { summaries: [], totalCount: 0 };
+    return { summaries: [], totalCount: 0, catalogItems: [] };
   }
 
   const requestedLimit =
@@ -301,7 +372,7 @@ async function loadSummaries(
     .map(mapSupplierOrderSummary)
     .filter((summary): summary is SupplierOrderSummary => Boolean(summary));
 
-  return { summaries, totalCount };
+  return { summaries, totalCount, catalogItems };
 }
 
 function resolvePrimaryView(
@@ -432,7 +503,7 @@ function buildAmbiguityBlock(
 function typeLabel(item: SupplierOrderItem) {
   switch (item.itemTypeSnapshot) {
     case "SERVO":
-      return "Servo";
+      return customerFacingInventoryLabels.looseServo;
     case "INSTALLATION_KIT":
       return "Kit de instalação";
     case "REPAIR_KIT":
@@ -440,7 +511,7 @@ function typeLabel(item: SupplierOrderItem) {
     case "LOOSE_PART":
       return "Peça avulsa";
     default:
-      return "Caixa completa";
+      return customerFacingInventoryLabels.completeServoKit;
   }
 }
 
@@ -646,6 +717,7 @@ async function loadDetailItems(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orderId: string,
   query: SupplierOrderAssistantQuery,
+  catalogItems: SupplierOrderItem[] | null,
 ) {
   let itemsQuery = supabase
     .from("supplier_order_item_details")
@@ -653,11 +725,6 @@ async function loadDetailItems(
     .eq("supplier_order_id", orderId)
     .order("position", { ascending: true });
 
-  if (query.catalogCode) {
-    itemsQuery = itemsQuery.or(
-      `code_snapshot.ilike.${query.catalogCode},commercial_code_snapshot.ilike.${query.catalogCode}`,
-    );
-  }
   if (query.lineFocus === "WAITING_PICKUP") {
     itemsQuery = itemsQuery.gt("waiting_pickup_quantity", 0);
   }
@@ -665,14 +732,26 @@ async function loadDetailItems(
     itemsQuery = itemsQuery.gt("waiting_stock_quantity", 0);
   }
 
-  const result = await itemsQuery.limit(detailItemLimit + 1);
-  if (result.error) {
+  const result = await itemsQuery.limit(
+    query.catalogCode ? aggregateSafetyLimit + 1 : detailItemLimit + 1,
+  );
+  if (
+    result.error ||
+    (query.catalogCode &&
+      (result.data?.length ?? 0) > aggregateSafetyLimit)
+  ) {
     throw new AssistantDataError();
   }
 
-  const allItems = ((result.data ?? []) as SupplierOrderItemRow[])
+  const mappedItems = ((result.data ?? []) as SupplierOrderItemRow[])
     .map(mapSupplierOrderItem)
     .filter((item): item is SupplierOrderItem => Boolean(item));
+  const catalogItemIds = catalogItems
+    ? new Set(catalogItems.map((item) => item.id))
+    : null;
+  const allItems = catalogItemIds
+    ? mappedItems.filter((item) => catalogItemIds.has(item.id))
+    : mappedItems;
   const visibleItems = allItems.slice(0, detailItemLimit);
   const mediaByItemId = await attachItemMedia(supabase, visibleItems);
   return {
@@ -701,42 +780,32 @@ function toItemCard(
   };
 }
 
-async function loadCatalogLinesForOrders(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+function loadCatalogLinesForOrders(
   summaries: SupplierOrderSummary[],
   catalogCode: string | null,
-): Promise<AssistantSupplierOrderCatalogLine[]> {
-  if (!catalogCode || summaries.length === 0) {
+  catalogItems: SupplierOrderItem[] | null,
+): AssistantSupplierOrderCatalogLine[] {
+  if (!catalogCode || !catalogItems || summaries.length === 0) {
     return [];
   }
 
-  const result = await supabase
-    .from("supplier_order_item_details")
-    .select(supplierOrderItemSelect)
-    .in(
-      "supplier_order_id",
-      summaries.map((summary) => summary.id),
-    )
-    .or(
-      `code_snapshot.ilike.${catalogCode},commercial_code_snapshot.ilike.${catalogCode}`,
-    )
-    .order("supplier_order_id", { ascending: true })
-    .order("position", { ascending: true })
-    .limit(31);
+  const summaryIds = new Set(
+    summaries.map((summary) => summary.id),
+  );
+  const matchingItems = catalogItems.filter((item) =>
+    summaryIds.has(item.supplierOrderId),
+  );
 
-  if (result.error || (result.data?.length ?? 0) > 30) {
+  if (matchingItems.length > 30) {
     throw new AssistantDataError();
   }
 
-  const lines = ((result.data ?? []) as SupplierOrderItemRow[])
-    .map(mapSupplierOrderItem)
-    .filter((item): item is SupplierOrderItem => Boolean(item))
+  const lines = matchingItems
     .map((item) => {
       const card = toItemCard(item, null);
 
       return {
         ...card,
-        displayCode: catalogCode,
         supplierOrderId: item.supplierOrderId,
       };
     });
@@ -757,11 +826,13 @@ async function buildDetailBlock(
   supabase: Awaited<ReturnType<typeof createClient>>,
   order: SupplierOrderSummary,
   query: SupplierOrderAssistantQuery,
+  catalogItems: SupplierOrderItem[] | null,
 ): Promise<AssistantSupplierOrderDetailBlock> {
   const { items, hiddenItemCount, mediaByItemId } = await loadDetailItems(
     supabase,
     order.id,
     query,
+    catalogItems,
   );
 
   return {
@@ -837,10 +908,9 @@ function buildAggregateBlock(
   };
 }
 
-async function loadCatalogAggregateTotals(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+function loadCatalogAggregateTotals(
   summaries: SupplierOrderSummary[],
-  catalogCode: string,
+  catalogItems: SupplierOrderItem[] | null,
 ) {
   if (summaries.length === 0) {
     return {
@@ -852,38 +922,25 @@ async function loadCatalogAggregateTotals(
     };
   }
 
-  const result = await supabase
-    .from("supplier_order_item_details")
-    .select(
-      "ordered_quantity, picked_quantity, waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity",
-    )
-    .in(
-      "supplier_order_id",
-      summaries.map((summary) => summary.id),
-    )
-    .or(
-      `code_snapshot.ilike.${catalogCode},commercial_code_snapshot.ilike.${catalogCode}`,
-    )
-    .limit(aggregateSafetyLimit + 1);
+  const summaryIds = new Set(
+    summaries.map((summary) => summary.id),
+  );
+  const items = (catalogItems ?? []).filter((item) =>
+    summaryIds.has(item.supplierOrderId),
+  );
 
-  if (result.error || (result.data?.length ?? 0) > aggregateSafetyLimit) {
-    throw new AssistantDataError();
-  }
-
-  return (result.data ?? []).reduce(
+  return items.reduce(
     (totals, row) => ({
       orderedQuantity:
-        totals.orderedQuantity + Number(row.ordered_quantity ?? 0),
+        totals.orderedQuantity + row.orderedQuantity,
       pickedQuantity:
-        totals.pickedQuantity + Number(row.picked_quantity ?? 0),
+        totals.pickedQuantity + row.pickedQuantity,
       waitingPickupQuantity:
-        totals.waitingPickupQuantity +
-        Number(row.waiting_pickup_quantity ?? 0),
+        totals.waitingPickupQuantity + row.waitingPickupQuantity,
       stockedQuantity:
-        totals.stockedQuantity + Number(row.stocked_quantity ?? 0),
+        totals.stockedQuantity + row.stockedQuantity,
       waitingStockQuantity:
-        totals.waitingStockQuantity +
-        Number(row.waiting_stock_quantity ?? 0),
+        totals.waitingStockQuantity + row.waitingStockQuantity,
     }),
     {
       orderedQuantity: 0,
@@ -899,7 +956,10 @@ export async function consultAssistantSupplierOrders(
   query: SupplierOrderAssistantQuery,
 ): Promise<SupplierOrderAssistantResult> {
   const supabase = await createClient();
-  const { summaries, totalCount } = await loadSummaries(supabase, query);
+  const { summaries, totalCount, catalogItems } = await loadSummaries(
+    supabase,
+    query,
+  );
 
   if (
     query.negotiationNumber &&
@@ -915,17 +975,21 @@ export async function consultAssistantSupplierOrders(
   if (query.mode === "DETAIL" && summaries.length === 1) {
     const order = summaries[0];
     return {
-      block: await buildDetailBlock(supabase, order, query),
+      block: await buildDetailBlock(
+        supabase,
+        order,
+        query,
+        catalogItems,
+      ),
       contextSupplierOrderId: order.id,
     };
   }
 
   if (query.mode === "AGGREGATE") {
     const lineTotals = query.catalogCode
-      ? await loadCatalogAggregateTotals(
-          supabase,
+      ? loadCatalogAggregateTotals(
           summaries,
-          query.catalogCode,
+          catalogItems,
         )
       : undefined;
 
@@ -935,10 +999,10 @@ export async function consultAssistantSupplierOrders(
     };
   }
 
-  const catalogLines = await loadCatalogLinesForOrders(
-    supabase,
+  const catalogLines = loadCatalogLinesForOrders(
     summaries,
     query.catalogCode,
+    catalogItems,
   );
 
   return {

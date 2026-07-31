@@ -201,6 +201,40 @@ function sanitizeStructuredBlock(
         },
         mediaReferences: deduplicateMediaReferences(mediaReferences),
       };
+    case "servo_model_inventory_breakdown":
+      if (block.bareServo?.mediaDescriptor) {
+        mediaReferences.push({
+          code: block.bareServo.displayCode,
+          targetKind: block.bareServo.targetKind,
+          targetId: block.bareServo.targetId,
+        });
+      }
+
+      return {
+        block: {
+          ...block,
+          bareServo: block.bareServo
+            ? { ...block.bareServo, mediaDescriptor: null }
+            : null,
+          configurations: block.configurations.map(
+            ({ target, aliases }) => {
+              if (target.mediaDescriptor) {
+                mediaReferences.push({
+                  code: target.displayCode,
+                  targetKind: target.targetKind,
+                  targetId: target.targetId,
+                });
+              }
+
+              return {
+                aliases,
+                target: { ...target, mediaDescriptor: null },
+              };
+            },
+          ),
+        },
+        mediaReferences: deduplicateMediaReferences(mediaReferences),
+      };
     case "supplier_order_list":
       return {
         block: {

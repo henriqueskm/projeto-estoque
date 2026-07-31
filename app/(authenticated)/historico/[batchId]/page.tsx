@@ -383,7 +383,7 @@ export default async function HistoryDetailPage({
                         </div>
                         <div className="rounded-xl bg-violet-50 px-3 py-3 text-right">
                           <p className="text-xs font-bold uppercase tracking-wide text-violet-800">
-                            Caixas
+                            Servos com kit
                           </p>
                           <p className="mt-1 font-mono text-2xl font-black tabular-nums text-violet-950">
                             {formatQuantity(line.quantity)}
@@ -458,7 +458,7 @@ export default async function HistoryDetailPage({
                       <dl className="mt-3 grid grid-cols-2 gap-2">
                         <div className="rounded-xl bg-violet-50 px-3 py-3">
                           <dt className="text-xs font-bold uppercase tracking-wide text-violet-800">
-                            Caixas já montadas
+                            Servos já montados com kit
                           </dt>
                           <dd className="mt-1 font-mono text-xl font-black tabular-nums text-violet-950">
                             {formatQuantity(line.assembledQuantityUsed)}
@@ -542,13 +542,13 @@ export default async function HistoryDetailPage({
             id="configuration-impact-title"
             className="mt-1 text-xl font-black text-text-primary"
           >
-            Impacto nas caixas montadas
+            Impacto nos Servos com kit
           </h2>
         </div>
 
         {batch.configurationMovements.length === 0 ? (
           <div className="mt-3 rounded-2xl border border-dashed border-border-neutral bg-surface px-5 py-6 text-sm leading-6 text-text-muted">
-            Nenhum saldo de caixa montada foi alterado neste lote.
+            Nenhum saldo de Servo com kit foi alterado neste lote.
           </div>
         ) : (
           <div className="mt-3 grid gap-3">

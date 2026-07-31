@@ -7,6 +7,7 @@ import {
   consultAssistantInventoryItemSummary,
   consultAssistantItem,
   consultAssistantLowStock,
+  consultAssistantServoModelInventory,
   consultAssistantStockSummary,
 } from "@/lib/assistant-data";
 import { consultAssistantSupplierOrders } from "@/lib/assistant-supplier-orders";
@@ -33,15 +34,28 @@ import {
 import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
 import { routeSupplierOrderPickupAction } from "@/lib/ai/supplier-order-pickup-routing";
 import { routePurchaseRecommendationQuestion } from "@/lib/ai/purchase-recommendation-routing";
+import {
+  customerFacingInventoryLabels,
+  formatCompleteServoKitLabel,
+  formatLooseServoLabel,
+} from "@/lib/customer-facing-inventory-labels";
 import type {
   AssistantClarificationBlock,
   AssistantClarificationOption,
   AssistantChatSuccess,
   AssistantCommercialConfigurationResult,
+  AssistantInventoryItemSummaryBlock,
+  AssistantInventoryItemSummaryTarget,
   AssistantItemLookupResult,
   AssistantPhysicalItemResult,
+  AssistantServoModelInventoryAction,
+  AssistantServoModelInventoryBreakdownBlock,
   AssistantStockSummaryResult,
 } from "@/lib/assistant-types";
+import {
+  extractServoModelCandidate,
+  normalizeServoModel,
+} from "@/lib/servo-model-search";
 
 type AssistantServiceErrorCode =
   | "CONFIGURATION"
@@ -65,7 +79,7 @@ const requestTimeoutMs = 30_000;
 const unsupportedWriteResponse =
   "Essa operação ainda não está habilitada pelo Assistente. No momento posso apenas consultar informações do estoque. Nenhuma operação foi executada.";
 const clarificationFallbackText =
-  "Posso ajudar com consultas de Estoque, Pedidos, fotos e reposição. Exemplos: “Quantos 1H tenho?”, “Mostre o pedido Teste 04” ou “Quais itens estão zerados?”";
+  "Posso ajudar com consultas de Estoque, Pedidos, fotos e reposição. Escolha uma opção ou escreva sua pergunta.";
 
 const assistantInstructions = `Você é o Assistente IA do Negócios K.
 
@@ -79,8 +93,8 @@ Regras obrigatórias:
 - Para conversa geral, seja breve e não afirme dados operacionais.
 - Para consulta de item, use exclusivamente os dados atuais fornecidos na requisição.
 - Uma configuração pode ter aliases, mas possui um único saldo físico.
-- Em configuração comercial, informe primeiro caixas completas montadas; depois, quando relevante, servo avulso, kit avulso e capacidade de montagem.
-- Diferencie caixas completas, servos avulsos, kits avulsos, unidades montadas e total físico.
+- Em configuração comercial, informe primeiro Servos com kit montados; depois, quando relevante, Servo sem kit, kit avulso e capacidade de montagem.
+- Diferencie Servos com kit, Servos sem kit, kits avulsos, unidades montadas e total físico.
 - Se houver vários dados, use Markdown e uma lista curta.
 - Não repita a pergunta nem acrescente encerramentos genéricos.
 - Responda a cumprimentos explícitos de forma breve. Use o primeiro nome somente se ele estiver confirmado nas instruções da requisição.`;
@@ -112,8 +126,15 @@ function clarificationOption(
   label: string,
   prompt: string,
   category: AssistantClarificationOption["category"],
+  action?: AssistantServoModelInventoryAction,
 ): AssistantClarificationOption {
-  return { id, label, prompt, category };
+  return {
+    id,
+    label,
+    prompt,
+    category,
+    ...(action ? { action } : {}),
+  };
 }
 
 function createGenericClarificationBlock(): AssistantClarificationBlock {
@@ -123,40 +144,40 @@ function createGenericClarificationBlock(): AssistantClarificationBlock {
     message: "Escolha uma pergunta ou escreva algo parecido.",
     options: [
       clarificationOption(
-        "inventory-balance",
-        "Consultar saldo",
-        "Quantos 1H tenho?",
-        "inventory",
-      ),
-      clarificationOption(
-        "inventory-status",
-        "Ver situação",
-        "O 3A está zerado?",
-        "inventory",
-      ),
-      clarificationOption(
-        "supplier-order-number",
-        "Buscar negociação",
-        "Mostre o pedido Teste 04",
-        "supplier_orders",
-      ),
-      clarificationOption(
-        "supplier-order-partial",
-        "Ver Pedidos parciais",
-        "Quais pedidos estão parciais?",
-        "supplier_orders",
-      ),
-      clarificationOption(
-        "catalog-photo",
-        "Consultar foto",
-        "Quero ver a foto do 1B",
-        "media",
-      ),
-      clarificationOption(
         "inventory-replenishment",
-        "Ver reposição",
-        "Quais itens precisam de reposição?",
+        "Ver o que comprar",
+        "O que preciso comprar?",
         "replenishment",
+      ),
+      clarificationOption(
+        "inventory-minimum",
+        "Ver abaixo do mínimo",
+        "Quais itens estão abaixo do estoque mínimo?",
+        "inventory",
+      ),
+      clarificationOption(
+        "supplier-order-pickup",
+        "Ver retiradas pendentes",
+        "Quais Pedidos ainda têm itens para retirar?",
+        "supplier_orders",
+      ),
+      clarificationOption(
+        "supplier-order-purchased",
+        "Ver itens comprados",
+        "Quais itens já foram comprados?",
+        "supplier_orders",
+      ),
+      clarificationOption(
+        "inventory-without-minimum",
+        "Ver sem mínimo",
+        "Quais produtos estão sem estoque mínimo?",
+        "inventory",
+      ),
+      clarificationOption(
+        "supplier-order-active",
+        "Ver Pedidos em andamento",
+        "Mostre meus Pedidos em andamento.",
+        "supplier_orders",
       ),
     ],
     fallbackText: clarificationFallbackText,
@@ -455,8 +476,8 @@ async function callGemini({
 function formatStockSummary(result: AssistantStockSummaryResult) {
   return `**Resumo do estoque**
 
-- Caixas completas: ${result.complete_boxes}
-- Servos avulsos: ${result.loose_servos}
+- ${customerFacingInventoryLabels.completeServoKits}: ${result.complete_boxes}
+- ${customerFacingInventoryLabels.looseServos}: ${result.loose_servos}
 - Kits avulsos: ${result.loose_installation_kits}
 - Reparos: ${result.repair_kits}
 - Peças avulsas: ${result.loose_parts}
@@ -553,7 +574,9 @@ function formatDirectItemAnswer(
     /\b(quantas?|quantos?|quanto|tem|tenho|estao)\b/.test(
       normalizedMessage,
     );
-  const asksLoose = /\bavuls[ao]s?\b/.test(normalizedMessage);
+  const asksLoose =
+    /\bavuls[ao]s?\b/.test(normalizedMessage) ||
+    /\bsem\s+kit\b/.test(normalizedMessage);
   const asksSimpleQuantity =
     /\b(quanto|quantos|quanta|quantas|tenho|temos|tem|saldo|quantidade)\b/.test(
       normalizedMessage,
@@ -568,10 +591,10 @@ function formatDirectItemAnswer(
 
   if (asksAssemblyCapacity) {
     if (item.kind !== "COMMERCIAL_CONFIGURATION") {
-      return `Para calcular a capacidade de montagem, informe o código comercial da caixa relacionada a ${item.code}.`;
+      return `Para calcular a capacidade de montagem, informe o código comercial do Servo com kit relacionado a ${item.code}.`;
     }
 
-    return `Com os saldos avulsos atuais, você consegue montar ${item.maximum_assemblable} caixa${item.maximum_assemblable === 1 ? "" : "s"} ${item.matched_commercial_code}.`;
+    return `Com os saldos atuais dos componentes, você consegue montar ${item.maximum_assemblable} ${formatCompleteServoKitLabel(item.maximum_assemblable).toLocaleLowerCase("pt-BR")} ${item.matched_commercial_code}.`;
   }
 
   if (asksMounted) {
@@ -584,12 +607,16 @@ function formatDirectItemAnswer(
         ? item.assembled_quantity
         : (item.mounted_quantity ?? 0);
 
-    return `Você tem ${mountedQuantity} unidade${mountedQuantity === 1 ? "" : "s"} de ${code} montada${mountedQuantity === 1 ? "" : "s"}.`;
+    return `Você tem ${mountedQuantity} unidade${mountedQuantity === 1 ? "" : "s"} de ${code} com kit.`;
   }
 
   if (asksLoose) {
     if (item.kind === "COMMERCIAL_CONFIGURATION") {
-      return `Para ${item.matched_commercial_code}, há ${item.servo.loose_quantity} servo${item.servo.loose_quantity === 1 ? "" : "s"} ${item.servo.code} avulso${item.servo.loose_quantity === 1 ? "" : "s"} e ${item.installation_kit.loose_quantity} kit${item.installation_kit.loose_quantity === 1 ? "" : "s"} ${item.installation_kit.code} avulso${item.installation_kit.loose_quantity === 1 ? "" : "s"}.`;
+      return `Para ${item.matched_commercial_code}, há ${item.servo.loose_quantity} ${formatLooseServoLabel(item.servo.loose_quantity).toLocaleLowerCase("pt-BR")} ${item.servo.code} e ${item.installation_kit.loose_quantity} kit${item.installation_kit.loose_quantity === 1 ? "" : "s"} ${item.installation_kit.code} avulso${item.installation_kit.loose_quantity === 1 ? "" : "s"}.`;
+    }
+
+    if (item.kind === "SERVO") {
+      return `Você tem ${item.loose_quantity} ${formatLooseServoLabel(item.loose_quantity).toLocaleLowerCase("pt-BR")} ${item.model ?? item.description} (Cód. ${item.code}).`;
     }
 
     return `Você tem ${item.loose_quantity} unidade${item.loose_quantity === 1 ? "" : "s"} de ${item.code} avulsa${item.loose_quantity === 1 ? "" : "s"}.`;
@@ -600,18 +627,258 @@ function formatDirectItemAnswer(
   }
 
   if (item.kind === "COMMERCIAL_CONFIGURATION") {
-    return `Você tem ${item.assembled_quantity} caixa${item.assembled_quantity === 1 ? "" : "s"} ${item.matched_commercial_code} montada${item.assembled_quantity === 1 ? "" : "s"}.`;
+    return `Você tem ${item.assembled_quantity} ${formatCompleteServoKitLabel(item.assembled_quantity).toLocaleLowerCase("pt-BR")} ${item.matched_commercial_code} montado${item.assembled_quantity === 1 ? "" : "s"}.`;
   }
 
   if (item.kind === "SERVO") {
-    return `Você tem ${item.loose_quantity} servo${item.loose_quantity === 1 ? "" : "s"} ${item.code} avulso${item.loose_quantity === 1 ? "" : "s"}, ${item.mounted_quantity ?? 0} em caixas e ${item.total_quantity ?? item.loose_quantity} no total.`;
+    return `Você tem ${item.loose_quantity} ${formatLooseServoLabel(item.loose_quantity).toLocaleLowerCase("pt-BR")} ${item.model ?? item.description} (Cód. ${item.code}), ${item.mounted_quantity ?? 0} com kit e ${item.total_quantity ?? item.loose_quantity} no total.`;
   }
 
   if (item.kind === "INSTALLATION_KIT") {
-    return `Você tem ${item.loose_quantity} kit${item.loose_quantity === 1 ? "" : "s"} ${item.code} avulso${item.loose_quantity === 1 ? "" : "s"}, ${item.mounted_quantity ?? 0} em caixas e ${item.total_quantity ?? item.loose_quantity} no total.`;
+    return `Você tem ${item.loose_quantity} kit${item.loose_quantity === 1 ? "" : "s"} ${item.code} avulso${item.loose_quantity === 1 ? "" : "s"}, ${item.mounted_quantity ?? 0} em Servos com kit e ${item.total_quantity ?? item.loose_quantity} no total.`;
   }
 
   return `Você tem ${item.loose_quantity} unidade${item.loose_quantity === 1 ? "" : "s"} de ${item.code}.`;
+}
+
+function filterItemLookupByQualifier(
+  message: string,
+  result: AssistantItemLookupResult,
+): AssistantItemLookupResult {
+  const normalizedMessage = normalizeAssistantText(message);
+  const asksWithoutKit =
+    /\bsem\s+kit\b/.test(normalizedMessage) ||
+    /\bavuls[ao]s?\b/.test(normalizedMessage);
+  const asksWithKit =
+    /\bcom\s+kit\b/.test(normalizedMessage) ||
+    /\b(conjunto|configuracao)\b/.test(normalizedMessage);
+
+  if (asksWithoutKit === asksWithKit) {
+    return result;
+  }
+
+  return {
+    ...result,
+    results: result.results.filter((item) =>
+      asksWithoutKit
+        ? item.kind === "SERVO"
+        : item.kind === "COMMERCIAL_CONFIGURATION",
+    ),
+  };
+}
+
+function getLookupModel(result: AssistantItemLookupResult) {
+  const models = Array.from(
+    new Set(
+      result.results
+        .map((item) =>
+          item.kind === "COMMERCIAL_CONFIGURATION"
+            ? item.servo.model
+            : item.kind === "SERVO"
+              ? item.model
+              : null,
+        )
+        .filter((model): model is string => Boolean(model)),
+    ),
+  );
+
+  return models.length === 1 ? models[0] : result.query;
+}
+
+function createItemLookupClarificationBlock(
+  result: AssistantItemLookupResult,
+): AssistantClarificationBlock {
+  const model = getLookupModel(result);
+  const normalizedModel = normalizeServoModel(model);
+  const options: AssistantClarificationOption[] = result.results
+    .slice(0, 5)
+    .map((item, index) => {
+    if (item.kind === "COMMERCIAL_CONFIGURATION") {
+      return {
+        ...clarificationOption(
+          `inventory-configuration-${index + 1}`,
+          `${customerFacingInventoryLabels.completeServoKit} — Cód. ${item.matched_commercial_code}`,
+          `Quantos ${customerFacingInventoryLabels.completeServoKit.toLocaleLowerCase("pt-BR")} do Cód. ${item.matched_commercial_code} tenho?`,
+          "inventory",
+          normalizedModel
+            ? {
+                action: "show_servo_model_inventory_target",
+                normalizedModel,
+                targetKind: "commercial_configuration",
+                targetId: item.configuration_id,
+              }
+            : undefined,
+        ),
+        description: `${item.servo.model ?? item.servo.description} + ${item.installation_kit.code}${item.aliases.length > 1 ? ` · Cód. equivalentes: ${item.aliases.join(", ")}` : ""}`,
+      };
+    }
+
+    return {
+      ...clarificationOption(
+        `inventory-item-${index + 1}`,
+        item.kind === "SERVO"
+          ? `${customerFacingInventoryLabels.looseServo} — ${item.model ?? item.code}`
+          : `${item.description} — Cód. ${item.code}`,
+        item.kind === "SERVO"
+          ? `Quantos servos sem kit do modelo ${item.model ?? item.code} tenho?`
+          : `Quantos do Cód. ${item.code} tenho?`,
+        "inventory",
+        normalizedModel && item.kind === "SERVO"
+          ? {
+              action: "show_servo_model_inventory_target",
+              normalizedModel,
+              targetKind: "item",
+              targetId: item.item_id,
+            }
+          : undefined,
+      ),
+      description:
+        item.kind === "SERVO"
+          ? `Cód. ${item.code} · ${item.description}`
+          : `Cód. ${item.code}`,
+    };
+    });
+
+  if (
+    normalizedModel &&
+    result.results.some((item) => item.kind === "SERVO") &&
+    result.results.some(
+      (item) => item.kind === "COMMERCIAL_CONFIGURATION",
+    )
+  ) {
+    options.push(
+      clarificationOption(
+        "inventory-show-separated",
+        "Mostrar ambos separadamente",
+        `Mostre separadamente os estoques do modelo ${model}.`,
+        "inventory",
+        {
+          action: "show_servo_model_inventory_breakdown",
+          normalizedModel,
+        },
+      ),
+    );
+  }
+
+  return {
+    kind: "assistant_clarification",
+    title: "Qual estoque deseja consultar?",
+    message:
+      "O modelo aparece em mais de um estoque físico. Escolha uma opção; os saldos não serão somados.",
+    options,
+    fallbackText:
+      "Encontrei mais de um estoque possível. Escolha entre Servo sem kit e Servo com kit.",
+  };
+}
+
+function formatSeparatedItemAnswer(result: AssistantItemLookupResult) {
+  return [
+    `**Estoque do modelo ${getLookupModel(result)}**`,
+    ...result.results.map((item) =>
+      item.kind === "COMMERCIAL_CONFIGURATION"
+        ? `- ${customerFacingInventoryLabels.completeServoKit} · Cód. ${item.matched_commercial_code}${item.aliases.length > 1 ? ` (Cód. equivalentes: ${item.aliases.join(", ")})` : ""}: ${item.assembled_quantity}`
+        : item.kind === "SERVO"
+          ? `- ${customerFacingInventoryLabels.looseServo} · Cód. ${item.code}: ${item.loose_quantity}`
+          : `- ${item.description} · Cód. ${item.code}: ${item.loose_quantity}`,
+    ),
+  ].join("\n");
+}
+
+function createServoModelTargetSummary(
+  model: string,
+  target: AssistantInventoryItemSummaryTarget,
+): AssistantInventoryItemSummaryBlock {
+  const primaryText =
+    target.itemType === "SERVO"
+      ? `Você tem ${target.currentStock} ${formatLooseServoLabel(target.currentStock).toLocaleLowerCase("pt-BR")} ${model} (Cód. ${target.displayCode}).`
+      : `Você tem ${target.currentStock} ${formatCompleteServoKitLabel(target.currentStock).toLocaleLowerCase("pt-BR")} Cód. ${target.displayCode}.`;
+  const minimum =
+    target.minimumStock === null
+      ? "não definido"
+      : target.minimumStock;
+
+  return {
+    kind: "inventory_item_summary",
+    queryCode: model,
+    status: "FOUND",
+    metric: "STOCK",
+    results: [target],
+    inventoryHref: target.href,
+    primaryText,
+    fallbackText: `${target.typeLabel}, Cód. ${target.displayCode}, ${target.description}. Estoque atual: ${target.currentStock}. Mínimo: ${minimum}. Situação: ${target.statusLabel}.`,
+  };
+}
+
+function findServoModelTarget(
+  block: AssistantServoModelInventoryBreakdownBlock,
+  targetKind: "item" | "commercial_configuration",
+  targetId: string,
+) {
+  if (targetKind === "item") {
+    return block.bareServo?.targetId === targetId
+      ? block.bareServo
+      : null;
+  }
+
+  return (
+    block.configurations.find(
+      ({ target }) => target.targetId === targetId,
+    )?.target ?? null
+  );
+}
+
+function answerServoModelInventoryAction(
+  block: AssistantServoModelInventoryBreakdownBlock | null,
+  action: AssistantServoModelInventoryAction,
+): AssistantChatSuccess {
+  if (!block) {
+    return {
+      message:
+        "Não encontrei esse modelo de servo no catálogo atual.",
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  if (action.action === "show_servo_model_inventory_breakdown") {
+    return {
+      message: block.fallbackText,
+      structuredBlock: block,
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  const target = findServoModelTarget(
+    block,
+    action.targetKind,
+    action.targetId,
+  );
+
+  if (!target) {
+    return {
+      message:
+        "Esse estoque não está mais disponível para o modelo informado.",
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  const summary = createServoModelTargetSummary(
+    block.model.official,
+    target,
+  );
+
+  return {
+    message: summary.fallbackText,
+    structuredBlock: summary,
+    contextItemQuery: target.displayCode,
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+  };
 }
 
 function resolveItemQuery(message: string, lastItemQuery: string | null) {
@@ -637,6 +904,7 @@ export async function answerAssistantQuestion(
   userId: string,
   profileName: string | null,
   selectedSupplierOrderItemId: string | null,
+  inventoryAction: AssistantServoModelInventoryAction | null,
 ): Promise<AssistantChatSuccess> {
   const pickupRoute = routeSupplierOrderPickupAction(message);
   const purchaseRecommendationRoute =
@@ -651,6 +919,16 @@ export async function answerAssistantQuestion(
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
+  }
+
+  if (inventoryAction) {
+    const block = await executeStockQuery(() =>
+      consultAssistantServoModelInventory(
+        inventoryAction.normalizedModel,
+      ),
+    );
+
+    return answerServoModelInventoryAction(block, inventoryAction);
   }
 
   if (pickupRoute.kind === "BUTTON_CONFIRMATION_TEXT") {
@@ -927,12 +1205,28 @@ export async function answerAssistantQuestion(
     };
   }
 
-  const lookup = await executeStockQuery(() => consultAssistantItem(query));
+  const unfilteredLookup = await executeStockQuery(() =>
+    consultAssistantItem(query),
+  );
+  const lookup = filterItemLookupByQualifier(
+    message,
+    unfilteredLookup,
+  );
+  const modelCandidate = unfilteredLookup.exact_code_match
+    ? null
+    : extractServoModelCandidate(query);
+  const modelInventory = modelCandidate
+    ? await executeStockQuery(() =>
+        consultAssistantServoModelInventory(modelCandidate),
+      )
+    : null;
 
   if (lookup.results.length === 0) {
     return {
       message: ensureExplicitGreeting(
-        `Não encontrei nenhum item com o código ou descrição ${query}.`,
+        modelCandidate
+          ? `Não encontrei nenhum servo com o modelo ${query}.`
+          : `Não encontrei nenhum item com o código ou descrição ${query}.`,
         message,
         firstName,
       ),
@@ -943,6 +1237,73 @@ export async function answerAssistantQuestion(
   }
 
   const contextItemQuery = getCanonicalContextItem(lookup);
+  const asksSeparated =
+    /\b(ambos|separad[oa]s?)\b/.test(normalizeAssistantText(message)) &&
+    lookup.results.length > 1;
+
+  if (asksSeparated) {
+    if (modelInventory) {
+      return {
+        message: modelInventory.fallbackText,
+        structuredBlock: modelInventory,
+        contextItemQuery: null,
+        contextSupplierOrderId: null,
+        contextSupplierOrderCatalogCode: null,
+      };
+    }
+
+    return {
+      message: formatSeparatedItemAnswer(lookup),
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  if (lookup.results.length > 1) {
+    const block = createItemLookupClarificationBlock(lookup);
+
+    return {
+      message: block.fallbackText,
+      structuredBlock: block,
+      contextItemQuery: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  if (modelInventory && lookup.results.length === 1) {
+    const item = lookup.results[0];
+    const target = findServoModelTarget(
+      modelInventory,
+      item.kind === "COMMERCIAL_CONFIGURATION"
+        ? "commercial_configuration"
+        : "item",
+      item.kind === "COMMERCIAL_CONFIGURATION"
+        ? item.configuration_id
+        : item.item_id,
+    );
+
+    if (target) {
+      const summary = createServoModelTargetSummary(
+        modelInventory.model.official,
+        target,
+      );
+
+      return {
+        message: ensureExplicitGreeting(
+          summary.fallbackText,
+          message,
+          firstName,
+        ),
+        structuredBlock: summary,
+        contextItemQuery: target.displayCode,
+        contextSupplierOrderId: null,
+        contextSupplierOrderCatalogCode: null,
+      };
+    }
+  }
+
   const directAnswer = formatDirectItemAnswer(message, lookup);
 
   if (directAnswer) {
