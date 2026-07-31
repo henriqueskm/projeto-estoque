@@ -11,6 +11,7 @@ export type AssistantChatRequest = {
   lastItemQuery?: string;
   lastSupplierOrderId?: string;
   lastSupplierOrderCatalogCode?: string;
+  selectedSupplierOrderItemId?: string;
 };
 
 export type AssistantChatSuccess = {
@@ -300,6 +301,9 @@ export type AssistantClarificationOption = {
   label: string;
   prompt: string;
   category: AssistantClarificationCategory;
+  description?: string;
+  contextSupplierOrderId?: string;
+  contextSupplierOrderItemId?: string;
 };
 
 export type AssistantClarificationBlock = {
@@ -308,6 +312,108 @@ export type AssistantClarificationBlock = {
   message?: string;
   options: AssistantClarificationOption[];
   fallbackText: string;
+};
+
+export type AssistantSupplierOrderPickupMode =
+  | "increment"
+  | "set_total"
+  | "mark_all";
+
+export type AssistantSupplierOrderPickupPreviewItem = {
+  id: string;
+  displayCode: string;
+  description: string;
+  orderedQuantity: number;
+  cancelledQuantity: number;
+  stockedQuantity: number;
+  currentPickedQuantity: number;
+  requestedQuantity: number;
+  addedQuantity: number;
+  targetPickedQuantity: number;
+  remainingAfter: number;
+};
+
+export type AssistantSupplierOrderPickupPreviewLine = {
+  id: string;
+  displayCode: string;
+  description: string;
+  currentPickedQuantity: number;
+  targetPickedQuantity: number;
+  addedQuantity: number;
+  alreadyComplete: boolean;
+};
+
+export type AssistantSupplierOrderPickupPreviewBlock = {
+  kind: "assistant_action_preview";
+  action: "supplier_order_pickup";
+  mode: AssistantSupplierOrderPickupMode;
+  state: "pending" | "expired" | "cancelled";
+  title: string;
+  message: string;
+  proposalToken: string | null;
+  expiresAt: string | null;
+  order: AssistantSupplierOrderCard;
+  item?: AssistantSupplierOrderPickupPreviewItem;
+  markAll?: {
+    changedLines: number;
+    addedPickedQuantity: number;
+    items: AssistantSupplierOrderPickupPreviewLine[];
+    hiddenItemCount: number;
+  };
+  warnings: string[];
+  confirmLabel: "Confirmar retirada";
+  cancelLabel: "Cancelar";
+  regeneratePrompt: string;
+};
+
+export type AssistantActionResultLink = {
+  kind: "link";
+  label: string;
+  href: string;
+};
+
+export type AssistantActionResultPrompt = {
+  kind: "prompt";
+  label: string;
+  prompt: string;
+};
+
+export type AssistantSupplierOrderPickupResultBlock = {
+  kind: "assistant_action_result";
+  action: "supplier_order_pickup";
+  outcome:
+    | "success"
+    | "no_change"
+    | "conflict"
+    | "error"
+    | "cancelled"
+    | "expired";
+  title: string;
+  message: string;
+  order: AssistantSupplierOrderCard | null;
+  item?: {
+    id: string;
+    displayCode: string;
+    description: string;
+    previousPickedQuantity: number;
+    addedPickedQuantity: number;
+    currentPickedQuantity: number;
+    remainingPickupQuantity: number;
+  };
+  markAll?: {
+    changedLines: number;
+    addedPickedQuantity: number;
+  };
+  idempotentReplay: boolean;
+  refreshWarning?: boolean;
+  warnings?: string[];
+  actions: Array<AssistantActionResultLink | AssistantActionResultPrompt>;
+};
+
+export type AssistantSupplierOrderPickupConfirmationResult = {
+  block: AssistantSupplierOrderPickupResultBlock;
+  contextSupplierOrderId: string | null;
+  contextSupplierOrderCatalogCode: string | null;
 };
 
 export type AssistantPurchaseRecommendationBlock = {
@@ -339,7 +445,9 @@ export type AssistantStructuredBlock =
   | AssistantSupplierOrderAggregateBlock
   | AssistantSupplierOrderAmbiguityBlock
   | AssistantPurchaseRecommendationBlock
-  | AssistantClarificationBlock;
+  | AssistantClarificationBlock
+  | AssistantSupplierOrderPickupPreviewBlock
+  | AssistantSupplierOrderPickupResultBlock;
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -474,6 +582,32 @@ function isSafeSupplierOrdersHref(
       (expectedOrderId === undefined
         ? !orderId
         : orderId === expectedOrderId)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isSafeSupplierOrderActionHref(value: unknown): value is string {
+  if (typeof value !== "string" || !value.startsWith("/pedidos")) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value, "https://negocios-k.local");
+    const keys = Array.from(url.searchParams.keys());
+    const uniqueKeys = new Set(keys);
+    const view = url.searchParams.get("view");
+    const orderId = url.searchParams.get("order");
+
+    return (
+      url.origin === "https://negocios-k.local" &&
+      url.pathname === "/pedidos" &&
+      !url.hash &&
+      keys.length === uniqueKeys.size &&
+      keys.every((key) => ["view", "order"].includes(key)) &&
+      (view === "active" || view === "history") &&
+      Boolean(orderId && uuidPattern.test(orderId))
     );
   } catch {
     return false;
@@ -1024,11 +1158,320 @@ function parsePurchaseRecommendationItem(
   return value as PurchaseRecommendationItem;
 }
 
+function parseSupplierOrderPickupPreviewItem(
+  value: unknown,
+): AssistantSupplierOrderPickupPreviewItem | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !uuidPattern.test(value.id) ||
+    typeof value.displayCode !== "string" ||
+    !value.displayCode.trim() ||
+    typeof value.description !== "string" ||
+    !value.description.trim() ||
+    !isNonnegativeInteger(value.orderedQuantity) ||
+    !isNonnegativeInteger(value.cancelledQuantity) ||
+    !isNonnegativeInteger(value.stockedQuantity) ||
+    !isNonnegativeInteger(value.currentPickedQuantity) ||
+    !isNonnegativeInteger(value.requestedQuantity) ||
+    !isNonnegativeInteger(value.addedQuantity) ||
+    !isNonnegativeInteger(value.targetPickedQuantity) ||
+    !isNonnegativeInteger(value.remainingAfter) ||
+    value.requestedQuantity === 0 ||
+    value.addedQuantity === 0 ||
+    value.targetPickedQuantity !==
+      value.currentPickedQuantity + value.addedQuantity ||
+    value.targetPickedQuantity + value.cancelledQuantity >
+      value.orderedQuantity ||
+    value.remainingAfter !==
+      value.orderedQuantity -
+        value.cancelledQuantity -
+        value.targetPickedQuantity ||
+    value.stockedQuantity > value.currentPickedQuantity
+  ) {
+    return null;
+  }
+
+  return value as AssistantSupplierOrderPickupPreviewItem;
+}
+
+function parseSupplierOrderPickupPreviewLine(
+  value: unknown,
+): AssistantSupplierOrderPickupPreviewLine | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !uuidPattern.test(value.id) ||
+    typeof value.displayCode !== "string" ||
+    !value.displayCode.trim() ||
+    typeof value.description !== "string" ||
+    !value.description.trim() ||
+    !isNonnegativeInteger(value.currentPickedQuantity) ||
+    !isNonnegativeInteger(value.targetPickedQuantity) ||
+    !isNonnegativeInteger(value.addedQuantity) ||
+    typeof value.alreadyComplete !== "boolean" ||
+    value.targetPickedQuantity !==
+      value.currentPickedQuantity + value.addedQuantity ||
+    value.alreadyComplete !== (value.addedQuantity === 0)
+  ) {
+    return null;
+  }
+
+  return value as AssistantSupplierOrderPickupPreviewLine;
+}
+
+function parseAssistantActionResultAction(
+  value: unknown,
+): AssistantActionResultLink | AssistantActionResultPrompt | null {
+  if (
+    !isRecord(value) ||
+    typeof value.label !== "string" ||
+    !value.label.trim() ||
+    value.label.length > 80
+  ) {
+    return null;
+  }
+
+  if (
+    value.kind === "link" &&
+    isSafeSupplierOrderActionHref(value.href)
+  ) {
+    return {
+      kind: "link",
+      label: value.label.trim(),
+      href: value.href,
+    };
+  }
+
+  if (
+    value.kind === "prompt" &&
+    typeof value.prompt === "string" &&
+    value.prompt.trim() &&
+    value.prompt.length <= 240
+  ) {
+    return {
+      kind: "prompt",
+      label: value.label.trim(),
+      prompt: value.prompt.trim(),
+    };
+  }
+
+  return null;
+}
+
 export function parseAssistantStructuredBlock(
   value: unknown,
 ): AssistantStructuredBlock | null {
   if (!isRecord(value)) {
     return null;
+  }
+
+  if (value.kind === "assistant_action_preview") {
+    const order = parseSupplierOrderCard(value.order);
+    const item =
+      value.item === undefined
+        ? undefined
+        : parseSupplierOrderPickupPreviewItem(value.item);
+    const markAll = value.markAll;
+    const markAllItems =
+      isRecord(markAll) && Array.isArray(markAll.items)
+        ? markAll.items.map(parseSupplierOrderPickupPreviewLine)
+        : [];
+    const warnings = Array.isArray(value.warnings)
+      ? value.warnings
+      : [];
+    const isPending = value.state === "pending";
+
+    if (
+      value.action !== "supplier_order_pickup" ||
+      !["increment", "set_total", "mark_all"].includes(
+        String(value.mode),
+      ) ||
+      !["pending", "expired", "cancelled"].includes(
+        String(value.state),
+      ) ||
+      typeof value.title !== "string" ||
+      !value.title.trim() ||
+      value.title.length > 120 ||
+      typeof value.message !== "string" ||
+      !value.message.trim() ||
+      value.message.length > 500 ||
+      (isPending
+        ? typeof value.proposalToken !== "string" ||
+          !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(
+            value.proposalToken,
+          ) ||
+          value.proposalToken.length > 4096 ||
+          typeof value.expiresAt !== "string" ||
+          Number.isNaN(Date.parse(value.expiresAt))
+        : value.proposalToken !== null || value.expiresAt !== null) ||
+      !order ||
+      !Array.isArray(value.warnings) ||
+      warnings.length > 10 ||
+      warnings.some(
+        (warning) =>
+          typeof warning !== "string" ||
+          !warning.trim() ||
+          warning.length > 240,
+      ) ||
+      value.confirmLabel !== "Confirmar retirada" ||
+      value.cancelLabel !== "Cancelar" ||
+      typeof value.regeneratePrompt !== "string" ||
+      !value.regeneratePrompt.trim() ||
+      value.regeneratePrompt.length > 240 ||
+      (value.mode === "mark_all"
+        ? item !== undefined ||
+          !isRecord(markAll) ||
+          !isNonnegativeInteger(markAll.changedLines) ||
+          markAll.changedLines === 0 ||
+          !isNonnegativeInteger(markAll.addedPickedQuantity) ||
+          markAll.addedPickedQuantity === 0 ||
+          !Array.isArray(markAll.items) ||
+          markAllItems.length > 20 ||
+          markAllItems.some((line) => line === null) ||
+          !isNonnegativeInteger(markAll.hiddenItemCount)
+        : !item || value.markAll !== undefined)
+    ) {
+      return null;
+    }
+
+    return {
+      kind: "assistant_action_preview",
+      action: "supplier_order_pickup",
+      mode:
+        value.mode as AssistantSupplierOrderPickupMode,
+      state:
+        value.state as AssistantSupplierOrderPickupPreviewBlock["state"],
+      title: value.title.trim(),
+      message: value.message.trim(),
+      proposalToken: isPending
+        ? (value.proposalToken as string)
+        : null,
+      expiresAt: isPending ? (value.expiresAt as string) : null,
+      order,
+      ...(item ? { item } : {}),
+      ...(value.mode === "mark_all" && isRecord(markAll)
+        ? {
+            markAll: {
+              changedLines: markAll.changedLines as number,
+              addedPickedQuantity:
+                markAll.addedPickedQuantity as number,
+              items:
+                markAllItems as AssistantSupplierOrderPickupPreviewLine[],
+              hiddenItemCount: markAll.hiddenItemCount as number,
+            },
+          }
+        : {}),
+      warnings: warnings.map((warning) => String(warning).trim()),
+      confirmLabel: "Confirmar retirada",
+      cancelLabel: "Cancelar",
+      regeneratePrompt: value.regeneratePrompt.trim(),
+    };
+  }
+
+  if (value.kind === "assistant_action_result") {
+    const order =
+      value.order === null ? null : parseSupplierOrderCard(value.order);
+    const item = value.item;
+    const markAll = value.markAll;
+    const actions = Array.isArray(value.actions)
+      ? value.actions.map(parseAssistantActionResultAction)
+      : [];
+    const warnings = Array.isArray(value.warnings)
+      ? value.warnings
+      : [];
+
+    if (
+      value.action !== "supplier_order_pickup" ||
+      ![
+        "success",
+        "no_change",
+        "conflict",
+        "error",
+        "cancelled",
+        "expired",
+      ].includes(String(value.outcome)) ||
+      typeof value.title !== "string" ||
+      !value.title.trim() ||
+      value.title.length > 120 ||
+      typeof value.message !== "string" ||
+      !value.message.trim() ||
+      value.message.length > 500 ||
+      (value.order !== null && !order) ||
+      typeof value.idempotentReplay !== "boolean" ||
+      (value.refreshWarning !== undefined &&
+        typeof value.refreshWarning !== "boolean") ||
+      (value.warnings !== undefined &&
+        (!Array.isArray(value.warnings) ||
+          warnings.length > 4 ||
+          warnings.some(
+            (warning) =>
+              typeof warning !== "string" ||
+              !warning.trim() ||
+              warning.length > 300,
+          ))) ||
+      !Array.isArray(value.actions) ||
+      actions.length > 4 ||
+      actions.some((action) => action === null) ||
+      (item !== undefined &&
+        (!isRecord(item) ||
+          typeof item.id !== "string" ||
+          !uuidPattern.test(item.id) ||
+          typeof item.displayCode !== "string" ||
+          !item.displayCode.trim() ||
+          typeof item.description !== "string" ||
+          !item.description.trim() ||
+          !isNonnegativeInteger(item.previousPickedQuantity) ||
+          !isNonnegativeInteger(item.addedPickedQuantity) ||
+          !isNonnegativeInteger(item.currentPickedQuantity) ||
+          !isNonnegativeInteger(item.remainingPickupQuantity) ||
+          item.currentPickedQuantity !==
+            item.previousPickedQuantity +
+              item.addedPickedQuantity)) ||
+      (markAll !== undefined &&
+        (!isRecord(markAll) ||
+          !isNonnegativeInteger(markAll.changedLines) ||
+          !isNonnegativeInteger(markAll.addedPickedQuantity))) ||
+      (item !== undefined && markAll !== undefined)
+    ) {
+      return null;
+    }
+
+    return {
+      kind: "assistant_action_result",
+      action: "supplier_order_pickup",
+      outcome:
+        value.outcome as AssistantSupplierOrderPickupResultBlock["outcome"],
+      title: value.title.trim(),
+      message: value.message.trim(),
+      order,
+      ...(isRecord(item)
+        ? {
+            item:
+              item as AssistantSupplierOrderPickupResultBlock["item"],
+          }
+        : {}),
+      ...(isRecord(markAll)
+        ? {
+            markAll:
+              markAll as AssistantSupplierOrderPickupResultBlock["markAll"],
+          }
+        : {}),
+      idempotentReplay: value.idempotentReplay,
+      ...(value.refreshWarning === true
+        ? { refreshWarning: true }
+        : {}),
+      ...(warnings.length > 0
+        ? {
+            warnings: warnings.map((warning) =>
+              String(warning).trim(),
+            ),
+          }
+        : {}),
+      actions: actions as Array<
+        AssistantActionResultLink | AssistantActionResultPrompt
+      >,
+    };
   }
 
   if (value.kind === "purchase_recommendation_list") {
@@ -1125,6 +1568,18 @@ export function parseAssistantStructuredBlock(
         typeof option.prompt !== "string" ||
         !option.prompt.trim() ||
         option.prompt.length > 200 ||
+        (option.description !== undefined &&
+          (typeof option.description !== "string" ||
+            !option.description.trim() ||
+            option.description.length > 180)) ||
+        (option.contextSupplierOrderId !== undefined &&
+          (typeof option.contextSupplierOrderId !== "string" ||
+            !uuidPattern.test(option.contextSupplierOrderId))) ||
+        (option.contextSupplierOrderItemId !== undefined &&
+          (typeof option.contextSupplierOrderItemId !== "string" ||
+            !uuidPattern.test(option.contextSupplierOrderItemId))) ||
+        (option.contextSupplierOrderItemId !== undefined &&
+          option.contextSupplierOrderId === undefined) ||
         ![
           "inventory",
           "supplier_orders",
@@ -1141,10 +1596,33 @@ export function parseAssistantStructuredBlock(
         prompt: option.prompt.trim(),
         category:
           option.category as AssistantClarificationCategory,
+        ...(typeof option.description === "string"
+          ? { description: option.description.trim() }
+          : {}),
+        ...(typeof option.contextSupplierOrderId === "string"
+          ? {
+              contextSupplierOrderId:
+                option.contextSupplierOrderId.toLowerCase(),
+            }
+          : {}),
+        ...(typeof option.contextSupplierOrderItemId === "string"
+          ? {
+              contextSupplierOrderItemId:
+                option.contextSupplierOrderItemId.toLowerCase(),
+            }
+          : {}),
       };
     });
     const ids = parsedOptions.map((option) => option?.id);
-    const prompts = parsedOptions.map((option) => option?.prompt);
+    const selections = parsedOptions.map((option) =>
+      option
+        ? [
+            option.prompt,
+            option.contextSupplierOrderId ?? "",
+            option.contextSupplierOrderItemId ?? "",
+          ].join(":")
+        : null,
+    );
 
     if (
       typeof value.title !== "string" ||
@@ -1158,7 +1636,7 @@ export function parseAssistantStructuredBlock(
       options.length > 6 ||
       parsedOptions.some((option) => option === null) ||
       new Set(ids).size !== ids.length ||
-      new Set(prompts).size !== prompts.length ||
+      new Set(selections).size !== selections.length ||
       typeof value.fallbackText !== "string" ||
       !value.fallbackText.trim() ||
       value.fallbackText.length > 1000

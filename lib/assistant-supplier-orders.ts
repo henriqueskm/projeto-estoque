@@ -10,7 +10,6 @@ import {
   type AssistantSupplierOrderDetailBlock,
   type AssistantSupplierOrderItemCard,
   type AssistantSupplierOrderListBlock,
-  type AssistantStructuredBlock,
 } from "@/lib/assistant-types";
 import type { SupplierOrderAssistantQuery } from "@/lib/ai/supplier-order-routing";
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
@@ -66,7 +65,11 @@ type SupabaseTableQuery = ReturnType<SupabaseServerClient["from"]>;
 type SupabaseFilterQuery = ReturnType<SupabaseTableQuery["select"]>;
 
 export type SupplierOrderAssistantResult = {
-  block: AssistantStructuredBlock;
+  block:
+    | AssistantSupplierOrderListBlock
+    | AssistantSupplierOrderDetailBlock
+    | AssistantSupplierOrderAggregateBlock
+    | AssistantSupplierOrderAmbiguityBlock;
   contextSupplierOrderId: string | null;
 };
 

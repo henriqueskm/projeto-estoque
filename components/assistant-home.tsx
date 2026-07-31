@@ -36,6 +36,9 @@ import {
   type AssistantChatError,
   type AssistantChatSuccess,
   type AssistantClarificationBlock,
+  type AssistantSupplierOrderPickupPreviewBlock,
+  type AssistantSupplierOrderPickupConfirmationResult,
+  type AssistantSupplierOrderPickupResultBlock,
 } from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
@@ -48,6 +51,20 @@ type LocalAttachment = {
   file: File;
   previewUrl: string;
   source: "camera" | "gallery";
+};
+
+type SupplierOrderPickupProgressStage =
+  | "validating"
+  | "registering"
+  | "refreshing";
+
+const supplierOrderPickupProgressLabels: Record<
+  SupplierOrderPickupProgressStage,
+  string
+> = {
+  validating: "Validando retirada...",
+  registering: "Registrando retirada...",
+  refreshing: "Atualizando Pedido...",
 };
 
 const initialSuggestions: AssistantClarificationBlock = {
@@ -144,6 +161,11 @@ export function AssistantHome({
   const scrollFrameRef = useRef<number | null>(null);
   const latestScrollTopRef = useRef(0);
   const requestInFlightRef = useRef(false);
+  const actionInFlightRef = useRef(false);
+  const [confirmingPickupMessageId, setConfirmingPickupMessageId] =
+    useState<string | null>(null);
+  const [confirmingPickupStage, setConfirmingPickupStage] =
+    useState<SupplierOrderPickupProgressStage | null>(null);
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const newConversationButtonRef = useRef<HTMLButtonElement>(null);
@@ -408,7 +430,13 @@ export function AssistantHome({
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
-  async function sendAssistantMessage(submittedMessage: string) {
+  async function sendAssistantMessage(
+    submittedMessage: string,
+    context?: {
+      supplierOrderId?: string;
+      supplierOrderItemId?: string;
+    },
+  ) {
     if (
       isInteractionLocked ||
       requestInFlightRef.current ||
@@ -440,12 +468,22 @@ export function AssistantHome({
     }
 
     try {
+      const requestSupplierOrderId =
+        context?.supplierOrderId ?? lastSupplierOrderId;
       const requestBody: AssistantChatRequest = {
         message: submittedMessage,
         ...(lastItemQuery ? { lastItemQuery } : {}),
-        ...(lastSupplierOrderId ? { lastSupplierOrderId } : {}),
+        ...(requestSupplierOrderId
+          ? { lastSupplierOrderId: requestSupplierOrderId }
+          : {}),
         ...(lastSupplierOrderCatalogCode
           ? { lastSupplierOrderCatalogCode }
+          : {}),
+        ...(context?.supplierOrderItemId
+          ? {
+              selectedSupplierOrderItemId:
+                context.supplierOrderItemId,
+            }
           : {}),
       };
       const response = await fetch("/api/assistant/chat", {
@@ -548,6 +586,198 @@ export function AssistantHome({
         router.refresh();
       });
     }
+  }
+
+  function replacePickupPreview(
+    messageId: string,
+    block: AssistantSupplierOrderPickupResultBlock,
+  ) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              content: block.message,
+              structuredBlock: block,
+              restoredMediaReferences: undefined,
+            }
+          : message,
+      ),
+    );
+  }
+
+  function parsePickupConfirmationResponse(
+    value: unknown,
+  ): AssistantSupplierOrderPickupConfirmationResult | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    const block = parseAssistantStructuredBlock(record.block);
+    const contextSupplierOrderId =
+      record.contextSupplierOrderId;
+    const contextSupplierOrderCatalogCode =
+      record.contextSupplierOrderCatalogCode;
+
+    if (
+      keys.length !== 3 ||
+      !keys.includes("block") ||
+      !keys.includes("contextSupplierOrderId") ||
+      !keys.includes("contextSupplierOrderCatalogCode") ||
+      !block ||
+      block.kind !== "assistant_action_result" ||
+      (contextSupplierOrderId !== null &&
+        (typeof contextSupplierOrderId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            contextSupplierOrderId,
+          ))) ||
+      (contextSupplierOrderCatalogCode !== null &&
+        (typeof contextSupplierOrderCatalogCode !== "string" ||
+          !contextSupplierOrderCatalogCode.trim() ||
+          contextSupplierOrderCatalogCode.length > 80))
+    ) {
+      return null;
+    }
+
+    return {
+      block,
+      contextSupplierOrderId,
+      contextSupplierOrderCatalogCode,
+    };
+  }
+
+  async function handlePickupConfirmation(
+    messageId: string,
+    block: AssistantSupplierOrderPickupPreviewBlock,
+  ) {
+    if (
+      actionInFlightRef.current ||
+      requestInFlightRef.current ||
+      isInteractionLocked ||
+      block.state !== "pending" ||
+      !block.proposalToken
+    ) {
+      return;
+    }
+
+    actionInFlightRef.current = true;
+    setConfirmingPickupMessageId(messageId);
+    setConfirmingPickupStage("validating");
+    setIsPending(true);
+    setFeedback(null);
+    const registeringTimer = window.setTimeout(() => {
+      setConfirmingPickupStage("registering");
+    }, 500);
+
+    try {
+      const response = await fetch(
+        "/api/assistant/actions/supplier-order-pickup",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            proposalToken: block.proposalToken,
+          }),
+        },
+      );
+      const responseBody: unknown = await response.json();
+      const result =
+        parsePickupConfirmationResponse(responseBody);
+      const parsedBlock = result?.block ?? null;
+
+      if (
+        !response.ok ||
+        !result ||
+        !parsedBlock ||
+        parsedBlock.kind !== "assistant_action_result"
+      ) {
+        throw new Error("invalid_action_result");
+      }
+
+      setConfirmingPickupStage("refreshing");
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => resolve());
+        });
+      });
+      replacePickupPreview(messageId, parsedBlock);
+      setLastSupplierOrderId(result.contextSupplierOrderId);
+      setLastSupplierOrderCatalogCode(
+        result.contextSupplierOrderCatalogCode,
+      );
+
+      if (
+        parsedBlock.outcome === "success" ||
+        parsedBlock.outcome === "no_change"
+      ) {
+        startStockRefresh(() => {
+          router.refresh();
+        });
+      }
+    } catch {
+      replacePickupPreview(messageId, {
+        kind: "assistant_action_result",
+        action: "supplier_order_pickup",
+        outcome: "error",
+        title: "Resultado não confirmado",
+        message:
+          "Não foi possível confirmar o resultado da retirada. Confira o Pedido antes de realizar qualquer nova tentativa.",
+        order: block.order,
+        idempotentReplay: false,
+        actions: [
+          {
+            kind: "link",
+            label: "Abrir Pedido",
+            href: block.order.href,
+          },
+        ],
+      });
+    } finally {
+      window.clearTimeout(registeringTimer);
+      actionInFlightRef.current = false;
+      setConfirmingPickupMessageId(null);
+      setConfirmingPickupStage(null);
+      shouldRestoreFocusRef.current = true;
+      setIsPending(false);
+    }
+  }
+
+  function handlePickupCancellation(
+    messageId: string,
+    block: AssistantSupplierOrderPickupPreviewBlock,
+  ) {
+    if (
+      actionInFlightRef.current ||
+      isInteractionLocked ||
+      block.state !== "pending"
+    ) {
+      return;
+    }
+
+    replacePickupPreview(messageId, {
+      kind: "assistant_action_result",
+      action: "supplier_order_pickup",
+      outcome: "cancelled",
+      title: "Prévia cancelada",
+      message: "Nenhuma retirada foi executada.",
+      order: block.order,
+      idempotentReplay: false,
+      actions: [
+        {
+          kind: "link",
+          label: "Abrir Pedido",
+          href: block.order.href,
+        },
+      ],
+    });
+    shouldRestoreFocusRef.current = true;
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -693,7 +923,8 @@ export function AssistantHome({
                   {firstName ? `Olá, ${firstName}.` : "Olá."}
                 </p>
                 <p className="mt-1 text-sm font-semibold text-text-muted sm:text-base">
-                  Consulte informações reais em modo somente leitura.
+                  Consulte dados reais e prepare retiradas de Pedidos
+                  com confirmação explícita.
                 </p>
               </div>
 
@@ -799,9 +1030,32 @@ export function AssistantHome({
                         <AssistantStructuredBlockView
                           block={chatMessage.structuredBlock}
                           disabled={isInteractionLocked}
-                          onPromptSelect={(prompt) => {
-                            void sendAssistantMessage(prompt);
+                          onPromptSelect={(prompt, context) => {
+                            void sendAssistantMessage(prompt, context);
                           }}
+                          onPickupConfirm={(block) => {
+                            void handlePickupConfirmation(
+                              chatMessage.id,
+                              block,
+                            );
+                          }}
+                          onPickupCancel={(block) => {
+                            handlePickupCancellation(
+                              chatMessage.id,
+                              block,
+                            );
+                          }}
+                          confirmingPickup={
+                            confirmingPickupMessageId === chatMessage.id
+                          }
+                          pickupProgressLabel={
+                            confirmingPickupMessageId === chatMessage.id &&
+                            confirmingPickupStage
+                              ? supplierOrderPickupProgressLabels[
+                                  confirmingPickupStage
+                                ]
+                              : null
+                          }
                         />
                       ) : (
                         <AssistantMessageContent
@@ -828,7 +1082,7 @@ export function AssistantHome({
                   </section>
                 );
               })}
-              {isInteractionLocked ? (
+              {isInteractionLocked && !confirmingPickupMessageId ? (
                 <section
                   aria-label="Resposta da Assistente NK em andamento"
                   className="mr-auto"
@@ -1017,7 +1271,8 @@ export function AssistantHome({
             />
           </form>
           <p className="mx-auto mt-1 max-w-3xl text-center text-[0.6rem] leading-4 font-semibold text-text-muted sm:mt-1.5 sm:text-[0.68rem]">
-            Consultas em modo somente leitura. Envio de imagens, áudio e
+            Consultas são somente leitura. Retiradas de Pedidos só
+            acontecem após confirmação; imagens, áudio e demais
             operações ainda não estão habilitados.
           </p>
       </div>

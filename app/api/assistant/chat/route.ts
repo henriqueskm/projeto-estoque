@@ -13,8 +13,18 @@ import {
 import { createClient } from "@/lib/supabase/server";
 
 type AuthenticationResult =
-  | { firstName: string | null; error: null }
-  | { firstName: null; error: NextResponse<AssistantChatError> };
+  | {
+      userId: string;
+      firstName: string | null;
+      profileName: string | null;
+      error: null;
+    }
+  | {
+      userId: null;
+      firstName: null;
+      profileName: null;
+      error: NextResponse<AssistantChatError>;
+    };
 
 function errorResponse(error: string, status: number) {
   return NextResponse.json<AssistantChatError>({ error }, { status });
@@ -28,7 +38,9 @@ async function authenticateRequest(): Promise<AuthenticationResult> {
 
   if (claimsError || !userId) {
     return {
+      userId: null,
       firstName: null,
+      profileName: null,
       error: errorResponse("Sua sessão expirou. Entre novamente.", 401),
     };
   }
@@ -42,7 +54,9 @@ async function authenticateRequest(): Promise<AuthenticationResult> {
 
   if (profileError) {
     return {
+      userId: null,
       firstName: null,
+      profileName: null,
       error: errorResponse(
         "Não foi possível validar seu acesso agora. Tente novamente.",
         503,
@@ -52,7 +66,9 @@ async function authenticateRequest(): Promise<AuthenticationResult> {
 
   if (!profile) {
     return {
+      userId: null,
       firstName: null,
+      profileName: null,
       error: errorResponse("Seu perfil não está ativo.", 403),
     };
   }
@@ -67,7 +83,12 @@ async function authenticateRequest(): Promise<AuthenticationResult> {
       ? firstName
       : null;
 
-  return { firstName: safeFirstName, error: null };
+  return {
+    userId,
+    firstName: safeFirstName,
+    profileName: registeredName || null,
+    error: null,
+  };
 }
 
 function serviceErrorResponse(error: AssistantServiceError) {
@@ -145,6 +166,8 @@ export async function POST(request: Request) {
   const rawLastSupplierOrderId = bodyRecord.lastSupplierOrderId;
   const rawLastSupplierOrderCatalogCode =
     bodyRecord.lastSupplierOrderCatalogCode;
+  const rawSelectedSupplierOrderItemId =
+    bodyRecord.selectedSupplierOrderItemId;
 
   if (
     bodyKeys.some(
@@ -152,7 +175,8 @@ export async function POST(request: Request) {
         key !== "message" &&
         key !== "lastItemQuery" &&
         key !== "lastSupplierOrderId" &&
-        key !== "lastSupplierOrderCatalogCode",
+        key !== "lastSupplierOrderCatalogCode" &&
+        key !== "selectedSupplierOrderItemId",
     ) ||
     !bodyKeys.includes("message")
   ) {
@@ -198,6 +222,16 @@ export async function POST(request: Request) {
     )
       ? normalizedLastSupplierOrderCatalogCode
       : null;
+  const normalizedSelectedSupplierOrderItemId =
+    typeof rawSelectedSupplierOrderItemId === "string"
+      ? rawSelectedSupplierOrderItemId.trim()
+      : "";
+  const selectedSupplierOrderItemId =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalizedSelectedSupplierOrderItemId,
+    )
+      ? normalizedSelectedSupplierOrderItemId
+      : null;
 
   try {
     const answer = await answerAssistantQuestion(
@@ -206,6 +240,9 @@ export async function POST(request: Request) {
       lastSupplierOrderId,
       lastSupplierOrderCatalogCode,
       authentication.firstName,
+      authentication.userId,
+      authentication.profileName,
+      selectedSupplierOrderItemId,
     );
 
     return NextResponse.json<AssistantChatSuccess>(answer);

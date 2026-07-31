@@ -4,6 +4,7 @@ import {
   parseAssistantStructuredBlock,
   type AssistantStructuredBlock,
 } from "@/lib/assistant-types";
+import { expireSupplierOrderPickupPreview } from "@/lib/ai/assistant-action-persistence";
 
 export const assistantSessionVersion = 1;
 export const assistantSessionStoragePrefix =
@@ -228,7 +229,15 @@ function sanitizeStructuredBlock(
         },
         mediaReferences: deduplicateMediaReferences(mediaReferences),
       };
+    case "assistant_action_preview":
+      return {
+        block: expireSupplierOrderPickupPreview(block),
+        mediaReferences: [],
+      };
+    case "assistant_action_result":
+      return { block, mediaReferences: [] };
     case "assistant_clarification":
+      return { block, mediaReferences: [] };
     case "purchase_recommendation_list":
     case "supplier_order_aggregate":
     case "supplier_order_ambiguity":

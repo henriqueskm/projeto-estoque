@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import type {
@@ -21,6 +22,8 @@ import type {
   AssistantSupplierOrderDetailBlock,
   AssistantSupplierOrderItemCard,
   AssistantSupplierOrderListBlock,
+  AssistantSupplierOrderPickupPreviewBlock,
+  AssistantSupplierOrderPickupResultBlock,
   AssistantStructuredBlock,
 } from "@/lib/assistant-types";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
@@ -1164,6 +1167,403 @@ function SupplierOrderAmbiguity({
   );
 }
 
+function PickupOrderHeader({
+  order,
+}: {
+  order: AssistantSupplierOrderPickupPreviewBlock["order"];
+}) {
+  return (
+    <div className="rounded-xl border border-border-neutral bg-app-background/70 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <strong className="font-mono text-sm font-black text-violet-900 sm:text-base">
+          Pedido {order.negotiationNumber}
+        </strong>
+        <OrderStatus order={order} />
+      </div>
+      <p className="mt-1 text-xs font-semibold text-text-muted">
+        {formatOrderDate(order.orderDate)}
+      </p>
+    </div>
+  );
+}
+
+function PickupMetric({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: string;
+  value: number;
+  emphasis?: boolean;
+}) {
+  return (
+    <span
+      className={`rounded-lg border px-2 py-2 text-center ${
+        emphasis
+          ? "border-violet-200 bg-violet-50"
+          : "border-border-neutral bg-white"
+      }`}
+    >
+      <span className="block text-[0.56rem] leading-3 font-black text-text-muted uppercase">
+        {label}
+      </span>
+      <strong className="mt-0.5 block font-mono text-base font-black tabular-nums text-text-primary">
+        {quantityFormatter.format(value)}
+      </strong>
+    </span>
+  );
+}
+
+function SupplierOrderPickupPreview({
+  block,
+  disabled,
+  confirming,
+  progressLabel,
+  onConfirm,
+  onCancel,
+  onPromptSelect,
+}: {
+  block: AssistantSupplierOrderPickupPreviewBlock;
+  disabled: boolean;
+  confirming: boolean;
+  progressLabel: string | null;
+  onConfirm?: (block: AssistantSupplierOrderPickupPreviewBlock) => void;
+  onCancel?: (block: AssistantSupplierOrderPickupPreviewBlock) => void;
+  onPromptSelect?: (prompt: string) => void;
+}) {
+  const [isLocallyExpired, setIsLocallyExpired] = useState(false);
+
+  useEffect(() => {
+    if (block.state !== "pending" || !block.expiresAt) {
+      return;
+    }
+
+    const remaining = Date.parse(block.expiresAt) - Date.now();
+    const timeout = window.setTimeout(
+      () => setIsLocallyExpired(true),
+      Math.max(remaining, 0),
+    );
+
+    return () => window.clearTimeout(timeout);
+  }, [block.expiresAt, block.state]);
+
+  const isExpired = block.state === "expired" || isLocallyExpired;
+  const canConfirm =
+    block.state === "pending" &&
+    !isExpired &&
+    Boolean(block.proposalToken) &&
+    Boolean(onConfirm);
+
+  return (
+    <div className="min-w-0">
+      <p className="text-[0.65rem] font-black tracking-[0.12em] text-brand-gold-ink uppercase">
+        Ação operacional
+      </p>
+      <h3 className="text-base font-black text-text-primary sm:text-lg">
+        {isExpired ? "Prévia expirada" : block.title}
+      </h3>
+      <p className="mt-1 text-xs font-semibold text-text-muted sm:text-sm">
+        {isExpired
+          ? "Solicite novamente a retirada para confirmar com os valores atuais."
+          : block.message}
+      </p>
+
+      <div className="mt-3">
+        <PickupOrderHeader order={block.order} />
+      </div>
+
+      {block.item ? (
+        <article className="mt-3 rounded-xl border border-violet-200 bg-violet-50/45 p-3">
+          <p className="font-mono text-sm font-black text-violet-900">
+            Cód. {block.item.displayCode}
+          </p>
+          <p className="mt-1 break-words text-sm font-bold text-text-primary">
+            {block.item.description}
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            <PickupMetric
+              label="Solicitado"
+              value={block.item.orderedQuantity}
+            />
+            <PickupMetric
+              label="Retirado atualmente"
+              value={block.item.currentPickedQuantity}
+            />
+            <PickupMetric
+              label={
+                block.mode === "increment"
+                  ? "Retirar agora"
+                  : "Novo total"
+              }
+              value={
+                block.mode === "increment"
+                  ? block.item.addedQuantity
+                  : block.item.targetPickedQuantity
+              }
+              emphasis
+            />
+            {block.mode === "set_total" ? (
+              <PickupMetric
+                label="Aumento real"
+                value={block.item.addedQuantity}
+              />
+            ) : null}
+            <PickupMetric
+              label="Após a operação"
+              value={block.item.targetPickedQuantity}
+              emphasis
+            />
+            <PickupMetric
+              label="Ainda para retirar"
+              value={block.item.remainingAfter}
+            />
+          </div>
+          {block.item.cancelledQuantity > 0 ? (
+            <p className="mt-2 text-xs font-black text-red-800">
+              Cancelado:{" "}
+              {quantityFormatter.format(block.item.cancelledQuantity)}
+            </p>
+          ) : null}
+        </article>
+      ) : null}
+
+      {block.markAll ? (
+        <section className="mt-3" aria-label="Linhas da retirada total">
+          <div className="grid grid-cols-2 gap-1.5">
+            <PickupMetric
+              label="Linhas alteradas"
+              value={block.markAll.changedLines}
+              emphasis
+            />
+            <PickupMetric
+              label="Unidades adicionais"
+              value={block.markAll.addedPickedQuantity}
+              emphasis
+            />
+          </div>
+          <div className="mt-2 grid gap-1.5">
+            {block.markAll.items.map((item) => (
+              <div
+                key={item.id}
+                className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border-neutral bg-white px-2.5 py-2"
+              >
+                <span className="min-w-0">
+                  <strong className="block font-mono text-xs text-violet-900">
+                    Cód. {item.displayCode}
+                  </strong>
+                  <span className="block truncate text-[0.68rem] font-semibold text-text-muted">
+                    {item.description}
+                  </span>
+                </span>
+                <span className="shrink-0 font-mono text-xs font-black tabular-nums text-text-primary">
+                  {item.alreadyComplete
+                    ? "Já completo"
+                    : `${quantityFormatter.format(item.currentPickedQuantity)} → ${quantityFormatter.format(item.targetPickedQuantity)}`}
+                </span>
+              </div>
+            ))}
+          </div>
+          {block.markAll.hiddenItemCount > 0 ? (
+            <p className="mt-2 text-xs font-bold text-text-muted">
+              + {quantityFormatter.format(block.markAll.hiddenItemCount)}{" "}
+              {block.markAll.hiddenItemCount === 1
+                ? "linha adicional"
+                : "linhas adicionais"}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {block.warnings.length > 0 ? (
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-xs font-semibold text-amber-950">
+          {block.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {isExpired ? (
+        <button
+          type="button"
+          disabled={disabled || !onPromptSelect}
+          onClick={() => onPromptSelect?.(block.regeneratePrompt)}
+          className="nk-focus mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Gerar nova prévia
+        </button>
+      ) : block.state === "cancelled" ? (
+        <p className="mt-4 rounded-xl border border-border-neutral bg-app-background px-3 py-2 text-sm font-bold text-text-muted">
+          Prévia cancelada. Nenhuma retirada foi executada.
+        </p>
+      ) : (
+        <div className="mt-4">
+          {confirming && progressLabel ? (
+            <p
+              role="status"
+              aria-live="polite"
+              className="mb-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900"
+            >
+              {progressLabel}
+            </p>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={disabled || confirming || !canConfirm}
+              aria-busy={confirming}
+              onClick={() => onConfirm?.(block)}
+              className="nk-focus min-h-11 rounded-xl bg-emerald-700 px-3 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {confirming
+                ? (progressLabel ?? "Confirmando...")
+                : block.confirmLabel}
+            </button>
+            <button
+              type="button"
+              disabled={disabled || confirming || !onCancel}
+              onClick={() => onCancel?.(block)}
+              className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary transition hover:bg-app-background disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {block.cancelLabel}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SupplierOrderPickupResult({
+  block,
+  disabled,
+  onPromptSelect,
+}: {
+  block: AssistantSupplierOrderPickupResultBlock;
+  disabled: boolean;
+  onPromptSelect?: (prompt: string) => void;
+}) {
+  const tone =
+    block.outcome === "success"
+      ? "border-emerald-200 bg-emerald-50/55"
+      : block.outcome === "conflict"
+        ? "border-amber-200 bg-amber-50/55"
+        : block.outcome === "error"
+          ? "border-red-200 bg-red-50/55"
+          : "border-border-neutral bg-app-background/70";
+
+  return (
+    <div className="min-w-0">
+      <div className={`rounded-xl border p-3 ${tone}`}>
+        <p className="text-[0.65rem] font-black tracking-[0.12em] text-brand-gold-ink uppercase">
+          Resultado da ação
+        </p>
+        <h3 className="text-base font-black text-text-primary sm:text-lg">
+          {block.title}
+        </h3>
+        <p className="mt-1 text-sm font-semibold text-text-muted">
+          {block.message}
+        </p>
+        {block.idempotentReplay ? (
+          <span className="mt-2 inline-flex rounded-full bg-violet-100 px-2 py-1 text-[0.62rem] font-black text-violet-900 uppercase">
+            Resultado idempotente
+          </span>
+        ) : null}
+        {block.refreshWarning && block.warnings?.length ? (
+          <div
+            role="status"
+            className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-950"
+          >
+            <p className="font-black">Atualização pendente</p>
+            {block.warnings.map((warning) => (
+              <p key={warning} className="mt-1">
+                {warning}
+              </p>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {block.order ? (
+        <div className="mt-3">
+          <PickupOrderHeader order={block.order} />
+        </div>
+      ) : null}
+
+      {block.item ? (
+        <article className="mt-3 rounded-xl border border-border-neutral bg-white p-3">
+          <p className="font-mono text-sm font-black text-violet-900">
+            Cód. {block.item.displayCode}
+          </p>
+          <p className="mt-1 break-words text-sm font-bold text-text-primary">
+            {block.item.description}
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+            <PickupMetric
+              label="Antes"
+              value={block.item.previousPickedQuantity}
+            />
+            <PickupMetric
+              label="Retirado agora"
+              value={block.item.addedPickedQuantity}
+              emphasis
+            />
+            <PickupMetric
+              label="Retirado total"
+              value={block.item.currentPickedQuantity}
+              emphasis
+            />
+            <PickupMetric
+              label="Ainda falta"
+              value={block.item.remainingPickupQuantity}
+            />
+          </div>
+        </article>
+      ) : null}
+
+      {block.markAll ? (
+        <div className="mt-3 grid grid-cols-2 gap-1.5">
+          <PickupMetric
+            label="Linhas alteradas"
+            value={block.markAll.changedLines}
+            emphasis
+          />
+          <PickupMetric
+            label="Unidades retiradas"
+            value={block.markAll.addedPickedQuantity}
+            emphasis
+          />
+        </div>
+      ) : null}
+
+      {block.actions.length > 0 ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {block.actions.map((action) =>
+            action.kind === "link" ? (
+              <Link
+                key={`${action.kind}-${action.label}`}
+                href={action.href}
+                className="nk-focus inline-flex min-h-11 items-center justify-center rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary transition hover:bg-app-background"
+              >
+                {action.label}
+              </Link>
+            ) : (
+              <button
+                key={`${action.kind}-${action.label}`}
+                type="button"
+                disabled={disabled || !onPromptSelect}
+                onClick={() => onPromptSelect?.(action.prompt)}
+                className="nk-focus min-h-11 rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-black text-violet-950 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {action.label}
+              </button>
+            ),
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const clarificationGroups: Array<{
   label: string;
   categories: AssistantClarificationCategory[];
@@ -1183,7 +1583,13 @@ function AssistantClarification({
 }: {
   block: AssistantClarificationBlock;
   disabled: boolean;
-  onPromptSelect?: (prompt: string) => void;
+  onPromptSelect?: (
+    prompt: string,
+    context?: {
+      supplierOrderId?: string;
+      supplierOrderItemId?: string;
+    },
+  ) => void;
 }) {
   return (
     <div className="min-w-0">
@@ -1216,7 +1622,22 @@ function AssistantClarification({
                     key={option.id}
                     type="button"
                     disabled={disabled || !onPromptSelect}
-                    onClick={() => onPromptSelect?.(option.prompt)}
+                    onClick={() =>
+                      onPromptSelect?.(option.prompt, {
+                        ...(option.contextSupplierOrderId
+                          ? {
+                              supplierOrderId:
+                                option.contextSupplierOrderId,
+                            }
+                          : {}),
+                        ...(option.contextSupplierOrderItemId
+                          ? {
+                              supplierOrderItemId:
+                                option.contextSupplierOrderItemId,
+                            }
+                          : {}),
+                      })
+                    }
                     aria-label={`Enviar sugestão: ${option.prompt}`}
                     className="nk-focus flex min-h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-border-neutral bg-app-background px-3 py-2 text-left transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -1231,7 +1652,7 @@ function AssistantClarification({
                         {option.label}
                       </strong>
                       <span className="block break-words text-[0.68rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                        {option.prompt}
+                        {option.description ?? option.prompt}
                       </span>
                     </span>
                   </button>
@@ -1249,12 +1670,50 @@ export function AssistantStructuredBlockView({
   block,
   disabled = false,
   onPromptSelect,
+  onPickupConfirm,
+  onPickupCancel,
+  confirmingPickup = false,
+  pickupProgressLabel = null,
 }: {
   block: AssistantStructuredBlock;
   disabled?: boolean;
-  onPromptSelect?: (prompt: string) => void;
+  onPromptSelect?: (
+    prompt: string,
+    context?: {
+      supplierOrderId?: string;
+      supplierOrderItemId?: string;
+    },
+  ) => void;
+  onPickupConfirm?: (
+    block: AssistantSupplierOrderPickupPreviewBlock,
+  ) => void;
+  onPickupCancel?: (
+    block: AssistantSupplierOrderPickupPreviewBlock,
+  ) => void;
+  confirmingPickup?: boolean;
+  pickupProgressLabel?: string | null;
 }) {
   switch (block.kind) {
+    case "assistant_action_preview":
+      return (
+        <SupplierOrderPickupPreview
+          block={block}
+          disabled={disabled}
+          confirming={confirmingPickup}
+          progressLabel={pickupProgressLabel}
+          onConfirm={onPickupConfirm}
+          onCancel={onPickupCancel}
+          onPromptSelect={onPromptSelect}
+        />
+      );
+    case "assistant_action_result":
+      return (
+        <SupplierOrderPickupResult
+          block={block}
+          disabled={disabled}
+          onPromptSelect={onPromptSelect}
+        />
+      );
     case "assistant_clarification":
       return (
         <AssistantClarification

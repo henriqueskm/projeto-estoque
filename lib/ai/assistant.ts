@@ -11,6 +11,10 @@ import {
 } from "@/lib/assistant-data";
 import { consultAssistantSupplierOrders } from "@/lib/assistant-supplier-orders";
 import {
+  createAssistantSupplierOrderPickupPreview,
+  createSupplierOrderPickupModeClarification,
+} from "@/lib/assistant-supplier-order-pickup";
+import {
   consultAssistantPurchaseRecommendations,
   createPurchaseRecommendationClarificationBlock,
 } from "@/lib/assistant-purchase-recommendations";
@@ -27,6 +31,7 @@ import {
   routeInventoryItemSummaryQuestion,
 } from "@/lib/ai/assistant-routing";
 import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
+import { routeSupplierOrderPickupAction } from "@/lib/ai/supplier-order-pickup-routing";
 import { routePurchaseRecommendationQuestion } from "@/lib/ai/purchase-recommendation-routing";
 import type {
   AssistantClarificationBlock,
@@ -629,7 +634,11 @@ export async function answerAssistantQuestion(
   lastSupplierOrderId: string | null,
   lastSupplierOrderCatalogCode: string | null,
   firstName: string | null,
+  userId: string,
+  profileName: string | null,
+  selectedSupplierOrderItemId: string | null,
 ): Promise<AssistantChatSuccess> {
+  const pickupRoute = routeSupplierOrderPickupAction(message);
   const purchaseRecommendationRoute =
     routePurchaseRecommendationQuestion(message);
   const intent = classifyAssistantIntent(message);
@@ -642,6 +651,41 @@ export async function answerAssistantQuestion(
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
+  }
+
+  if (pickupRoute.kind === "BUTTON_CONFIRMATION_TEXT") {
+    return {
+      message:
+        "Use o botão Confirmar retirada na prévia acima. Nenhuma retirada foi executada por esta mensagem.",
+    };
+  }
+
+  if (pickupRoute.kind === "CANCEL_PICKUP_ACTION") {
+    return {
+      message: "Retirada cancelada. Nenhuma operação foi executada.",
+    };
+  }
+
+  if (pickupRoute.kind === "INVALID_PICKUP_ACTION") {
+    return {
+      message: pickupRoute.message,
+    };
+  }
+
+  if (pickupRoute.kind === "AMBIGUOUS_PICKUP_MODE") {
+    return createSupplierOrderPickupModeClarification(pickupRoute);
+  }
+
+  if (pickupRoute.kind === "PICKUP_ACTION") {
+    return createAssistantSupplierOrderPickupPreview(
+      pickupRoute.request,
+      {
+        userId,
+        profileName,
+        lastSupplierOrderId,
+        selectedSupplierOrderItemId,
+      },
+    );
   }
 
   if (purchaseRecommendationRoute?.kind === "CLARIFICATION") {
