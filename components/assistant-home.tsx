@@ -45,6 +45,9 @@ import {
   type AssistantManualStockEntryResultBlock,
   type AssistantServoModelInventoryAction,
   type AssistantStockEntrySelection,
+  type AssistantManualStockOutputPreviewBlock,
+  type AssistantManualStockOutputResultBlock,
+  type AssistantStockOutputSelection,
 } from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
@@ -174,6 +177,8 @@ export function AssistantHome({
   const [confirmingPickupStage, setConfirmingPickupStage] =
     useState<SupplierOrderPickupProgressStage | null>(null);
   const [confirmingStockEntryMessageId, setConfirmingStockEntryMessageId] =
+    useState<string | null>(null);
+  const [confirmingStockOutputMessageId, setConfirmingStockOutputMessageId] =
     useState<string | null>(null);
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -469,6 +474,7 @@ export function AssistantHome({
       supplierOrderItemId?: string;
       inventoryAction?: AssistantServoModelInventoryAction;
       stockEntrySelection?: AssistantStockEntrySelection;
+      stockOutputSelection?: AssistantStockOutputSelection;
     },
   ) {
     if (
@@ -524,6 +530,9 @@ export function AssistantHome({
           : {}),
         ...(context?.stockEntrySelection
           ? { stockEntrySelection: context.stockEntrySelection }
+          : {}),
+        ...(context?.stockOutputSelection
+          ? { stockOutputSelection: context.stockOutputSelection }
           : {}),
       };
       const response = await fetch("/api/assistant/chat", {
@@ -892,6 +901,54 @@ export function AssistantHome({
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
+  function replaceStockOutputPreview(messageId: string, block: AssistantManualStockOutputResultBlock) {
+    setMessages((current) => current.map((message) => message.id === messageId
+      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      : message));
+  }
+
+  async function handleStockOutputConfirmation(messageId: string, block: AssistantManualStockOutputPreviewBlock) {
+    if (actionInFlightRef.current || requestInFlightRef.current || isInteractionLocked ||
+      block.state !== "pending" || !block.proposalToken) return;
+    actionInFlightRef.current = true;
+    setConfirmingStockOutputMessageId(messageId);
+    setIsPending(true);
+    setFeedback(null);
+    try {
+      const response = await fetch("/api/assistant/actions/manual-stock-output", {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposalToken: block.proposalToken }),
+      });
+      const body: unknown = await response.json().catch(() => null);
+      const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+      const parsed = parseAssistantStructuredBlock(record?.block);
+      if (!response.ok || !parsed || parsed.kind !== "manual_stock_output_result") throw new Error("invalid_stock_output_result");
+      replaceStockOutputPreview(messageId, parsed);
+      if (parsed.outcome === "success") startStockRefresh(() => router.refresh());
+    } catch {
+      replaceStockOutputPreview(messageId, { kind: "manual_stock_output_result", action: "manual_stock_output", outcome: "error",
+        title: "Resultado não confirmado", message: "Não foi possível confirmar o resultado. Confira o Estoque antes de tentar novamente.",
+        lines: [], linesProcessed: 0, totalQuantity: 0, totalAutoAssemblyQuantity: 0, occurredAt: null,
+        reference: null, idempotentReplay: false, actions: [{ kind: "link", label: "Abrir no Estoque", href: "/estoque" }] });
+    } finally {
+      actionInFlightRef.current = false;
+      setConfirmingStockOutputMessageId(null);
+      shouldRestoreFocusRef.current = true;
+      setIsPending(false);
+    }
+  }
+
+  function handleStockOutputCancellation(messageId: string, block: AssistantManualStockOutputPreviewBlock) {
+    if (actionInFlightRef.current || isInteractionLocked || block.state !== "pending") return;
+    replaceStockOutputPreview(messageId, { kind: "manual_stock_output_result", action: "manual_stock_output", outcome: "cancelled",
+      title: "Prévia cancelada", message: "Nenhuma saída foi executada.", lines: [], linesProcessed: 0,
+      totalQuantity: 0, totalAutoAssemblyQuantity: 0, occurredAt: null, reference: null,
+      idempotentReplay: false, actions: [] });
+    shouldRestoreFocusRef.current = true;
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1159,6 +1216,13 @@ export function AssistantHome({
                               setFeedback("Entrada cancelada.");
                               return;
                             }
+                            if (context?.cancelStockOutput) {
+                              setMessages((current) => current.map((message) => message.id === chatMessage.id
+                                ? { ...message, content: "Prévia cancelada. Nenhuma saída foi executada.", structuredBlock: undefined }
+                                : message));
+                              setFeedback("Saída cancelada.");
+                              return;
+                            }
                             void sendAssistantMessage(prompt, context);
                           }}
                           onPickupConfirm={(block) => {
@@ -1191,6 +1255,13 @@ export function AssistantHome({
                             handleStockEntryCancellation(chatMessage.id, block);
                           }}
                           confirmingStockEntry={confirmingStockEntryMessageId === chatMessage.id}
+                          onStockOutputConfirm={(block) => {
+                            void handleStockOutputConfirmation(chatMessage.id, block);
+                          }}
+                          onStockOutputCancel={(block) => {
+                            handleStockOutputCancellation(chatMessage.id, block);
+                          }}
+                          confirmingStockOutput={confirmingStockOutputMessageId === chatMessage.id}
                         />
                       ) : (
                         <AssistantMessageContent

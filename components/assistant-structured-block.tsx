@@ -28,11 +28,14 @@ import type {
   AssistantSupplierOrderStockEntryResultBlock,
   AssistantManualStockEntryPreviewBlock,
   AssistantManualStockEntryResultBlock,
+  AssistantManualStockOutputPreviewBlock,
+  AssistantManualStockOutputResultBlock,
   AssistantStockEntryTarget,
   AssistantServoModelInventoryAction,
   AssistantServoModelInventoryBreakdownBlock,
   AssistantStructuredBlock,
   AssistantStockEntrySelection,
+  AssistantStockOutputSelection,
 } from "@/lib/assistant-types";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
 
@@ -1839,6 +1842,79 @@ function StockEntryResult({ block }: { block: StockEntryResultBlock }) {
   );
 }
 
+function StockOutputPreview({ block, disabled, confirming, onConfirm, onCancel, onPromptSelect }: {
+  block: AssistantManualStockOutputPreviewBlock;
+  disabled: boolean;
+  confirming: boolean;
+  onConfirm?: (block: AssistantManualStockOutputPreviewBlock) => void;
+  onCancel?: (block: AssistantManualStockOutputPreviewBlock) => void;
+  onPromptSelect?: (prompt: string) => void;
+}) {
+  const [locallyExpired, setLocallyExpired] = useState(false);
+  useEffect(() => {
+    if (block.state !== "pending" || !block.expiresAt) return;
+    const timeout = window.setTimeout(() => setLocallyExpired(true), Math.max(Date.parse(block.expiresAt) - Date.now(), 0));
+    return () => window.clearTimeout(timeout);
+  }, [block.expiresAt, block.state]);
+  const expired = block.state === "expired" || locallyExpired;
+  return <div className="min-w-0">
+    <p className="text-[0.65rem] font-black tracking-[0.12em] text-red-800 uppercase">Ação operacional</p>
+    <h3 className="text-base font-black text-text-primary sm:text-lg">{expired ? "Prévia expirada" : block.title}</h3>
+    <p className="mt-1 text-xs font-semibold text-text-muted sm:text-sm">{expired ? "Gere uma nova prévia com os saldos atuais." : block.message}</p>
+    <div className="mt-3 grid gap-2">
+      {block.lines.map((line) => <article key={`${line.target.kind}-${line.target.targetId}`} className="rounded-xl border border-red-200 bg-red-50/35 p-3">
+        <StockEntryTargetHeader target={line.target} />
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          <PickupMetric label="Saldo atual" value={line.target.currentStock} />
+          <PickupMetric label="Saída" value={-line.outputQuantity} emphasis />
+          <PickupMetric label="Saldo estimado" value={line.estimatedStockAfter} emphasis />
+        </div>
+        {line.target.kind === "COMMERCIAL_CODE" ? <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-semibold text-amber-950">
+          {line.autoAssembledQuantity > 0 ? <>
+            Montagem automática prevista: {quantityFormatter.format(line.autoAssembledQuantity)}. Consumo avulso: {quantityFormatter.format(line.autoAssembledQuantity)} × Cód. {line.target.servo?.code} e {quantityFormatter.format(line.autoAssembledQuantity)} × Cód. {line.target.installationKit?.code}.
+          </> : "O saldo montado atual atende esta saída; nenhuma montagem automática está prevista."}
+        </div> : null}
+      </article>)}
+    </div>
+    <p className="mt-3 text-xs font-semibold text-text-muted">Esta saída será registrada como uma saída manual confirmada pela Assistente NK. O banco fará a validação final.</p>
+    {expired ? <button type="button" disabled={disabled || !onPromptSelect} onClick={() => onPromptSelect?.(block.regeneratePrompt)}
+      className="nk-focus mt-4 min-h-11 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:opacity-50">Gerar nova prévia</button>
+      : <div className="mt-4 grid grid-cols-2 gap-2">
+        <button type="button" disabled={disabled || confirming || block.state !== "pending" || !block.proposalToken || !onConfirm}
+          aria-busy={confirming} onClick={() => onConfirm?.(block)}
+          className="nk-focus min-h-11 rounded-xl bg-red-700 px-3 text-sm font-black text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50">
+          {confirming ? "Registrando saída..." : block.confirmLabel}
+        </button>
+        <button type="button" disabled={disabled || confirming || block.state !== "pending" || !onCancel} onClick={() => onCancel?.(block)}
+          className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary disabled:opacity-50">{block.cancelLabel}</button>
+      </div>}
+  </div>;
+}
+
+function StockOutputResult({ block }: { block: AssistantManualStockOutputResultBlock }) {
+  const tone = block.outcome === "success" ? "border-emerald-200 bg-emerald-50/55" : "border-red-200 bg-red-50/45";
+  return <div className="min-w-0">
+    <div className={`rounded-xl border p-3 ${tone}`}>
+      <p className="text-[0.65rem] font-black tracking-[0.12em] text-brand-gold-ink uppercase">Resultado da ação</p>
+      <h3 className="text-base font-black text-text-primary sm:text-lg">{block.title}</h3>
+      <p className="mt-1 text-sm font-semibold text-text-muted">{block.message}</p>
+      {block.idempotentReplay ? <span className="mt-2 inline-flex rounded-full bg-violet-100 px-2 py-1 text-[0.62rem] font-black text-violet-900 uppercase">Resultado idempotente</span> : null}
+      {block.refreshWarning ? <p role="status" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-950">A operação foi concluída; a atualização visual pode exigir recarregar a página.</p> : null}
+    </div>
+    <div className="mt-3 grid gap-2">{block.lines.map((line) => <article key={`${line.target.kind}-${line.target.targetId}`} className="rounded-xl border border-border-neutral bg-white p-3">
+      <StockEntryTargetHeader target={line.target} />
+      <div className="mt-3 grid grid-cols-3 gap-1.5">
+        <PickupMetric label="Antes" value={line.previousStock} />
+        <PickupMetric label="Saída" value={line.outputQuantity} emphasis />
+        <PickupMetric label="Depois" value={line.currentStock} emphasis />
+      </div>
+      {line.autoAssembledQuantity > 0 ? <p className="mt-2 text-xs font-semibold text-text-muted">Montagem automática registrada: {quantityFormatter.format(line.autoAssembledQuantity)}.</p> : null}
+    </article>)}</div>
+    {block.actions.length ? <div className="mt-4 flex flex-wrap gap-2">{block.actions.map((action) => action.kind === "link" ? <Link key={`${action.label}-${action.href}`} href={action.href}
+      className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary">{action.label}</Link> : null)}</div> : null}
+  </div>;
+}
+
 const clarificationGroups: Array<{
   label: string;
   categories: AssistantClarificationCategory[];
@@ -1865,7 +1941,9 @@ function AssistantClarification({
       supplierOrderItemId?: string;
       inventoryAction?: AssistantServoModelInventoryAction;
       stockEntrySelection?: AssistantStockEntrySelection;
+      stockOutputSelection?: AssistantStockOutputSelection;
       cancelStockEntry?: boolean;
+      cancelStockOutput?: boolean;
     },
   ) => void;
 }) {
@@ -1920,12 +1998,18 @@ function AssistantClarification({
                         ...(option.stockEntrySelection
                           ? { stockEntrySelection: option.stockEntrySelection }
                           : {}),
+                        ...(option.stockOutputSelection
+                          ? { stockOutputSelection: option.stockOutputSelection }
+                          : {}),
                         ...(option.id === "entry-cancel"
                           ? { cancelStockEntry: true }
                           : {}),
+                        ...(option.id === "output-cancel"
+                          ? { cancelStockOutput: true }
+                          : {}),
                       })
                     }
-                    aria-label={option.id === "entry-cancel" ? "Cancelar entrada" : `Enviar sugestão: ${option.prompt}`}
+                    aria-label={option.id === "entry-cancel" ? "Cancelar entrada" : option.id === "output-cancel" ? "Cancelar saída" : `Enviar sugestão: ${option.prompt}`}
                     className="nk-focus flex min-h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-border-neutral bg-app-background px-3 py-2 text-left transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <span
@@ -1964,6 +2048,9 @@ export function AssistantStructuredBlockView({
   onStockEntryConfirm,
   onStockEntryCancel,
   confirmingStockEntry = false,
+  onStockOutputConfirm,
+  onStockOutputCancel,
+  confirmingStockOutput = false,
 }: {
   block: AssistantStructuredBlock;
   disabled?: boolean;
@@ -1974,7 +2061,9 @@ export function AssistantStructuredBlockView({
       supplierOrderItemId?: string;
       inventoryAction?: AssistantServoModelInventoryAction;
       stockEntrySelection?: AssistantStockEntrySelection;
+      stockOutputSelection?: AssistantStockOutputSelection;
       cancelStockEntry?: boolean;
+      cancelStockOutput?: boolean;
     },
   ) => void;
   onPickupConfirm?: (
@@ -1988,6 +2077,9 @@ export function AssistantStructuredBlockView({
   onStockEntryConfirm?: (block: StockEntryPreviewBlock) => void;
   onStockEntryCancel?: (block: StockEntryPreviewBlock) => void;
   confirmingStockEntry?: boolean;
+  onStockOutputConfirm?: (block: AssistantManualStockOutputPreviewBlock) => void;
+  onStockOutputCancel?: (block: AssistantManualStockOutputPreviewBlock) => void;
+  confirmingStockOutput?: boolean;
 }) {
   switch (block.kind) {
     case "supplier_order_stock_entry_preview":
@@ -1997,6 +2089,11 @@ export function AssistantStructuredBlockView({
     case "supplier_order_stock_entry_result":
     case "manual_stock_entry_result":
       return <StockEntryResult block={block} />;
+    case "manual_stock_output_preview":
+      return <StockOutputPreview block={block} disabled={disabled} confirming={confirmingStockOutput}
+        onConfirm={onStockOutputConfirm} onCancel={onStockOutputCancel} onPromptSelect={onPromptSelect} />;
+    case "manual_stock_output_result":
+      return <StockOutputResult block={block} />;
     case "assistant_action_preview":
       return (
         <SupplierOrderPickupPreview

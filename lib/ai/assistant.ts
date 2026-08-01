@@ -35,6 +35,7 @@ import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
 import { routeSupplierOrderPickupAction } from "@/lib/ai/supplier-order-pickup-routing";
 import { routeSupplierOrderStockEntryAction } from "@/lib/ai/supplier-order-stock-entry-routing";
 import { routeManualStockEntryAction } from "@/lib/ai/manual-stock-entry-routing";
+import { routeManualStockOutputAction } from "@/lib/ai/manual-stock-output-routing";
 import {
   createAssistantSupplierOrderStockEntryPreview,
 } from "@/lib/assistant-supplier-order-stock-entry";
@@ -43,6 +44,11 @@ import {
   createAssistantManualStockEntryPreviewFromSelection,
   createManualStockEntryAmbiguity,
 } from "@/lib/assistant-manual-stock-entry";
+import {
+  createAssistantManualStockOutputPreview,
+  createAssistantManualStockOutputPreviewFromSelection,
+  createManualStockOutputAmbiguity,
+} from "@/lib/assistant-manual-stock-output";
 import { routePurchaseRecommendationQuestion } from "@/lib/ai/purchase-recommendation-routing";
 import {
   customerFacingInventoryLabels,
@@ -54,6 +60,7 @@ import type {
   AssistantClarificationOption,
   AssistantChatSuccess,
   AssistantStockEntrySelection,
+  AssistantStockOutputSelection,
   AssistantCommercialConfigurationResult,
   AssistantInventoryItemSummaryBlock,
   AssistantInventoryItemSummaryTarget,
@@ -917,10 +924,12 @@ export async function answerAssistantQuestion(
   selectedSupplierOrderItemId: string | null,
   inventoryAction: AssistantServoModelInventoryAction | null,
   stockEntrySelection: AssistantStockEntrySelection | null,
+  stockOutputSelection: AssistantStockOutputSelection | null,
 ): Promise<AssistantChatSuccess> {
   const supplierOrderStockEntryRoute =
     routeSupplierOrderStockEntryAction(message);
   const manualStockEntryRoute = routeManualStockEntryAction(message);
+  const manualStockOutputRoute = routeManualStockOutputAction(message);
   const pickupRoute = routeSupplierOrderPickupAction(message);
   const purchaseRecommendationRoute =
     routePurchaseRecommendationQuestion(message);
@@ -987,6 +996,13 @@ export async function answerAssistantQuestion(
     };
   }
 
+  if (stockOutputSelection) {
+    return createAssistantManualStockOutputPreviewFromSelection(
+      stockOutputSelection,
+      { userId, profileName },
+    );
+  }
+
   if (
     supplierOrderStockEntryRoute.kind === "BUTTON_CONFIRMATION_TEXT" ||
     manualStockEntryRoute.kind === "BUTTON_CONFIRMATION_TEXT"
@@ -995,6 +1011,26 @@ export async function answerAssistantQuestion(
       message:
         "Use o botão Confirmar entrada na prévia. Nenhuma entrada foi executada por esta mensagem.",
     };
+  }
+
+  if (manualStockOutputRoute.kind === "BUTTON_CONFIRMATION_TEXT") {
+    return { message: "Use o botão Confirmar saída na prévia. Nenhuma saída foi executada por esta mensagem." };
+  }
+
+  if (manualStockOutputRoute.kind === "CANCEL") {
+    return { message: "Saída cancelada. Nenhuma operação foi executada." };
+  }
+
+  if (manualStockOutputRoute.kind === "INVALID") {
+    return { message: manualStockOutputRoute.message };
+  }
+
+  if (manualStockOutputRoute.kind === "AMBIGUOUS_TARGET") {
+    return createManualStockOutputAmbiguity(manualStockOutputRoute.quantity, manualStockOutputRoute.targetQuery);
+  }
+
+  if (manualStockOutputRoute.kind === "ACTION") {
+    return createAssistantManualStockOutputPreview(manualStockOutputRoute.request, { userId, profileName });
   }
 
   if (
