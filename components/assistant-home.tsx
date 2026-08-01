@@ -39,7 +39,12 @@ import {
   type AssistantSupplierOrderPickupPreviewBlock,
   type AssistantSupplierOrderPickupConfirmationResult,
   type AssistantSupplierOrderPickupResultBlock,
+  type AssistantSupplierOrderStockEntryPreviewBlock,
+  type AssistantSupplierOrderStockEntryResultBlock,
+  type AssistantManualStockEntryPreviewBlock,
+  type AssistantManualStockEntryResultBlock,
   type AssistantServoModelInventoryAction,
+  type AssistantStockEntrySelection,
 } from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
@@ -157,6 +162,7 @@ export function AssistantHome({
   const [isRefreshingStock, startStockRefresh] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationRef = useRef<HTMLElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   const restoredConversationRef = useRef<string | null>(null);
   const previousMessageCountRef = useRef(0);
   const scrollFrameRef = useRef<number | null>(null);
@@ -167,6 +173,8 @@ export function AssistantHome({
     useState<string | null>(null);
   const [confirmingPickupStage, setConfirmingPickupStage] =
     useState<SupplierOrderPickupProgressStage | null>(null);
+  const [confirmingStockEntryMessageId, setConfirmingStockEntryMessageId] =
+    useState<string | null>(null);
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const newConversationButtonRef = useRef<HTMLButtonElement>(null);
@@ -200,6 +208,29 @@ export function AssistantHome({
       }
     };
   }, [attachment]);
+
+  useEffect(() => {
+    const conversation = conversationRef.current;
+    const composer = composerRef.current;
+    if (!conversation || !composer || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const updateComposerHeight = () => {
+      conversation.style.setProperty(
+        "--assistant-composer-height",
+        `${Math.ceil(composer.getBoundingClientRect().height)}px`,
+      );
+    };
+    const observer = new ResizeObserver(updateComposerHeight);
+    updateComposerHeight();
+    observer.observe(composer);
+
+    return () => {
+      observer.disconnect();
+      conversation.style.removeProperty("--assistant-composer-height");
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAttachmentMenuOpen) {
@@ -437,6 +468,7 @@ export function AssistantHome({
       supplierOrderId?: string;
       supplierOrderItemId?: string;
       inventoryAction?: AssistantServoModelInventoryAction;
+      stockEntrySelection?: AssistantStockEntrySelection;
     },
   ) {
     if (
@@ -489,6 +521,9 @@ export function AssistantHome({
           : {}),
         ...(context?.inventoryAction
           ? { inventoryAction: context.inventoryAction }
+          : {}),
+        ...(context?.stockEntrySelection
+          ? { stockEntrySelection: context.stockEntrySelection }
           : {}),
       };
       const response = await fetch("/api/assistant/chat", {
@@ -785,6 +820,78 @@ export function AssistantHome({
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
+  type StockEntryPreview =
+    | AssistantSupplierOrderStockEntryPreviewBlock
+    | AssistantManualStockEntryPreviewBlock;
+  type StockEntryResult =
+    | AssistantSupplierOrderStockEntryResultBlock
+    | AssistantManualStockEntryResultBlock;
+
+  function replaceStockEntryPreview(messageId: string, block: StockEntryResult) {
+    setMessages((current) => current.map((message) => message.id === messageId
+      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      : message));
+  }
+
+  async function handleStockEntryConfirmation(messageId: string, block: StockEntryPreview) {
+    if (actionInFlightRef.current || requestInFlightRef.current || isInteractionLocked ||
+      block.state !== "pending" || !block.proposalToken) return;
+    actionInFlightRef.current = true;
+    setConfirmingStockEntryMessageId(messageId);
+    setIsPending(true);
+    setFeedback(null);
+    try {
+      const route = block.action === "supplier_order_stock_entry"
+        ? "/api/assistant/actions/supplier-order-stock-entry"
+        : "/api/assistant/actions/manual-stock-entry";
+      const response = await fetch(route, { method: "POST", credentials: "same-origin", cache: "no-store",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proposalToken: block.proposalToken }) });
+      const body: unknown = await response.json().catch(() => null);
+      const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+      const parsed = parseAssistantStructuredBlock(record?.block);
+      const expectedKind = block.action === "supplier_order_stock_entry"
+        ? "supplier_order_stock_entry_result" : "manual_stock_entry_result";
+      if (!response.ok || !parsed || parsed.kind !== expectedKind) throw new Error("invalid_stock_entry_result");
+      replaceStockEntryPreview(messageId, parsed as StockEntryResult);
+      if (block.action === "supplier_order_stock_entry") {
+        const contextId = record?.contextSupplierOrderId;
+        setLastSupplierOrderId(typeof contextId === "string" ? contextId : null);
+      }
+      if (parsed.outcome === "success") startStockRefresh(() => router.refresh());
+    } catch {
+      const failed: StockEntryResult = block.action === "supplier_order_stock_entry"
+        ? { kind: "supplier_order_stock_entry_result", action: "supplier_order_stock_entry", outcome: "error",
+            title: "Resultado não confirmado", message: "Não foi possível confirmar o resultado. Confira o Pedido antes de tentar novamente.",
+            order: block.order, lines: [], linesProcessed: 0, totalQuantity: 0, occurredAt: null, reference: null,
+            idempotentReplay: false, actions: [{ kind: "link", label: "Abrir Pedido", href: block.order.href }] }
+        : { kind: "manual_stock_entry_result", action: "manual_stock_entry", outcome: "error",
+            title: "Resultado não confirmado", message: "Não foi possível confirmar o resultado. Confira o Estoque antes de tentar novamente.",
+            lines: [], linesProcessed: 0, totalQuantity: 0, occurredAt: null, reference: null,
+            idempotentReplay: false, actions: [{ kind: "link", label: "Abrir no Estoque", href: "/estoque" }] };
+      replaceStockEntryPreview(messageId, failed);
+    } finally {
+      actionInFlightRef.current = false;
+      setConfirmingStockEntryMessageId(null);
+      shouldRestoreFocusRef.current = true;
+      setIsPending(false);
+    }
+  }
+
+  function handleStockEntryCancellation(messageId: string, block: StockEntryPreview) {
+    if (actionInFlightRef.current || isInteractionLocked || block.state !== "pending") return;
+    const cancelled: StockEntryResult = block.action === "supplier_order_stock_entry"
+      ? { kind: "supplier_order_stock_entry_result", action: "supplier_order_stock_entry", outcome: "cancelled",
+          title: "Prévia cancelada", message: "Nenhuma entrada foi executada.", order: block.order,
+          lines: [], linesProcessed: 0, totalQuantity: 0, occurredAt: null, reference: null, idempotentReplay: false,
+          actions: [{ kind: "link", label: "Abrir Pedido", href: block.order.href }] }
+      : { kind: "manual_stock_entry_result", action: "manual_stock_entry", outcome: "cancelled",
+          title: "Prévia cancelada", message: "Nenhuma entrada foi executada.", lines: [], linesProcessed: 0,
+          totalQuantity: 0, occurredAt: null, reference: null, idempotentReplay: false, actions: [] };
+    replaceStockEntryPreview(messageId, cancelled);
+    shouldRestoreFocusRef.current = true;
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -913,7 +1020,7 @@ export function AssistantHome({
         onScroll={handleConversationScroll}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-1 pb-8 sm:px-6 sm:pt-2 sm:pb-10 lg:px-8">
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-1 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-2 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pb-12">
           {!isHydrated ? (
             <p
               role="status"
@@ -1036,6 +1143,22 @@ export function AssistantHome({
                           block={chatMessage.structuredBlock}
                           disabled={isInteractionLocked}
                           onPromptSelect={(prompt, context) => {
+                            if (context?.cancelStockEntry) {
+                              setMessages((current) =>
+                                current.map((message) =>
+                                  message.id === chatMessage.id
+                                    ? {
+                                        ...message,
+                                        content:
+                                          "Prévia cancelada. Nenhuma operação foi executada.",
+                                        structuredBlock: undefined,
+                                      }
+                                    : message,
+                                ),
+                              );
+                              setFeedback("Entrada cancelada.");
+                              return;
+                            }
                             void sendAssistantMessage(prompt, context);
                           }}
                           onPickupConfirm={(block) => {
@@ -1061,6 +1184,13 @@ export function AssistantHome({
                                 ]
                               : null
                           }
+                          onStockEntryConfirm={(block) => {
+                            void handleStockEntryConfirmation(chatMessage.id, block);
+                          }}
+                          onStockEntryCancel={(block) => {
+                            handleStockEntryCancellation(chatMessage.id, block);
+                          }}
+                          confirmingStockEntry={confirmingStockEntryMessageId === chatMessage.id}
                         />
                       ) : (
                         <AssistantMessageContent
@@ -1115,7 +1245,7 @@ export function AssistantHome({
         </div>
       </section>
 
-      <div className="z-30 shrink-0 border-t border-border-neutral/80 bg-app-background/95 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-8">
+      <div ref={composerRef} className="z-30 shrink-0 border-t border-border-neutral/80 bg-app-background/95 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-8">
           <form
             onSubmit={handleSubmit}
             aria-busy={isComposerLocked}

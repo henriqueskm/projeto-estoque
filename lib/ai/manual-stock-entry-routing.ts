@@ -1,0 +1,143 @@
+export type ManualStockEntryRequest = {
+  quantity: number;
+  targetQuery: string;
+  requestedIdentity: "ITEM" | "COMMERCIAL_CODE" | null;
+};
+
+export type ManualStockEntryRoute =
+  | { kind: "NOT_MANUAL_STOCK_ENTRY" }
+  | { kind: "BUTTON_CONFIRMATION_TEXT" }
+  | { kind: "CANCEL" }
+  | { kind: "INVALID"; message: string }
+  | { kind: "AMBIGUOUS_FLOW"; quantity: number; targetQuery: string }
+  | { kind: "ACTION"; request: ManualStockEntryRequest };
+
+const maximumInteger = 2_147_483_647;
+
+export function normalizeManualStockEntryModel(value: string) {
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLocaleUpperCase("pt-BR").replace(/[\s._/\\-]+/g, "");
+  return /^[A-Z0-9]+$/.test(normalized) && /[A-Z]/.test(normalized) && /\d/.test(normalized)
+    ? normalized
+    : "";
+}
+
+export function matchesExactManualStockEntryModel(query: string, model: string | null) {
+  if (!model) return false;
+  const normalizedQuery = normalizeManualStockEntryModel(query);
+  return Boolean(normalizedQuery) && normalizeManualStockEntryModel(model) === normalizedQuery;
+}
+
+export function createManualStockEntryIdentitySelection(
+  targetQuery: string,
+  quantity: number,
+  targetKind: "ITEM" | "COMMERCIAL_CODE",
+) {
+  const normalizedQuery = targetQuery.trim();
+  if (!normalizedQuery || normalizedQuery.length > 120 || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > maximumInteger) {
+    return null;
+  }
+  return {
+    action: "manual_stock_entry_identity" as const,
+    targetQuery: normalizedQuery,
+    quantity,
+    targetKind,
+  };
+}
+
+function normalizeAssistantText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR").trim();
+}
+
+const manualStockEntryCommandPattern =
+  /^\s*(?:(?:dê|de|dar)\s+entrada|adicione|adicionar|coloque|colocar|lance|lançar)\b\s*/iu;
+
+type QuantityMatch = {
+  quantity: number;
+  index: number;
+  length: number;
+};
+
+function parseQuantityWord(value: string) {
+  return /^(?:um|uma)$/iu.test(value) ? 1 : Number(value);
+}
+
+function extractManualStockEntryQuantity(value: string): QuantityMatch | null {
+  const patterns = [
+    /\b(?:quantidade\s+de\s+)?(\d{1,10}|um|uma)\s+unidades?\b/iu,
+    /\bmais\s+(\d{1,10}|um|uma)\b/iu,
+    /^\s*(?:em|de)?\s*(\d{1,10}|um|uma)\b/iu,
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(value);
+    const quantityText = match?.[1];
+    if (!match || !quantityText) continue;
+    return {
+      quantity: parseQuantityWord(quantityText),
+      index: match.index,
+      length: match[0].length,
+    };
+  }
+
+  return null;
+}
+
+function cleanManualStockEntryTarget(value: string, quantityMatch: QuantityMatch) {
+  const withoutQuantity = `${value.slice(0, quantityMatch.index)} ${value.slice(quantityMatch.index + quantityMatch.length)}`;
+
+  return withoutQuantity
+    .replace(/\b(?:no|ao|para\s+o)\s+estoque\b/giu, " ")
+    .replace(/\b(?:servo\s+)?(?:com|sem)\s+kit\b/giu, " ")
+    .replace(/\b(?:kit\s+de\s+instala[cç][aã]o|kit\s+de\s+reparo|pe[cç]a\s+avulsa|pe[cç]a)\b/giu, " ")
+    .replace(/[?!.,;:]+$/g, "")
+    .trim()
+    .replace(/^(?:(?:em|do|da|de|mais)\s+)+/iu, "")
+    .replace(/^c[oó]d(?:igo)?\.?\s*/iu, "")
+    .trim();
+}
+
+export function routeManualStockEntryAction(rawMessage: string): ManualStockEntryRoute {
+  const message = normalizeAssistantText(rawMessage);
+  if (/^(sim|confirme|confirmar|pode fazer|pode lancar|execute|ok|manda ver)\s*[?!.]*$/.test(message)) {
+    return { kind: "BUTTON_CONFIRMATION_TEXT" };
+  }
+  if (/^(cancelar|cancele)(?:\s+(?:esta|a))?\s+entrada\s*[?!.]*$/.test(message)) {
+    return { kind: "CANCEL" };
+  }
+  if (/\bpedido\b/.test(message)) return { kind: "NOT_MANUAL_STOCK_ENTRY" };
+  const regularCommand = /^\s*(?:(?:dê|dar)\s+entrada|adicione|adicionar|coloque|colocar|lance|lançar)\b/iu.test(rawMessage);
+  const unaccentedEntryCommand = /^\s*de\s+entrada\b/iu.test(rawMessage) &&
+    /\bestoque\b/.test(message) &&
+    /\b(?:\d{1,10}|um|uma)\s+unidades?\b/.test(message);
+  const entryIntent = regularCommand || unaccentedEntryCommand;
+  if (!entryIntent) return { kind: "NOT_MANUAL_STOCK_ENTRY" };
+  if (/-\s*\d+\s+unidades?\b/.test(message)) {
+    return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a entrada manual." };
+  }
+
+  const messageWithoutCommand = rawMessage.replace(manualStockEntryCommandPattern, "");
+  const quantityMatch = extractManualStockEntryQuantity(messageWithoutCommand);
+  const quantity = quantityMatch?.quantity ?? null;
+  if (!quantityMatch || !quantity || !Number.isSafeInteger(quantity) || quantity > maximumInteger) {
+    return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a entrada manual." };
+  }
+
+  const targetQuery = cleanManualStockEntryTarget(messageWithoutCommand, quantityMatch);
+  if (!targetQuery || targetQuery.length > 120) {
+    return { kind: "INVALID", message: "Informe o código ou modelo do item que deve entrar." };
+  }
+
+  const requestedIdentity = /\b(com kit|caixa|caixa completa|codigo comercial)\b/.test(message)
+    ? "COMMERCIAL_CODE" as const
+    : /\b(sem kit|kit de instalacao|kit de reparo|peca|avulso|avulsa|entrada manual)\b/.test(message)
+      ? "ITEM" as const
+      : null;
+
+  if (!requestedIdentity && /\bmbf\s*-?\s*\d+/i.test(message)) {
+    return { kind: "AMBIGUOUS_FLOW", quantity, targetQuery };
+  }
+
+  return { kind: "ACTION", request: { quantity, targetQuery, requestedIdentity } };
+}

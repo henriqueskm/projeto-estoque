@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:assistant-stock-entry": "node --experimental-strip-types --test tests/assistant-stock-entry.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",

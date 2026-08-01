@@ -631,6 +631,12 @@ export function routeSupplierOrderQuestion(
       ? true
       : null;
   const hasWaitingStock =
+    /\b(o que|quais?|quanto)\b.{0,40}\b(pode|podem)\b.{0,20}\b(entrar|entrada)\b/.test(
+      message,
+    ) ||
+    /\b(ainda|algo)\b.{0,24}\b(entrar|entrada|lancar|lancado)\b/.test(
+      message,
+    ) ||
     /\b(aguardando|pendente|pendentes|falta|faltam)\b.{0,35}\b(entrada|estoque)\b/.test(
       message,
     ) ||

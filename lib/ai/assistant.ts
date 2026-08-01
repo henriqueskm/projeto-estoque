@@ -33,6 +33,16 @@ import {
 } from "@/lib/ai/assistant-routing";
 import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
 import { routeSupplierOrderPickupAction } from "@/lib/ai/supplier-order-pickup-routing";
+import { routeSupplierOrderStockEntryAction } from "@/lib/ai/supplier-order-stock-entry-routing";
+import { routeManualStockEntryAction } from "@/lib/ai/manual-stock-entry-routing";
+import {
+  createAssistantSupplierOrderStockEntryPreview,
+} from "@/lib/assistant-supplier-order-stock-entry";
+import {
+  createAssistantManualStockEntryPreview,
+  createAssistantManualStockEntryPreviewFromSelection,
+  createManualStockEntryAmbiguity,
+} from "@/lib/assistant-manual-stock-entry";
 import { routePurchaseRecommendationQuestion } from "@/lib/ai/purchase-recommendation-routing";
 import {
   customerFacingInventoryLabels,
@@ -43,6 +53,7 @@ import type {
   AssistantClarificationBlock,
   AssistantClarificationOption,
   AssistantChatSuccess,
+  AssistantStockEntrySelection,
   AssistantCommercialConfigurationResult,
   AssistantInventoryItemSummaryBlock,
   AssistantInventoryItemSummaryTarget,
@@ -905,7 +916,11 @@ export async function answerAssistantQuestion(
   profileName: string | null,
   selectedSupplierOrderItemId: string | null,
   inventoryAction: AssistantServoModelInventoryAction | null,
+  stockEntrySelection: AssistantStockEntrySelection | null,
 ): Promise<AssistantChatSuccess> {
+  const supplierOrderStockEntryRoute =
+    routeSupplierOrderStockEntryAction(message);
+  const manualStockEntryRoute = routeManualStockEntryAction(message);
   const pickupRoute = routeSupplierOrderPickupAction(message);
   const purchaseRecommendationRoute =
     routePurchaseRecommendationQuestion(message);
@@ -929,6 +944,93 @@ export async function answerAssistantQuestion(
     );
 
     return answerServoModelInventoryAction(block, inventoryAction);
+  }
+
+  if (stockEntrySelection?.action === "manual_stock_entry_identity") {
+    return createAssistantManualStockEntryPreview(
+      {
+        quantity: stockEntrySelection.quantity,
+        targetQuery: stockEntrySelection.targetQuery,
+        requestedIdentity: stockEntrySelection.targetKind,
+      },
+      { userId, profileName },
+    );
+  }
+
+  if (stockEntrySelection?.action === "manual_stock_entry_target") {
+    return createAssistantManualStockEntryPreviewFromSelection(
+      stockEntrySelection,
+      { userId, profileName },
+    );
+  }
+
+  if (stockEntrySelection?.action === "supplier_order_stock_entry_flow") {
+    const normalizedModel = normalizeServoModel(stockEntrySelection.targetQuery);
+    const displayTarget = normalizedModel
+      ? normalizedModel.replace(/^([A-Z]+)(\d+)$/, "$1-$2")
+      : stockEntrySelection.targetQuery;
+    const block: AssistantClarificationBlock = {
+      kind: "assistant_clarification",
+      title: "Qual Pedido deve receber a entrada?",
+      message: `Informe o número exato do Pedido para dar entrada em ${stockEntrySelection.quantity} unidade${stockEntrySelection.quantity === 1 ? "" : "s"} de ${displayTarget}.`,
+      options: [{
+        id: "entry-cancel",
+        label: "Cancelar",
+        prompt: "Cancelar esta entrada.",
+        category: "supplier_orders",
+      }],
+      fallbackText: "Informe a negociação do Pedido ou cancele esta entrada.",
+    };
+    return {
+      message: block.fallbackText,
+      structuredBlock: block,
+    };
+  }
+
+  if (
+    supplierOrderStockEntryRoute.kind === "BUTTON_CONFIRMATION_TEXT" ||
+    manualStockEntryRoute.kind === "BUTTON_CONFIRMATION_TEXT"
+  ) {
+    return {
+      message:
+        "Use o botão Confirmar entrada na prévia. Nenhuma entrada foi executada por esta mensagem.",
+    };
+  }
+
+  if (
+    supplierOrderStockEntryRoute.kind === "CANCEL" ||
+    manualStockEntryRoute.kind === "CANCEL"
+  ) {
+    return { message: "Entrada cancelada. Nenhuma operação foi executada." };
+  }
+
+  if (supplierOrderStockEntryRoute.kind === "INVALID") {
+    return { message: supplierOrderStockEntryRoute.message };
+  }
+
+  if (supplierOrderStockEntryRoute.kind === "ACTION") {
+    return createAssistantSupplierOrderStockEntryPreview(
+      supplierOrderStockEntryRoute.request,
+      { userId, profileName },
+    );
+  }
+
+  if (manualStockEntryRoute.kind === "INVALID") {
+    return { message: manualStockEntryRoute.message };
+  }
+
+  if (manualStockEntryRoute.kind === "AMBIGUOUS_FLOW") {
+    return createManualStockEntryAmbiguity(
+      manualStockEntryRoute.quantity,
+      manualStockEntryRoute.targetQuery,
+    );
+  }
+
+  if (manualStockEntryRoute.kind === "ACTION") {
+    return createAssistantManualStockEntryPreview(
+      manualStockEntryRoute.request,
+      { userId, profileName },
+    );
   }
 
   if (pickupRoute.kind === "BUTTON_CONFIRMATION_TEXT") {

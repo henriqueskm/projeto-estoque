@@ -20,6 +20,25 @@ export type AssistantServoModelInventoryAction =
       targetId: string;
     };
 
+export type AssistantStockEntrySelection =
+  | {
+      action: "manual_stock_entry_identity";
+      targetQuery: string;
+      quantity: number;
+      targetKind: "ITEM" | "COMMERCIAL_CODE";
+    }
+  | {
+      action: "supplier_order_stock_entry_flow";
+      targetQuery: string;
+      quantity: number;
+    }
+  | {
+      action: "manual_stock_entry_target";
+      targetId: string;
+      quantity: number;
+      targetKind: "ITEM" | "COMMERCIAL_CODE";
+    };
+
 export type AssistantChatRequest = {
   message: string;
   lastItemQuery?: string;
@@ -27,6 +46,130 @@ export type AssistantChatRequest = {
   lastSupplierOrderCatalogCode?: string;
   selectedSupplierOrderItemId?: string;
   inventoryAction?: AssistantServoModelInventoryAction;
+  stockEntrySelection?: AssistantStockEntrySelection;
+};
+
+export type AssistantStockEntryTarget = {
+  kind: "ITEM" | "COMMERCIAL_CODE";
+  targetId: string;
+  configurationId: string | null;
+  displayCode: string;
+  aliases: string[];
+  typeLabel: string;
+  description: string;
+  detail: string | null;
+  currentStock: number;
+};
+
+export type AssistantSupplierOrderStockEntryPreviewLine = {
+  supplierOrderItemId: string;
+  target: AssistantStockEntryTarget;
+  orderedQuantity: number;
+  pickedQuantity: number;
+  stockedQuantity: number;
+  availableQuantity: number;
+  entryQuantity: number;
+  remainingQuantity: number;
+  estimatedStockAfter: number;
+};
+
+export type AssistantSupplierOrderStockEntryPreviewBlock = {
+  kind: "supplier_order_stock_entry_preview";
+  action: "supplier_order_stock_entry";
+  state: "pending" | "expired" | "cancelled";
+  title: string;
+  message: string;
+  proposalToken: string | null;
+  expiresAt: string | null;
+  order: AssistantSupplierOrderCard;
+  lines: AssistantSupplierOrderStockEntryPreviewLine[];
+  totalQuantity: number;
+  confirmLabel: "Confirmar entrada";
+  cancelLabel: "Cancelar";
+  regeneratePrompt: string;
+};
+
+export type AssistantSupplierOrderStockEntryResultLine = {
+  supplierOrderItemId: string;
+  target: AssistantStockEntryTarget;
+  entryQuantity: number;
+  totalStockedQuantity: number;
+  remainingQuantity: number;
+  previousStock: number;
+  currentStock: number;
+};
+
+export type AssistantSupplierOrderStockEntryResultBlock = {
+  kind: "supplier_order_stock_entry_result";
+  action: "supplier_order_stock_entry";
+  outcome: "success" | "conflict" | "error" | "cancelled" | "expired";
+  title: string;
+  message: string;
+  order: AssistantSupplierOrderCard | null;
+  lines: AssistantSupplierOrderStockEntryResultLine[];
+  linesProcessed: number;
+  totalQuantity: number;
+  occurredAt: string | null;
+  reference: string | null;
+  idempotentReplay: boolean;
+  refreshWarning?: boolean;
+  actions: Array<AssistantActionResultLink | AssistantActionResultPrompt>;
+};
+
+export type AssistantManualStockEntryPreviewLine = {
+  target: AssistantStockEntryTarget;
+  entryQuantity: number;
+  estimatedStockAfter: number;
+};
+
+export type AssistantManualStockEntryPreviewBlock = {
+  kind: "manual_stock_entry_preview";
+  action: "manual_stock_entry";
+  state: "pending" | "expired" | "cancelled";
+  title: "Confirmar entrada manual" | "Prévia expirada";
+  message: string;
+  proposalToken: string | null;
+  expiresAt: string | null;
+  lines: AssistantManualStockEntryPreviewLine[];
+  totalQuantity: number;
+  confirmLabel: "Confirmar entrada";
+  cancelLabel: "Cancelar";
+  regeneratePrompt: string;
+};
+
+export type AssistantManualStockEntryResultLine = {
+  target: AssistantStockEntryTarget;
+  entryQuantity: number;
+  previousStock: number;
+  currentStock: number;
+};
+
+export type AssistantManualStockEntryResultBlock = {
+  kind: "manual_stock_entry_result";
+  action: "manual_stock_entry";
+  outcome: "success" | "error" | "cancelled" | "expired";
+  title: string;
+  message: string;
+  lines: AssistantManualStockEntryResultLine[];
+  linesProcessed: number;
+  totalQuantity: number;
+  occurredAt: string | null;
+  reference: string | null;
+  idempotentReplay: boolean;
+  refreshWarning?: boolean;
+  actions: Array<AssistantActionResultLink | AssistantActionResultPrompt>;
+};
+
+export type AssistantSupplierOrderStockEntryConfirmationResult = {
+  block: AssistantSupplierOrderStockEntryResultBlock;
+  contextSupplierOrderId: string | null;
+  contextSupplierOrderCatalogCode: string | null;
+};
+
+export type AssistantManualStockEntryConfirmationResult = {
+  block: AssistantManualStockEntryResultBlock;
+  contextSupplierOrderId: null;
+  contextSupplierOrderCatalogCode: null;
 };
 
 export type AssistantChatSuccess = {
@@ -345,7 +488,31 @@ export type AssistantClarificationOption = {
   contextSupplierOrderId?: string;
   contextSupplierOrderItemId?: string;
   action?: AssistantServoModelInventoryAction;
+  stockEntrySelection?: AssistantStockEntrySelection;
 };
+
+const stockEntryUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function parseAssistantStockEntrySelection(value: unknown): AssistantStockEntrySelection | null {
+  if (!isRecord(value)) return null;
+  if (!isNonnegativeInteger(value.quantity) || value.quantity === 0) return null;
+  if (value.action === "manual_stock_entry_target" && Object.keys(value).length === 4 &&
+    typeof value.targetId === "string" && stockEntryUuidPattern.test(value.targetId) &&
+    (value.targetKind === "ITEM" || value.targetKind === "COMMERCIAL_CODE")) {
+    return { action: value.action, targetId: value.targetId.toLowerCase(), quantity: value.quantity, targetKind: value.targetKind };
+  }
+  const targetQuery = typeof value.targetQuery === "string" ? value.targetQuery.trim() : "";
+  if (!targetQuery || targetQuery.length > assistantQueryMaxLength) return null;
+  if (value.action === "manual_stock_entry_identity" && Object.keys(value).length === 4 &&
+    (value.targetKind === "ITEM" || value.targetKind === "COMMERCIAL_CODE")) {
+    return { action: value.action, targetQuery, quantity: value.quantity, targetKind: value.targetKind };
+  }
+  if (value.action === "supplier_order_stock_entry_flow" && Object.keys(value).length === 3) {
+    return { action: value.action, targetQuery, quantity: value.quantity };
+  }
+  return null;
+}
 
 export type AssistantClarificationBlock = {
   kind: "assistant_clarification";
@@ -489,7 +656,11 @@ export type AssistantStructuredBlock =
   | AssistantPurchaseRecommendationBlock
   | AssistantClarificationBlock
   | AssistantSupplierOrderPickupPreviewBlock
-  | AssistantSupplierOrderPickupResultBlock;
+  | AssistantSupplierOrderPickupResultBlock
+  | AssistantSupplierOrderStockEntryPreviewBlock
+  | AssistantSupplierOrderStockEntryResultBlock
+  | AssistantManualStockEntryPreviewBlock
+  | AssistantManualStockEntryResultBlock;
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -1421,7 +1592,9 @@ function parseAssistantActionResultAction(
 
   if (
     value.kind === "link" &&
-    isSafeSupplierOrderActionHref(value.href)
+    (isSafeSupplierOrderActionHref(value.href) ||
+      isSafeInventoryHref(value.href) ||
+      value.href === "/historico")
   ) {
     return {
       kind: "link",
@@ -1446,11 +1619,157 @@ function parseAssistantActionResultAction(
   return null;
 }
 
+function parseStockEntryTarget(value: unknown): AssistantStockEntryTarget | null {
+  if (!isRecord(value)) return null;
+  const configurationId = value.configurationId;
+  if (
+    (value.kind !== "ITEM" && value.kind !== "COMMERCIAL_CODE") ||
+    typeof value.targetId !== "string" || !uuidPattern.test(value.targetId) ||
+    (configurationId !== null && (typeof configurationId !== "string" || !uuidPattern.test(configurationId))) ||
+    typeof value.displayCode !== "string" || !value.displayCode.trim() || value.displayCode.length > 120 ||
+    !Array.isArray(value.aliases) || value.aliases.length > 20 ||
+    value.aliases.some((alias) => typeof alias !== "string" || !alias.trim() || alias.length > 120) ||
+    typeof value.typeLabel !== "string" || !value.typeLabel.trim() || value.typeLabel.length > 80 ||
+    typeof value.description !== "string" || !value.description.trim() || value.description.length > 500 ||
+    (value.detail !== null && (typeof value.detail !== "string" || value.detail.length > 500)) ||
+    !isNonnegativeInteger(value.currentStock) ||
+    (value.kind === "ITEM" && configurationId !== null) ||
+    (value.kind === "COMMERCIAL_CODE" && configurationId === null)
+  ) return null;
+  return {
+    kind: value.kind,
+    targetId: value.targetId.toLowerCase(),
+    configurationId: typeof configurationId === "string" ? configurationId.toLowerCase() : null,
+    displayCode: value.displayCode.trim(),
+    aliases: Array.from(new Set(value.aliases.map((alias) => String(alias).trim()))),
+    typeLabel: value.typeLabel.trim(),
+    description: value.description.trim(),
+    detail: typeof value.detail === "string" && value.detail.trim() ? value.detail.trim() : null,
+    currentStock: value.currentStock,
+  };
+}
+
+function parseStockEntryResultActions(value: unknown) {
+  if (!Array.isArray(value) || value.length > 4) return null;
+  const actions = value.map(parseAssistantActionResultAction);
+  return actions.every(Boolean)
+    ? actions as Array<AssistantActionResultLink | AssistantActionResultPrompt>
+    : null;
+}
+
+function parseOperationalPreviewBase(value: Record<string, unknown>) {
+  const pending = value.state === "pending";
+  if (
+    !["pending", "expired", "cancelled"].includes(String(value.state)) ||
+    typeof value.title !== "string" || !value.title.trim() || value.title.length > 120 ||
+    typeof value.message !== "string" || !value.message.trim() || value.message.length > 500 ||
+    (pending
+      ? typeof value.proposalToken !== "string" || value.proposalToken.length > 4096 ||
+        !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value.proposalToken) ||
+        typeof value.expiresAt !== "string" || Number.isNaN(Date.parse(value.expiresAt))
+      : value.proposalToken !== null || value.expiresAt !== null) ||
+    value.confirmLabel !== "Confirmar entrada" || value.cancelLabel !== "Cancelar" ||
+    typeof value.regeneratePrompt !== "string" || !value.regeneratePrompt.trim() || value.regeneratePrompt.length > 240 ||
+    !isNonnegativeInteger(value.totalQuantity) || value.totalQuantity === 0
+  ) return null;
+  return {
+    state: value.state as "pending" | "expired" | "cancelled",
+    title: value.title.trim(), message: value.message.trim(),
+    proposalToken: pending ? value.proposalToken as string : null,
+    expiresAt: pending ? value.expiresAt as string : null,
+    totalQuantity: value.totalQuantity,
+    regeneratePrompt: value.regeneratePrompt.trim(),
+  };
+}
+
 export function parseAssistantStructuredBlock(
   value: unknown,
 ): AssistantStructuredBlock | null {
   if (!isRecord(value)) {
     return null;
+  }
+
+  if (value.kind === "supplier_order_stock_entry_preview") {
+    const base = parseOperationalPreviewBase(value);
+    const order = parseSupplierOrderCard(value.order);
+    const lines = Array.isArray(value.lines) ? value.lines.map((raw) => {
+      if (!isRecord(raw)) return null;
+      const target = parseStockEntryTarget(raw.target);
+      if (!target || typeof raw.supplierOrderItemId !== "string" || !uuidPattern.test(raw.supplierOrderItemId) ||
+        !isNonnegativeInteger(raw.orderedQuantity) || !isNonnegativeInteger(raw.pickedQuantity) ||
+        !isNonnegativeInteger(raw.stockedQuantity) || !isNonnegativeInteger(raw.availableQuantity) ||
+        !isNonnegativeInteger(raw.entryQuantity) || raw.entryQuantity === 0 ||
+        !isNonnegativeInteger(raw.remainingQuantity) || !isNonnegativeInteger(raw.estimatedStockAfter) ||
+        raw.availableQuantity !== raw.pickedQuantity - raw.stockedQuantity ||
+        raw.entryQuantity > raw.availableQuantity || raw.remainingQuantity !== raw.availableQuantity - raw.entryQuantity ||
+        raw.estimatedStockAfter < target.currentStock + raw.entryQuantity) return null;
+      return { supplierOrderItemId: raw.supplierOrderItemId.toLowerCase(), target,
+        orderedQuantity: raw.orderedQuantity, pickedQuantity: raw.pickedQuantity,
+        stockedQuantity: raw.stockedQuantity, availableQuantity: raw.availableQuantity,
+        entryQuantity: raw.entryQuantity, remainingQuantity: raw.remainingQuantity,
+        estimatedStockAfter: raw.estimatedStockAfter };
+    }) : [];
+    if (!base || value.action !== "supplier_order_stock_entry" || !order || lines.length < 1 || lines.length > 1000 ||
+      lines.some((line) => line === null) || lines.reduce((sum, line) => sum + (line?.entryQuantity ?? 0), 0) !== base.totalQuantity) return null;
+    return { kind: value.kind, action: value.action, ...base, order,
+      lines: lines as AssistantSupplierOrderStockEntryPreviewLine[],
+      confirmLabel: "Confirmar entrada", cancelLabel: "Cancelar" };
+  }
+
+  if (value.kind === "manual_stock_entry_preview") {
+    const base = parseOperationalPreviewBase(value);
+    const lines = Array.isArray(value.lines) ? value.lines.map((raw) => {
+      if (!isRecord(raw)) return null;
+      const target = parseStockEntryTarget(raw.target);
+      if (!target || !isNonnegativeInteger(raw.entryQuantity) || raw.entryQuantity === 0 ||
+        !isNonnegativeInteger(raw.estimatedStockAfter) || raw.estimatedStockAfter !== target.currentStock + raw.entryQuantity) return null;
+      return { target, entryQuantity: raw.entryQuantity, estimatedStockAfter: raw.estimatedStockAfter };
+    }) : [];
+    if (!base || value.action !== "manual_stock_entry" || lines.length < 1 || lines.length > 500 ||
+      lines.some((line) => line === null) || lines.reduce((sum, line) => sum + (line?.entryQuantity ?? 0), 0) !== base.totalQuantity) return null;
+    return { kind: value.kind, action: value.action, ...base,
+      title: base.title as AssistantManualStockEntryPreviewBlock["title"],
+      lines: lines as AssistantManualStockEntryPreviewLine[],
+      confirmLabel: "Confirmar entrada", cancelLabel: "Cancelar" };
+  }
+
+  if (value.kind === "supplier_order_stock_entry_result" || value.kind === "manual_stock_entry_result") {
+    const isOrder = value.kind === "supplier_order_stock_entry_result";
+    const expectedAction = isOrder ? "supplier_order_stock_entry" : "manual_stock_entry";
+    const actions = parseStockEntryResultActions(value.actions);
+    const order = isOrder && value.order !== null ? parseSupplierOrderCard(value.order) : null;
+    const lines = Array.isArray(value.lines) ? value.lines.map((raw) => {
+      if (!isRecord(raw)) return null;
+      const target = parseStockEntryTarget(raw.target);
+      if (!target || !isNonnegativeInteger(raw.entryQuantity) || raw.entryQuantity === 0 ||
+        !isNonnegativeInteger(raw.previousStock) || !isNonnegativeInteger(raw.currentStock) ||
+        (!isOrder && raw.currentStock !== raw.previousStock + raw.entryQuantity)) return null;
+      if (isOrder && (typeof raw.supplierOrderItemId !== "string" || !uuidPattern.test(raw.supplierOrderItemId) ||
+        !isNonnegativeInteger(raw.totalStockedQuantity) || !isNonnegativeInteger(raw.remainingQuantity))) return null;
+      return isOrder
+        ? { supplierOrderItemId: raw.supplierOrderItemId as string, target, entryQuantity: raw.entryQuantity,
+            totalStockedQuantity: raw.totalStockedQuantity as number, remainingQuantity: raw.remainingQuantity as number,
+            previousStock: raw.previousStock, currentStock: raw.currentStock }
+        : { target, entryQuantity: raw.entryQuantity, previousStock: raw.previousStock, currentStock: raw.currentStock };
+    }) : [];
+    const allowedOutcomes = isOrder ? ["success", "conflict", "error", "cancelled", "expired"] : ["success", "error", "cancelled", "expired"];
+    if (value.action !== expectedAction || !allowedOutcomes.includes(String(value.outcome)) ||
+      typeof value.title !== "string" || !value.title.trim() || typeof value.message !== "string" || !value.message.trim() ||
+      !isNonnegativeInteger(value.linesProcessed) || !isNonnegativeInteger(value.totalQuantity) ||
+      (value.occurredAt !== null && (typeof value.occurredAt !== "string" || Number.isNaN(Date.parse(value.occurredAt)))) ||
+      (value.reference !== null && (typeof value.reference !== "string" || !uuidPattern.test(value.reference))) ||
+      typeof value.idempotentReplay !== "boolean" || (value.refreshWarning !== undefined && typeof value.refreshWarning !== "boolean") ||
+      !actions || lines.some((line) => line === null) || (isOrder && value.order !== null && !order)) return null;
+    const common = { action: expectedAction as "supplier_order_stock_entry" | "manual_stock_entry", outcome: value.outcome as never,
+      title: value.title.trim(), message: value.message.trim(), linesProcessed: value.linesProcessed,
+      totalQuantity: value.totalQuantity, occurredAt: value.occurredAt as string | null,
+      reference: value.reference as string | null, idempotentReplay: value.idempotentReplay,
+      ...(value.refreshWarning ? { refreshWarning: true } : {}), actions };
+    return isOrder
+      ? { kind: "supplier_order_stock_entry_result", ...common, action: "supplier_order_stock_entry", order,
+          lines: lines as AssistantSupplierOrderStockEntryResultLine[] } as AssistantSupplierOrderStockEntryResultBlock
+      : { kind: "manual_stock_entry_result", ...common, action: "manual_stock_entry",
+          lines: lines as AssistantManualStockEntryResultLine[] } as AssistantManualStockEntryResultBlock;
   }
 
   if (value.kind === "assistant_action_preview") {
@@ -1749,6 +2068,10 @@ export function parseAssistantStructuredBlock(
         isRecord(option) && option.action !== undefined
           ? parseAssistantServoModelInventoryAction(option.action)
           : undefined;
+      const stockEntrySelection =
+        isRecord(option) && option.stockEntrySelection !== undefined
+          ? parseAssistantStockEntrySelection(option.stockEntrySelection)
+          : undefined;
 
       if (
         !isRecord(option) ||
@@ -1773,6 +2096,7 @@ export function parseAssistantStructuredBlock(
         (option.contextSupplierOrderItemId !== undefined &&
           option.contextSupplierOrderId === undefined) ||
         (option.action !== undefined && action === null) ||
+        (option.stockEntrySelection !== undefined && stockEntrySelection === null) ||
         ![
           "inventory",
           "supplier_orders",
@@ -1805,6 +2129,7 @@ export function parseAssistantStructuredBlock(
             }
           : {}),
         ...(action ? { action } : {}),
+        ...(stockEntrySelection ? { stockEntrySelection } : {}),
       };
     });
     const ids = parsedOptions.map((option) => option?.id);
@@ -1816,6 +2141,9 @@ export function parseAssistantStructuredBlock(
             option.contextSupplierOrderItemId ?? "",
             option.action
               ? JSON.stringify(option.action)
+              : "",
+            option.stockEntrySelection
+              ? JSON.stringify(option.stockEntrySelection)
               : "",
           ].join(":")
         : null,
