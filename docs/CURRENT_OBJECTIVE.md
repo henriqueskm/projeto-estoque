@@ -1,23 +1,21 @@
 # Objetivo atual
 
-- **ID:** NK-OUT-001
-- **Título:** Auditar saída manual
-- **Estado:** READY
-- **Branch de execução:** a criar a partir de `origin/main` após publicar o framework
+- **ID:** NK-OUT-003
+- **Título:** Validar visualmente a saída manual pela Assistente
+- **Estado:** BLOCKED_VISUAL_VALIDATION
+- **Branch de execução:** `codex/assistant-manual-stock-output`
 - **Commit base:** `a31ba9aedda8fc59f2e980115dc10d06dea30749`
-- **Dependências:** NK-AUTO-001 publicado em branch própria
+- **Dependências:** NK-OUT-001 concluído como B; NK-OUT-002 implementado e publicado no commit `9bc68bee216c8f5f9e17db1d2d591e5cffc40dbb`
 
 ## Escopo permitido
 
-- leitura da página, componentes, Server Actions e serviços da saída;
-- leitura integral das migrations e funções relacionadas;
-- inspeção read-only de schema, permissões, locks, idempotência e retorno;
-- classificação A/B/C/D;
-- relatório e atualização do roadmap.
+- revisão humana autenticada da prévia, esclarecimentos, cancelamento e resultado;
+- inspeção em mobile e desktop sem confirmar operação;
+- registro de defeitos visuais ou funcionais para correção local posterior.
 
 ## Escopo proibido
 
-- chamada de RPC de escrita;
+- clique em `Confirmar saída` ou chamada da rota operacional;
 - saída real ou alteração de saldo;
 - migration, `db push`, mudança de RPC, RLS ou grants;
 - alteração de regra de negócio;
@@ -25,18 +23,17 @@
 
 ## Critérios de aceitação
 
-- operação oficial, assinatura, payload e retorno identificados;
-- autenticação, perfil, permissões e segurança revisados;
-- atomicidade, locks, saldo negativo, concorrência, aliases e idempotência confirmados;
-- descrição operacional futura avaliada;
-- classificação técnica justificada com evidências.
+- prévia de Servo sem kit, Servo com kit, kit e peça legível;
+- esclarecimento de modelo ambíguo sem executar operação;
+- montagem automática prevista apresentada corretamente;
+- composer não cobre botões e não existe overflow;
+- cancelamento local realiza zero chamada operacional.
 
 ## Comandos de validação
 
 - `git status --short --branch`
-- buscas e leitura estática do código/migrations
-- consultas remotas somente leitura quando necessárias
-- `git diff --check`
+- inspeção autenticada em 390×844, 844×390 e 1440×1000;
+- nenhuma confirmação operacional.
 
 ## Pontos de parada
 
@@ -47,6 +44,6 @@
 
 ## Execução
 
-- **Última ação:** framework documental preparado na branch `codex/automation-framework`.
-- **Próximo passo:** validar, versionar e publicar o framework; depois retornar à `main` e iniciar a auditoria.
-- **Decisões humanas pendentes:** revisão/merge do framework; validações visual e operacional de qualquer implementação futura.
+- **Última ação:** saída manual implementada e publicada em branch; montagem, desmontagem e subfluxos de Pedido auditados.
+- **Próximo passo:** usuário revisar a branch funcional e executar validação visual autenticada sem confirmar saída.
+- **Decisões humanas pendentes:** merges do framework e da saída; teste operacional da saída; semântica de rascunho, negociação duplicada e cancelamento de Pedido.

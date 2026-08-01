@@ -4,20 +4,20 @@ Estados e classificações seguem `AUTOMATION_RULES.md`. Implementação depende
 
 | ID | Objetivo | Tipo | Dependências | Classificação | Estado | Branch | PR | Risco | Validação humana | Próxima ação |
 |---|---|---|---|---|---|---|---|---|---|---|
-| NK-AUTO-001 | Estrutura de automação do repositório | Documentação | Nenhuma | A | IMPLEMENTING | `codex/automation-framework` | Pendente | Baixo | Revisão e merge | Validar e publicar a branch |
-| NK-OUT-001 | Auditoria da saída manual existente | Auditoria | NK-AUTO-001 | Pendente | READY | — | — | Alto | Não | Auditar operação oficial |
-| NK-OUT-002 | Implementação da saída manual pela Assistente | Aplicação | NK-OUT-001 A/B | Pendente | READY | `codex/assistant-manual-stock-output` | Pendente | Alto | Revisão de código | Implementar somente se A/B |
-| NK-OUT-003 | Validação visual da saída manual | Validação | NK-OUT-002 | — | BLOCKED_VISUAL_VALIDATION | — | — | Médio | Obrigatória | Usuário validar autenticado |
-| NK-OUT-004 | Teste operacional controlado da saída manual | Operação real | NK-OUT-003 | — | BLOCKED_OPERATIONAL_TEST | — | — | Crítico | Obrigatória | Solicitar autorização específica |
-| NK-ASM-001 | Auditoria da montagem | Auditoria | NK-AUTO-001 | Pendente | READY | — | — | Alto | Não | Auditar infraestrutura existente |
-| NK-ASM-002 | Implementação da montagem pela Assistente | Aplicação | NK-ASM-001 A/B | Pendente | READY | A definir | Pendente | Crítico | Visual e operacional | Aguardar auditoria |
-| NK-DIS-001 | Auditoria da desmontagem | Auditoria | NK-AUTO-001 | Pendente | READY | — | — | Alto | Não | Auditar infraestrutura existente |
-| NK-DIS-002 | Implementação da desmontagem pela Assistente | Aplicação | NK-DIS-001 A/B | Pendente | READY | A definir | Pendente | Crítico | Visual e operacional | Aguardar auditoria |
-| NK-ORD-001 | Auditoria da criação e edição de Pedido | Auditoria | NK-AUTO-001 | Pendente | READY | — | — | Alto | Não | Classificar cada subfluxo |
-| NK-ORD-002 | Criação de Pedido em rascunho pela Assistente | Aplicação | NK-ORD-001 A/B | Pendente | READY | A definir | Pendente | Alto | Visual e operacional | Aguardar auditoria |
-| NK-ORD-003 | Edição de Pedido em rascunho | Aplicação | NK-ORD-001 A/B | Pendente | READY | A definir | Pendente | Alto | Visual e operacional | Aguardar auditoria |
-| NK-ORD-004 | Finalização de Pedido | Aplicação | NK-ORD-001 A/B | Pendente | READY | A definir | Pendente | Crítico | Visual e operacional | Aguardar auditoria |
-| NK-ORD-005 | Cancelamento de Pedido | Aplicação | NK-ORD-001 A/B | Pendente | READY | A definir | Pendente | Crítico | Visual e operacional | Aguardar auditoria |
+| NK-AUTO-001 | Estrutura de automação do repositório | Documentação | Nenhuma | A | PR_READY | `codex/automation-framework` | [Abrir](https://github.com/henriqueskm/projeto-estoque/pull/new/codex/automation-framework) | Baixo | Revisão e merge | Revisar os dois commits documentais |
+| NK-OUT-001 | Auditoria da saída manual existente | Auditoria | NK-AUTO-001 | B | DONE | — | — | Alto | Não | Operação oficial aprovada para integração de aplicação |
+| NK-OUT-002 | Implementação da saída manual pela Assistente | Aplicação | NK-OUT-001 B | B | PR_READY | `codex/assistant-manual-stock-output` | [Abrir](https://github.com/henriqueskm/projeto-estoque/pull/new/codex/assistant-manual-stock-output) | Alto | Revisão de código | Revisar a branch funcional |
+| NK-OUT-003 | Validação visual da saída manual | Validação | NK-OUT-002 | — | BLOCKED_VISUAL_VALIDATION | `codex/assistant-manual-stock-output` | Pendente | Médio | Obrigatória | Validar autenticado em mobile e desktop |
+| NK-OUT-004 | Teste operacional controlado da saída manual | Operação real | NK-OUT-003 | — | BLOCKED_OPERATIONAL_TEST | `codex/assistant-manual-stock-output` | Pendente | Crítico | Obrigatória | Autorizar roteiro específico após validação visual |
+| NK-ASM-001 | Auditoria da montagem | Auditoria | NK-AUTO-001 | B | DONE | — | — | Alto | Não | Integração de aplicação pode ser planejada |
+| NK-ASM-002 | Implementação da montagem pela Assistente | Aplicação | NK-ASM-001 B | B | READY | A definir | Pendente | Crítico | Visual e operacional | Criar branch própria após priorização |
+| NK-DIS-001 | Auditoria da desmontagem | Auditoria | NK-AUTO-001 | B | DONE | — | — | Alto | Não | Integração de aplicação pode ser planejada |
+| NK-DIS-002 | Implementação da desmontagem pela Assistente | Aplicação | NK-DIS-001 B | B | READY | A definir | Pendente | Crítico | Visual e operacional | Criar branch própria após priorização |
+| NK-ORD-001 | Auditoria da criação e edição de Pedido | Auditoria | NK-AUTO-001 | A/B/D por subfluxo | DONE | — | — | Alto | Não | Resolver decisões de rascunho, negociação e cancelamento |
+| NK-ORD-002 | Criação de Pedido em rascunho pela Assistente | Aplicação | NK-ORD-001 | D | BLOCKED_BUSINESS_RULE | A definir | Pendente | Alto | Regra e possível migration | Definir o que é rascunho e a unicidade da negociação |
+| NK-ORD-003 | Edição de Pedido em rascunho | Aplicação | NK-ORD-001 | D | BLOCKED_BUSINESS_RULE | A definir | Pendente | Alto | Regra e possível migration | Definir ciclo de vida do rascunho; edição do Pedido ativo é B |
+| NK-ORD-004 | Finalização de Pedido | Aplicação | NK-ORD-001 | B | READY | A definir | Pendente | Crítico | Visual e operacional | Integrar RPC existente em branch própria |
+| NK-ORD-005 | Cancelamento de Pedido | Aplicação | NK-ORD-001 | D | BLOCKED_BUSINESS_RULE | A definir | Pendente | Crítico | Motivo e modalidade | Definir cancelamento total versus saldo restante e texto de auditoria |
 | NK-QA-001 | Regressão completa das ações operacionais da Assistente | QA | Ações implementadas | Pendente | READY | A definir | Pendente | Alto | Visual | Planejar depois das ações |
 | NK-PROD-001 | Smoke tests em produção | Operação real | NK-QA-001 | — | BLOCKED_OPERATIONAL_TEST | — | — | Crítico | Obrigatória | Solicitar autorização específica |
 
