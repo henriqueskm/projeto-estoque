@@ -36,6 +36,7 @@ import { routeSupplierOrderPickupAction } from "@/lib/ai/supplier-order-pickup-r
 import { routeSupplierOrderStockEntryAction } from "@/lib/ai/supplier-order-stock-entry-routing";
 import { routeManualStockEntryAction } from "@/lib/ai/manual-stock-entry-routing";
 import { routeManualStockOutputAction } from "@/lib/ai/manual-stock-output-routing";
+import { routeConfigurationAssemblyAction } from "@/lib/ai/configuration-assembly-routing";
 import {
   createAssistantSupplierOrderStockEntryPreview,
 } from "@/lib/assistant-supplier-order-stock-entry";
@@ -49,6 +50,10 @@ import {
   createAssistantManualStockOutputPreviewFromSelection,
   createManualStockOutputAmbiguity,
 } from "@/lib/assistant-manual-stock-output";
+import {
+  createAssistantConfigurationAssemblyPreview,
+  createAssistantConfigurationAssemblyPreviewFromSelection,
+} from "@/lib/assistant-configuration-assembly";
 import { routePurchaseRecommendationQuestion } from "@/lib/ai/purchase-recommendation-routing";
 import {
   customerFacingInventoryLabels,
@@ -61,6 +66,7 @@ import type {
   AssistantChatSuccess,
   AssistantStockEntrySelection,
   AssistantStockOutputSelection,
+  AssistantConfigurationAssemblySelection,
   AssistantCommercialConfigurationResult,
   AssistantInventoryItemSummaryBlock,
   AssistantInventoryItemSummaryTarget,
@@ -925,11 +931,13 @@ export async function answerAssistantQuestion(
   inventoryAction: AssistantServoModelInventoryAction | null,
   stockEntrySelection: AssistantStockEntrySelection | null,
   stockOutputSelection: AssistantStockOutputSelection | null,
+  configurationAssemblySelection: AssistantConfigurationAssemblySelection | null,
 ): Promise<AssistantChatSuccess> {
   const supplierOrderStockEntryRoute =
     routeSupplierOrderStockEntryAction(message);
   const manualStockEntryRoute = routeManualStockEntryAction(message);
   const manualStockOutputRoute = routeManualStockOutputAction(message);
+  const configurationAssemblyRoute = routeConfigurationAssemblyAction(message);
   const pickupRoute = routeSupplierOrderPickupAction(message);
   const purchaseRecommendationRoute =
     routePurchaseRecommendationQuestion(message);
@@ -1001,6 +1009,29 @@ export async function answerAssistantQuestion(
       stockOutputSelection,
       { userId, profileName },
     );
+  }
+
+  if (configurationAssemblySelection) {
+    return createAssistantConfigurationAssemblyPreviewFromSelection(
+      configurationAssemblySelection,
+      { userId, profileName },
+    );
+  }
+
+  if (configurationAssemblyRoute.kind === "BUTTON_CONFIRMATION_TEXT") {
+    return { message: "Use o botão de confirmação da prévia. Nenhuma operação foi executada por esta mensagem." };
+  }
+
+  if (configurationAssemblyRoute.kind === "CANCEL") {
+    return { message: "Montagem cancelada. Nenhuma operação foi executada." };
+  }
+
+  if (configurationAssemblyRoute.kind === "INVALID") {
+    return { message: configurationAssemblyRoute.message };
+  }
+
+  if (configurationAssemblyRoute.kind === "ACTION") {
+    return createAssistantConfigurationAssemblyPreview(configurationAssemblyRoute.request, { userId, profileName });
   }
 
   if (
