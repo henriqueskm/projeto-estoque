@@ -48,6 +48,9 @@ import {
   type AssistantManualStockOutputPreviewBlock,
   type AssistantManualStockOutputResultBlock,
   type AssistantStockOutputSelection,
+  type AssistantConfigurationAssemblySelection,
+  type AssistantConfigurationAssemblyPreviewBlock,
+  type AssistantConfigurationAssemblyResultBlock,
 } from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
@@ -179,6 +182,8 @@ export function AssistantHome({
   const [confirmingStockEntryMessageId, setConfirmingStockEntryMessageId] =
     useState<string | null>(null);
   const [confirmingStockOutputMessageId, setConfirmingStockOutputMessageId] =
+    useState<string | null>(null);
+  const [confirmingConfigurationAssemblyMessageId, setConfirmingConfigurationAssemblyMessageId] =
     useState<string | null>(null);
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -475,6 +480,7 @@ export function AssistantHome({
       inventoryAction?: AssistantServoModelInventoryAction;
       stockEntrySelection?: AssistantStockEntrySelection;
       stockOutputSelection?: AssistantStockOutputSelection;
+      configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
     },
   ) {
     if (
@@ -533,6 +539,9 @@ export function AssistantHome({
           : {}),
         ...(context?.stockOutputSelection
           ? { stockOutputSelection: context.stockOutputSelection }
+          : {}),
+        ...(context?.configurationAssemblySelection
+          ? { configurationAssemblySelection: context.configurationAssemblySelection }
           : {}),
       };
       const response = await fetch("/api/assistant/chat", {
@@ -949,6 +958,66 @@ export function AssistantHome({
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
+  function replaceConfigurationAssemblyPreview(messageId: string, block: AssistantConfigurationAssemblyResultBlock) {
+    setMessages((current) => current.map((message) => message.id === messageId
+      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      : message));
+  }
+
+  async function handleConfigurationAssemblyConfirmation(
+    messageId: string,
+    block: AssistantConfigurationAssemblyPreviewBlock,
+  ) {
+    if (actionInFlightRef.current || requestInFlightRef.current || isInteractionLocked ||
+      block.state !== "pending" || !block.proposalToken) return;
+    actionInFlightRef.current = true;
+    setConfirmingConfigurationAssemblyMessageId(messageId);
+    setIsPending(true);
+    setFeedback(null);
+    try {
+      const response = await fetch("/api/assistant/actions/configuration-assembly", {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposalToken: block.proposalToken }),
+      });
+      const body: unknown = await response.json().catch(() => null);
+      const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+      const parsed = parseAssistantStructuredBlock(record?.block);
+      if (!response.ok || !parsed || parsed.kind !== "configuration_assembly_result") {
+        throw new Error("invalid_configuration_assembly_result");
+      }
+      replaceConfigurationAssemblyPreview(messageId, parsed);
+      if (parsed.outcome === "success") startStockRefresh(() => router.refresh());
+    } catch {
+      replaceConfigurationAssemblyPreview(messageId, { kind: "configuration_assembly_result", action: "configuration_assembly",
+        outcome: "error", title: "Resultado não confirmado",
+        message: "Não foi possível confirmar o resultado. Confira o Estoque antes de tentar novamente.",
+        target: null, quantity: 0, mountedStockBefore: null, mountedStockAfter: null, servoStockBefore: null,
+        servoStockAfter: null, installationKitStockBefore: null, installationKitStockAfter: null,
+        occurredAt: null, reference: null, idempotentReplay: false,
+        actions: [{ kind: "link", label: "Abrir no Estoque", href: "/estoque" }] });
+    } finally {
+      actionInFlightRef.current = false;
+      setConfirmingConfigurationAssemblyMessageId(null);
+      shouldRestoreFocusRef.current = true;
+      setIsPending(false);
+    }
+  }
+
+  function handleConfigurationAssemblyCancellation(
+    messageId: string,
+    block: AssistantConfigurationAssemblyPreviewBlock,
+  ) {
+    if (actionInFlightRef.current || isInteractionLocked || block.state !== "pending") return;
+    replaceConfigurationAssemblyPreview(messageId, { kind: "configuration_assembly_result", action: "configuration_assembly",
+      outcome: "cancelled", title: "Prévia cancelada", message: "Nenhuma montagem foi executada.", target: null,
+      quantity: 0, mountedStockBefore: null, mountedStockAfter: null, servoStockBefore: null, servoStockAfter: null,
+      installationKitStockBefore: null, installationKitStockAfter: null, occurredAt: null, reference: null,
+      idempotentReplay: false, actions: [] });
+    shouldRestoreFocusRef.current = true;
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1223,6 +1292,13 @@ export function AssistantHome({
                               setFeedback("Saída cancelada.");
                               return;
                             }
+                            if (context?.cancelConfigurationAssembly) {
+                              setMessages((current) => current.map((message) => message.id === chatMessage.id
+                                ? { ...message, content: "Prévia cancelada. Nenhuma montagem foi executada.", structuredBlock: undefined }
+                                : message));
+                              setFeedback("Montagem cancelada.");
+                              return;
+                            }
                             void sendAssistantMessage(prompt, context);
                           }}
                           onPickupConfirm={(block) => {
@@ -1262,6 +1338,13 @@ export function AssistantHome({
                             handleStockOutputCancellation(chatMessage.id, block);
                           }}
                           confirmingStockOutput={confirmingStockOutputMessageId === chatMessage.id}
+                          onConfigurationAssemblyConfirm={(block) => {
+                            void handleConfigurationAssemblyConfirmation(chatMessage.id, block);
+                          }}
+                          onConfigurationAssemblyCancel={(block) => {
+                            handleConfigurationAssemblyCancellation(chatMessage.id, block);
+                          }}
+                          confirmingConfigurationAssembly={confirmingConfigurationAssemblyMessageId === chatMessage.id}
                         />
                       ) : (
                         <AssistantMessageContent

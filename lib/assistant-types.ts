@@ -53,6 +53,12 @@ export type AssistantStockOutputSelection =
       targetKind: "ITEM" | "COMMERCIAL_CODE";
     };
 
+export type AssistantConfigurationAssemblySelection = {
+  action: "configuration_assembly_target";
+  commercialCodeId: string;
+  quantity: number;
+};
+
 export type AssistantChatRequest = {
   message: string;
   lastItemQuery?: string;
@@ -62,6 +68,7 @@ export type AssistantChatRequest = {
   inventoryAction?: AssistantServoModelInventoryAction;
   stockEntrySelection?: AssistantStockEntrySelection;
   stockOutputSelection?: AssistantStockOutputSelection;
+  configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
 };
 
 export type AssistantStockEntryTarget = {
@@ -251,6 +258,71 @@ export type AssistantManualStockOutputResultBlock = {
 
 export type AssistantManualStockOutputConfirmationResult = {
   block: AssistantManualStockOutputResultBlock;
+  contextSupplierOrderId: null;
+  contextSupplierOrderCatalogCode: null;
+};
+
+export type AssistantConfigurationAssemblyComponent = {
+  id: string;
+  code: string;
+  description: string;
+  currentStock: number;
+};
+
+export type AssistantConfigurationAssemblyTarget = {
+  commercialCodeId: string;
+  configurationId: string;
+  displayCode: string;
+  aliases: string[];
+  description: string;
+  currentStock: number;
+  capacity: number;
+  servo: AssistantConfigurationAssemblyComponent;
+  installationKit: AssistantConfigurationAssemblyComponent;
+};
+
+export type AssistantConfigurationAssemblyPreviewBlock = {
+  kind: "configuration_assembly_preview";
+  action: "configuration_assembly";
+  state: "pending" | "expired" | "cancelled";
+  title: "Confirmar montagem" | "Prévia expirada";
+  message: string;
+  proposalToken: string | null;
+  expiresAt: string | null;
+  target: AssistantConfigurationAssemblyTarget;
+  quantity: number;
+  mountedStockAfter: number;
+  servoStockAfter: number;
+  installationKitStockAfter: number;
+  totalQuantity: number;
+  confirmLabel: "Confirmar montagem";
+  cancelLabel: "Cancelar";
+  regeneratePrompt: string;
+};
+
+export type AssistantConfigurationAssemblyResultBlock = {
+  kind: "configuration_assembly_result";
+  action: "configuration_assembly";
+  outcome: "success" | "error" | "cancelled" | "expired";
+  title: string;
+  message: string;
+  target: AssistantConfigurationAssemblyTarget | null;
+  quantity: number;
+  mountedStockBefore: number | null;
+  mountedStockAfter: number | null;
+  servoStockBefore: number | null;
+  servoStockAfter: number | null;
+  installationKitStockBefore: number | null;
+  installationKitStockAfter: number | null;
+  occurredAt: string | null;
+  reference: string | null;
+  idempotentReplay: boolean;
+  refreshWarning?: boolean;
+  actions: Array<AssistantActionResultLink | AssistantActionResultPrompt>;
+};
+
+export type AssistantConfigurationAssemblyConfirmationResult = {
+  block: AssistantConfigurationAssemblyResultBlock;
   contextSupplierOrderId: null;
   contextSupplierOrderCatalogCode: null;
 };
@@ -573,6 +645,7 @@ export type AssistantClarificationOption = {
   action?: AssistantServoModelInventoryAction;
   stockEntrySelection?: AssistantStockEntrySelection;
   stockOutputSelection?: AssistantStockOutputSelection;
+  configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
 };
 
 const stockEntryUuidPattern =
@@ -612,6 +685,16 @@ export function parseAssistantStockOutputSelection(value: unknown): AssistantSto
     return { action: value.action, targetQuery, quantity: value.quantity, targetKind: value.targetKind };
   }
   return null;
+}
+
+export function parseAssistantConfigurationAssemblySelection(
+  value: unknown,
+): AssistantConfigurationAssemblySelection | null {
+  if (!isRecord(value) || Object.keys(value).length !== 3 ||
+    value.action !== "configuration_assembly_target" ||
+    typeof value.commercialCodeId !== "string" || !stockEntryUuidPattern.test(value.commercialCodeId) ||
+    !isNonnegativeInteger(value.quantity) || value.quantity === 0) return null;
+  return { action: value.action, commercialCodeId: value.commercialCodeId.toLowerCase(), quantity: value.quantity };
 }
 
 export type AssistantClarificationBlock = {
@@ -762,7 +845,9 @@ export type AssistantStructuredBlock =
   | AssistantManualStockEntryPreviewBlock
   | AssistantManualStockEntryResultBlock
   | AssistantManualStockOutputPreviewBlock
-  | AssistantManualStockOutputResultBlock;
+  | AssistantManualStockOutputResultBlock
+  | AssistantConfigurationAssemblyPreviewBlock
+  | AssistantConfigurationAssemblyResultBlock;
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -1773,6 +1858,30 @@ function parseStockOutputTarget(value: unknown): AssistantStockOutputTarget | nu
   return { ...base, availableStock: value.availableStock, autoAssemblyCapacity: value.autoAssemblyCapacity, servo, installationKit };
 }
 
+function parseConfigurationAssemblyComponent(value: unknown): AssistantConfigurationAssemblyComponent | null {
+  if (!isRecord(value) || typeof value.id !== "string" || !uuidPattern.test(value.id) ||
+    typeof value.code !== "string" || !value.code.trim() || value.code.length > 120 ||
+    typeof value.description !== "string" || !value.description.trim() || value.description.length > 500 ||
+    !isNonnegativeInteger(value.currentStock)) return null;
+  return { id: value.id.toLowerCase(), code: value.code.trim(), description: value.description.trim(), currentStock: value.currentStock };
+}
+
+function parseConfigurationAssemblyTarget(value: unknown): AssistantConfigurationAssemblyTarget | null {
+  if (!isRecord(value) || typeof value.commercialCodeId !== "string" || !uuidPattern.test(value.commercialCodeId) ||
+    typeof value.configurationId !== "string" || !uuidPattern.test(value.configurationId) ||
+    typeof value.displayCode !== "string" || !value.displayCode.trim() || value.displayCode.length > 120 ||
+    !Array.isArray(value.aliases) || value.aliases.length > 20 ||
+    value.aliases.some((alias) => typeof alias !== "string" || !alias.trim() || alias.length > 120) ||
+    typeof value.description !== "string" || !value.description.trim() || value.description.length > 500 ||
+    !isNonnegativeInteger(value.currentStock) || !isNonnegativeInteger(value.capacity)) return null;
+  const servo = parseConfigurationAssemblyComponent(value.servo);
+  const installationKit = parseConfigurationAssemblyComponent(value.installationKit);
+  if (!servo || !installationKit || value.capacity !== Math.min(servo.currentStock, installationKit.currentStock)) return null;
+  return { commercialCodeId: value.commercialCodeId.toLowerCase(), configurationId: value.configurationId.toLowerCase(),
+    displayCode: value.displayCode.trim(), aliases: Array.from(new Set(value.aliases.map((alias) => String(alias).trim()))),
+    description: value.description.trim(), currentStock: value.currentStock, capacity: value.capacity, servo, installationKit };
+}
+
 function parseStockEntryResultActions(value: unknown) {
   if (!Array.isArray(value) || value.length > 4) return null;
   const actions = value.map(parseAssistantActionResultAction);
@@ -1783,7 +1892,7 @@ function parseStockEntryResultActions(value: unknown) {
 
 function parseOperationalPreviewBase(
   value: Record<string, unknown>,
-  confirmLabel: "Confirmar entrada" | "Confirmar saída" = "Confirmar entrada",
+  confirmLabel: "Confirmar entrada" | "Confirmar saída" | "Confirmar montagem" = "Confirmar entrada",
 ) {
   const pending = value.state === "pending";
   if (
@@ -1897,6 +2006,52 @@ export function parseAssistantStructuredBlock(
           lines: lines as AssistantSupplierOrderStockEntryResultLine[] } as AssistantSupplierOrderStockEntryResultBlock
       : { kind: "manual_stock_entry_result", ...common, action: "manual_stock_entry",
           lines: lines as AssistantManualStockEntryResultLine[] } as AssistantManualStockEntryResultBlock;
+  }
+
+  if (value.kind === "configuration_assembly_preview") {
+    const base = parseOperationalPreviewBase(value, "Confirmar montagem");
+    const target = parseConfigurationAssemblyTarget(value.target);
+    if (!base || value.action !== "configuration_assembly" || !target ||
+      !isNonnegativeInteger(value.quantity) || value.quantity === 0 || value.quantity !== base.totalQuantity ||
+      value.quantity > target.capacity || !isNonnegativeInteger(value.mountedStockAfter) ||
+      !isNonnegativeInteger(value.servoStockAfter) || !isNonnegativeInteger(value.installationKitStockAfter) ||
+      value.mountedStockAfter !== target.currentStock + value.quantity ||
+      value.servoStockAfter !== target.servo.currentStock - value.quantity ||
+      value.installationKitStockAfter !== target.installationKit.currentStock - value.quantity) return null;
+    return { kind: value.kind, action: value.action, ...base,
+      title: base.title as AssistantConfigurationAssemblyPreviewBlock["title"], target, quantity: value.quantity,
+      mountedStockAfter: value.mountedStockAfter, servoStockAfter: value.servoStockAfter,
+      installationKitStockAfter: value.installationKitStockAfter,
+      confirmLabel: "Confirmar montagem", cancelLabel: "Cancelar" };
+  }
+
+  if (value.kind === "configuration_assembly_result") {
+    const actions = parseStockEntryResultActions(value.actions);
+    const target = value.target === null ? null : parseConfigurationAssemblyTarget(value.target);
+    const metrics = [value.mountedStockBefore, value.mountedStockAfter, value.servoStockBefore, value.servoStockAfter,
+      value.installationKitStockBefore, value.installationKitStockAfter];
+    if (value.action !== "configuration_assembly" || !["success", "error", "cancelled", "expired"].includes(String(value.outcome)) ||
+      typeof value.title !== "string" || !value.title.trim() || typeof value.message !== "string" || !value.message.trim() ||
+      !isNonnegativeInteger(value.quantity) || metrics.some((metric) => metric !== null && !isNonnegativeInteger(metric)) ||
+      (value.occurredAt !== null && (typeof value.occurredAt !== "string" || Number.isNaN(Date.parse(value.occurredAt)))) ||
+      (value.reference !== null && (typeof value.reference !== "string" || !uuidPattern.test(value.reference))) ||
+      typeof value.idempotentReplay !== "boolean" || (value.refreshWarning !== undefined && typeof value.refreshWarning !== "boolean") ||
+      !actions || (value.target !== null && !target)) return null;
+    if (value.outcome === "success" && target && (value.quantity === 0 || metrics.some((metric) => metric === null) ||
+      value.mountedStockAfter !== Number(value.mountedStockBefore) + value.quantity ||
+      value.servoStockAfter !== Number(value.servoStockBefore) - value.quantity ||
+      value.installationKitStockAfter !== Number(value.installationKitStockBefore) - value.quantity)) return null;
+    if (value.outcome === "success" && !target &&
+      (value.refreshWarning !== true || value.quantity !== 0 || metrics.some((metric) => metric !== null))) return null;
+    return { kind: value.kind, action: value.action,
+      outcome: value.outcome as AssistantConfigurationAssemblyResultBlock["outcome"], title: value.title.trim(),
+      message: value.message.trim(), target, quantity: value.quantity,
+      mountedStockBefore: value.mountedStockBefore as number | null, mountedStockAfter: value.mountedStockAfter as number | null,
+      servoStockBefore: value.servoStockBefore as number | null, servoStockAfter: value.servoStockAfter as number | null,
+      installationKitStockBefore: value.installationKitStockBefore as number | null,
+      installationKitStockAfter: value.installationKitStockAfter as number | null,
+      occurredAt: value.occurredAt as string | null, reference: value.reference as string | null,
+      idempotentReplay: value.idempotentReplay, ...(value.refreshWarning ? { refreshWarning: true } : {}), actions };
   }
 
   if (value.kind === "manual_stock_output_preview") {
@@ -2254,6 +2409,10 @@ export function parseAssistantStructuredBlock(
         isRecord(option) && option.stockOutputSelection !== undefined
           ? parseAssistantStockOutputSelection(option.stockOutputSelection)
           : undefined;
+      const configurationAssemblySelection =
+        isRecord(option) && option.configurationAssemblySelection !== undefined
+          ? parseAssistantConfigurationAssemblySelection(option.configurationAssemblySelection)
+          : undefined;
 
       if (
         !isRecord(option) ||
@@ -2280,6 +2439,7 @@ export function parseAssistantStructuredBlock(
         (option.action !== undefined && action === null) ||
         (option.stockEntrySelection !== undefined && stockEntrySelection === null) ||
         (option.stockOutputSelection !== undefined && stockOutputSelection === null) ||
+        (option.configurationAssemblySelection !== undefined && configurationAssemblySelection === null) ||
         ![
           "inventory",
           "supplier_orders",
@@ -2314,6 +2474,7 @@ export function parseAssistantStructuredBlock(
         ...(action ? { action } : {}),
         ...(stockEntrySelection ? { stockEntrySelection } : {}),
         ...(stockOutputSelection ? { stockOutputSelection } : {}),
+        ...(configurationAssemblySelection ? { configurationAssemblySelection } : {}),
       };
     });
     const ids = parsedOptions.map((option) => option?.id);
@@ -2331,6 +2492,9 @@ export function parseAssistantStructuredBlock(
               : "",
             option.stockOutputSelection
               ? JSON.stringify(option.stockOutputSelection)
+              : "",
+            option.configurationAssemblySelection
+              ? JSON.stringify(option.configurationAssemblySelection)
               : "",
           ].join(":")
         : null,

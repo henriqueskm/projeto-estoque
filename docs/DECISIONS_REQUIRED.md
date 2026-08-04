@@ -26,17 +26,25 @@ As ambiguidades de rascunho, duplicidade da negociação e cancelamento estão r
 
 | ID | Objetivo | Problema | Evidência | Opções | Recomendação | Risco | Ação do usuário |
 |---|---|---|---|---|---|---|---|
-| DEC-OUT-004 | NK-OUT-004 | A saída pela Assistente precisará de teste real controlado depois da validação visual. | Operações reais alteram saldo e auditoria. | Autorizar teste específico ou adiar. | Autorizar somente com código, quantidade, baseline e critérios de verificação definidos. | Crítico | Aprovar um roteiro operacional futuro. |
+| DEC-ASM-004 | NK-ASM-002 | A montagem pela Assistente precisará de teste real controlado depois da validação visual. | Operações reais consomem Servo e Kit e aumentam o saldo montado. | Autorizar teste específico ou adiar. | Autorizar somente com Cód., quantidade, baseline e critérios de verificação definidos. | Crítico | Aprovar um roteiro operacional futuro. |
 
 ## Validações visuais aguardando usuário
 
 | ID | Objetivo | Problema | Evidência | Opções | Recomendação | Risco | Ação do usuário |
 |---|---|---|---|---|---|---|---|
-| DEC-OUT-003 | NK-OUT-003 | Uma futura interface de saída precisa de validação autenticada em mobile e desktop. | A validação exige sessão e julgamento visual humano. | Aprovar, solicitar ajuste ou rejeitar. | Validar antes de qualquer teste real. | Médio | Revisar a PR/branch após implementação. |
+| DEC-ASM-003 | NK-ASM-002 | A prévia e o resultado de montagem precisam de validação autenticada em mobile e desktop. | A validação exige sessão e julgamento visual humano. | Aprovar, solicitar ajuste ou rejeitar. | Validar sem clicar em Confirmar montagem. | Médio | Revisar o PR draft após implementação. |
 
 ## Merges aguardando aprovação
 
 | ID | Objetivo | Problema | Evidência | Opções | Recomendação | Risco | Ação do usuário |
 |---|---|---|---|---|---|---|---|
-| DEC-AUTO-MERGE | NK-AUTO-001 | O framework será publicado em branch, sem merge automático. | Política de autonomia nível 3. | Revisar e fazer merge ou pedir ajustes. | Revisar o PR documental. | Baixo | Aprovar o merge em `main`. |
-| DEC-OUT-MERGE | NK-OUT-002 | A saída manual está publicada em branch, sem merge automático. | Commit `9bc68bee216c8f5f9e17db1d2d591e5cffc40dbb` passou nas validações locais. | Revisar e fazer merge ou pedir ajustes. | Validar visualmente antes do merge. | Alto | Revisar a branch funcional. |
+| DEC-ASM-MERGE | NK-ASM-002 | A montagem será publicada em branch, sem merge automático. | Política de autonomia nível 3 e risco operacional crítico. | Revisar e fazer merge ou pedir ajustes. | Validar visualmente antes do merge. | Crítico | Revisar o PR draft funcional. |
+
+## Decisões concluídas
+
+| ID | Objetivo | Resultado |
+|---|---|---|
+| DEC-AUTO-MERGE | NK-AUTO-001 | PR #1 revisado e mesclado em `main`. |
+| DEC-OUT-003 | NK-OUT-003 | Saída manual validada visualmente em sessão autenticada. |
+| DEC-OUT-004 | NK-OUT-004 | Teste operacional e smoke test de produção aprovados sem duplicidade. |
+| DEC-OUT-MERGE | NK-OUT-002 | PR #2 revisado e mesclado em `main`. |

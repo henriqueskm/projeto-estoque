@@ -6,6 +6,7 @@ import {
   parseAssistantServoModelInventoryAction,
   parseAssistantStockEntrySelection,
   parseAssistantStockOutputSelection,
+  parseAssistantConfigurationAssemblySelection,
   type AssistantChatError,
   type AssistantChatSuccess,
 } from "@/lib/assistant-types";
@@ -174,6 +175,7 @@ export async function POST(request: Request) {
   const rawInventoryAction = bodyRecord.inventoryAction;
   const rawStockEntrySelection = bodyRecord.stockEntrySelection;
   const rawStockOutputSelection = bodyRecord.stockOutputSelection;
+  const rawConfigurationAssemblySelection = bodyRecord.configurationAssemblySelection;
 
   if (
     bodyKeys.some(
@@ -185,7 +187,8 @@ export async function POST(request: Request) {
         key !== "selectedSupplierOrderItemId" &&
         key !== "inventoryAction" &&
         key !== "stockEntrySelection" &&
-        key !== "stockOutputSelection",
+        key !== "stockOutputSelection" &&
+        key !== "configurationAssemblySelection",
     ) ||
     !bodyKeys.includes("message")
   ) {
@@ -253,6 +256,10 @@ export async function POST(request: Request) {
     rawStockOutputSelection === undefined
       ? null
       : parseAssistantStockOutputSelection(rawStockOutputSelection);
+  const configurationAssemblySelection =
+    rawConfigurationAssemblySelection === undefined
+      ? null
+      : parseAssistantConfigurationAssemblySelection(rawConfigurationAssemblySelection);
 
   if (rawInventoryAction !== undefined && !inventoryAction) {
     return errorResponse("A opção selecionada não é válida.", 400);
@@ -262,6 +269,9 @@ export async function POST(request: Request) {
   }
   if (rawStockOutputSelection !== undefined && !stockOutputSelection) {
     return errorResponse("A opção de saída selecionada não é válida.", 400);
+  }
+  if (rawConfigurationAssemblySelection !== undefined && !configurationAssemblySelection) {
+    return errorResponse("A opção de montagem selecionada não é válida.", 400);
   }
 
   try {
@@ -277,6 +287,7 @@ export async function POST(request: Request) {
       inventoryAction,
       stockEntrySelection,
       stockOutputSelection,
+      configurationAssemblySelection,
     );
 
     return NextResponse.json<AssistantChatSuccess>(answer);

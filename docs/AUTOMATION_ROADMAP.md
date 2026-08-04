@@ -4,13 +4,13 @@ Estados e classificações seguem `AUTOMATION_RULES.md`. Implementação depende
 
 | ID | Objetivo | Tipo | Dependências | Classificação | Estado | Branch | PR | Risco | Validação humana | Próxima ação |
 |---|---|---|---|---|---|---|---|---|---|---|
-| NK-AUTO-001 | Estrutura de automação do repositório | Documentação | Nenhuma | A | PR_READY | `codex/automation-framework` | [Abrir](https://github.com/henriqueskm/projeto-estoque/pull/new/codex/automation-framework) | Baixo | Revisão e merge | Revisar os dois commits documentais |
+| NK-AUTO-001 | Estrutura de automação do repositório | Documentação | Nenhuma | A | DONE | `codex/automation-framework` | [#1](https://github.com/henriqueskm/projeto-estoque/pull/1) | Baixo | Aprovada | Mesclado em `main` |
 | NK-OUT-001 | Auditoria da saída manual existente | Auditoria | NK-AUTO-001 | B | DONE | — | — | Alto | Não | Operação oficial aprovada para integração de aplicação |
-| NK-OUT-002 | Implementação da saída manual pela Assistente | Aplicação | NK-OUT-001 B | B | PR_READY | `codex/assistant-manual-stock-output` | [Abrir](https://github.com/henriqueskm/projeto-estoque/pull/new/codex/assistant-manual-stock-output) | Alto | Revisão de código | Revisar a branch funcional |
-| NK-OUT-003 | Validação visual da saída manual | Validação | NK-OUT-002 | — | BLOCKED_VISUAL_VALIDATION | `codex/assistant-manual-stock-output` | Pendente | Médio | Obrigatória | Validar autenticado em mobile e desktop |
-| NK-OUT-004 | Teste operacional controlado da saída manual | Operação real | NK-OUT-003 | — | BLOCKED_OPERATIONAL_TEST | `codex/assistant-manual-stock-output` | Pendente | Crítico | Obrigatória | Autorizar roteiro específico após validação visual |
+| NK-OUT-002 | Implementação da saída manual pela Assistente | Aplicação | NK-OUT-001 B | B | DONE | `codex/assistant-manual-stock-output` | [#2](https://github.com/henriqueskm/projeto-estoque/pull/2) | Alto | Aprovada | Mesclado em `main` |
+| NK-OUT-003 | Validação visual da saída manual | Validação | NK-OUT-002 | — | DONE | `codex/assistant-manual-stock-output` | [#2](https://github.com/henriqueskm/projeto-estoque/pull/2) | Médio | Aprovada | Fluxo validado visualmente |
+| NK-OUT-004 | Teste operacional controlado da saída manual | Operação real | NK-OUT-003 | — | DONE | `codex/assistant-manual-stock-output` | [#2](https://github.com/henriqueskm/projeto-estoque/pull/2) | Crítico | Aprovada | Smoke test de produção aprovado sem duplicidade |
 | NK-ASM-001 | Auditoria da montagem | Auditoria | NK-AUTO-001 | B | DONE | — | — | Alto | Não | Integração de aplicação pode ser planejada |
-| NK-ASM-002 | Implementação da montagem pela Assistente | Aplicação | NK-ASM-001 B | B | READY | A definir | Pendente | Crítico | Visual e operacional | Criar branch própria após priorização |
+| NK-ASM-002 | Implementação da montagem pela Assistente | Aplicação | NK-ASM-001 B | B | WAITING_HUMAN_REVIEW | `agent/assistant-assembly` | [Abrir](https://github.com/henriqueskm/projeto-estoque/pull/new/agent/assistant-assembly) | Crítico | Visual e operacional | Revisar PR draft e validar sem confirmar montagem |
 | NK-DIS-001 | Auditoria da desmontagem | Auditoria | NK-AUTO-001 | B | DONE | — | — | Alto | Não | Integração de aplicação pode ser planejada |
 | NK-DIS-002 | Implementação da desmontagem pela Assistente | Aplicação | NK-DIS-001 B | B | READY | A definir | Pendente | Crítico | Visual e operacional | Criar branch própria após priorização |
 | NK-ORD-001 | Auditoria da criação e edição de Pedido | Auditoria | NK-AUTO-001 | A/B/D por subfluxo | DONE | — | — | Alto | Não | Resolver decisões de rascunho, negociação e cancelamento |

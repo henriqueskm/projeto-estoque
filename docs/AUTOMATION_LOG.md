@@ -92,3 +92,42 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **PR:** não aplicável
 - **Bloqueios:** decisões DEC-ORD-001, DEC-ORD-002 e DEC-ORD-003.
 - **Próxima ação:** resolver decisões antes de NK-ORD-002, NK-ORD-003 ou NK-ORD-005.
+
+## 2026-08-04T03:19:17Z — NK-AUTO-001 / NK-OUT-002
+
+- **Estado anterior:** PR_READY
+- **Estado novo:** DONE
+- **Branch:** `main`
+- **Resumo:** framework da esteira e saída manual pela Assistente revisados e mesclados; PR #1 e PR #2 concluídos.
+- **Validações:** `main` sincronizada em `4d5b67f8ad48dfa471269d5a92246bf260a404ff`; worktree limpa antes do próximo objetivo.
+- **Commit:** merge `4d5b67f8ad48dfa471269d5a92246bf260a404ff` para o PR #2
+- **Push:** realizado pelo merge aprovado
+- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/2
+- **Bloqueios:** nenhum para o encerramento da saída.
+- **Próxima ação:** registrar as validações humanas e iniciar o próximo objetivo READY.
+
+## 2026-08-04T03:19:17Z — NK-OUT-003 / NK-OUT-004
+
+- **Estado anterior:** BLOCKED_VISUAL_VALIDATION / BLOCKED_OPERATIONAL_TEST
+- **Estado novo:** DONE / DONE
+- **Branch:** `codex/assistant-manual-stock-output`
+- **Resumo:** saída manual validada visualmente; teste operacional controlado e smoke test de produção aprovados sem duplicidade.
+- **Validações:** prévia, confirmação e resultado conferidos; exatamente uma movimentação para a solicitação autorizada, sem replay ou baixa duplicada.
+- **Commit:** não aplicável
+- **Push:** não aplicável
+- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/2
+- **Bloqueios:** nenhum.
+- **Próxima ação:** NK-ASM-002.
+
+## 2026-08-04T03:38:11Z — NK-ASM-002
+
+- **Estado anterior:** READY
+- **Estado novo:** WAITING_HUMAN_REVIEW
+- **Branch:** `agent/assistant-assembly`
+- **Resumo:** montagem pela Assistente implementada com parser determinístico, resolução server-side, prévia/resultado estruturados, token HMAC, rota POST fixa, idempotência e confirmação somente por botão.
+- **Validações:** 10 testes de montagem, 22 testes de regressão da saída, 17 testes de regressão da entrada, lint, TypeScript, build e `git diff --check` aprovados.
+- **Commit:** pendente nesta atualização
+- **Push:** pendente nesta atualização
+- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/new/agent/assistant-assembly
+- **Bloqueios:** validação visual e teste operacional real exigem aprovação humana; merge não autorizado.
+- **Próxima ação:** publicar PR draft e aguardar revisão autenticada sem executar montagem real.
