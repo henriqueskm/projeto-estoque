@@ -5,6 +5,7 @@ import {
   assistantRequestMaxCharacters,
   parseAssistantServoModelInventoryAction,
   parseAssistantStockEntrySelection,
+  parseAssistantStockOutputSelection,
   type AssistantChatError,
   type AssistantChatSuccess,
 } from "@/lib/assistant-types";
@@ -172,6 +173,7 @@ export async function POST(request: Request) {
     bodyRecord.selectedSupplierOrderItemId;
   const rawInventoryAction = bodyRecord.inventoryAction;
   const rawStockEntrySelection = bodyRecord.stockEntrySelection;
+  const rawStockOutputSelection = bodyRecord.stockOutputSelection;
 
   if (
     bodyKeys.some(
@@ -182,7 +184,8 @@ export async function POST(request: Request) {
         key !== "lastSupplierOrderCatalogCode" &&
         key !== "selectedSupplierOrderItemId" &&
         key !== "inventoryAction" &&
-        key !== "stockEntrySelection",
+        key !== "stockEntrySelection" &&
+        key !== "stockOutputSelection",
     ) ||
     !bodyKeys.includes("message")
   ) {
@@ -246,12 +249,19 @@ export async function POST(request: Request) {
     rawStockEntrySelection === undefined
       ? null
       : parseAssistantStockEntrySelection(rawStockEntrySelection);
+  const stockOutputSelection =
+    rawStockOutputSelection === undefined
+      ? null
+      : parseAssistantStockOutputSelection(rawStockOutputSelection);
 
   if (rawInventoryAction !== undefined && !inventoryAction) {
     return errorResponse("A opção selecionada não é válida.", 400);
   }
   if (rawStockEntrySelection !== undefined && !stockEntrySelection) {
     return errorResponse("A opção de entrada selecionada não é válida.", 400);
+  }
+  if (rawStockOutputSelection !== undefined && !stockOutputSelection) {
+    return errorResponse("A opção de saída selecionada não é válida.", 400);
   }
 
   try {
@@ -266,6 +276,7 @@ export async function POST(request: Request) {
       selectedSupplierOrderItemId,
       inventoryAction,
       stockEntrySelection,
+      stockOutputSelection,
     );
 
     return NextResponse.json<AssistantChatSuccess>(answer);
