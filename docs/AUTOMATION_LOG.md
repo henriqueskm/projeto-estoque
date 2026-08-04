@@ -126,8 +126,8 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Branch:** `agent/assistant-assembly`
 - **Resumo:** montagem pela Assistente implementada com parser determinístico, resolução server-side, prévia/resultado estruturados, token HMAC, rota POST fixa, idempotência e confirmação somente por botão.
 - **Validações:** 10 testes de montagem, 22 testes de regressão da saída, 17 testes de regressão da entrada, lint, TypeScript, build e `git diff --check` aprovados.
-- **Commit:** pendente nesta atualização
-- **Push:** pendente nesta atualização
-- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/new/agent/assistant-assembly
+- **Commit:** `b54eba3fed31c285d96dcdbc26801fb17596746c`
+- **Push:** branch enviada e sincronizada
+- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/3 (draft)
 - **Bloqueios:** validação visual e teste operacional real exigem aprovação humana; merge não autorizado.
 - **Próxima ação:** publicar PR draft e aguardar revisão autenticada sem executar montagem real.
