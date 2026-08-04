@@ -48,6 +48,33 @@ test("roteia saídas manuais determinísticas", () => {
   }
 });
 
+test("remove qualificadores singulares e plurais antes de resolver Servo com kit", () => {
+  const cases = [
+    ["Tire 5 Servos com kit Cód. 1H do Estoque.", 5],
+    ["Tire 5 Servo com kit Cód. 1H do Estoque.", 5],
+    ["Tire 5 Servos com kit, 1H do Estoque.", 5],
+    ["Retire 2 unidades do Servo com kit Cód. 1H.", 2],
+    ["Dê saída em 3 Servos com kit código 1H.", 3],
+    ["Baixe 1 Servo com kit 1H.", 1],
+  ];
+
+  for (const [phrase, quantity] of cases) {
+    const result = routeManualStockOutputAction(phrase);
+    assert.equal(result.kind, "ACTION", phrase);
+    assert.equal(result.request.requestedIdentity, "COMMERCIAL_CODE", phrase);
+    assert.equal(result.request.targetQuery, "1H", phrase);
+    assert.equal(result.request.quantity, quantity, phrase);
+  }
+});
+
+test("preserva saída manual simples por código", () => {
+  const result = routeManualStockOutputAction("Retire 1 do 1H do Estoque.");
+  assert.equal(result.kind, "ACTION");
+  assert.equal(result.request.requestedIdentity, null);
+  assert.equal(result.request.targetQuery, "1H");
+  assert.equal(result.request.quantity, 1);
+});
+
 test("não intercepta retirada vinculada a Pedido", () => {
   assert.equal(routeManualStockOutputAction("Retire 1 do 1H no Pedido Teste 04.").kind, "NOT_MANUAL_STOCK_OUTPUT");
 });

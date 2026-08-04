@@ -45,12 +45,14 @@ function cleanTarget(value: string, quantityMatch: QuantityMatch) {
   const withoutQuantity = `${value.slice(0, quantityMatch.index)} ${value.slice(quantityMatch.index + quantityMatch.length)}`;
   return withoutQuantity
     .replace(/\b(?:do|no|ao|para\s+o)\s+estoque\b/giu, " ")
-    .replace(/\b(?:servo\s+)?(?:com|sem)\s+kit\b/giu, " ")
+    .replace(/\bservos?\s+(?:com|sem)\s+kit\b/giu, " ")
+    .replace(/\b(?:com|sem)\s+kit\b/giu, " ")
     .replace(/\b(?:kit\s+de\s+instala[cç][aã]o|kit\s+de\s+reparo|pe[cç]a\s+avulsa|pe[cç]a)\b/giu, " ")
-    .replace(/[?!.,;:]+$/g, "")
+    .replace(/\bc[oó]d(?:igo)?\.?\s*/giu, " ")
+    .replace(/[?!.,;:]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
     .replace(/^(?:(?:em|do|da|de|mais)\s+)+/iu, "")
-    .replace(/^c[oó]d(?:igo)?\.?\s*/iu, "")
     .trim();
 }
 
