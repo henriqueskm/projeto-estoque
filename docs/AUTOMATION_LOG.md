@@ -158,3 +158,16 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **PR:** pendente
 - **Bloqueios:** DEC-SAF-001 a DEC-SAF-008 e aprovação de MIG-SAF-001.
 - **Próxima ação:** revisar `docs/SAFISA_PORTAL_SPEC.md` e decidir os bloqueios antes de qualquer implementação.
+
+## 2026-08-04T04:39:34Z — NK-SAF-001
+
+- **Estado anterior:** WAITING_HUMAN_REVIEW
+- **Estado novo:** WAITING_HUMAN_REVIEW
+- **Branch:** `agent/safisa-portal-audit`
+- **Resumo:** DEC-SAF-001 a DEC-SAF-008 aprovadas; MIG-SAF-001 detalhada exclusivamente em documentação, sem SQL ou implementação.
+- **Validações:** decisões registram contas individuais, provisionamento administrativo, publicação explícita, prontidão concorrente, correção controlada, retirada somente do pronto, cancelamento seguro, histórico somente leitura e portal isolado em `/safisa`.
+- **Commit:** pendente neste registro
+- **Push:** pendente neste registro
+- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/4 (draft)
+- **Bloqueios:** revisão e autorização específica da MIG-SAF-001; alteração remota de signup continua não autorizada.
+- **Próxima ação:** revisar o contrato documental e somente depois autorizar ou rejeitar a criação da migration.

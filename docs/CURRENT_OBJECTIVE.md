@@ -4,7 +4,7 @@
 - **Título:** Auditoria e especificação do Portal da Safisa
 - **Prioridade:** alta para o piloto comercial
 - **Estado:** WAITING_HUMAN_REVIEW
-- **Classificação:** C/D — exige migration/RPC e decisões humanas
+- **Classificação:** C — decisões de domínio aprovadas; exige migration/RPC ainda não autorizada
 - **Branch de execução:** `agent/safisa-portal-audit`
 - **Commit base:** `2038b232ab1d0deb5aed793587a97165f79a962a`
 - **Dependências:** Pedidos existentes; NK-ASM-002 concluído; PR #3 mesclado
@@ -18,7 +18,7 @@
 - a solução exige migration atômica, RPCs fechadas e endurecimento das regras de retirada/edição/cancelamento;
 - o relatório completo está em `docs/SAFISA_PORTAL_SPEC.md`.
 
-## Escopo aprovado para o futuro piloto
+## Decisões aprovadas para o futuro piloto
 
 - um único fornecedor: Safisa;
 - contas individuais e auditáveis;
@@ -31,6 +31,20 @@
 - retirada exclusiva do aplicativo interno;
 - entrada no Estoque separada;
 - nenhuma permissão da Safisa para editar Pedido, negociação ou Estoque.
+- provisionamento administrativo, membership próprio e ativação/desativação individual;
+- signup público deverá ser desabilitado em etapa remota futura e específica;
+- nenhum Pedido antigo ou novo será publicado automaticamente;
+- publicação e revogação serão explícitas e preservarão a auditoria;
+- incremento será atômico e idempotente;
+- correção absoluta exigirá justificativa, confirmação e controle de versão;
+- a ação interna será “Retirar tudo que está pronto” e nunca alcançará unidade não pronta;
+- cancelamento poderá atingir somente saldo ainda não pronto, sem reduzir `ready_quantity` implicitamente;
+- Pedidos encerrados serão somente leitura enquanto autorizados;
+- o portal ficará em `/safisa`, no mesmo deploy, com layout, navegação e guards separados.
+
+## MIG-SAF-001 especificada, não criada
+
+O desenho documental cobre membership, autorização de Pedidos, `ready_quantity`, ledger de auditoria/idempotência, constraints, índices, RLS, grants/revokes, RPCs fixas, backfill sem publicação automática e endurecimento transacional de retirada, edição e cancelamento. O plano de testes cobre isolamento entre contas, replay, payload conflitante, incrementos simultâneos, correção concorrente e invariantes de prontidão.
 
 ## Escopo proibido nesta etapa
 
@@ -43,13 +57,14 @@
 
 ## Pontos de parada
 
-- decisões de identidade, publicação, correção, retirada e cancelamento: `WAITING_HUMAN_REVIEW`;
-- migration/RPC: aprovação humana específica obrigatória;
+- desenho documental da MIG-SAF-001: `WAITING_HUMAN_REVIEW`;
+- criação da migration/RPC: aprovação humana específica obrigatória após revisão do desenho;
 - configuração do Supabase Auth: aprovação humana específica obrigatória;
 - testes autenticados e concorrentes: aprovação operacional específica.
 
 ## Execução
 
 - **Última ação:** NK-ASM-002 concluído; montagem validada operacionalmente; PR #3 mesclado e smoke test aprovado sem duplicidade ou efeito colateral. Auditoria NK-SAF-001 concluída por leitura.
-- **Próximo passo:** revisar `SAFISA_PORTAL_SPEC.md` e decidir os itens DEC-SAF-001 a DEC-SAF-008.
-- **Decisões humanas pendentes:** provisionamento, cadastro público, publicação de Pedidos, correção, retirada total, cancelamento, histórico e URL do piloto.
+- **Próximo passo:** revisar e aprovar a especificação documental da MIG-SAF-001 antes de qualquer SQL.
+- **Decisões concluídas:** DEC-SAF-001 a DEC-SAF-008.
+- **Aprovação ainda pendente:** autorização explícita para criar a migration e, separadamente, para alterar a configuração remota de signup.

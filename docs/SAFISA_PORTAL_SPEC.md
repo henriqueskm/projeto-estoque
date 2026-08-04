@@ -2,7 +2,7 @@
 
 - **Prioridade:** alta para o piloto comercial
 - **Estado:** WAITING_HUMAN_REVIEW
-- **Classificação:** C/D — exige migration/RPC e decisões humanas antes da implementação
+- **Classificação:** C — decisões de domínio aprovadas; exige migration/RPC ainda não autorizada
 - **Projeto auditado:** `isdjboconmwaqipjrjvp`
 - **Data da auditoria:** 2026-08-04
 
@@ -11,6 +11,8 @@
 Existe um único fornecedor, Safisa. Cada pessoa da Safisa terá uma conta individual. Todas as contas ativas poderão consultar os Pedidos explicitamente autorizados e registrar, de forma concorrente e auditável, quantidades prontas por item.
 
 A quantidade pronta será cumulativa: inclui unidades já retiradas e nunca poderá ficar abaixo de `picked_quantity`. A retirada continuará exclusiva do aplicativo interno; a entrada no Estoque continuará sendo uma operação posterior e separada. O portal não poderá criar ou editar Pedido, negociação, catálogo, retirada, entrada ou saldo.
+
+DEC-SAF-001 a DEC-SAF-008 foram aprovadas. Contas serão individuais, administrativamente provisionadas e isoladas dos perfis internos. Pedidos serão publicados e revogados explicitamente. Incrementos serão atômicos e idempotentes; correções absolutas exigirão justificativa, confirmação e controle de versão. O aplicativo interno retirará somente unidades prontas. O portal ficará em `/safisa`, no mesmo deploy, com layout e guardas próprios.
 
 ## Evidências do estado atual
 
@@ -122,13 +124,13 @@ A correção é absoluta e deve exigir `expected_updated_at` integral após os l
 
 Mesma chave e mesmo payload retornam replay; mesma chave com payload diferente é rejeitada. Não haverá retry automático com nova chave.
 
-## Impactos obrigatórios nas operações atuais
+## Impactos obrigatórios nas operações atuais — aprovados
 
 - Retirada unitária deve rejeitar `picked_quantity > ready_quantity`.
-- “Marcar tudo como retirado” deve operar somente sobre unidades prontas ou ser bloqueado até o Pedido estar completamente pronto, conforme decisão humana.
+- A ação interna deve se chamar “Retirar tudo que está pronto” e operar somente sobre `ready_quantity - picked_quantity`, preservando a retirada parcial.
 - Edição não pode reduzir quantidade pedida abaixo de pronta+cancelada, remover linha com prontidão ou trocar sua identidade física.
-- Cancelamento não pode invalidar prontidão existente; o tratamento de unidades prontas ainda não retiradas exige decisão humana.
-- Finalização e revogação de acesso precisam definir se a Safisa mantém consulta histórica.
+- Cancelamento pode atingir separadamente apenas o saldo ainda não pronto; unidades prontas não retiradas exigem retirada ou correção justificada e `ready_quantity` nunca é reduzida implicitamente.
+- Pedidos concluídos ou cancelados permanecem somente leitura enquanto autorizados; revogação remove acesso sem apagar dados ou auditoria.
 - Entrada no Estoque continua usando exclusivamente `picked_quantity - stocked_quantity` e não consulta `ready_quantity`.
 
 ## Interface proposta
@@ -154,9 +156,115 @@ Mesma chave e mesmo payload retornam replay; mesma chave com payload diferente �
 
 Para o piloto, revalidar após cada operação e ao retornar à página é suficiente. Realtime ou polling contínuo não é requisito inicial; a atomicidade permanece no banco.
 
-## Migrations necessárias
+## MIG-SAF-001 — especificação documental
 
-Recomendação: uma migration atômica e integralmente revisada para evitar estado intermediário inseguro, contendo:
+Nenhum SQL foi criado. A futura migration deve ser única, atômica e integralmente revisada para evitar estado intermediário inseguro.
+
+### Tabelas
+
+`public.safisa_portal_members`:
+
+- `user_id uuid` como PK e FK para `auth.users` com exclusão restrita;
+- `is_active boolean not null default false`;
+- `created_at`, `updated_at`, `activated_at`, `deactivated_at`;
+- `created_by`, `updated_by` e snapshots nominais internos;
+- constraint temporal coerente entre estado e datas.
+
+`public.safisa_order_authorizations`:
+
+- `supplier_order_id uuid` como PK/FK com `ON DELETE RESTRICT`;
+- `is_authorized boolean not null default false`;
+- datas de publicação/revogação;
+- usuário e snapshot de quem publicou ou revogou;
+- versão/`updated_at` para conflito e auditoria.
+
+`public.safisa_ready_quantity_events`:
+
+- PK UUID, Pedido, linha, usuário Safisa ou interno e snapshot do nome;
+- modo fechado `INCREMENT` ou `CORRECTION`;
+- quantidade anterior, delta, total novo, justificativa nullable somente para incremento e obrigatória para correção;
+- `idempotency_key`, hash do payload normalizado, resultado e `created_at`;
+- FKs com `ON DELETE RESTRICT` e imutabilidade do ledger.
+
+### Colunas, backfill e constraints
+
+Adicionar `supplier_order_items.ready_quantity integer`. Na mesma transação:
+
+1. criar a coluna inicialmente nullable;
+2. preencher todas as linhas com `picked_quantity`;
+3. validar que nenhuma linha viola as invariantes atuais;
+4. tornar `ready_quantity not null` e definir default seguro para novas linhas;
+5. adicionar constraints `ready_quantity >= picked_quantity` e `ready_quantity + cancelled_quantity <= ordered_quantity`;
+6. não criar nenhuma autorização de Pedido no backfill.
+
+Nenhum Pedido antigo ou novo é publicado automaticamente. O trigger de perfil deve passar a default deny, mas desabilitar signup público é uma alteração remota separada e continua não autorizada.
+
+### Índices
+
+- PK/unique por `safisa_portal_members.user_id`;
+- índice parcial para membros ativos;
+- PK/unique por `safisa_order_authorizations.supplier_order_id` e índice parcial para autorizações ativas;
+- índice parcial em `supplier_order_items(supplier_order_id, id)` quando `ready_quantity > picked_quantity`;
+- índice de eventos por `(supplier_order_id, supplier_order_item_id, created_at desc)`;
+- unique por `(actor_user_id, idempotency_key)` quando a chave não for nula.
+
+### RLS e grants
+
+- habilitar e forçar RLS nas novas tabelas quando aplicável;
+- negar acesso direto a `anon`, `PUBLIC` e clientes autenticados;
+- não conceder `INSERT`, `UPDATE` ou `DELETE` direto;
+- contas Safisa acessam dados somente por wrappers públicos de contrato fechado;
+- wrappers públicos `SECURITY DEFINER`, `search_path` vazio e referências qualificadas;
+- workers privados `SECURITY INVOKER`, `search_path` vazio e sem `EXECUTE` para clientes;
+- guard privado deriva identidade exclusivamente de `auth.uid()`, exige membership ativo e nome cadastrado;
+- perfis Safisa continuam incapazes de executar RPCs internas de Pedido, retirada, entrada ou Estoque.
+
+### RPCs fixas
+
+- listar Pedidos autorizados com paginação e projeção mínima;
+- carregar detalhe e histórico seguro de um Pedido autorizado;
+- incrementar unidades prontas com delta positivo e chave idempotente;
+- corrigir o total pronto com justificativa, confirmação, `expected_updated_at` integral e chave idempotente;
+- publicar/revogar Pedido por usuário interno autorizado em operação separada;
+- consultar o alerta interno de unidades prontas ainda não retiradas.
+
+Nenhuma RPC aceita nome de tabela, nome de função, usuário ou autoridade escolhidos pelo navegador. Incremento e correção bloqueiam Pedido e linhas deterministicamente, revalidam autorização e gravam evento na mesma transação.
+
+### Endurecimento das operações internas
+
+- retirada unitária e parcial limitadas a `ready_quantity - picked_quantity`;
+- “Retirar tudo que está pronto” calcula e bloqueia todas as linhas elegíveis na transação;
+- edição impede reduzir quantidade abaixo de `ready_quantity + cancelled_quantity`, remover ou trocar linha com prontidão;
+- cancelamento separado alcança somente `ordered_quantity - cancelled_quantity - ready_quantity`;
+- nenhuma operação reduz `ready_quantity` implicitamente;
+- correção justificada é o único caminho para reduzir prontidão, nunca abaixo de `picked_quantity`;
+- finalização/encerramento bloqueia novas atualizações Safisa, preservando leitura enquanto autorizado;
+- entrada no Estoque permanece baseada somente em `picked_quantity - stocked_quantity`.
+
+### Plano de testes obrigatório
+
+- isolamento: conta Safisa não lê nem chama rotas/RPCs internas; conta interna não ganha acesso implícito ao portal;
+- autorização: Pedido não publicado é invisível; publicação habilita; revogação bloqueia sem apagar histórico;
+- idempotência: mesmo usuário/chave/payload retorna replay; payload diferente é rejeitado; usuários diferentes não colidem;
+- concorrência: dois incrementos simultâneos acumulam; correção concorrente falha por versão; retirada concorrente não excede prontidão;
+- invariantes: prontidão nunca abaixo do retirado nem acima do total não cancelado;
+- cancelamento/edição: unidades prontas não são removidas ou alteradas silenciosamente;
+- auditoria: cada mudança registra exatamente o ator, snapshots, antes, delta, depois e modo;
+- permissões: `anon`/`PUBLIC` sem acesso e workers privados inacessíveis aos clientes;
+- rollback: qualquer falha deixa prontidão, eventos e Pedido inalterados.
+
+### Fases de implantação
+
+1. revisão humana desta especificação e autorização para criar SQL;
+2. criação local da migration, sem aplicação remota;
+3. revisão estática e testes SQL locais;
+4. autorização específica e aplicação controlada da migration;
+5. configuração remota separada para desabilitar signup, se novamente autorizada;
+6. implementação do portal e dos alertas internos;
+7. validação autenticada, testes concorrentes controlados e smoke test;
+8. publicação gradual do primeiro Pedido do piloto.
+
+O escopo consolidado da migration inclui:
 
 1. associação de membros Safisa e autorização de Pedidos;
 2. default seguro de novos perfis;
@@ -167,7 +275,7 @@ Recomendação: uma migration atômica e integralmente revisada para evitar esta
 7. endurecimento das RPCs de retirada, edição e cancelamento;
 8. RLS, grants/revokes, comments e testes defensivos.
 
-Desabilitar cadastro público é uma alteração de configuração do Supabase Auth, separada da migration, e exige aprovação específica.
+Desabilitar cadastro público é uma alteração de configuração do Supabase Auth separada da migration. A decisão futura está aprovada, mas a mudança remota ainda não está autorizada.
 
 ## Índices e performance
 
@@ -178,7 +286,7 @@ Desabilitar cadastro público é uma alteração de configuração do Supabase A
 - paginação server-side e limites explícitos;
 - leituras agrupadas, sem catálogo completo e sem N+1.
 
-## Riscos
+## Riscos residuais
 
 | Risco | Classificação | Mitigação |
 |---|---|---|
@@ -192,22 +300,24 @@ Desabilitar cadastro público é uma alteração de configuração do Supabase A
 | Replay ou clique duplo | Alto | ledger idempotente por usuário/chave |
 | Alertas desatualizados | Médio | revalidação após mutação e ao focar/navegar |
 
-## Decisões humanas necessárias
+## Decisões humanas aprovadas
 
-1. Aprovar default deny para novos perfis e o processo administrativo de criação/ativação das contas.
-2. Decidir se o cadastro público será desabilitado no Supabase Auth.
-3. Aprovar autorização explícita por Pedido e o backfill inicial sem Pedidos publicados.
-4. Definir se correções de total exigem justificativa obrigatória e quem pode realizá-las.
-5. Definir “Marcar tudo como retirado”: retirar somente o pronto ou bloquear até tudo estar pronto.
-6. Definir o tratamento de unidades prontas ainda não retiradas ao cancelar saldo/Pedido.
-7. Definir acesso da Safisa a Pedidos finalizados, cancelados ou com autorização revogada.
-8. Confirmar `/safisa` no mesmo deploy como endereço do piloto.
+1. DEC-SAF-001: contas individuais, provisionamento administrativo, membership próprio e ativação/desativação individual; conta Safisa não é perfil interno.
+2. DEC-SAF-002: signup público será desabilitado futuramente; mudança remota ainda não autorizada; contas administrativas.
+3. DEC-SAF-003: publicação/revogação explícita; nenhum Pedido publicado automaticamente; auditoria preservada.
+4. DEC-SAF-004: incremento atômico/idempotente; correção absoluta justificada, confirmada, versionada e auditada, inclusive por usuário interno autorizado.
+5. DEC-SAF-005: “Retirar tudo que está pronto” alcança somente o pronto ainda não retirado, com validação transacional e retirada parcial preservada.
+6. DEC-SAF-006: cancelamento silencioso de unidades prontas bloqueado; somente o saldo ainda não pronto pode ser cancelado separadamente.
+7. DEC-SAF-007: encerrados somente leitura enquanto autorizados; revogação remove acesso sem apagar dados/auditoria.
+8. DEC-SAF-008: `/safisa` no mesmo deploy, com layout, navegação, guards e autorização server-side/banco separados.
+
+A aprovação pendente é exclusivamente autorizar a criação da MIG-SAF-001 a partir deste contrato documental. A alteração remota de signup exigirá outra autorização operacional.
 
 ## Plano por fases e estimativa relativa
 
 | Fase | Entrega | Tamanho relativo | Dependência |
 |---|---|---:|---|
-| 0 | decisões humanas e threat model final | S | aprovação deste documento |
+| 0 | threat model final e aprovação da MIG-SAF-001 documental | S | decisões DEC-SAF aprovadas |
 | 1 | migration atômica de identidade, prontidão, auditoria, RLS e RPCs | XL | Fase 0 |
 | 2 | testes locais/SQL de isolamento, concorrência, replay e invariantes | L | Fase 1 |
 | 3 | portal Safisa autenticado e responsivo | L | Fases 1–2 |
@@ -219,4 +329,4 @@ Estimativa total relativa: **XL**, dominada por segurança de identidade, migrat
 
 ## Conclusão
 
-O domínio de Pedidos é uma base forte, mas o Portal Safisa não pode ser implementado apenas na aplicação. A classificação é C/D: exige migration/RPC e decisões humanas. Nenhuma migration, função ou dado remoto foi alterado nesta auditoria.
+O domínio de Pedidos é uma base forte, mas o Portal Safisa não pode ser implementado apenas na aplicação. As decisões de domínio foram aprovadas e a classificação passa a C: exige migration/RPC ainda não autorizada. Nenhuma migration, função, configuração ou dado remoto foi alterado nesta atualização documental.
