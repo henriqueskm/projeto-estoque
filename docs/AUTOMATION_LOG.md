@@ -131,3 +131,43 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **PR:** https://github.com/henriqueskm/projeto-estoque/pull/3 (draft)
 - **Bloqueios:** validação visual e teste operacional real exigem aprovação humana; merge não autorizado.
 - **Próxima ação:** publicar PR draft e aguardar revisão autenticada sem executar montagem real.
+
+## 2026-08-04T04:17:09Z — NK-ASM-002
+
+- **Estado anterior:** WAITING_HUMAN_REVIEW
+- **Estado novo:** DONE
+- **Branch:** `main`
+- **Resumo:** montagem validada visual e operacionalmente; PR #3 mesclado e smoke test de produção aprovado sem duplicidade ou efeito colateral.
+- **Validações:** exatamente um POST e uma operação `ASSEMBLY/MANUAL`; configuração 1H `4 → 5`, Servo 1DESL `4 → 3` e Kit KT-29 `3 → 2`; um batch, uma operação, dois movimentos físicos e um movimento de configuração; nenhuma alteração em Pedido, entrada, saída, catálogo ou outro saldo.
+- **Commit:** merge `2038b232ab1d0deb5aed793587a97165f79a962a`
+- **Push:** realizado pelo merge aprovado
+- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/3
+- **Bloqueios:** nenhum.
+- **Próxima ação:** NK-SAF-001.
+
+## 2026-08-04T04:17:09Z — NK-SAF-001
+
+- **Estado anterior:** READY
+- **Estado novo:** WAITING_HUMAN_REVIEW
+- **Branch:** `agent/safisa-portal-audit`
+- **Resumo:** banco, Auth, perfis, Pedidos, views, RLS, grants e RPCs auditados somente por leitura; arquitetura do Portal Safisa especificada.
+- **Validações:** 22 migrations alinhadas; projeto `isdjboconmwaqipjrjvp`; 2 perfis ativos, 6 Pedidos, 17 linhas e 19 eventos; invariantes atuais íntegras; nenhuma estrutura de prontidão existente.
+- **Classificação:** C/D — exige migration/RPC e decisões humanas sobre provisionamento, publicação, correção, retirada, cancelamento, histórico e URL.
+- **Commit:** pendente
+- **Push:** pendente
+- **PR:** pendente
+- **Bloqueios:** DEC-SAF-001 a DEC-SAF-008 e aprovação de MIG-SAF-001.
+- **Próxima ação:** revisar `docs/SAFISA_PORTAL_SPEC.md` e decidir os bloqueios antes de qualquer implementação.
+
+## 2026-08-04T04:39:34Z — NK-SAF-001
+
+- **Estado anterior:** WAITING_HUMAN_REVIEW
+- **Estado novo:** WAITING_HUMAN_REVIEW
+- **Branch:** `agent/safisa-portal-audit`
+- **Resumo:** DEC-SAF-001 a DEC-SAF-008 aprovadas; MIG-SAF-001 detalhada exclusivamente em documentação, sem SQL ou implementação.
+- **Validações:** decisões registram contas individuais, provisionamento administrativo, publicação explícita, prontidão concorrente, correção controlada, retirada somente do pronto, cancelamento seguro, histórico somente leitura e portal isolado em `/safisa`.
+- **Commit:** pendente neste registro
+- **Push:** pendente neste registro
+- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/4 (draft)
+- **Bloqueios:** revisão e autorização específica da MIG-SAF-001; alteração remota de signup continua não autorizada.
+- **Próxima ação:** revisar o contrato documental e somente depois autorizar ou rejeitar a criação da migration.
