@@ -14,7 +14,7 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 
 | ID | Objetivo | Escopo | Estado |
 |---|---|---|---|
-| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | Especificada; criação ainda não autorizada |
+| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | SQL escrito em `20260804044500_safisa_portal_foundation.sql`; não aplicado; aguardando revisão humana |
 
 ## Alterações de RPC aguardando aprovação
 
@@ -24,7 +24,7 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 - validação de prontidão nas RPCs internas de retirada;
 - proteções de prontidão em edição e cancelamento.
 
-Nenhuma alteração foi implementada.
+As alterações estão somente no SQL local ainda não aplicado. Nenhuma RPC remota foi alterada.
 
 ### Contrato documental especificado para MIG-SAF-001
 
@@ -47,7 +47,7 @@ Nenhuma interface Safisa foi implementada. A validação visual será definida s
 
 ## Merges aguardando aprovação
 
-Nenhum merge está preparado para NK-SAF-001.
+O PR draft da MIG-SAF-001 aguarda revisão; merge e aplicação remota não estão autorizados.
 
 ## Decisões concluídas
 

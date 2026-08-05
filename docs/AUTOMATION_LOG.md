@@ -171,3 +171,19 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **PR:** https://github.com/henriqueskm/projeto-estoque/pull/4 (draft)
 - **Bloqueios:** revisão e autorização específica da MIG-SAF-001; alteração remota de signup continua não autorizada.
 - **Próxima ação:** revisar o contrato documental e somente depois autorizar ou rejeitar a criação da migration.
+
+## 2026-08-05T01:18:38Z — NK-SAF-001 / MIG-SAF-001
+
+- **Estado anterior:** NK-SAF-001 `WAITING_HUMAN_REVIEW`; MIG-SAF-001 autorizada para escrita local.
+- **Estado novo:** NK-SAF-001 `DONE`; MIG-SAF-001 `WAITING_HUMAN_REVIEW`.
+- **Branch:** `agent/safisa-portal-migration`
+- **Resumo:** PR #4 mesclado em `main`; contrato aprovado transformado em uma migration única para membership, publicação explícita, prontidão, auditoria/idempotência, isolamento, RPCs fixas e endurecimento de retirada/edição/cancelamento.
+- **Validações:** base `6beeb4e16d36b5591ffa5b26db95b16229fea5d8`; 22 migrations anteriores alinhadas antes da criação; teste estático de contrato e `git diff --check` aprovados; SQL não executado.
+- **Migration:** `supabase/migrations/20260804044500_safisa_portal_foundation.sql`, criada e não aplicada.
+- **Banco remoto:** inalterado; signup público inalterado; nenhuma conta Safisa criada; nenhum Pedido publicado.
+- **Portal:** não implementado.
+- **Commit:** pendente neste registro.
+- **Push:** pendente neste registro.
+- **PR:** draft pendente.
+- **Bloqueios:** revisão humana integral do SQL; aplicação remota exige nova autorização explícita.
+- **Próxima ação:** revisar a MIG-SAF-001 no PR draft e permanecer em `WAITING_HUMAN_REVIEW`.

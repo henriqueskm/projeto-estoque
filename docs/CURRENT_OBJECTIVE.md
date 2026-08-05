@@ -1,13 +1,13 @@
 # Objetivo atual
 
-- **ID:** NK-SAF-001
-- **Título:** Auditoria e especificação do Portal da Safisa
+- **ID:** MIG-SAF-001
+- **Título:** Fundação de banco do Portal da Safisa
 - **Prioridade:** alta para o piloto comercial
 - **Estado:** WAITING_HUMAN_REVIEW
-- **Classificação:** C — decisões de domínio aprovadas; exige migration/RPC ainda não autorizada
-- **Branch de execução:** `agent/safisa-portal-audit`
-- **Commit base:** `2038b232ab1d0deb5aed793587a97165f79a962a`
-- **Dependências:** Pedidos existentes; NK-ASM-002 concluído; PR #3 mesclado
+- **Classificação:** C — migration escrita localmente e aguardando revisão humana antes de qualquer aplicação
+- **Branch de execução:** `agent/safisa-portal-migration`
+- **Commit base:** `6beeb4e16d36b5591ffa5b26db95b16229fea5d8`
+- **Dependências:** NK-SAF-001 concluído; decisões DEC-SAF-001 a DEC-SAF-008 aprovadas; PR #4 mesclado
 
 ## Resultado da auditoria
 
@@ -42,13 +42,13 @@
 - Pedidos encerrados serão somente leitura enquanto autorizados;
 - o portal ficará em `/safisa`, no mesmo deploy, com layout, navegação e guards separados.
 
-## MIG-SAF-001 especificada, não criada
+## MIG-SAF-001 escrita, não aplicada
 
-O desenho documental cobre membership, autorização de Pedidos, `ready_quantity`, ledger de auditoria/idempotência, constraints, índices, RLS, grants/revokes, RPCs fixas, backfill sem publicação automática e endurecimento transacional de retirada, edição e cancelamento. O plano de testes cobre isolamento entre contas, replay, payload conflitante, incrementos simultâneos, correção concorrente e invariantes de prontidão.
+A migration `supabase/migrations/20260804044500_safisa_portal_foundation.sql` materializa o contrato aprovado: membership, autorização explícita de Pedidos, `ready_quantity`, ledger de auditoria/idempotência, constraints, índices, RLS, grants/revokes, RPCs fixas, backfill sem publicação automática e endurecimento transacional de retirada, edição e cancelamento. O teste estático de contrato cobre isolamento, replay, payload conflitante, concorrência, invariantes, permissões e ausência de seed/configuração remota.
 
 ## Escopo proibido nesta etapa
 
-- criar ou aplicar migration;
+- aplicar migration;
 - alterar RPC, RLS, grants ou configuração remota;
 - implementar portal ou alertas;
 - criar contas Safisa;
@@ -57,14 +57,14 @@ O desenho documental cobre membership, autorização de Pedidos, `ready_quantity
 
 ## Pontos de parada
 
-- desenho documental da MIG-SAF-001: `WAITING_HUMAN_REVIEW`;
-- criação da migration/RPC: aprovação humana específica obrigatória após revisão do desenho;
+- revisão do SQL da MIG-SAF-001: `WAITING_HUMAN_REVIEW`;
+- aplicação da migration/RPC: aprovação humana específica obrigatória e separada;
 - configuração do Supabase Auth: aprovação humana específica obrigatória;
 - testes autenticados e concorrentes: aprovação operacional específica.
 
 ## Execução
 
-- **Última ação:** NK-ASM-002 concluído; montagem validada operacionalmente; PR #3 mesclado e smoke test aprovado sem duplicidade ou efeito colateral. Auditoria NK-SAF-001 concluída por leitura.
-- **Próximo passo:** revisar e aprovar a especificação documental da MIG-SAF-001 antes de qualquer SQL.
+- **Última ação:** NK-SAF-001 concluído e PR #4 mesclado; MIG-SAF-001 escrita localmente com teste estático, sem aplicação.
+- **Próximo passo:** revisar o SQL e o contrato da MIG-SAF-001 no PR draft; o remoto permanece bloqueado.
 - **Decisões concluídas:** DEC-SAF-001 a DEC-SAF-008.
-- **Aprovação ainda pendente:** autorização explícita para criar a migration e, separadamente, para alterar a configuração remota de signup.
+- **Aprovação ainda pendente:** revisão humana da migration; depois, autorizações separadas para aplicação remota e para alterar a configuração remota de signup.
