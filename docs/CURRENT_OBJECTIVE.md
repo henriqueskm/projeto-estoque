@@ -1,70 +1,34 @@
 # Objetivo atual
 
-- **ID:** NK-SAF-001
-- **Título:** Auditoria e especificação do Portal da Safisa
-- **Prioridade:** alta para o piloto comercial
+- **ID:** MIG-HIST-001
+- **Título:** Auditoria da reprodutibilidade histórica do catálogo
 - **Estado:** WAITING_HUMAN_REVIEW
-- **Classificação:** C — decisões de domínio aprovadas; exige migration/RPC ainda não autorizada
-- **Branch de execução:** `agent/safisa-portal-audit`
-- **Commit base:** `2038b232ab1d0deb5aed793587a97165f79a962a`
-- **Dependências:** Pedidos existentes; NK-ASM-002 concluído; PR #3 mesclado
+- **Classificação:** C — exige uma migration-ponte e alinhamento posterior do histórico remoto
+- **Branch:** `agent/migration-history-reproducibility-audit`
+- **Base:** `origin/main`
+- **Dependência bloqueada:** MIG-SAF-001 / PR #5
 
-## Resultado da auditoria
+## Resultado
 
-- a infraestrutura atual de Auth, perfis, snapshots, Pedidos, eventos, locks e idempotência é reutilizável;
-- o modelo atual não distingue conta interna de conta Safisa;
-- todo perfil ativo possui acesso amplo demais para um usuário externo;
-- não existe quantidade pronta, autorização de Pedido, alerta de prontidão ou RPC específica da Safisa;
-- a solução exige migration atômica, RPCs fechadas e endurecimento das regras de retirada/edição/cancelamento;
-- o relatório completo está em `docs/SAFISA_PORTAL_SPEC.md`.
+- a cadeia foi reproduzida somente em Supabase local descartável;
+- a carga mestre usa UUIDs aleatórios, enquanto a correção posterior exige 24 UUIDs fixos;
+- 19 identidades precisam de remapeamento e 5 UUIDs futuros precisam estar livres;
+- todas as FKs relevantes são `ON UPDATE NO ACTION` e `NOT DEFERRABLE`;
+- a técnica recomendada combina tabela temporária explícita e diferimento transacional controlado das FKs;
+- a auditoria completa está em `docs/MIGRATION_HISTORY_REPRODUCIBILITY.md`.
 
-## Decisões aprovadas para o futuro piloto
+## Escopo concluído
 
-- um único fornecedor: Safisa;
-- contas individuais e auditáveis;
-- acesso compartilhado somente a Pedidos autorizados;
-- incremento atômico de novas unidades prontas;
-- correção de total com proteção de concorrência;
-- `ready_quantity >= picked_quantity`;
-- alerta interno de itens prontos pendentes;
-- estados parcialmente/completamente pronto;
-- retirada exclusiva do aplicativo interno;
-- entrada no Estoque separada;
-- nenhuma permissão da Safisa para editar Pedido, negociação ou Estoque.
-- provisionamento administrativo, membership próprio e ativação/desativação individual;
-- signup público deverá ser desabilitado em etapa remota futura e específica;
-- nenhum Pedido antigo ou novo será publicado automaticamente;
-- publicação e revogação serão explícitas e preservarão a auditoria;
-- incremento será atômico e idempotente;
-- correção absoluta exigirá justificativa, confirmação e controle de versão;
-- a ação interna será “Retirar tudo que está pronto” e nunca alcançará unidade não pronta;
-- cancelamento poderá atingir somente saldo ainda não pronto, sem reduzir `ready_quantity` implicitamente;
-- Pedidos encerrados serão somente leitura enquanto autorizados;
-- o portal ficará em `/safisa`, no mesmo deploy, com layout, navegação e guards separados.
+- reprodução dos pontos de corte históricos;
+- mapa de identidades;
+- grafo de FKs e triggers;
+- estratégia transacional, no-op e testes futuros;
+- nenhuma migration antiga ou nova criada/alterada.
 
-## MIG-SAF-001 especificada, não criada
+## Próximo passo humano
 
-O desenho documental cobre membership, autorização de Pedidos, `ready_quantity`, ledger de auditoria/idempotência, constraints, índices, RLS, grants/revokes, RPCs fixas, backfill sem publicação automática e endurecimento transacional de retirada, edição e cancelamento. O plano de testes cobre isolamento entre contas, replay, payload conflitante, incrementos simultâneos, correção concorrente e invariantes de prontidão.
+Aprovar ou rejeitar a técnica proposta, o timestamp retroativo, a lista de FKs,
+o ramo de no-op e a estratégia futura de `migration repair`. Somente depois
+poderão ser autorizadas a escrita da ponte e a retomada do PR #5.
 
-## Escopo proibido nesta etapa
-
-- criar ou aplicar migration;
-- alterar RPC, RLS, grants ou configuração remota;
-- implementar portal ou alertas;
-- criar contas Safisa;
-- executar operação real;
-- fazer `db push` ou merge.
-
-## Pontos de parada
-
-- desenho documental da MIG-SAF-001: `WAITING_HUMAN_REVIEW`;
-- criação da migration/RPC: aprovação humana específica obrigatória após revisão do desenho;
-- configuração do Supabase Auth: aprovação humana específica obrigatória;
-- testes autenticados e concorrentes: aprovação operacional específica.
-
-## Execução
-
-- **Última ação:** NK-ASM-002 concluído; montagem validada operacionalmente; PR #3 mesclado e smoke test aprovado sem duplicidade ou efeito colateral. Auditoria NK-SAF-001 concluída por leitura.
-- **Próximo passo:** revisar e aprovar a especificação documental da MIG-SAF-001 antes de qualquer SQL.
-- **Decisões concluídas:** DEC-SAF-001 a DEC-SAF-008.
-- **Aprovação ainda pendente:** autorização explícita para criar a migration e, separadamente, para alterar a configuração remota de signup.
+**Ponto de parada:** `WAITING_HUMAN_REVIEW`.
