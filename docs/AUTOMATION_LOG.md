@@ -187,3 +187,39 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **PR:** draft pendente.
 - **Bloqueios:** revisão humana integral do SQL; aplicação remota exige nova autorização explícita.
 - **Próxima ação:** revisar a MIG-SAF-001 no PR draft e permanecer em `WAITING_HUMAN_REVIEW`.
+
+## 2026-08-06 — MIG-HIST-001
+
+- **Estado anterior:** AUDITING
+- **Estado novo:** WAITING_HUMAN_REVIEW
+- **Branch:** `agent/migration-history-reproducibility-audit`
+- **Resumo:** falha histórica reproduzida em Supabase local descartável; carga mestre gera UUIDs aleatórios e a correção posterior exige UUIDs fixos.
+- **Validações:** pontos de corte `20260716000925`, `20260716002426` e `20260718134339` aplicados; `20260718175621` falhou com SQLSTATE `23514`; 24 UUIDs fixos e o grafo de FKs foram inventariados.
+- **Commit:** `657bec0523402d790f2b63363c7a376032efcf0b`
+- **Push:** branch enviada e sincronizada.
+- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/6 (draft)
+- **Bloqueios:** escrita da migration-ponte, alinhamento do histórico remoto e retomada da MIG-SAF-001 exigem aprovação humana.
+- **Próxima ação:** revisar `docs/MIGRATION_HISTORY_REPRODUCIBILITY.md`.
+
+## 2026-08-06 — MIG-HIST-002
+
+- **Estado anterior:** IMPLEMENTING
+- **Estado novo:** ABANDONED_BY_DECISION
+- **Branch:** `agent/historical-catalog-identity-bridge`
+- **Resumo:** a ponte aprovada de 19 identidades corrigiu o primeiro bloqueio, mas o reset local revelou outras 72 configurações históricas exigidas pela migration de imagens.
+- **Validações:** `20260718175621` passou localmente; `20260718191812` abortou de forma segura; nenhum acesso remoto ocorreu.
+- **Backup:** WIP preservado em stash local e removido da worktree; nenhum commit ou push da ponte.
+- **Motivo:** custo e risco desproporcionais de ampliar o remapeamento para 91 identidades.
+- **Próxima ação:** substituir a reconstrução histórica por baseline local do estado atual.
+
+## 2026-08-06 — MIG-BASE-001
+
+- **Estado anterior:** READY
+- **Estado novo:** WAITING_HUMAN_REVIEW
+- **Branch:** `agent/current-state-baseline`
+- **Pull request:** [#7](https://github.com/henriqueskm/projeto-estoque/pull/7) — draft
+- **Resumo:** schema atual e catálogo referencial sanitizado materializados fora de `supabase/migrations`, com restaurador estritamente local.
+- **Allowlist:** oito tabelas públicas referenciais e metadado fixo do bucket privado; nenhuma pessoa, Pedido, saldo, movimento, lote, evento ou objeto de Storage.
+- **Validações:** duas reconstruções independentes equivalentes; assinaturas de schema e catálogo idênticas; sete cenários negativos aprovados; containers removidos.
+- **Remoto:** somente dumps de leitura de schema `public/private` e dados da allowlist; nenhuma escrita, `db push`, `migration repair` ou alteração remota.
+- **Próxima ação:** revisão humana do PR draft; PR #5 continua bloqueado e inalterado.

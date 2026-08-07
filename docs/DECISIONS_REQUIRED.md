@@ -15,6 +15,14 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 | ID | Objetivo | Escopo | Estado |
 |---|---|---|---|
 | MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | SQL escrito em `20260804044500_safisa_portal_foundation.sql`; não aplicado; aguardando revisão humana |
+| MIG-BASE-001 | Reprodutibilidade local | Baseline atual fora das migrations, catálogo referencial determinístico e restaurador estritamente local. | Concluído e mesclado no PR #7; uso exclusivamente local |
+
+### Decisões concluídas de reprodutibilidade
+
+- MIG-HIST-002 foi abandonada por decisão humana devido ao custo e risco de remapear 91 identidades;
+- migrations históricas permanecem preservadas e não serão reescritas;
+- o baseline é somente para reconstrução e testes locais;
+- migrations futuras permanecem incrementais e normais.
 
 ## Alterações de RPC aguardando aprovação
 
