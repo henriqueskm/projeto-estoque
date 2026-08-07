@@ -1,34 +1,37 @@
 # Objetivo atual
 
-- **ID:** MIG-HIST-001
-- **Título:** Auditoria da reprodutibilidade histórica do catálogo
+- **ID:** MIG-BASE-001
+- **Título:** Baseline reproduzível do estado atual
 - **Estado:** WAITING_HUMAN_REVIEW
-- **Classificação:** C — exige uma migration-ponte e alinhamento posterior do histórico remoto
-- **Branch:** `agent/migration-history-reproducibility-audit`
-- **Base:** `origin/main`
-- **Dependência bloqueada:** MIG-SAF-001 / PR #5
+- **Classificação:** B — mecanismo local validado; exige revisão humana antes de desbloquear o PR #5
+- **Branch:** `agent/current-state-baseline`
+- **Pull request:** [#7](https://github.com/henriqueskm/projeto-estoque/pull/7) — draft
+- **Base:** `origin/main` em `d06bedb275e4b178fb0e26fb7e6c56f66726a19b`
+- **Dependência bloqueada:** retomada e novo timestamp da MIG-SAF-001 / PR #5
 
 ## Resultado
 
-- a cadeia foi reproduzida somente em Supabase local descartável;
-- a carga mestre usa UUIDs aleatórios, enquanto a correção posterior exige 24 UUIDs fixos;
-- 19 identidades precisam de remapeamento e 5 UUIDs futuros precisam estar livres;
-- todas as FKs relevantes são `ON UPDATE NO ACTION` e `NOT DEFERRABLE`;
-- a técnica recomendada combina tabela temporária explícita e diferimento transacional controlado das FKs;
-- a auditoria completa está em `docs/MIGRATION_HISTORY_REPRODUCIBILITY.md`.
+- schema atual `public/private`, policy de Storage e catálogo referencial foram capturados em baseline fora de `supabase/migrations`;
+- oito tabelas referenciais e um registro de bucket foram incluídos;
+- nenhum usuário, perfil, Pedido, saldo, lote, movimento, evento ou objeto de Storage foi copiado;
+- duas reconstruções locais independentes produziram as mesmas assinaturas de schema e catálogo;
+- checksum, alvo remoto, conteúdo pessoal/operacional e falhas parciais foram rejeitados;
+- migrations históricas permanecem intactas e migrations futuras continuam incrementais após `20260729001230`.
 
-## Escopo concluído
+## Decisão sobre a ponte histórica
 
-- reprodução dos pontos de corte históricos;
-- mapa de identidades;
-- grafo de FKs e triggers;
-- estratégia transacional, no-op e testes futuros;
-- nenhuma migration antiga ou nova criada/alterada.
+`MIG-HIST-002` foi encerrada como `ABANDONED_BY_DECISION`. O WIP permanece
+somente no stash local `stash@{0}` e não integra esta branch. O custo e o risco
+de reconstruir todas as identidades históricas foram considerados
+desproporcionais para o piloto.
 
 ## Próximo passo humano
 
-Aprovar ou rejeitar a técnica proposta, o timestamp retroativo, a lista de FKs,
-o ramo de no-op e a estratégia futura de `migration repair`. Somente depois
-poderão ser autorizadas a escrita da ponte e a retomada do PR #5.
+Revisar o baseline e o restaurador local. Após aprovação e merge, o PR #5 pode
+ser retomado com a migration Safisa renomeada para um timestamp superior a
+`20260729001230` e novamente testada sobre o baseline.
+
+O baseline nunca será aplicado ao remoto. `migration repair` remoto continua
+não autorizado.
 
 **Ponto de parada:** `WAITING_HUMAN_REVIEW`.

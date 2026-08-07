@@ -281,4 +281,23 @@ Antes de escrever SQL, é necessário aprovar:
 - o futuro procedimento de `migration repair` remoto;
 - a retomada e rebase do PR #5.
 
-**MIG-HIST-001 — WAITING_HUMAN_REVIEW.**
+**MIG-HIST-001 — auditoria concluída.**
+
+## Decisão posterior — MIG-HIST-002 e MIG-BASE-001
+
+Durante a implementação local da ponte, os 19 remapeamentos aprovados fizeram
+`20260718175621` passar, mas `20260718191812` revelou outras 72 configurações
+com UUIDs históricos exigidos pelo manifesto de imagens. A reconstrução total
+exigiria 91 remapeamentos, ampliando materialmente o risco e o custo.
+
+Por decisão humana:
+
+- `MIG-HIST-002` ficou `ABANDONED_BY_DECISION`;
+- nenhuma migration-ponte será criada ou aplicada;
+- o WIP foi preservado apenas em stash local;
+- migrations históricas continuam intactas;
+- `MIG-BASE-001` passa a fornecer reconstrução local do estado atual;
+- migrations futuras continuam incrementais após `20260729001230`;
+- nenhum baseline ou `migration repair` será aplicado ao remoto.
+
+O contrato atual está documentado em `docs/CURRENT_STATE_BASELINE.md`.

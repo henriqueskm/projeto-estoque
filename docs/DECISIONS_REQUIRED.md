@@ -15,16 +15,20 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 | ID | Objetivo | Escopo | Estado |
 |---|---|---|---|
 | MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | Especificada; criação ainda não autorizada |
-| MIG-HIST-001 | Reprodutibilidade histórica | Migration-ponte anterior a `20260718175621`, com remapeamento de 19 identidades, reserva de 5 UUIDs, no-op pós-correção e rollback integral. | Auditoria concluída; SQL não autorizado; bloqueia MIG-SAF-001 |
+| MIG-BASE-001 | Reprodutibilidade local | Baseline atual fora das migrations, catálogo referencial determinístico e restaurador estritamente local. | Implementado e validado localmente; aguarda revisão humana antes de desbloquear MIG-SAF-001 |
 
-### Decisões pendentes de MIG-HIST-001
+### Decisões pendentes de MIG-BASE-001
 
-- aprovar a combinação de tabela temporária de mapeamento e FKs temporariamente diferíveis;
-- aprovar timestamp e nome da migration-ponte entre `20260718134339` e `20260718175621`;
-- aprovar a lista fechada de FKs e os locks `NOWAIT`;
-- aprovar o no-op estrito para estado pós-correção completo;
-- autorizar futuramente, em tarefa separada, a avaliação de `migration repair --status applied` no remoto;
-- autorizar rebase e novos testes do PR #5 somente após a ponte ser implementada e revisada.
+- revisar e aprovar os arquivos do baseline e o restaurador exclusivamente local;
+- após o merge, autorizar a retomada do PR #5 com timestamp superior a `20260729001230`;
+- `migration repair` remoto permanece expressamente não autorizado.
+
+### Decisões concluídas de reprodutibilidade
+
+- MIG-HIST-002 foi abandonada por decisão humana devido ao custo e risco de remapear 91 identidades;
+- migrations históricas permanecem preservadas e não serão reescritas;
+- o baseline é somente para reconstrução e testes locais;
+- migrations futuras permanecem incrementais e normais.
 
 ## Alterações de RPC aguardando aprovação
 
