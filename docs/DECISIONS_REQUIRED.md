@@ -14,14 +14,8 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 
 | ID | Objetivo | Escopo | Estado |
 |---|---|---|---|
-| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | Especificada; criação ainda não autorizada |
-| MIG-BASE-001 | Reprodutibilidade local | Baseline atual fora das migrations, catálogo referencial determinístico e restaurador estritamente local. | Implementado e validado localmente; aguarda revisão humana antes de desbloquear MIG-SAF-001 |
-
-### Decisões pendentes de MIG-BASE-001
-
-- revisar e aprovar os arquivos do baseline e o restaurador exclusivamente local;
-- após o merge, autorizar a retomada do PR #5 com timestamp superior a `20260729001230`;
-- `migration repair` remoto permanece expressamente não autorizado.
+| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | SQL validado em duas reconstruções locais independentes, com testes A–H e concorrência real; não aplicado remotamente; aguardando revisão humana |
+| MIG-BASE-001 | Reprodutibilidade local | Baseline atual fora das migrations, catálogo referencial determinístico e restaurador estritamente local. | Concluído e mesclado no PR #7; uso exclusivamente local |
 
 ### Decisões concluídas de reprodutibilidade
 
@@ -38,7 +32,8 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 - validação de prontidão nas RPCs internas de retirada;
 - proteções de prontidão em edição e cancelamento.
 
-Nenhuma alteração foi implementada.
+As alterações estão somente no SQL local, aplicado apenas em ambientes
+descartáveis do Supabase Local. Nenhuma RPC remota foi alterada.
 
 ### Contrato documental especificado para MIG-SAF-001
 
@@ -61,7 +56,7 @@ Nenhuma interface Safisa foi implementada. A validação visual será definida s
 
 ## Merges aguardando aprovação
 
-Nenhum merge está preparado para NK-SAF-001.
+O PR draft da MIG-SAF-001 aguarda revisão; merge e aplicação remota não estão autorizados.
 
 ## Decisões concluídas
 

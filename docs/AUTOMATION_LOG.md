@@ -172,6 +172,22 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Bloqueios:** revisão e autorização específica da MIG-SAF-001; alteração remota de signup continua não autorizada.
 - **Próxima ação:** revisar o contrato documental e somente depois autorizar ou rejeitar a criação da migration.
 
+## 2026-08-05T01:18:38Z — NK-SAF-001 / MIG-SAF-001
+
+- **Estado anterior:** NK-SAF-001 `WAITING_HUMAN_REVIEW`; MIG-SAF-001 autorizada para escrita local.
+- **Estado novo:** NK-SAF-001 `DONE`; MIG-SAF-001 `WAITING_HUMAN_REVIEW`.
+- **Branch:** `agent/safisa-portal-migration`
+- **Resumo:** PR #4 mesclado em `main`; contrato aprovado transformado em uma migration única para membership, publicação explícita, prontidão, auditoria/idempotência, isolamento, RPCs fixas e endurecimento de retirada/edição/cancelamento.
+- **Validações:** base `6beeb4e16d36b5591ffa5b26db95b16229fea5d8`; 22 migrations anteriores alinhadas antes da criação; teste estático de contrato e `git diff --check` aprovados; SQL não executado.
+- **Migration:** `supabase/migrations/20260804044500_safisa_portal_foundation.sql`, criada e não aplicada.
+- **Banco remoto:** inalterado; signup público inalterado; nenhuma conta Safisa criada; nenhum Pedido publicado.
+- **Portal:** não implementado.
+- **Commit:** pendente neste registro.
+- **Push:** pendente neste registro.
+- **PR:** draft pendente.
+- **Bloqueios:** revisão humana integral do SQL; aplicação remota exige nova autorização explícita.
+- **Próxima ação:** revisar a MIG-SAF-001 no PR draft e permanecer em `WAITING_HUMAN_REVIEW`.
+
 ## 2026-08-06 — MIG-HIST-001
 
 - **Estado anterior:** AUDITING
@@ -207,3 +223,19 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Validações:** duas reconstruções independentes equivalentes; assinaturas de schema e catálogo idênticas; sete cenários negativos aprovados; containers removidos.
 - **Remoto:** somente dumps de leitura de schema `public/private` e dados da allowlist; nenhuma escrita, `db push`, `migration repair` ou alteração remota.
 - **Próxima ação:** revisão humana do PR draft; PR #5 continua bloqueado e inalterado.
+
+## 2026-08-06 — MIG-SAF-001
+
+- **Estado anterior:** WAITING_HUMAN_REVIEW, bloqueada pela ausência de baseline reproduzível.
+- **Estado novo:** WAITING_HUMAN_REVIEW, validada dinamicamente em Supabase Local.
+- **Branch:** `agent/safisa-portal-migration`.
+- **Base integrada:** PR #7 mesclado na `main` em `883ffa6de5024b8f2d27b1b0be2c047dacd7ae64`.
+- **Migration:** `20260804044500_safisa_portal_foundation.sql`, sem renomeação e sem aplicação remota.
+- **Correções reais:** alias SQL reservado `authorization` substituído por `order_authorization`; dumps do baseline fixados como LF para preservar hashes aprovados em checkout Windows; filtragem de diagnóstico local refinada sem expor segredos.
+- **Validações dinâmicas:** grupos A–H aprovados para membership, publicação/revogação, prontidão, correção absoluta, retirada interna, cancelamento/edição, auditoria e permissões/RLS.
+- **Concorrência:** cinco cenários com duas conexões PostgreSQL reais aprovados — dois incrementos, incremento versus correção, duas retiradas, retirada versus incremento e correção versus retirada — sem `lost update` ou violação das invariantes.
+- **Reconstruções:** duas execuções independentes de baseline + MIG-SAF-001 produziram `SchemaSignature 99ee80fb616ac2849204dd63dd4954ae` e `CatalogSignature 9e010282ce86835cb5973da9b50a5d52`.
+- **Regressões:** testes estáticos Safisa e baseline, oito testes negativos locais do baseline, Assistente Entrada/Saída/Montagem, lint, TypeScript, build e `git diff --check` aprovados.
+- **Remoto:** nenhum acesso ao Supabase remoto, `db push`, `migration repair`, conta Safisa, publicação de Pedido ou operação real.
+- **Pull request:** [#5](https://github.com/henriqueskm/projeto-estoque/pull/5) permanece draft.
+- **Próxima ação:** revisão humana do PR #5; aplicação remota continua não autorizada.

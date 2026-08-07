@@ -156,9 +156,9 @@ Mesma chave e mesmo payload retornam replay; mesma chave com payload diferente �
 
 Para o piloto, revalidar após cada operação e ao retornar à página é suficiente. Realtime ou polling contínuo não é requisito inicial; a atomicidade permanece no banco.
 
-## MIG-SAF-001 — especificação documental
+## MIG-SAF-001 — migration escrita para revisão
 
-Nenhum SQL foi criado. A futura migration deve ser única, atômica e integralmente revisada para evitar estado intermediário inseguro.
+O contrato foi materializado em `supabase/migrations/20260804044500_safisa_portal_foundation.sql`. O arquivo é uma migration única e atômica, permanece somente local/versionado para revisão e não foi aplicado em banco local ou remoto.
 
 ### Tabelas
 
@@ -178,12 +178,12 @@ Nenhum SQL foi criado. A futura migration deve ser única, atômica e integralme
 - usuário e snapshot de quem publicou ou revogou;
 - versão/`updated_at` para conflito e auditoria.
 
-`public.safisa_ready_quantity_events`:
+`public.safisa_portal_events`:
 
-- PK UUID, Pedido, linha, usuário Safisa ou interno e snapshot do nome;
-- modo fechado `INCREMENT` ou `CORRECTION`;
+- PK UUID, Pedido/linha ou usuário-alvo, ator Safisa ou interno e snapshot do nome;
+- tipos fechados para membership, publicação/revogação, `READY_QUANTITY_INCREMENTED` e `READY_QUANTITY_CORRECTED`;
 - quantidade anterior, delta, total novo, justificativa nullable somente para incremento e obrigatória para correção;
-- `idempotency_key`, hash do payload normalizado, resultado e `created_at`;
+- `idempotency_key`, payload normalizado exato, resultado e `created_at`;
 - FKs com `ON DELETE RESTRICT` e imutabilidade do ledger.
 
 ### Colunas, backfill e constraints
@@ -255,10 +255,12 @@ Nenhuma RPC aceita nome de tabela, nome de função, usuário ou autoridade esco
 
 ### Fases de implantação
 
-1. revisão humana desta especificação e autorização para criar SQL;
-2. criação local da migration, sem aplicação remota;
-3. revisão estática e testes SQL locais;
-4. autorização específica e aplicação controlada da migration;
+1. revisão humana desta especificação e autorização para criar SQL — concluída;
+2. criação local da migration, sem aplicação remota — concluída;
+3. revisão estática, duas reconstruções por baseline e testes dinâmicos locais
+   A–H, incluindo cinco disputas com duas conexões — concluída nesta branch;
+4. revisão humana do PR #5 e autorização específica posterior para aplicação
+   controlada da migration;
 5. configuração remota separada para desabilitar signup, se novamente autorizada;
 6. implementação do portal e dos alertas internos;
 7. validação autenticada, testes concorrentes controlados e smoke test;
@@ -311,7 +313,9 @@ Desabilitar cadastro público é uma alteração de configuração do Supabase A
 7. DEC-SAF-007: encerrados somente leitura enquanto autorizados; revogação remove acesso sem apagar dados/auditoria.
 8. DEC-SAF-008: `/safisa` no mesmo deploy, com layout, navegação, guards e autorização server-side/banco separados.
 
-A aprovação pendente é exclusivamente autorizar a criação da MIG-SAF-001 a partir deste contrato documental. A alteração remota de signup exigirá outra autorização operacional.
+A aprovação pendente é a revisão humana do SQL da MIG-SAF-001 já validado
+localmente. A aplicação remota e a alteração remota de signup exigirão
+autorizações operacionais posteriores e separadas.
 
 ## Plano por fases e estimativa relativa
 
@@ -329,4 +333,4 @@ Estimativa total relativa: **XL**, dominada por segurança de identidade, migrat
 
 ## Conclusão
 
-O domínio de Pedidos é uma base forte, mas o Portal Safisa não pode ser implementado apenas na aplicação. As decisões de domínio foram aprovadas e a classificação passa a C: exige migration/RPC ainda não autorizada. Nenhuma migration, função, configuração ou dado remoto foi alterado nesta atualização documental.
+O domínio de Pedidos é uma base forte, mas o Portal Safisa não pode ser implementado apenas na aplicação. As decisões de domínio foram aprovadas e a migration/RPC foi escrita para revisão, sem aplicação. Nenhuma função, configuração ou dado remoto foi alterado; o portal, as contas Safisa e a publicação de Pedidos ainda não foram implementados.

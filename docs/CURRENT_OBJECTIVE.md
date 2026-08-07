@@ -1,37 +1,60 @@
 # Objetivo atual
 
-- **ID:** MIG-BASE-001
-- **Título:** Baseline reproduzível do estado atual
+- **ID:** MIG-SAF-001
+- **Título:** Fundação de banco do Portal da Safisa
+- **Prioridade:** alta para o piloto comercial
 - **Estado:** WAITING_HUMAN_REVIEW
-- **Classificação:** B — mecanismo local validado; exige revisão humana antes de desbloquear o PR #5
-- **Branch:** `agent/current-state-baseline`
-- **Pull request:** [#7](https://github.com/henriqueskm/projeto-estoque/pull/7) — draft
-- **Base:** `origin/main` em `d06bedb275e4b178fb0e26fb7e6c56f66726a19b`
-- **Dependência bloqueada:** retomada e novo timestamp da MIG-SAF-001 / PR #5
+- **Classificação:** C — migration escrita localmente; aplicação remota exige autorização humana separada
+- **Branch de execução:** `agent/safisa-portal-migration`
+- **Pull request:** [#5](https://github.com/henriqueskm/projeto-estoque/pull/5) — draft
+- **Base integrada:** `origin/main` contendo o merge `883ffa6de5024b8f2d27b1b0be2c047dacd7ae64`
+- **Dependências:** NK-SAF-001 e MIG-BASE-001 concluídas; decisões DEC-SAF-001 a DEC-SAF-008 aprovadas
 
-## Resultado
+## Baseline aprovado
 
-- schema atual `public/private`, policy de Storage e catálogo referencial foram capturados em baseline fora de `supabase/migrations`;
-- oito tabelas referenciais e um registro de bucket foram incluídos;
-- nenhum usuário, perfil, Pedido, saldo, lote, movimento, evento ou objeto de Storage foi copiado;
-- duas reconstruções locais independentes produziram as mesmas assinaturas de schema e catálogo;
-- checksum, alvo remoto, conteúdo pessoal/operacional e falhas parciais foram rejeitados;
-- migrations históricas permanecem intactas e migrations futuras continuam incrementais após `20260729001230`.
+- o PR #7 foi mesclado na main;
+- o baseline reconstrói localmente o schema e o catálogo atual sem executar a cadeia histórica antiga;
+- `MIG-HIST-002` permanece `ABANDONED_BY_DECISION`;
+- migrations históricas permanecem intactas;
+- migrations futuras continuam incrementais após o cutoff `20260729001230`;
+- o baseline e `migration repair` remoto nunca serão aplicados ao projeto remoto.
 
-## Decisão sobre a ponte histórica
+## MIG-SAF-001 validada localmente, não aplicada remotamente
 
-`MIG-HIST-002` foi encerrada como `ABANDONED_BY_DECISION`. O WIP permanece
-somente no stash local `stash@{0}` e não integra esta branch. O custo e o risco
-de reconstruir todas as identidades históricas foram considerados
-desproporcionais para o piloto.
+A migration `supabase/migrations/20260804044500_safisa_portal_foundation.sql`
+materializa o contrato aprovado: membership, autorização explícita de Pedidos,
+`ready_quantity`, ledger de auditoria/idempotência, constraints, índices, RLS,
+grants/revokes, RPCs fixas, backfill sem publicação automática e endurecimento
+transacional de retirada, edição e cancelamento.
 
-## Próximo passo humano
+O timestamp `20260804044500` já é superior ao cutoff e não será renomeado.
 
-Revisar o baseline e o restaurador local. Após aprovação e merge, o PR #5 pode
-ser retomado com a migration Safisa renomeada para um timestamp superior a
-`20260729001230` e novamente testada sobre o baseline.
+Após integrar a `main`, a migration foi aplicada somente sobre dois ambientes
+Supabase Local descartáveis reconstruídos a partir do baseline. As duas
+reconstruções produziram as mesmas assinaturas de schema e catálogo. A suíte
+dinâmica cobriu membership, publicação, prontidão, correção, retirada,
+cancelamento/edição, auditoria, RLS/permissões e cinco cenários concorrentes
+com duas conexões PostgreSQL reais.
 
-O baseline nunca será aplicado ao remoto. `migration repair` remoto continua
-não autorizado.
+O único ajuste funcional no SQL foi substituir o alias reservado
+`authorization` por `order_authorization`; contratos, locks e regras de negócio
+permaneceram inalterados. Nenhuma conexão com o Supabase remoto foi usada.
+
+## Escopo proibido
+
+- aplicar migration ou `migration repair` no remoto;
+- alterar RPC, RLS, grants, Auth ou configuração remota;
+- implementar portal ou alertas;
+- criar contas Safisa;
+- publicar ou alterar Pedidos reais;
+- executar operação real de Estoque;
+- fazer `db push` ou merge.
+
+## Execução atual
+
+- **Última ação:** MIG-SAF-001 validada dinamicamente sobre o baseline local, inclusive sob concorrência real.
+- **Próximo passo:** revisão humana do PR #5 draft; aplicação remota continua separada e não autorizada.
+- **Decisões concluídas:** DEC-SAF-001 a DEC-SAF-008.
+- **Aprovação ainda pendente:** revisão humana após os testes locais; aplicação remota continua separada e não autorizada.
 
 **Ponto de parada:** `WAITING_HUMAN_REVIEW`.

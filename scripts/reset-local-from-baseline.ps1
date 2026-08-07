@@ -30,7 +30,7 @@ function Invoke-CheckedCommand {
 
   if ($commandExitCode -ne 0) {
     $safeOutput = $commandOutput | Where-Object {
-      $_ -notmatch "(?i)(password|secret|token|jwt|key|postgresql://)"
+      $_ -notmatch "(?i)(password|secret|token|jwt|(?:service[_-]?role|anon|publishable)[_-]?key|postgres(?:ql)?://|https?://)"
     }
     throw "$FailureMessage`n$($safeOutput -join [Environment]::NewLine)"
   }
@@ -47,7 +47,7 @@ function Stop-DisposableStack {
   $ErrorActionPreference = "Continue"
   try {
     & npx --no-install supabase stop --no-backup --workdir $Workdir 2>&1 |
-      Where-Object { $_ -notmatch "(?i)(password|secret|token|jwt|key|url)" } |
+      Where-Object { $_ -notmatch "(?i)(password|secret|token|jwt|(?:service[_-]?role|anon|publishable)[_-]?key|postgres(?:ql)?://|https?://)" } |
       Out-Null
   }
   finally {
