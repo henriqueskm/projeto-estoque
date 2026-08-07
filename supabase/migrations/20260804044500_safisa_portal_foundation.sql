@@ -833,10 +833,10 @@ begin
       message = 'The supplier order does not exist.';
   end if;
 
-  select authorization.*
+  select order_authorization.*
   into v_authorization
-  from public.safisa_order_authorizations as authorization
-  where authorization.supplier_order_id = p_supplier_order_id
+  from public.safisa_order_authorizations as order_authorization
+  where order_authorization.supplier_order_id = p_supplier_order_id
   for update;
 
   if found then
@@ -987,9 +987,9 @@ begin
   end if;
 
   perform 1
-  from public.safisa_order_authorizations as authorization
-  where authorization.supplier_order_id = v_order.id
-    and authorization.is_authorized
+  from public.safisa_order_authorizations as order_authorization
+  where order_authorization.supplier_order_id = v_order.id
+    and order_authorization.is_authorized
   for update;
 
   if not found then
@@ -1169,9 +1169,9 @@ begin
   end if;
 
   perform 1
-  from public.safisa_order_authorizations as authorization
-  where authorization.supplier_order_id = v_order.id
-    and authorization.is_authorized
+  from public.safisa_order_authorizations as order_authorization
+  where order_authorization.supplier_order_id = v_order.id
+    and order_authorization.is_authorized
   for update;
 
   if not found then
@@ -1667,8 +1667,8 @@ begin
 
   select count(*)::integer
   into v_total
-  from public.safisa_order_authorizations as authorization
-  where authorization.is_authorized;
+  from public.safisa_order_authorizations as order_authorization
+  where order_authorization.is_authorized;
 
   select coalesce(jsonb_agg(row_data.payload order by row_data.order_date desc, row_data.created_at desc), '[]'::jsonb)
   into v_orders
@@ -1692,10 +1692,10 @@ begin
         'is_read_only', summary.is_in_history,
         'updated_at', summary.updated_at
       ) as payload
-    from public.safisa_order_authorizations as authorization
+    from public.safisa_order_authorizations as order_authorization
     join public.supplier_order_summaries as summary
-      on summary.id = authorization.supplier_order_id
-    where authorization.is_authorized
+      on summary.id = order_authorization.supplier_order_id
+    where order_authorization.is_authorized
     order by summary.order_date desc, summary.created_at desc, summary.id
     limit p_limit
     offset p_offset
@@ -1737,11 +1737,11 @@ begin
 
   select summary.*
   into v_summary
-  from public.safisa_order_authorizations as authorization
+  from public.safisa_order_authorizations as order_authorization
   join public.supplier_order_summaries as summary
-    on summary.id = authorization.supplier_order_id
-  where authorization.supplier_order_id = p_supplier_order_id
-    and authorization.is_authorized;
+    on summary.id = order_authorization.supplier_order_id
+  where order_authorization.supplier_order_id = p_supplier_order_id
+    and order_authorization.is_authorized;
 
   if not found then
     raise exception using
@@ -1851,9 +1851,9 @@ begin
 
   select count(*)::integer
   into v_total
-  from public.safisa_order_authorizations as authorization
+  from public.safisa_order_authorizations as order_authorization
   join public.supplier_order_items as order_item
-    on order_item.supplier_order_id = authorization.supplier_order_id
+    on order_item.supplier_order_id = order_authorization.supplier_order_id
   where order_item.ready_quantity > order_item.picked_quantity;
 
   select coalesce(
@@ -1903,10 +1903,10 @@ begin
       end as readiness_status,
       order_item.updated_at,
       order_item.position,
-      authorization.is_authorized
-    from public.safisa_order_authorizations as authorization
+      order_authorization.is_authorized
+    from public.safisa_order_authorizations as order_authorization
     join public.supplier_orders as supplier_order
-      on supplier_order.id = authorization.supplier_order_id
+      on supplier_order.id = order_authorization.supplier_order_id
     join public.supplier_order_items as order_item
       on order_item.supplier_order_id = supplier_order.id
     where order_item.ready_quantity > order_item.picked_quantity
