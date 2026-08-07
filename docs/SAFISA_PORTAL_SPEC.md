@@ -12,7 +12,7 @@ Existe um único fornecedor, Safisa. Cada pessoa da Safisa terá uma conta indiv
 
 A quantidade pronta será cumulativa: inclui unidades já retiradas e nunca poderá ficar abaixo de `picked_quantity`. A retirada continuará exclusiva do aplicativo interno; a entrada no Estoque continuará sendo uma operação posterior e separada. O portal não poderá criar ou editar Pedido, negociação, catálogo, retirada, entrada ou saldo.
 
-DEC-SAF-001 a DEC-SAF-008 foram aprovadas. Contas serão individuais, administrativamente provisionadas e isoladas dos perfis internos. Pedidos serão publicados e revogados explicitamente. Incrementos serão atômicos e idempotentes; correções absolutas exigirão justificativa, confirmação e controle de versão. O aplicativo interno retirará somente unidades prontas. O portal ficará em `/safisa`, no mesmo deploy, com layout e guardas próprios.
+DEC-SAF-001 a DEC-SAF-009 foram aprovadas. Contas serão individuais, administrativamente provisionadas e isoladas dos perfis internos. Pedidos serão publicados e revogados explicitamente. Incrementos serão atômicos e idempotentes; correções absolutas exigirão justificativa, confirmação e controle de versão. O aplicativo interno retirará somente unidades prontas depois que o Pedido entrar no ciclo Safisa; Pedidos nunca publicados preservam temporariamente a retirada legada. O portal ficará em `/safisa`, no mesmo deploy, com layout e guardas próprios.
 
 ## Evidências do estado atual
 
@@ -312,9 +312,34 @@ Desabilitar cadastro público é uma alteração de configuração do Supabase A
 6. DEC-SAF-006: cancelamento silencioso de unidades prontas bloqueado; somente o saldo ainda não pronto pode ser cancelado separadamente.
 7. DEC-SAF-007: encerrados somente leitura enquanto autorizados; revogação remove acesso sem apagar dados/auditoria.
 8. DEC-SAF-008: `/safisa` no mesmo deploy, com layout, navegação, guards e autorização server-side/banco separados.
+9. DEC-SAF-009: ausência de `safisa_order_authorizations` identifica Pedido legado; sua retirada autoavança `ready_quantity` até `picked_quantity`; a primeira publicação muda o regime permanentemente e revogação não restaura o comportamento legado.
 
-A aprovação pendente é a revisão humana do SQL da MIG-SAF-001 já validado
-localmente. A aplicação remota e a alteração remota de signup exigirão
+## MIG-SAF-003 — transição segura de Pedidos legados
+
+O gate de implantação da MIG-SAF-001 encontrou Pedidos ativos ainda não
+gerenciados pelo portal. Para evitar interrupção operacional, a migration
+incremental `20260807091653_safisa_legacy_order_transition.sql` preserva os
+workers e wrappers existentes e altera somente a relação entre retirada,
+prontidão e existência da autorização.
+
+- sem autorização: a retirada usa os limites históricos e eleva
+  `ready_quantity` atomicamente quando `picked_quantity` avança;
+- com autorização existente: `picked_quantity` nunca ultrapassa
+  `ready_quantity`, mesmo depois de revogação;
+- nenhuma autorização, membership ou evento Safisa é criado pelo autoavanço;
+- “retirar tudo” usa o saldo válido histórico no legado e somente o pronto no
+  regime Safisa-managed;
+- publicação e retirada compartilham o lock do Pedido, eliminando a janela de
+  transição concorrente;
+- alertas Safisa continuam excluindo Pedidos que nunca tiveram autorização.
+
+A migration foi validada apenas em Supabase Local com fixtures agregadas e sem
+identificadores reais, incluindo publicação irreversível, revogação, cinco
+cenários concorrentes com duas conexões e duas reconstruções independentes.
+MIG-SAF-001 permanece imutável e nenhuma escrita remota foi executada.
+
+A aprovação pendente é a revisão humana do PR #8 e da MIG-SAF-003. A aplicação
+remota da MIG-SAF-001/MIG-SAF-003 e a alteração remota de signup exigirão
 autorizações operacionais posteriores e separadas.
 
 ## Plano por fases e estimativa relativa

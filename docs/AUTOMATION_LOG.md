@@ -239,3 +239,18 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Remoto:** nenhum acesso ao Supabase remoto, `db push`, `migration repair`, conta Safisa, publicação de Pedido ou operação real.
 - **Pull request:** [#5](https://github.com/henriqueskm/projeto-estoque/pull/5) permanece draft.
 - **Próxima ação:** revisão humana do PR #5; aplicação remota continua não autorizada.
+
+## 2026-08-07 — MIG-SAF-003
+
+- **Estado anterior:** MIG-SAF-001 mesclada, com aplicação remota bloqueada pelo gate de Pedidos ativos.
+- **Estado novo:** WAITING_HUMAN_REVIEW.
+- **Branch:** `agent/safisa-legacy-order-transition`.
+- **Pull request:** [#8](https://github.com/henriqueskm/projeto-estoque/pull/8) — draft.
+- **Migration:** `20260807091653_safisa_legacy_order_transition.sql`.
+- **Decisão:** DEC-SAF-009 aprovada — ausência de autorização preserva retirada legada; a primeira publicação torna o Pedido Safisa-managed permanentemente; revogação não restaura o regime legado.
+- **Comportamento legado:** retirada mantém os limites históricos e autoavança `ready_quantity` até `picked_quantity` na mesma transação, sem autorização, membership ou evento Safisa implícito.
+- **Comportamento gerenciado:** retirada individual e em massa permanece limitada a `ready_quantity`, independentemente de `is_authorized`.
+- **Validações dinâmicas:** Safisa A–H, cinco concorrências existentes, transição legado/publicação/revogação, alertas e cinco novas concorrências com duas conexões aprovadas.
+- **Reconstruções:** duas execuções independentes produziram `SchemaSignature e5b32608e246d03522d8e06b0cadcf4f` e `CatalogSignature 9e010282ce86835cb5973da9b50a5d52`.
+- **Remoto:** nenhum acesso ou escrita; nenhum `db push`, `migration repair`, conta Safisa, publicação real, Pedido ou Estoque alterado.
+- **Próxima ação:** revisão humana do PR #8; merge e aplicação remota permanecem proibidos.

@@ -14,7 +14,8 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 
 | ID | Objetivo | Escopo | Estado |
 |---|---|---|---|
-| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | SQL validado em duas reconstruções locais independentes, com testes A–H e concorrência real; não aplicado remotamente; aguardando revisão humana |
+| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | Mesclada em `main`; não aplicada remotamente porque o gate de Pedidos ativos exige MIG-SAF-003 |
+| MIG-SAF-003 | NK-SAF-001 | Compatibilidade incremental para Pedidos legados: ausência de autorização preserva retirada histórica com autoavanço atômico de `ready_quantity`; existência da autorização ativa permanentemente o regime Safisa-managed. | SQL e testes locais no PR #8; duas reconstruções e concorrência aprovadas; não aplicado remotamente; aguardando revisão humana |
 | MIG-BASE-001 | Reprodutibilidade local | Baseline atual fora das migrations, catálogo referencial determinístico e restaurador estritamente local. | Concluído e mesclado no PR #7; uso exclusivamente local |
 
 ### Decisões concluídas de reprodutibilidade
@@ -56,7 +57,9 @@ Nenhuma interface Safisa foi implementada. A validação visual será definida s
 
 ## Merges aguardando aprovação
 
-O PR draft da MIG-SAF-001 aguarda revisão; merge e aplicação remota não estão autorizados.
+O PR #5 da MIG-SAF-001 foi mesclado, mas sua aplicação remota foi bloqueada pelo
+gate de Pedidos ativos. O PR #8 da MIG-SAF-003 permanece draft; merge e aplicação
+remota não estão autorizados.
 
 ## Decisões concluídas
 
@@ -77,3 +80,4 @@ O PR draft da MIG-SAF-001 aguarda revisão; merge e aplicação remota não est�
 | DEC-SAF-006 | NK-SAF-001 | Cancelamento silencioso de prontidão bloqueado; somente saldo ainda não pronto pode ser cancelado separadamente. |
 | DEC-SAF-007 | NK-SAF-001 | Pedidos encerrados ficam somente leitura enquanto autorizados; revogação remove acesso sem apagar dados ou auditoria. |
 | DEC-SAF-008 | NK-SAF-001 | Portal em `/safisa` no mesmo deploy, com layout, navegação, guards e autorização server-side/banco separados. |
+| DEC-SAF-009 | MIG-SAF-003 | Pedido sem linha em `safisa_order_authorizations` mantém retirada legada e autoavança `ready_quantity` até `picked_quantity`; a primeira publicação torna o Pedido Safisa-managed permanentemente, e revogação não restaura o regime legado. |
