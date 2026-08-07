@@ -171,3 +171,16 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **PR:** https://github.com/henriqueskm/projeto-estoque/pull/4 (draft)
 - **Bloqueios:** revisão e autorização específica da MIG-SAF-001; alteração remota de signup continua não autorizada.
 - **Próxima ação:** revisar o contrato documental e somente depois autorizar ou rejeitar a criação da migration.
+
+## 2026-08-06 — MIG-HIST-001
+
+- **Estado anterior:** AUDITING
+- **Estado novo:** WAITING_HUMAN_REVIEW
+- **Branch:** `agent/migration-history-reproducibility-audit`
+- **Resumo:** falha histórica reproduzida em Supabase local descartável; carga mestre gera UUIDs aleatórios e a correção posterior exige UUIDs fixos.
+- **Validações:** pontos de corte `20260716000925`, `20260716002426` e `20260718134339` aplicados; `20260718175621` falhou com SQLSTATE `23514`; 24 UUIDs fixos e o grafo de FKs foram inventariados.
+- **Commit:** `657bec0523402d790f2b63363c7a376032efcf0b`
+- **Push:** branch enviada e sincronizada.
+- **PR:** https://github.com/henriqueskm/projeto-estoque/pull/6 (draft)
+- **Bloqueios:** escrita da migration-ponte, alinhamento do histórico remoto e retomada da MIG-SAF-001 exigem aprovação humana.
+- **Próxima ação:** revisar `docs/MIGRATION_HISTORY_REPRODUCIBILITY.md`.

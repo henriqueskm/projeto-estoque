@@ -15,6 +15,16 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 | ID | Objetivo | Escopo | Estado |
 |---|---|---|---|
 | MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | Especificada; criação ainda não autorizada |
+| MIG-HIST-001 | Reprodutibilidade histórica | Migration-ponte anterior a `20260718175621`, com remapeamento de 19 identidades, reserva de 5 UUIDs, no-op pós-correção e rollback integral. | Auditoria concluída; SQL não autorizado; bloqueia MIG-SAF-001 |
+
+### Decisões pendentes de MIG-HIST-001
+
+- aprovar a combinação de tabela temporária de mapeamento e FKs temporariamente diferíveis;
+- aprovar timestamp e nome da migration-ponte entre `20260718134339` e `20260718175621`;
+- aprovar a lista fechada de FKs e os locks `NOWAIT`;
+- aprovar o no-op estrito para estado pós-correção completo;
+- autorizar futuramente, em tarefa separada, a avaliação de `migration repair --status applied` no remoto;
+- autorizar rebase e novos testes do PR #5 somente após a ponte ser implementada e revisada.
 
 ## Alterações de RPC aguardando aprovação
 
