@@ -1,60 +1,63 @@
 # Objetivo atual
 
-- **ID:** MIG-SAF-001
-- **Título:** Fundação de banco do Portal da Safisa
-- **Prioridade:** alta para o piloto comercial
+- **ID:** MIG-SAF-003
+- **Título:** Transição segura de Pedidos legados
+- **Prioridade:** alta para desbloquear a implantação controlada do Portal Safisa
 - **Estado:** WAITING_HUMAN_REVIEW
-- **Classificação:** C — migration escrita localmente; aplicação remota exige autorização humana separada
-- **Branch de execução:** `agent/safisa-portal-migration`
-- **Pull request:** [#5](https://github.com/henriqueskm/projeto-estoque/pull/5) — draft
-- **Base integrada:** `origin/main` contendo o merge `883ffa6de5024b8f2d27b1b0be2c047dacd7ae64`
-- **Dependências:** NK-SAF-001 e MIG-BASE-001 concluídas; decisões DEC-SAF-001 a DEC-SAF-008 aprovadas
+- **Classificação:** C — migration incremental validada localmente; merge e aplicação remota exigem autorizações separadas
+- **Branch de execução:** `agent/safisa-legacy-order-transition`
+- **Pull request:** [#8](https://github.com/henriqueskm/projeto-estoque/pull/8) — draft
+- **Base:** `origin/main` no merge aprovado `a822c65af4429aa01c700ca284c7371b423df7cc`
+- **Dependências:** MIG-SAF-001 mesclada e MIG-BASE-001 concluída; DEC-SAF-001 a DEC-SAF-009 aprovadas
 
-## Baseline aprovado
+## Motivo da transição
 
-- o PR #7 foi mesclado na main;
-- o baseline reconstrói localmente o schema e o catálogo atual sem executar a cadeia histórica antiga;
-- `MIG-HIST-002` permanece `ABANDONED_BY_DECISION`;
-- migrations históricas permanecem intactas;
-- migrations futuras continuam incrementais após o cutoff `20260729001230`;
-- o baseline e `migration repair` remoto nunca serão aplicados ao projeto remoto.
+O gate anterior impediu corretamente a aplicação remota da MIG-SAF-001 porque
+existem Pedidos ativos anteriores ao Portal Safisa. O backfill
+`ready_quantity = picked_quantity` é mantido, mas esses Pedidos não podem ter a
+retirada histórica bloqueada antes de serem publicados no portal.
 
-## MIG-SAF-001 validada localmente, não aplicada remotamente
+Nenhum identificador ou dado de Pedido real foi copiado para esta branch. Os
+testes usam somente fixtures locais equivalentes em quantidade.
 
-A migration `supabase/migrations/20260804044500_safisa_portal_foundation.sql`
-materializa o contrato aprovado: membership, autorização explícita de Pedidos,
-`ready_quantity`, ledger de auditoria/idempotência, constraints, índices, RLS,
-grants/revokes, RPCs fixas, backfill sem publicação automática e endurecimento
-transacional de retirada, edição e cancelamento.
+## Contrato da MIG-SAF-003
 
-O timestamp `20260804044500` já é superior ao cutoff e não será renomeado.
+- ausência de linha em `safisa_order_authorizations` identifica o regime legado;
+- retirada legada mantém todos os limites históricos e autoavança
+  `ready_quantity` até o novo `picked_quantity`, atomicamente e sem reduzi-la;
+- existência da autorização identifica permanentemente o regime Safisa-managed,
+  independentemente de `is_authorized`;
+- no regime gerenciado, retirada individual e “retirar tudo” permanecem
+  limitadas ao que está pronto;
+- revogação controla visibilidade e não restaura comportamento legado;
+- autoavanço legado não cria autorização, membership ou evento Safisa;
+- publicação e retirada são serializadas pelo lock canônico do Pedido;
+- entrada no Estoque e `stocked_quantity` permanecem operações separadas.
 
-Após integrar a `main`, a migration foi aplicada somente sobre dois ambientes
-Supabase Local descartáveis reconstruídos a partir do baseline. As duas
-reconstruções produziram as mesmas assinaturas de schema e catálogo. A suíte
-dinâmica cobriu membership, publicação, prontidão, correção, retirada,
-cancelamento/edição, auditoria, RLS/permissões e cinco cenários concorrentes
-com duas conexões PostgreSQL reais.
+## Validação local concluída
 
-O único ajuste funcional no SQL foi substituir o alias reservado
-`authorization` por `order_authorization`; contratos, locks e regras de negócio
-permaneceram inalterados. Nenhuma conexão com o Supabase remoto foi usada.
+- migration estática: 6 testes aprovados;
+- suíte Safisa existente: cenários A–H e cinco concorrências aprovados;
+- nova suíte: fixtures equivalentes a 5 Pedidos, 14 linhas e 61 unidades
+  pendentes, publicação irreversível, revogação, alertas e cinco concorrências
+  com duas conexões aprovadas;
+- duas reconstruções independentes: `SchemaSignature e5b32608e246d03522d8e06b0cadcf4f`
+  e `CatalogSignature 9e010282ce86835cb5973da9b50a5d52` em ambas;
+- regressões do baseline e da Assistente, lint, TypeScript, build e
+  `git diff --check` aprovados;
+- MIG-SAF-001 permaneceu inalterada.
 
 ## Escopo proibido
 
-- aplicar migration ou `migration repair` no remoto;
-- alterar RPC, RLS, grants, Auth ou configuração remota;
-- implementar portal ou alertas;
-- criar contas Safisa;
-- publicar ou alterar Pedidos reais;
-- executar operação real de Estoque;
-- fazer `db push` ou merge.
+- aplicar MIG-SAF-001 ou MIG-SAF-003 remotamente;
+- executar `db push`, `migration repair` ou SQL mutável remoto;
+- alterar Auth, RPCs remotas, contas ou publicações Safisa;
+- executar operação real de Pedido ou Estoque;
+- marcar o PR ready ou fazer merge.
 
-## Execução atual
+## Próximo passo
 
-- **Última ação:** MIG-SAF-001 validada dinamicamente sobre o baseline local, inclusive sob concorrência real.
-- **Próximo passo:** revisão humana do PR #5 draft; aplicação remota continua separada e não autorizada.
-- **Decisões concluídas:** DEC-SAF-001 a DEC-SAF-008.
-- **Aprovação ainda pendente:** revisão humana após os testes locais; aplicação remota continua separada e não autorizada.
+Revisar humanamente o PR #8. A eventual sequência de aplicação remota das duas
+migrations exigirá uma autorização operacional nova e específica.
 
 **Ponto de parada:** `WAITING_HUMAN_REVIEW`.
