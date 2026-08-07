@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import {
+  maximumReadyQuantity,
+  readinessLabel,
+} from "../lib/safisa-portal-readiness.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const actions = read("app/safisa/actions.ts");
@@ -48,6 +52,27 @@ test("client prevents double submit and exposes accessible states", () => {
   assert.match(portal, /aria-modal="true"/);
   assert.match(portal, /Informar como pronto/);
   assert.match(portal, /Corrigir quantidade pronta/);
+});
+
+test("partially ready lines with all current ready units picked remain partial", () => {
+  assert.equal(readinessLabel("PARTIALLY_READY", 3, 3), "Retirada parcial");
+  assert.equal(readinessLabel("COMPLETELY_READY", 10, 10), "Retirado");
+});
+
+test("a rejected action releases its lock and renders a safe retry message", () => {
+  assert.match(portal, /try \{/);
+  assert.match(portal, /catch \{/);
+  assert.match(portal, /finally \{/);
+  assert.match(portal, /Verifique sua conexão e tente novamente/);
+  assert.match(portal, /operationLock\.current = false/);
+  assert.match(portal, /setActiveLineId\(null\)/);
+});
+
+test("correction uses the current non-cancelled ready ceiling", () => {
+  assert.equal(maximumReadyQuantity(3, 5), 8);
+  assert.match(portal, /max=\{maximumReadyQuantity\(line\.readyQuantity, line\.waitingReadyQuantity\)\}/);
+  assert.match(actions, /const maximum = maximumReadyQuantity\(line\.readyQuantity, line\.waitingReadyQuantity\)/);
+  assert.match(actions, /entre \$\{line\.pickedQuantity\} e \$\{maximum\}/);
 });
 
 test("closed orders remain readable and do not render mutation controls", () => {

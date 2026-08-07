@@ -9,12 +9,15 @@ import {
   markSafisaRemainingReady,
   safisaLogout,
 } from "@/app/safisa/actions";
+import {
+  maximumReadyQuantity,
+  readinessLabel,
+} from "@/lib/safisa-portal-readiness";
 import type {
   SafisaActionResult,
   SafisaOrderDetail,
   SafisaOrderLine,
   SafisaOrderSummary,
-  SafisaReadinessStatus,
 } from "@/lib/safisa-portal-types";
 
 type Props = {
@@ -35,18 +38,10 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
 }
 
-function readinessLabel(status: SafisaReadinessStatus, picked: number, ready: number) {
-  if (ready > 0 && picked >= ready) return "Retirado";
-  if (picked > 0) return "Retirada parcial";
-  if (status === "COMPLETELY_READY") return "Tudo pronto";
-  if (status === "PARTIALLY_READY") return "Parcialmente pronto";
-  return "Não iniciado";
-}
-
 function closureLabel(order: SafisaOrderSummary | SafisaOrderDetail) {
   if (order.closureKind === "FINALIZED") return "Finalizado";
   if (order.closureKind === "CANCELLED") return "Cancelado";
-  return readinessLabel(order.readinessStatus, order.pickedQuantity, order.readyQuantity);
+  return readinessLabel(order.readinessStatus, order.readyQuantity, order.pickedQuantity);
 }
 
 function Metric({ label, value, tone = "neutral" }: { label: string; value: number; tone?: "neutral" | "blue" | "green" }) {
@@ -73,12 +68,20 @@ export function SafisaPortal({ displayName, orders, selectedOrder, loadMessage }
     setActiveLineId(lineId);
     setFeedback(null);
     startTransition(async () => {
-      const result = await action();
-      setFeedback(result);
-      setActiveLineId(null);
-      setConfirmation(null);
-      operationLock.current = false;
-      router.refresh();
+      try {
+        const result = await action();
+        setFeedback(result);
+        router.refresh();
+      } catch {
+        setFeedback({
+          status: "error",
+          message: "Não foi possível concluir a operação. Verifique sua conexão e tente novamente.",
+        });
+      } finally {
+        setActiveLineId(null);
+        setConfirmation(null);
+        operationLock.current = false;
+      }
     });
   }
 
@@ -168,7 +171,7 @@ export function SafisaPortal({ displayName, orders, selectedOrder, loadMessage }
                   <article key={line.supplierOrderItemId} className="rounded-2xl border border-slate-200 p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0"><p className="text-xs font-black tracking-wide text-blue-800 uppercase">Cód. {line.code}</p><h3 className="mt-1 text-base font-black leading-6 text-slate-950 sm:text-lg">{line.description}</h3>{line.model ? <p className="mt-1 text-sm font-semibold text-slate-600">{line.model}</p> : null}</div>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.68rem] font-black text-slate-700">{readinessLabel(line.readinessStatus, line.pickedQuantity, line.readyQuantity)}</span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.68rem] font-black text-slate-700">{readinessLabel(line.readinessStatus, line.readyQuantity, line.pickedQuantity)}</span>
                     </div>
                     <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                       <Metric label="Pedido" value={line.orderedQuantity} />
@@ -197,7 +200,7 @@ export function SafisaPortal({ displayName, orders, selectedOrder, loadMessage }
                           <details className="group">
                             <summary className="cursor-pointer rounded-lg px-2 py-2 text-sm font-bold text-slate-600 hover:text-slate-950 focus-visible:outline-3 focus-visible:outline-blue-700">Corrigir quantidade pronta</summary>
                             <form className="mt-3 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); setConfirmation({ kind: "correction", line, total: Number(form.get("total")), justification: String(form.get("justification") ?? "") }); }}>
-                              <div><label htmlFor={`total-${line.supplierOrderItemId}`} className="mb-1 block text-sm font-bold text-slate-800">Novo total pronto</label><input id={`total-${line.supplierOrderItemId}`} name="total" type="number" inputMode="numeric" min={line.pickedQuantity} max={line.orderedQuantity} defaultValue={line.readyQuantity} required className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-bold outline-none focus:border-amber-700 focus:ring-3 focus:ring-amber-100" /></div>
+                              <div><label htmlFor={`total-${line.supplierOrderItemId}`} className="mb-1 block text-sm font-bold text-slate-800">Novo total pronto</label><input id={`total-${line.supplierOrderItemId}`} name="total" type="number" inputMode="numeric" min={line.pickedQuantity} max={maximumReadyQuantity(line.readyQuantity, line.waitingReadyQuantity)} defaultValue={line.readyQuantity} required className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-bold outline-none focus:border-amber-700 focus:ring-3 focus:ring-amber-100" /></div>
                               <div><label htmlFor={`justification-${line.supplierOrderItemId}`} className="mb-1 block text-sm font-bold text-slate-800">Justificativa</label><textarea id={`justification-${line.supplierOrderItemId}`} name="justification" minLength={1} maxLength={500} required rows={3} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-700 focus:ring-3 focus:ring-amber-100" /></div>
                               <button type="submit" disabled={isPending} className="min-h-11 w-full rounded-xl border border-amber-500 bg-white px-4 text-sm font-black text-amber-950 hover:bg-amber-100 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-amber-700">Revisar correção</button>
                             </form>

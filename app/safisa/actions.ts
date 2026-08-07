@@ -9,6 +9,7 @@ import {
   SafisaPortalAccessError,
   SafisaPortalDataError,
 } from "@/lib/safisa-portal-data";
+import { maximumReadyQuantity } from "@/lib/safisa-portal-readiness";
 import type { SafisaActionResult } from "@/lib/safisa-portal-types";
 
 export type SafisaLoginState = {
@@ -223,10 +224,11 @@ export async function correctSafisaReadyQuantity(
         message: "Este pedido foi atualizado por outra pessoa. Os dados foram recarregados.",
       };
     }
-    if ((input.newReadyQuantity as number) < line.pickedQuantity || (input.newReadyQuantity as number) > line.orderedQuantity) {
+    const maximum = maximumReadyQuantity(line.readyQuantity, line.waitingReadyQuantity);
+    if ((input.newReadyQuantity as number) < line.pickedQuantity || (input.newReadyQuantity as number) > maximum) {
       return {
         status: "error",
-        message: `O total pronto deve ficar entre ${line.pickedQuantity} e ${line.orderedQuantity}.`,
+        message: `O total pronto deve ficar entre ${line.pickedQuantity} e ${maximum}.`,
       };
     }
 

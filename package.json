@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:safisa-portal": "node --test tests/safisa-portal.test.mjs",
+    "test:safisa-portal": "node --experimental-strip-types --test tests/safisa-portal.test.mjs",
     "test:safisa-migrations": "node tests/safisa-portal-migration.test.mjs && node tests/safisa-legacy-order-transition.test.mjs",
     "test:assistant-stock-entry": "node --experimental-strip-types --test tests/assistant-stock-entry.test.mjs",
     "test:assistant-stock-output": "node --experimental-strip-types --test tests/assistant-stock-output.test.mjs",
