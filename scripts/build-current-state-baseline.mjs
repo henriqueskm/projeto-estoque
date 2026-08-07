@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const [schemaSourceArgument, dataSourceArgument, outputDirectoryArgument] =
   process.argv.slice(2);
@@ -14,8 +15,19 @@ if (!schemaSourceArgument || !dataSourceArgument || !outputDirectoryArgument) {
 const schemaSource = resolve(schemaSourceArgument);
 const dataSource = resolve(dataSourceArgument);
 const outputDirectory = resolve(outputDirectoryArgument);
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-if (schemaSource.startsWith(resolve(".")) || dataSource.startsWith(resolve("."))) {
+const isWithinRepository = (candidate) => {
+  const relativePath = relative(repositoryRoot, candidate);
+  return (
+    relativePath === "" ||
+    (relativePath !== ".." &&
+      !relativePath.startsWith(`..${sep}`) &&
+      !isAbsolute(relativePath))
+  );
+};
+
+if (isWithinRepository(schemaSource) || isWithinRepository(dataSource)) {
   throw new Error("Raw remote dumps must remain outside the repository.");
 }
 

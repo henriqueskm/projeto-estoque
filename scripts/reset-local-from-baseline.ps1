@@ -55,6 +55,28 @@ function Stop-DisposableStack {
   }
 }
 
+function Test-PathIsDescendant {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$Candidate
+  )
+
+  $normalizedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd([char[]]@(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar
+  ))
+  $normalizedCandidate = [System.IO.Path]::GetFullPath($Candidate)
+  $rootWithSeparator = $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar
+  $comparison = if ($env:OS -eq "Windows_NT") {
+    [System.StringComparison]::OrdinalIgnoreCase
+  }
+  else {
+    [System.StringComparison]::Ordinal
+  }
+
+  return $normalizedCandidate.StartsWith($rootWithSeparator, $comparison)
+}
+
 $repositoryRoot = [System.IO.Path]::GetFullPath(
   (Join-Path $PSScriptRoot "..")
 )
@@ -70,10 +92,7 @@ if (-not $WorkspacePath) {
 }
 $WorkspacePath = [System.IO.Path]::GetFullPath($WorkspacePath)
 
-if (-not $WorkspacePath.StartsWith(
-  $temporaryRoot,
-  [System.StringComparison]::OrdinalIgnoreCase
-)) {
+if (-not (Test-PathIsDescendant -Root $temporaryRoot -Candidate $WorkspacePath)) {
   throw "The disposable workspace must be located under the operating-system temporary directory."
 }
 
@@ -150,10 +169,7 @@ try {
 
   if (Test-Path -LiteralPath $WorkspacePath) {
     $resolvedWorkspace = [System.IO.Path]::GetFullPath($WorkspacePath)
-    if (-not $resolvedWorkspace.StartsWith(
-      $temporaryRoot,
-      [System.StringComparison]::OrdinalIgnoreCase
-    )) {
+    if (-not (Test-PathIsDescendant -Root $temporaryRoot -Candidate $resolvedWorkspace)) {
       throw "Refusing to remove a workspace outside the temporary directory."
     }
     Remove-Item -LiteralPath $resolvedWorkspace -Recurse -Force
@@ -241,7 +257,7 @@ try {
     Join-Path $repositoryRoot "supabase\migrations"
   ) -File | Where-Object {
     $_.BaseName.Substring(0, 14) -gt $cutoff
-  })
+  } | Sort-Object Name)
   foreach ($migration in $futureMigrations) {
     Copy-Item -LiteralPath $migration.FullName -Destination $workspaceMigrations
   }

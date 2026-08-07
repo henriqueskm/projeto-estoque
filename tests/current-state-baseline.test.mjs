@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -16,14 +16,90 @@ const resetScriptPath = resolve(
   "scripts",
   "reset-local-from-baseline.ps1",
 );
+const buildScriptPath = resolve(
+  repositoryRoot,
+  "scripts",
+  "build-current-state-baseline.mjs",
+);
 
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const schema = readFileSync(schemaPath, "utf8");
 const referenceData = readFileSync(referenceDataPath, "utf8");
 const resetScript = readFileSync(resetScriptPath, "utf8");
+const migrationFilenamePattern = /^(\d{14})_[A-Za-z0-9][A-Za-z0-9_-]*\.sql$/;
 
 const sha256 = (path) =>
   createHash("sha256").update(readFileSync(path)).digest("hex");
+
+function validateMigrationContinuity(sourceMigrations, headMigrations, cutoff) {
+  for (const filename of new Set([
+    ...sourceMigrations.keys(),
+    ...headMigrations.keys(),
+  ])) {
+    assert.match(filename, migrationFilenamePattern, `Invalid migration name: ${filename}`);
+  }
+
+  assert.equal(
+    [...sourceMigrations].some(([filename]) => filename.slice(0, 14) === cutoff),
+    true,
+    `Cutoff migration ${cutoff} must exist in source_commit`,
+  );
+
+  for (const [filename, sourceContents] of sourceMigrations) {
+    if (filename.slice(0, 14) > cutoff) continue;
+
+    assert.equal(
+      headMigrations.has(filename),
+      true,
+      `Historical migration was removed or renamed: ${filename}`,
+    );
+    assert.deepEqual(
+      headMigrations.get(filename),
+      sourceContents,
+      `Historical migration content changed: ${filename}`,
+    );
+  }
+
+  for (const filename of headMigrations.keys()) {
+    if (!sourceMigrations.has(filename)) {
+      assert.equal(
+        filename.slice(0, 14) > cutoff,
+        true,
+        `New migration must be newer than cutoff ${cutoff}: ${filename}`,
+      );
+    }
+  }
+}
+
+function readSourceMigrations(sourceCommit) {
+  const prefix = "supabase/migrations/";
+  const filenames = execFileSync(
+    "git",
+    ["ls-tree", "-r", "--name-only", sourceCommit, "--", "supabase/migrations"],
+    { cwd: repositoryRoot, encoding: "utf8" },
+  )
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((path) => path.slice(prefix.length));
+
+  return new Map(filenames.map((filename) => [
+    filename,
+    execFileSync(
+      "git",
+      ["show", `${sourceCommit}:${prefix}${filename}`],
+      { cwd: repositoryRoot },
+    ),
+  ]));
+}
+
+function readHeadMigrations() {
+  const migrationsDirectory = resolve(repositoryRoot, "supabase", "migrations");
+  return new Map(readdirSync(migrationsDirectory).map((filename) => [
+    filename,
+    readFileSync(resolve(migrationsDirectory, filename)),
+  ]));
+}
 
 test("baseline lives outside historical migrations and has every required file", () => {
   for (const path of [
@@ -126,22 +202,47 @@ test("reset script requires a provably local target and never runs the historica
   assert.doesNotMatch(resetScript, /[a-z]{20}\.supabase\.co/i);
 });
 
-test("historical migrations remain untouched and cutoff is the current maximum", () => {
-  const changedMigrations = execFileSync(
-    "git",
-    ["diff", "--name-only", "--", "supabase/migrations"],
-    { cwd: repositoryRoot, encoding: "utf8" },
-  ).trim();
-  assert.equal(changedMigrations, "");
-
-  const migrationVersions = readdirSync(
-    resolve(repositoryRoot, "supabase", "migrations"),
-  )
-    .filter((filename) => /^\d{14}_.+\.sql$/.test(filename))
-    .map((filename) => filename.slice(0, 14))
-    .sort();
-  assert.equal(
-    migrationVersions.at(-1),
+test("historical migrations match source_commit while future migrations remain allowed", () => {
+  validateMigrationContinuity(
+    readSourceMigrations(manifest.source_commit),
+    readHeadMigrations(),
     manifest.historical_cutoff_migration,
   );
+});
+
+test("migration continuity rejects historical changes and accepts a future migration", () => {
+  const cutoff = manifest.historical_cutoff_migration;
+  const cutoffFilename = `${cutoff}_cutoff.sql`;
+  const source = new Map([[cutoffFilename, Buffer.from("select 1;\n")]]);
+  const future = new Map([
+    ...source,
+    ["20260730000000_future.sql", Buffer.from("select 2;\n")],
+  ]);
+
+  assert.doesNotThrow(() => validateMigrationContinuity(source, future, cutoff));
+
+  const changedHistorical = new Map(source);
+  changedHistorical.set(cutoffFilename, Buffer.from("select 3;\n"));
+  assert.throws(
+    () => validateMigrationContinuity(source, changedHistorical, cutoff),
+    /Historical migration content changed/,
+  );
+
+  const backdated = new Map(source);
+  backdated.set("20260728000000_backdated.sql", Buffer.from("select 4;\n"));
+  assert.throws(
+    () => validateMigrationContinuity(source, backdated, cutoff),
+    /New migration must be newer than cutoff/,
+  );
+});
+
+test("baseline builder rejects raw dumps located inside the repository", () => {
+  const result = spawnSync(
+    process.execPath,
+    [buildScriptPath, schemaPath, referenceDataPath, resolve(repositoryRoot, "unused")],
+    { cwd: repositoryRoot, encoding: "utf8" },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Raw remote dumps must remain outside the repository/);
 });

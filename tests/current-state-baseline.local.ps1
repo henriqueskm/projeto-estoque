@@ -16,6 +16,28 @@ if (Test-Path -LiteralPath $dockerBin) {
   $env:Path = "$dockerBin;$env:Path"
 }
 
+function Test-PathIsDescendant {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$Candidate
+  )
+
+  $normalizedRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd([char[]]@(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar
+  ))
+  $normalizedCandidate = [System.IO.Path]::GetFullPath($Candidate)
+  $rootWithSeparator = $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar
+  $comparison = if ($env:OS -eq "Windows_NT") {
+    [System.StringComparison]::OrdinalIgnoreCase
+  }
+  else {
+    [System.StringComparison]::Ordinal
+  }
+
+  return $normalizedCandidate.StartsWith($rootWithSeparator, $comparison)
+}
+
 function New-TestBaseline {
   param([Parameter(Mandatory = $true)][string]$Name)
 
@@ -80,6 +102,14 @@ try {
   Invoke-ExpectedFailure -Name "remote host refused" `
     -Arguments @("-DatabaseHost", "db.example.invalid", "-StopAfterValidation") `
     -ExpectedMessage "Remote database hosts are refused"
+
+  $siblingWorkspace = $temporaryRoot + "-malicious-" + [guid]::NewGuid().ToString("N")
+  Invoke-ExpectedFailure -Name "textual-prefix sibling path refused" `
+    -Arguments @("-WorkspacePath", $siblingWorkspace, "-StopAfterValidation") `
+    -ExpectedMessage "workspace must be located under the operating-system temporary directory"
+  if (Test-Path -LiteralPath $siblingWorkspace) {
+    throw "The rejected sibling workspace was created or modified."
+  }
 
   $badChecksum = New-TestBaseline -Name "bad-checksum"
   [System.IO.File]::AppendAllText(
@@ -164,10 +194,7 @@ try {
 finally {
   if (Test-Path -LiteralPath $testRoot) {
     $resolvedTestRoot = [System.IO.Path]::GetFullPath($testRoot)
-    if (-not $resolvedTestRoot.StartsWith(
-      $temporaryRoot,
-      [System.StringComparison]::OrdinalIgnoreCase
-    )) {
+    if (-not (Test-PathIsDescendant -Root $temporaryRoot -Candidate $resolvedTestRoot)) {
       throw "Refusing to remove a test directory outside the temporary root."
     }
     Remove-Item -LiteralPath $resolvedTestRoot -Recurse -Force
