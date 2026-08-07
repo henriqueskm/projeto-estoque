@@ -184,3 +184,26 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **PR:** https://github.com/henriqueskm/projeto-estoque/pull/6 (draft)
 - **Bloqueios:** escrita da migration-ponte, alinhamento do histórico remoto e retomada da MIG-SAF-001 exigem aprovação humana.
 - **Próxima ação:** revisar `docs/MIGRATION_HISTORY_REPRODUCIBILITY.md`.
+
+## 2026-08-06 — MIG-HIST-002
+
+- **Estado anterior:** IMPLEMENTING
+- **Estado novo:** ABANDONED_BY_DECISION
+- **Branch:** `agent/historical-catalog-identity-bridge`
+- **Resumo:** a ponte aprovada de 19 identidades corrigiu o primeiro bloqueio, mas o reset local revelou outras 72 configurações históricas exigidas pela migration de imagens.
+- **Validações:** `20260718175621` passou localmente; `20260718191812` abortou de forma segura; nenhum acesso remoto ocorreu.
+- **Backup:** WIP preservado em stash local e removido da worktree; nenhum commit ou push da ponte.
+- **Motivo:** custo e risco desproporcionais de ampliar o remapeamento para 91 identidades.
+- **Próxima ação:** substituir a reconstrução histórica por baseline local do estado atual.
+
+## 2026-08-06 — MIG-BASE-001
+
+- **Estado anterior:** READY
+- **Estado novo:** WAITING_HUMAN_REVIEW
+- **Branch:** `agent/current-state-baseline`
+- **Pull request:** [#7](https://github.com/henriqueskm/projeto-estoque/pull/7) — draft
+- **Resumo:** schema atual e catálogo referencial sanitizado materializados fora de `supabase/migrations`, com restaurador estritamente local.
+- **Allowlist:** oito tabelas públicas referenciais e metadado fixo do bucket privado; nenhuma pessoa, Pedido, saldo, movimento, lote, evento ou objeto de Storage.
+- **Validações:** duas reconstruções independentes equivalentes; assinaturas de schema e catálogo idênticas; sete cenários negativos aprovados; containers removidos.
+- **Remoto:** somente dumps de leitura de schema `public/private` e dados da allowlist; nenhuma escrita, `db push`, `migration repair` ou alteração remota.
+- **Próxima ação:** revisão humana do PR draft; PR #5 continua bloqueado e inalterado.
