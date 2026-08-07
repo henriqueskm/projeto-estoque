@@ -1,0 +1,105 @@
+{
+  "baseline_version": 1,
+  "generated_at": "2026-08-07T00:34:22Z",
+  "source_commit": "d06bedb275e4b178fb0e26fb7e6c56f66726a19b",
+  "supabase_cli_version": "2.111.0",
+  "local_postgresql_version": "17.6",
+  "included_schemas": [
+    "public",
+    "private",
+    "storage application policy and bucket metadata only"
+  ],
+  "reference_tables": [
+    {
+      "table": "public.items",
+      "row_count": 102,
+      "natural_key": "code",
+      "sha256": "e176fd172a5bdec6fe478217ed5db4b8a2768b922ad26860e8eee148f5185613",
+      "reason": "Physical catalog identities and operational labels."
+    },
+    {
+      "table": "public.servo_models",
+      "row_count": 22,
+      "natural_key": "item_id",
+      "sha256": "41e7742de4806397bf16a92705aefd6f0d6c49679283c8db4bb24a3549370945",
+      "reason": "Servo subtype and model metadata."
+    },
+    {
+      "table": "public.installation_kits",
+      "row_count": 74,
+      "natural_key": "item_id",
+      "sha256": "fcab6712a36f59f7f5346796fd2b6b2c244414a1c499e5bb34fa10f7481440c2",
+      "reason": "Installation-kit subtype metadata."
+    },
+    {
+      "table": "public.repair_kits",
+      "row_count": 5,
+      "natural_key": "item_id",
+      "sha256": "6d1519b2abeb0c4d4f61cad525f0e9ac1bed87b392269591bedc4adaa54087ff",
+      "reason": "Repair-kit subtype metadata."
+    },
+    {
+      "table": "public.loose_parts",
+      "row_count": 1,
+      "natural_key": "item_id",
+      "sha256": "a0458820c594e474dfd98591588aed8c9c0be5821dae3b3a7517855118725b6f",
+      "reason": "Existing loose-part subtype metadata."
+    },
+    {
+      "table": "public.commercial_configurations",
+      "row_count": 80,
+      "natural_key": "servo_id + installation_kit_id",
+      "sha256": "47bf788d31327151f9e12ddea9591f99f673368462f1ab69b7b146d606cd461e",
+      "reason": "Physical servo and installation-kit configurations."
+    },
+    {
+      "table": "public.commercial_configuration_codes",
+      "row_count": 80,
+      "natural_key": "code",
+      "sha256": "06fc2a1e1691b8f63564300d595d3371b310dfbfa67a0e9ffe2117a44dff0342",
+      "reason": "Commercial aliases mapped to physical configurations."
+    },
+    {
+      "table": "public.servo_repair_compatibility",
+      "row_count": 22,
+      "natural_key": "servo_id + repair_kit_id",
+      "sha256": "525aeef5f425e28cb68c3d9570295009c68c901b1174eee17173478cbcdf49e2",
+      "reason": "Reference compatibility between servos and repair kits."
+    },
+    {
+      "table": "storage.buckets",
+      "row_count": 1,
+      "natural_key": "id = commercial-catalog-images",
+      "sha256": "versioned-constant",
+      "reason": "Private application bucket metadata; no Storage objects are included."
+    }
+  ],
+  "explicitly_excluded": [
+    "auth users, identities, sessions, tokens and credentials",
+    "public.profiles and all personal data",
+    "supplier orders, lines, entries and events",
+    "stock and configuration balances",
+    "movement batches and all movements",
+    "assembly and configuration operations",
+    "minimum-stock audit events",
+    "operational idempotency requests and keys",
+    "storage.objects and uploaded files",
+    "logs and private environment configuration"
+  ],
+  "historical_cutoff_migration": "20260729001230",
+  "files": {
+    "current_schema.sql": {
+      "sha256": "4965d0f939856fa2009397a74ea790a9fd2f53879f63400e5899db85bad30b8a"
+    },
+    "reference_data.sql": {
+      "sha256": "6fd5d77c5f052a3d4ea5a008fb46dbae5dbc354f1da74cf59bc60d21e42ddd01"
+    }
+  },
+  "declarations": {
+    "contains_personal_data": false,
+    "contains_operational_data": false,
+    "contains_secrets": false,
+    "contains_storage_objects": false,
+    "remote_application_target": false
+  }
+}
