@@ -254,3 +254,16 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Reconstruções:** duas execuções independentes produziram `SchemaSignature e5b32608e246d03522d8e06b0cadcf4f` e `CatalogSignature 9e010282ce86835cb5973da9b50a5d52`.
 - **Remoto:** nenhum acesso ou escrita; nenhum `db push`, `migration repair`, conta Safisa, publicação real, Pedido ou Estoque alterado.
 - **Próxima ação:** revisão humana do PR #8; merge e aplicação remota permanecem proibidos.
+
+## 2026-08-07 — NK-SAF-002
+
+- **Estado anterior:** READY após aplicação remota controlada da MIG-SAF-001 e MIG-SAF-003.
+- **Estado novo:** WAITING_HUMAN_REVIEW.
+- **Branch:** `agent/safisa-portal-ui`.
+- **Resumo:** Portal Safisa MVP implementado em `/safisa`, com login e layout próprios, guard server-side independente do perfil interno, lista/detalhe por RPCs oficiais e ações incrementais/corretivas confirmadas.
+- **Segurança:** nenhuma seleção ou escrita direta nas tabelas Safisa; nenhuma conta Safisa real, publicação real, mutação remota, migration, `db push` ou alteração de Auth.
+- **Validação local:** usuário sem membership negado; duas contas Safisa independentes; Pedidos publicados compartilhados; ocultos e revogados invisíveis; encerrados somente leitura; incremento, replay/double-submit, correção, conflito e marcação do restante aprovados.
+- **Responsividade:** 320, 375, 768 e 1440 px sem overflow horizontal; console do navegador sem erros; foco, labels, estados desabilitados e mensagens `aria-live` verificados.
+- **Banco local:** baseline + MIG-SAF-001 + MIG-SAF-003, fixtures exclusivamente fictícias; A–H, cinco concorrências e transição legado aprovadas.
+- **Pull request:** [#9](https://github.com/henriqueskm/projeto-estoque/pull/9) (draft).
+- **Próxima ação:** revisão humana do PR draft antes de qualquer provisionamento ou publicação do piloto.

@@ -1,8 +1,8 @@
 # NK-SAF-001 — Auditoria e especificação do Portal da Safisa
 
 - **Prioridade:** alta para o piloto comercial
-- **Estado:** WAITING_HUMAN_REVIEW
-- **Classificação:** C — decisões de domínio aprovadas; exige migration/RPC ainda não autorizada
+- **Estado:** DONE — fundação aplicada; Portal MVP em `WAITING_HUMAN_REVIEW`
+- **Classificação:** B — interface sobre RPCs oficiais já implantadas
 - **Projeto auditado:** `isdjboconmwaqipjrjvp`
 - **Data da auditoria:** 2026-08-04
 
@@ -156,9 +156,9 @@ Mesma chave e mesmo payload retornam replay; mesma chave com payload diferente �
 
 Para o piloto, revalidar após cada operação e ao retornar à página é suficiente. Realtime ou polling contínuo não é requisito inicial; a atomicidade permanece no banco.
 
-## MIG-SAF-001 — migration escrita para revisão
+## MIG-SAF-001 — fundação aplicada
 
-O contrato foi materializado em `supabase/migrations/20260804044500_safisa_portal_foundation.sql`. O arquivo é uma migration única e atômica, permanece somente local/versionado para revisão e não foi aplicado em banco local ou remoto.
+O contrato foi materializado em `supabase/migrations/20260804044500_safisa_portal_foundation.sql`. A migration é única e atômica, permaneceu imutável após a revisão e foi aplicada remotamente em conjunto com a transição incremental MIG-SAF-003, sob protocolo controlado.
 
 ### Tabelas
 
@@ -259,12 +259,13 @@ Nenhuma RPC aceita nome de tabela, nome de função, usuário ou autoridade esco
 2. criação local da migration, sem aplicação remota — concluída;
 3. revisão estática, duas reconstruções por baseline e testes dinâmicos locais
    A–H, incluindo cinco disputas com duas conexões — concluída nesta branch;
-4. revisão humana do PR #5 e autorização específica posterior para aplicação
-   controlada da migration;
-5. configuração remota separada para desabilitar signup, se novamente autorizada;
-6. implementação do portal e dos alertas internos;
-7. validação autenticada, testes concorrentes controlados e smoke test;
-8. publicação gradual do primeiro Pedido do piloto.
+4. revisão humana do PR #5 e aplicação remota controlada da fundação e da
+   transição legado — concluídas;
+5. implementação do Portal Safisa MVP — concluída nesta branch e aguardando
+   revisão humana;
+6. configuração remota separada para desabilitar signup, se novamente autorizada;
+7. provisionamento administrativo, publicação gradual do primeiro Pedido e
+   validação autenticada do piloto — dependem de autorização posterior.
 
 O escopo consolidado da migration inclui:
 
@@ -336,11 +337,33 @@ prontidão e existência da autorização.
 A migration foi validada apenas em Supabase Local com fixtures agregadas e sem
 identificadores reais, incluindo publicação irreversível, revogação, cinco
 cenários concorrentes com duas conexões e duas reconstruções independentes.
-MIG-SAF-001 permanece imutável e nenhuma escrita remota foi executada.
+MIG-SAF-001 permanece imutável. A aplicação remota controlada ocorreu somente
+para MIG-SAF-001 e MIG-SAF-003; este MVP não executou escrita remota.
 
-A aprovação pendente é a revisão humana do PR #8 e da MIG-SAF-003. A aplicação
-remota da MIG-SAF-001/MIG-SAF-003 e a alteração remota de signup exigirão
-autorizações operacionais posteriores e separadas.
+MIG-SAF-001 e MIG-SAF-003 foram revisadas, mescladas e aplicadas remotamente em
+protocolo controlado. A alteração remota de signup permanece uma autorização
+operacional separada e ainda não faz parte do Portal MVP.
+
+## NK-SAF-002 — Portal Safisa MVP
+
+Com a fundação e a transição legado aplicadas, o MVP foi implementado na branch
+`agent/safisa-portal-ui` e está disponível para revisão no
+[#9](https://github.com/henriqueskm/projeto-estoque/pull/9) (draft):
+
+- login separado em `/safisa/login`, sem ativar acesso interno;
+- guard server-side baseado na sessão real e no contrato das RPCs Safisa;
+- experiência própria em `/safisa`, sem sidebar, Estoque ou Assistente;
+- lista e detalhe limitados a Pedidos explicitamente autorizados;
+- incremento de novas unidades prontas e ação confirmada para todo o restante;
+- correção secundária com justificativa, confirmação e versão otimista;
+- chave idempotente criada uma vez por confirmação e bloqueio síncrono contra
+  double-submit;
+- Pedidos encerrados somente leitura e revogados invisíveis;
+- layout mobile-first e acessível, validado de 320 a 1440 px.
+
+Toda validação mutável usou fixtures fictícias no Supabase Local. Nenhuma conta,
+membership, autorização, prontidão, Pedido, Estoque, migration ou configuração
+remota foi alterada durante a implementação.
 
 ## Plano por fases e estimativa relativa
 
@@ -358,4 +381,7 @@ Estimativa total relativa: **XL**, dominada por segurança de identidade, migrat
 
 ## Conclusão
 
-O domínio de Pedidos é uma base forte, mas o Portal Safisa não pode ser implementado apenas na aplicação. As decisões de domínio foram aprovadas e a migration/RPC foi escrita para revisão, sem aplicação. Nenhuma função, configuração ou dado remoto foi alterado; o portal, as contas Safisa e a publicação de Pedidos ainda não foram implementados.
+O domínio de Pedidos e as RPCs Safisa agora fornecem a base necessária ao Portal
+Safisa. O MVP foi implementado e validado somente contra fixtures locais; contas
+Safisa reais, memberships, publicação de Pedidos e o piloto continuam dependentes
+de provisionamento administrativo e revisão humana posterior.

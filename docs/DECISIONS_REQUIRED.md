@@ -10,12 +10,12 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 | DEC-ORD-002 | NK-ORD-002/NK-ORD-003 | `negotiation_number` não é único e duplicatas tornam resolução exata ambígua. | Definir a regra comercial antes da criação pela Assistente. | Alto | Escolher a política de duplicidade. |
 | DEC-ORD-003 | NK-ORD-005 | Cancelamento total e de saldo restante são operações distintas e o banco aceita nota nula. | Definir modalidade e auditoria; a Assistente não deve inventar motivo. | Crítico | Aprovar regra de cancelamento e texto de auditoria. |
 
-## Migrations aguardando aprovação
+## Migrations Safisa concluídas
 
 | ID | Objetivo | Escopo | Estado |
 |---|---|---|---|
-| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | Mesclada em `main`; não aplicada remotamente porque o gate de Pedidos ativos exige MIG-SAF-003 |
-| MIG-SAF-003 | NK-SAF-001 | Compatibilidade incremental para Pedidos legados: ausência de autorização preserva retirada histórica com autoavanço atômico de `ready_quantity`; existência da autorização ativa permanentemente o regime Safisa-managed. | SQL e testes locais no PR #8; duas reconstruções e concorrência aprovadas; não aplicado remotamente; aguardando revisão humana |
+| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; auditoria/idempotência; RLS e RPCs fechadas. | Concluída, mesclada e aplicada remotamente |
+| MIG-SAF-003 | NK-SAF-001 | Compatibilidade incremental e irreversível para Pedidos legados. | Concluída, mesclada e aplicada remotamente |
 | MIG-BASE-001 | Reprodutibilidade local | Baseline atual fora das migrations, catálogo referencial determinístico e restaurador estritamente local. | Concluído e mesclado no PR #7; uso exclusivamente local |
 
 ### Decisões concluídas de reprodutibilidade
@@ -25,7 +25,7 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 - o baseline é somente para reconstrução e testes locais;
 - migrations futuras permanecem incrementais e normais.
 
-## Alterações de RPC aguardando aprovação
+## RPCs Safisa aplicadas
 
 - RPCs fixas de leitura do portal;
 - incremento idempotente de quantidade pronta;
@@ -33,8 +33,9 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 - validação de prontidão nas RPCs internas de retirada;
 - proteções de prontidão em edição e cancelamento.
 
-As alterações estão somente no SQL local, aplicado apenas em ambientes
-descartáveis do Supabase Local. Nenhuma RPC remota foi alterada.
+As RPCs foram aplicadas remotamente pelas MIG-SAF-001 e MIG-SAF-003 sob
+protocolo controlado. Esta branch consome apenas os wrappers públicos já
+existentes e não altera banco, Auth ou RPCs.
 
 ### Contrato documental especificado para MIG-SAF-001
 
@@ -47,19 +48,21 @@ descartáveis do Supabase Local. Nenhuma RPC remota foi alterada.
 - endurecimento: retirada limitada ao pronto, edição preservando prontidão e cancelamento apenas do saldo não pronto;
 - implantação: migration revisada, testes SQL locais, aplicação remota autorizada, frontend, validação concorrente e piloto.
 
-## Testes operacionais aguardando autorização
+## Testes operacionais Safisa aguardando autorização
 
-Nenhum teste operacional Safisa deve ser preparado antes da aprovação da arquitetura, migration e interface.
+O próximo teste operacional depende de criar administrativamente uma conta
+Safisa e publicar explicitamente um Pedido; ambos exigem autorização específica.
 
 ## Validações visuais aguardando usuário
 
-Nenhuma interface Safisa foi implementada. A validação visual será definida somente depois das fases de banco e aplicação.
+O Portal Safisa MVP está implementado na branch `agent/safisa-portal-ui` e
+aguarda revisão humana do [PR #9](https://github.com/henriqueskm/projeto-estoque/pull/9)
+em draft antes de merge, provisionamento ou piloto.
 
 ## Merges aguardando aprovação
 
-O PR #5 da MIG-SAF-001 foi mesclado, mas sua aplicação remota foi bloqueada pelo
-gate de Pedidos ativos. O PR #8 da MIG-SAF-003 permanece draft; merge e aplicação
-remota não estão autorizados.
+MIG-SAF-001 e MIG-SAF-003 foram mescladas e aplicadas. O Portal Safisa MVP
+aguarda revisão humana; merge da interface ainda não está autorizado.
 
 ## Decisões concluídas
 
