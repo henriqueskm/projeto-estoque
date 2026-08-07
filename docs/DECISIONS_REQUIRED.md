@@ -14,7 +14,7 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 
 | ID | Objetivo | Escopo | Estado |
 |---|---|---|---|
-| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | SQL escrito em `20260804044500_safisa_portal_foundation.sql`; não aplicado; aguardando revisão humana |
+| MIG-SAF-001 | NK-SAF-001 | Membership Safisa; autorização explícita de Pedidos; `ready_quantity`; ledger de auditoria/idempotência; constraints e índices; RLS, grants/revokes e RPCs fechadas; backfill sem publicação; endurecimento de retirada, edição e cancelamento; testes de isolamento e concorrência. | SQL validado em duas reconstruções locais independentes, com testes A–H e concorrência real; não aplicado remotamente; aguardando revisão humana |
 | MIG-BASE-001 | Reprodutibilidade local | Baseline atual fora das migrations, catálogo referencial determinístico e restaurador estritamente local. | Concluído e mesclado no PR #7; uso exclusivamente local |
 
 ### Decisões concluídas de reprodutibilidade
@@ -32,7 +32,8 @@ Este documento registra bloqueios que exigem ação humana. Itens concluídos pe
 - validação de prontidão nas RPCs internas de retirada;
 - proteções de prontidão em edição e cancelamento.
 
-As alterações estão somente no SQL local ainda não aplicado. Nenhuma RPC remota foi alterada.
+As alterações estão somente no SQL local, aplicado apenas em ambientes
+descartáveis do Supabase Local. Nenhuma RPC remota foi alterada.
 
 ### Contrato documental especificado para MIG-SAF-001
 

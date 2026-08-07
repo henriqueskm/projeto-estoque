@@ -19,7 +19,7 @@
 - migrations futuras continuam incrementais após o cutoff `20260729001230`;
 - o baseline e `migration repair` remoto nunca serão aplicados ao projeto remoto.
 
-## MIG-SAF-001 escrita, não aplicada remotamente
+## MIG-SAF-001 validada localmente, não aplicada remotamente
 
 A migration `supabase/migrations/20260804044500_safisa_portal_foundation.sql`
 materializa o contrato aprovado: membership, autorização explícita de Pedidos,
@@ -28,6 +28,17 @@ grants/revokes, RPCs fixas, backfill sem publicação automática e endureciment
 transacional de retirada, edição e cancelamento.
 
 O timestamp `20260804044500` já é superior ao cutoff e não será renomeado.
+
+Após integrar a `main`, a migration foi aplicada somente sobre dois ambientes
+Supabase Local descartáveis reconstruídos a partir do baseline. As duas
+reconstruções produziram as mesmas assinaturas de schema e catálogo. A suíte
+dinâmica cobriu membership, publicação, prontidão, correção, retirada,
+cancelamento/edição, auditoria, RLS/permissões e cinco cenários concorrentes
+com duas conexões PostgreSQL reais.
+
+O único ajuste funcional no SQL foi substituir o alias reservado
+`authorization` por `order_authorization`; contratos, locks e regras de negócio
+permaneceram inalterados. Nenhuma conexão com o Supabase remoto foi usada.
 
 ## Escopo proibido
 
@@ -41,8 +52,8 @@ O timestamp `20260804044500` já é superior ao cutoff e não será renomeado.
 
 ## Execução atual
 
-- **Última ação:** baseline aprovado e mesclado; branch do PR #5 integrada à main atual.
-- **Próximo passo:** validar MIG-SAF-001 dinamicamente somente em Supabase Local descartável.
+- **Última ação:** MIG-SAF-001 validada dinamicamente sobre o baseline local, inclusive sob concorrência real.
+- **Próximo passo:** revisão humana do PR #5 draft; aplicação remota continua separada e não autorizada.
 - **Decisões concluídas:** DEC-SAF-001 a DEC-SAF-008.
 - **Aprovação ainda pendente:** revisão humana após os testes locais; aplicação remota continua separada e não autorizada.
 

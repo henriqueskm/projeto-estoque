@@ -257,8 +257,10 @@ Nenhuma RPC aceita nome de tabela, nome de função, usuário ou autoridade esco
 
 1. revisão humana desta especificação e autorização para criar SQL — concluída;
 2. criação local da migration, sem aplicação remota — concluída;
-3. revisão estática e testes de contrato sem executar SQL — concluída nesta branch;
-4. autorização específica e aplicação controlada da migration;
+3. revisão estática, duas reconstruções por baseline e testes dinâmicos locais
+   A–H, incluindo cinco disputas com duas conexões — concluída nesta branch;
+4. revisão humana do PR #5 e autorização específica posterior para aplicação
+   controlada da migration;
 5. configuração remota separada para desabilitar signup, se novamente autorizada;
 6. implementação do portal e dos alertas internos;
 7. validação autenticada, testes concorrentes controlados e smoke test;
@@ -311,7 +313,9 @@ Desabilitar cadastro público é uma alteração de configuração do Supabase A
 7. DEC-SAF-007: encerrados somente leitura enquanto autorizados; revogação remove acesso sem apagar dados/auditoria.
 8. DEC-SAF-008: `/safisa` no mesmo deploy, com layout, navegação, guards e autorização server-side/banco separados.
 
-A aprovação pendente é a revisão humana do SQL da MIG-SAF-001. A aplicação remota e a alteração remota de signup exigirão autorizações operacionais posteriores e separadas.
+A aprovação pendente é a revisão humana do SQL da MIG-SAF-001 já validado
+localmente. A aplicação remota e a alteração remota de signup exigirão
+autorizações operacionais posteriores e separadas.
 
 ## Plano por fases e estimativa relativa
 
