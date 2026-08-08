@@ -15,7 +15,8 @@
     "test:safisa-automatic-orders:local": "node tests/safisa-automatic-orders.local.mjs",
     "test:assistant-stock-entry": "node --experimental-strip-types --test tests/assistant-stock-entry.test.mjs",
     "test:assistant-stock-output": "node --experimental-strip-types --test tests/assistant-stock-output.test.mjs",
-    "test:assistant-configuration-assembly": "node --experimental-strip-types --test tests/assistant-configuration-assembly.test.mjs"
+    "test:assistant-configuration-assembly": "node --experimental-strip-types --test tests/assistant-configuration-assembly.test.mjs",
+    "test:assistant-configuration-disassembly": "node --experimental-strip-types --test tests/assistant-configuration-disassembly.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",

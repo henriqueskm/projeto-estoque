@@ -52,6 +52,9 @@ import {
   type AssistantConfigurationAssemblySelection,
   type AssistantConfigurationAssemblyPreviewBlock,
   type AssistantConfigurationAssemblyResultBlock,
+  type AssistantConfigurationDisassemblySelection,
+  type AssistantConfigurationDisassemblyPreviewBlock,
+  type AssistantConfigurationDisassemblyResultBlock,
 } from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
@@ -185,6 +188,8 @@ export function AssistantHome({
   const [confirmingStockOutputMessageId, setConfirmingStockOutputMessageId] =
     useState<string | null>(null);
   const [confirmingConfigurationAssemblyMessageId, setConfirmingConfigurationAssemblyMessageId] =
+    useState<string | null>(null);
+  const [confirmingConfigurationDisassemblyMessageId, setConfirmingConfigurationDisassemblyMessageId] =
     useState<string | null>(null);
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -482,6 +487,7 @@ export function AssistantHome({
       stockEntrySelection?: AssistantStockEntrySelection;
       stockOutputSelection?: AssistantStockOutputSelection;
       configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
+      configurationDisassemblySelection?: AssistantConfigurationDisassemblySelection;
     },
   ) {
     if (
@@ -543,6 +549,9 @@ export function AssistantHome({
           : {}),
         ...(context?.configurationAssemblySelection
           ? { configurationAssemblySelection: context.configurationAssemblySelection }
+          : {}),
+        ...(context?.configurationDisassemblySelection
+          ? { configurationDisassemblySelection: context.configurationDisassemblySelection }
           : {}),
       };
       const response = await fetch("/api/assistant/chat", {
@@ -1019,6 +1028,72 @@ export function AssistantHome({
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
+  function replaceConfigurationDisassemblyPreview(
+    messageId: string,
+    block: AssistantConfigurationDisassemblyResultBlock,
+  ) {
+    setMessages((current) => current.map((message) => message.id === messageId
+      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      : message));
+  }
+
+  async function handleConfigurationDisassemblyConfirmation(
+    messageId: string,
+    block: AssistantConfigurationDisassemblyPreviewBlock,
+  ) {
+    if (actionInFlightRef.current || requestInFlightRef.current || isInteractionLocked ||
+      block.state !== "pending" || !block.proposalToken) return;
+    actionInFlightRef.current = true;
+    setConfirmingConfigurationDisassemblyMessageId(messageId);
+    setIsPending(true);
+    setFeedback(null);
+    try {
+      const response = await fetch("/api/assistant/actions/configuration-disassembly", {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposalToken: block.proposalToken }),
+      });
+      const body: unknown = await response.json().catch(() => null);
+      const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+      const parsed = parseAssistantStructuredBlock(record?.block);
+      if (!response.ok || !parsed || parsed.kind !== "configuration_disassembly_result") {
+        throw new Error("invalid_configuration_disassembly_result");
+      }
+      replaceConfigurationDisassemblyPreview(messageId, parsed);
+      if (parsed.outcome === "success") startStockRefresh(() => router.refresh());
+    } catch {
+      replaceConfigurationDisassemblyPreview(messageId, {
+        kind: "configuration_disassembly_result", action: "configuration_disassembly", outcome: "error",
+        title: "Resultado não confirmado", message: "Não foi possível confirmar o resultado. Confira o Estoque antes de tentar novamente.",
+        target: null, quantity: 0, mountedStockBefore: null, mountedStockAfter: null,
+        servoStockBefore: null, servoStockAfter: null, installationKitStockBefore: null,
+        installationKitStockAfter: null, occurredAt: null, reference: null, idempotentReplay: false,
+        actions: [{ kind: "link", label: "Abrir no Estoque", href: "/estoque" }],
+      });
+    } finally {
+      actionInFlightRef.current = false;
+      setConfirmingConfigurationDisassemblyMessageId(null);
+      shouldRestoreFocusRef.current = true;
+      setIsPending(false);
+    }
+  }
+
+  function handleConfigurationDisassemblyCancellation(
+    messageId: string,
+    block: AssistantConfigurationDisassemblyPreviewBlock,
+  ) {
+    if (actionInFlightRef.current || isInteractionLocked || block.state !== "pending") return;
+    replaceConfigurationDisassemblyPreview(messageId, {
+      kind: "configuration_disassembly_result", action: "configuration_disassembly", outcome: "cancelled",
+      title: "Prévia cancelada", message: "Nenhuma desmontagem foi executada.", target: null,
+      quantity: 0, mountedStockBefore: null, mountedStockAfter: null, servoStockBefore: null,
+      servoStockAfter: null, installationKitStockBefore: null, installationKitStockAfter: null,
+      occurredAt: null, reference: null, idempotentReplay: false, actions: [],
+    });
+    shouldRestoreFocusRef.current = true;
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1302,6 +1377,13 @@ export function AssistantHome({
                               setFeedback("Montagem cancelada.");
                               return;
                             }
+                            if (context?.cancelConfigurationDisassembly) {
+                              setMessages((current) => current.map((message) => message.id === chatMessage.id
+                                ? { ...message, content: "Prévia cancelada. Nenhuma desmontagem foi executada.", structuredBlock: undefined }
+                                : message));
+                              setFeedback("Desmontagem cancelada.");
+                              return;
+                            }
                             void sendAssistantMessage(prompt, context);
                           }}
                           onPickupConfirm={(block) => {
@@ -1348,6 +1430,13 @@ export function AssistantHome({
                             handleConfigurationAssemblyCancellation(chatMessage.id, block);
                           }}
                           confirmingConfigurationAssembly={confirmingConfigurationAssemblyMessageId === chatMessage.id}
+                          onConfigurationDisassemblyConfirm={(block) => {
+                            void handleConfigurationDisassemblyConfirmation(chatMessage.id, block);
+                          }}
+                          onConfigurationDisassemblyCancel={(block) => {
+                            handleConfigurationDisassemblyCancellation(chatMessage.id, block);
+                          }}
+                          confirmingConfigurationDisassembly={confirmingConfigurationDisassemblyMessageId === chatMessage.id}
                         />
                       ) : (
                         <AssistantMessageContent

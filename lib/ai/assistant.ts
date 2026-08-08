@@ -37,6 +37,7 @@ import { routeSupplierOrderStockEntryAction } from "@/lib/ai/supplier-order-stoc
 import { routeManualStockEntryAction } from "@/lib/ai/manual-stock-entry-routing";
 import { routeManualStockOutputAction } from "@/lib/ai/manual-stock-output-routing";
 import { routeConfigurationAssemblyAction } from "@/lib/ai/configuration-assembly-routing";
+import { routeConfigurationDisassemblyAction } from "@/lib/ai/configuration-disassembly-routing";
 import {
   createAssistantSupplierOrderStockEntryPreview,
 } from "@/lib/assistant-supplier-order-stock-entry";
@@ -54,6 +55,10 @@ import {
   createAssistantConfigurationAssemblyPreview,
   createAssistantConfigurationAssemblyPreviewFromSelection,
 } from "@/lib/assistant-configuration-assembly";
+import {
+  createAssistantConfigurationDisassemblyPreview,
+  createAssistantConfigurationDisassemblyPreviewFromSelection,
+} from "@/lib/assistant-configuration-disassembly";
 import { routePurchaseRecommendationQuestion } from "@/lib/ai/purchase-recommendation-routing";
 import {
   customerFacingInventoryLabels,
@@ -67,6 +72,7 @@ import type {
   AssistantStockEntrySelection,
   AssistantStockOutputSelection,
   AssistantConfigurationAssemblySelection,
+  AssistantConfigurationDisassemblySelection,
   AssistantCommercialConfigurationResult,
   AssistantInventoryItemSummaryBlock,
   AssistantInventoryItemSummaryTarget,
@@ -932,12 +938,14 @@ export async function answerAssistantQuestion(
   stockEntrySelection: AssistantStockEntrySelection | null,
   stockOutputSelection: AssistantStockOutputSelection | null,
   configurationAssemblySelection: AssistantConfigurationAssemblySelection | null,
+  configurationDisassemblySelection: AssistantConfigurationDisassemblySelection | null,
 ): Promise<AssistantChatSuccess> {
   const supplierOrderStockEntryRoute =
     routeSupplierOrderStockEntryAction(message);
   const manualStockEntryRoute = routeManualStockEntryAction(message);
   const manualStockOutputRoute = routeManualStockOutputAction(message);
   const configurationAssemblyRoute = routeConfigurationAssemblyAction(message);
+  const configurationDisassemblyRoute = routeConfigurationDisassemblyAction(message);
   const pickupRoute = routeSupplierOrderPickupAction(message);
   const purchaseRecommendationRoute =
     routePurchaseRecommendationQuestion(message);
@@ -1014,6 +1022,40 @@ export async function answerAssistantQuestion(
   if (configurationAssemblySelection) {
     return createAssistantConfigurationAssemblyPreviewFromSelection(
       configurationAssemblySelection,
+      { userId, profileName },
+    );
+  }
+
+  if (configurationDisassemblySelection) {
+    return createAssistantConfigurationDisassemblyPreviewFromSelection(
+      configurationDisassemblySelection,
+      { userId, profileName },
+    );
+  }
+
+  if (configurationDisassemblyRoute.kind === "BUTTON_CONFIRMATION_TEXT") {
+    return { message: "Use o botão de confirmação da prévia. Nenhuma operação foi executada por esta mensagem." };
+  }
+
+  if (configurationDisassemblyRoute.kind === "CANCEL") {
+    return { message: "Desmontagem cancelada. Nenhuma operação foi executada." };
+  }
+
+  if (configurationDisassemblyRoute.kind === "INVALID") {
+    return { message: configurationDisassemblyRoute.message };
+  }
+
+  if (configurationDisassemblyRoute.kind === "ACTION") {
+    if (configurationDisassemblyRoute.request.contextual && !lastItemQuery) {
+      return { message: "Informe o Cód. do Servo com kit que deseja desmontar." };
+    }
+    return createAssistantConfigurationDisassemblyPreview(
+      {
+        ...configurationDisassemblyRoute.request,
+        targetQuery: configurationDisassemblyRoute.request.contextual
+          ? lastItemQuery!
+          : configurationDisassemblyRoute.request.targetQuery,
+      },
       { userId, profileName },
     );
   }

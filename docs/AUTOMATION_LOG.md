@@ -298,3 +298,16 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Atualização:** foco da janela e intervalo de 60 segundos apenas quando a aba está visível; nenhuma atualização global com `router.refresh()`, para não interromper formulários operacionais.
 - **Segurança:** endpoint interno somente leitura exige sessão e perfil interno ativo; Portal Safisa não recebe o sino; nenhum service role, estado de lido, tabela de notificações, ação mutável, migration, acesso remoto ou operação real.
 - **Próxima ação:** concluir validações locais, criar PR draft e aguardar revisão visual humana.
+
+## 2026-08-08 — NK-SAF-004 / NK-DIS-002
+
+- **NK-SAF-004:** `DONE`. PR #12 mesclado em `main`; produção e Vercel green;
+  alertas de retirada Safisa permanecem derivados, sem migration.
+- **NK-DIS-002:** implementação local iniciada em `agent/assistant-disassembly` a
+  partir de `a6aa8f28eb7b20e82d7ce963b97064979db1b794`.
+- **Arquitetura:** desmontagem é ação independente de montagem, com intenção
+  determinística, proposta HMAC curta, confirmação exclusiva por botão, rota
+  POST fixa e contrato oficial `disassembleCommercialConfiguration`.
+- **Segurança:** aliases identificam a configuração física única; proposalToken,
+  idempotency key e saldo não são persistidos na conversa; texto não executa.
+- **Estado novo:** `WAITING_HUMAN_VISUAL_REVIEW` após validações locais.

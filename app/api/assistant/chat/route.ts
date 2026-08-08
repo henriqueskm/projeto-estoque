@@ -7,6 +7,7 @@ import {
   parseAssistantStockEntrySelection,
   parseAssistantStockOutputSelection,
   parseAssistantConfigurationAssemblySelection,
+  parseAssistantConfigurationDisassemblySelection,
   type AssistantChatError,
   type AssistantChatSuccess,
 } from "@/lib/assistant-types";
@@ -176,6 +177,7 @@ export async function POST(request: Request) {
   const rawStockEntrySelection = bodyRecord.stockEntrySelection;
   const rawStockOutputSelection = bodyRecord.stockOutputSelection;
   const rawConfigurationAssemblySelection = bodyRecord.configurationAssemblySelection;
+  const rawConfigurationDisassemblySelection = bodyRecord.configurationDisassemblySelection;
 
   if (
     bodyKeys.some(
@@ -188,7 +190,8 @@ export async function POST(request: Request) {
         key !== "inventoryAction" &&
         key !== "stockEntrySelection" &&
         key !== "stockOutputSelection" &&
-        key !== "configurationAssemblySelection",
+        key !== "configurationAssemblySelection" &&
+        key !== "configurationDisassemblySelection",
     ) ||
     !bodyKeys.includes("message")
   ) {
@@ -260,6 +263,10 @@ export async function POST(request: Request) {
     rawConfigurationAssemblySelection === undefined
       ? null
       : parseAssistantConfigurationAssemblySelection(rawConfigurationAssemblySelection);
+  const configurationDisassemblySelection =
+    rawConfigurationDisassemblySelection === undefined
+      ? null
+      : parseAssistantConfigurationDisassemblySelection(rawConfigurationDisassemblySelection);
 
   if (rawInventoryAction !== undefined && !inventoryAction) {
     return errorResponse("A opção selecionada não é válida.", 400);
@@ -272,6 +279,9 @@ export async function POST(request: Request) {
   }
   if (rawConfigurationAssemblySelection !== undefined && !configurationAssemblySelection) {
     return errorResponse("A opção de montagem selecionada não é válida.", 400);
+  }
+  if (rawConfigurationDisassemblySelection !== undefined && !configurationDisassemblySelection) {
+    return errorResponse("A opção de desmontagem selecionada não é válida.", 400);
   }
 
   try {
@@ -288,6 +298,7 @@ export async function POST(request: Request) {
       stockEntrySelection,
       stockOutputSelection,
       configurationAssemblySelection,
+      configurationDisassemblySelection,
     );
 
     return NextResponse.json<AssistantChatSuccess>(answer);
