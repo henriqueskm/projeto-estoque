@@ -353,7 +353,7 @@ export function AssistantHome({
       latestScrollTopRef.current = scrollTop;
       window.requestAnimationFrame(() => {
         conversation.scrollTo({
-          top: scrollTop > 0 ? scrollTop : conversation.scrollHeight,
+          top: scrollTop,
           behavior: "auto",
         });
       });

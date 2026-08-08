@@ -613,15 +613,15 @@ function DialogShell({
           onClose();
         }
       }}
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-2 pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] sm:p-4"
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] backdrop-blur-[2px] sm:p-6"
     >
       <div
-        className={`flex max-h-full w-full flex-col overflow-hidden rounded-2xl border border-brand-gold/35 bg-surface shadow-2xl ${
+        className={`nk-dialog-enter flex max-h-[min(48rem,calc(100dvh-1.5rem))] w-full flex-col overflow-hidden rounded-2xl border border-brand-charcoal/15 bg-surface shadow-[0_28px_90px_-36px_rgba(0,0,0,0.85)] ${
           wide ? "max-w-6xl" : "max-w-xl"
         }`}
       >
         <div
-          className={`relative z-20 flex shrink-0 items-start justify-between gap-3 overflow-visible border-b border-white/10 bg-brand-charcoal text-white ${
+          className={`relative z-20 flex shrink-0 items-start justify-between gap-3 overflow-visible border-b border-white/10 bg-gradient-to-br from-brand-charcoal to-brand-charcoal-soft text-white ${
             compactMobileHeader
               ? "px-3 py-2 sm:px-4 sm:py-3"
               : "px-4 py-3 sm:px-5 sm:py-4"
@@ -3534,7 +3534,7 @@ function OrderDetailsDialog({
 
       {hasFooterActions ? (
         <div
-          className={`grid shrink-0 gap-2 border-t border-border-neutral bg-white p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:flex sm:justify-end sm:p-3 ${
+          className={`grid shrink-0 gap-2 border-t border-border-neutral bg-app-background/95 p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:flex sm:justify-end sm:p-3 ${
             canMarkAll && canCreateStockEntry
               ? "grid-cols-2"
               : "grid-cols-1"
