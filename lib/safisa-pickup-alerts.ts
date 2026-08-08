@@ -2,24 +2,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import {
   groupSafisaPickupAlertLines,
-  type SafisaPickupAlert,
   type SafisaPickupAlertLine,
   type SafisaPickupAlertOrderSummary,
 } from "@/lib/safisa-pickup-alerts-contract";
+import {
+  safisaPickupAlertUnavailableMessage,
+  type SafisaPickupAlertLoadResult,
+  type SafisaPickupAlertsData,
+} from "@/lib/safisa-pickup-alert-state";
 
 type JsonRecord = Record<string, unknown>;
 
-type SafisaPickupAlertsResponse = {
-  alerts: SafisaPickupAlert[];
-  alertCount: number;
-  isComplete: boolean;
-};
+export type SafisaPickupAlertsResult = SafisaPickupAlertLoadResult;
 
-export type SafisaPickupAlertsResult =
-  | { data: SafisaPickupAlertsResponse; error: null }
-  | { data: SafisaPickupAlertsResponse; error: string };
-
-const emptyAlerts: SafisaPickupAlertsResponse = {
+const emptyAlerts: SafisaPickupAlertsData = {
   alerts: [],
   alertCount: 0,
   isComplete: true,
@@ -128,7 +124,7 @@ export async function loadSafisaPickupAlerts(
   if (rpcError) {
     return {
       data: emptyAlerts,
-      error: "Não foi possível atualizar as retiradas Safisa agora.",
+      error: safisaPickupAlertUnavailableMessage,
     };
   }
 
@@ -136,7 +132,7 @@ export async function loadSafisaPickupAlerts(
   if (!parsed) {
     return {
       data: emptyAlerts,
-      error: "Não foi possível interpretar as retiradas Safisa agora.",
+      error: safisaPickupAlertUnavailableMessage,
     };
   }
 
@@ -160,7 +156,7 @@ export async function loadSafisaPickupAlerts(
   if (summariesError) {
     return {
       data: emptyAlerts,
-      error: "Não foi possível atualizar as retiradas Safisa agora.",
+      error: safisaPickupAlertUnavailableMessage,
     };
   }
 

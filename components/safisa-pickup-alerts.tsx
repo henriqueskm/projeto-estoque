@@ -17,7 +17,15 @@ function orderLabel(count: number) {
 }
 
 export function SafisaPickupAlertBell() {
-  const { alerts, alertCount, isComplete, isRefreshing } =
+  const {
+    alerts,
+    alertCount,
+    error,
+    hasConfirmedData,
+    isComplete,
+    isRefreshing,
+    refreshAlerts,
+  } =
     useSafisaPickupAlerts();
   const [isOpen, setIsOpen] = useState(false);
   const panelId = useId();
@@ -52,7 +60,7 @@ export function SafisaPickupAlertBell() {
     };
   }, [isOpen]);
 
-  const badge = isComplete
+  const badge = isComplete && (hasConfirmedData || alertCount > 0)
     ? alertCount > 99
       ? "99+"
       : String(alertCount)
@@ -94,7 +102,9 @@ export function SafisaPickupAlertBell() {
             <div>
               <h2 className="text-sm font-black">Retiradas Safisa</h2>
               <p className="mt-0.5 text-xs font-semibold text-text-muted">
-                {alertCount
+                {error
+                  ? error
+                  : alertCount
                   ? isComplete
                     ? `${orderLabel(alertCount)} aguardando retirada`
                     : "Há Pedidos com unidades aguardando retirada."
@@ -155,6 +165,20 @@ export function SafisaPickupAlertBell() {
                 </article>
               ))}
             </div>
+          ) : error ? (
+            <div className="py-5">
+              <p className="text-center text-sm font-semibold text-text-muted">
+                Não foi possível confirmar o estado das retiradas Safisa agora.
+              </p>
+              <button
+                type="button"
+                onClick={() => void refreshAlerts()}
+                disabled={isRefreshing}
+                className="nk-focus mx-auto mt-3 inline-flex min-h-9 items-center rounded-lg border border-border-neutral px-3 text-xs font-black text-text-primary transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/25 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Tentar novamente
+              </button>
+            </div>
           ) : (
             <p className="py-5 text-center text-sm font-semibold text-text-muted">
               Nenhum Pedido aguardando retirada.
@@ -180,9 +204,10 @@ export function SafisaPickupAlertBell() {
 }
 
 export function SafisaPickupAlertHomeSummary() {
-  const { alerts, alertCount, isComplete } = useSafisaPickupAlerts();
+  const { alerts, alertCount, error, hasConfirmedData, isComplete } =
+    useSafisaPickupAlerts();
 
-  if (alertCount === 0) return null;
+  if (alertCount === 0 || (!hasConfirmedData && error)) return null;
 
   return (
     <section

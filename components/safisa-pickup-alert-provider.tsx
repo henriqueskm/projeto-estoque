@@ -10,11 +10,15 @@ import {
   type ReactNode,
 } from "react";
 import type { SafisaPickupAlertsResult } from "@/lib/safisa-pickup-alerts";
+import {
+  applySafisaPickupAlertRefreshFailure,
+  applySafisaPickupAlertRefreshSuccess,
+  initializeSafisaPickupAlertReadState,
+  type SafisaPickupAlertReadState,
+} from "@/lib/safisa-pickup-alert-state";
 
-type SafisaPickupAlertsContextValue = {
-  alerts: SafisaPickupAlertsResult["data"]["alerts"];
-  alertCount: number;
-  isComplete: boolean;
+type SafisaPickupAlertsContextValue = SafisaPickupAlertReadState["data"] &
+  Pick<SafisaPickupAlertReadState, "error" | "hasConfirmedData"> & {
   isRefreshing: boolean;
   refreshAlerts: () => Promise<void>;
 };
@@ -29,7 +33,9 @@ export function SafisaPickupAlertProvider({
   children: ReactNode;
   initialResult: SafisaPickupAlertsResult;
 }) {
-  const [data, setData] = useState(initialResult.data);
+  const [state, setState] = useState(() =>
+    initializeSafisaPickupAlertReadState(initialResult),
+  );
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshInFlightRef = useRef(false);
 
@@ -46,7 +52,10 @@ export function SafisaPickupAlertProvider({
         headers: { Accept: "application/json" },
       });
 
-      if (!response.ok) return;
+      if (!response.ok) {
+        setState((previous) => applySafisaPickupAlertRefreshFailure(previous));
+        return;
+      }
 
       const next = (await response.json()) as SafisaPickupAlertsResult["data"];
       if (
@@ -54,12 +63,13 @@ export function SafisaPickupAlertProvider({
         !Number.isSafeInteger(next.alertCount) ||
         typeof next.isComplete !== "boolean"
       ) {
+        setState((previous) => applySafisaPickupAlertRefreshFailure(previous));
         return;
       }
 
-      setData(next);
+      setState(applySafisaPickupAlertRefreshSuccess(next));
     } catch {
-      // Keep the most recent safe server state. Alert refreshes are non-blocking.
+      setState((previous) => applySafisaPickupAlertRefreshFailure(previous));
     } finally {
       refreshInFlightRef.current = false;
       setIsRefreshing(false);
@@ -87,9 +97,9 @@ export function SafisaPickupAlertProvider({
   return (
     <SafisaPickupAlertsContext.Provider
       value={{
-        alerts: data.alerts,
-        alertCount: data.alertCount,
-        isComplete: data.isComplete,
+        ...state.data,
+        error: state.error,
+        hasConfirmedData: state.hasConfirmedData,
         isRefreshing,
         refreshAlerts,
       }}

@@ -5,6 +5,12 @@ import {
   getSafisaPickupAlertKind,
   groupSafisaPickupAlertLines,
 } from "../lib/safisa-pickup-alerts-contract.ts";
+import {
+  applySafisaPickupAlertRefreshFailure,
+  applySafisaPickupAlertRefreshSuccess,
+  initializeSafisaPickupAlertReadState,
+  safisaPickupAlertUnavailableMessage,
+} from "../lib/safisa-pickup-alert-state.ts";
 
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -164,6 +170,71 @@ test("sorts fully ready orders before partial orders with stable recent ordering
   );
 });
 
+test("preserves an initial alert read error instead of treating it as confirmed zero", () => {
+  const state = initializeSafisaPickupAlertReadState({
+    data: { alerts: [], alertCount: 0, isComplete: true },
+    error: safisaPickupAlertUnavailableMessage,
+  });
+
+  assert.equal(state.hasConfirmedData, false);
+  assert.equal(state.error, safisaPickupAlertUnavailableMessage);
+  assert.equal(state.data.alertCount, 0);
+});
+
+test("clears the error only after a valid refresh response", () => {
+  const initial = initializeSafisaPickupAlertReadState({
+    data: { alerts: [], alertCount: 0, isComplete: true },
+    error: safisaPickupAlertUnavailableMessage,
+  });
+  const next = applySafisaPickupAlertRefreshSuccess({
+    alerts: [],
+    alertCount: 0,
+    isComplete: true,
+  });
+
+  assert.equal(initial.error, safisaPickupAlertUnavailableMessage);
+  assert.equal(next.error, null);
+  assert.equal(next.hasConfirmedData, true);
+});
+
+test("keeps the last confirmed alert data when a refresh fails", () => {
+  const previous = applySafisaPickupAlertRefreshSuccess({
+    alerts: groupSafisaPickupAlertLines([line("order-a", "1212", 4)], [summary()]),
+    alertCount: 1,
+    isComplete: true,
+  });
+  const failed = applySafisaPickupAlertRefreshFailure(previous);
+
+  assert.equal(failed.data.alertCount, 1);
+  assert.equal(failed.data.alerts[0]?.supplierOrderId, "order-a");
+  assert.equal(failed.hasConfirmedData, true);
+  assert.equal(failed.error, safisaPickupAlertUnavailableMessage);
+});
+
+test("keeps an initial read failure available to the panel without a false empty state", () => {
+  const alertsUi = read("components/safisa-pickup-alerts.tsx");
+  const state = initializeSafisaPickupAlertReadState({
+    data: { alerts: [], alertCount: 0, isComplete: true },
+    error: safisaPickupAlertUnavailableMessage,
+  });
+
+  assert.equal(state.hasConfirmedData, false);
+  assert.match(alertsUi, /error \? \(/);
+  assert.match(alertsUi, /Não foi possível confirmar o estado/);
+  assert.match(alertsUi, /Tentar novamente/);
+});
+
+test("keeps the normal empty state only for confirmed zero alerts", () => {
+  const state = initializeSafisaPickupAlertReadState({
+    data: { alerts: [], alertCount: 0, isComplete: true },
+    error: null,
+  });
+
+  assert.equal(state.hasConfirmedData, true);
+  assert.equal(state.error, null);
+  assert.equal(state.data.alertCount, 0);
+});
+
 test("renders a read-only internal bell, Home summary, and order navigation", () => {
   const alertsUi = read("components/safisa-pickup-alerts.tsx");
   const shell = read("components/app-sidebar.tsx");
@@ -176,6 +247,8 @@ test("renders a read-only internal bell, Home summary, and order navigation", ()
   assert.match(alertsUi, /Ver pedido/);
   assert.match(alertsUi, /Pronto para retirada/);
   assert.match(alertsUi, /Parcialmente pronto/);
+  assert.match(alertsUi, /Tentar novamente/);
+  assert.match(alertsUi, /Não foi possível confirmar o estado/);
   assert.doesNotMatch(alertsUi, /Retirar pedido|Cancelar pedido|Estoque/);
   assert.match(shell, /SafisaPickupAlertBell/);
   assert.match(home, /SafisaPickupAlertHomeSummary/);
@@ -190,6 +263,9 @@ test("refreshes only alert state on focus or a moderate visible interval", () =>
   assert.match(provider, /document\.visibilityState === "visible"/);
   assert.match(provider, /60_000/);
   assert.match(provider, /credentials: "same-origin"/);
+  assert.match(provider, /initializeSafisaPickupAlertReadState/);
+  assert.match(provider, /applySafisaPickupAlertRefreshFailure/);
+  assert.match(provider, /applySafisaPickupAlertRefreshSuccess/);
   assert.doesNotMatch(provider, /router\.refresh/);
   assert.match(route, /require.*profile|from\("profiles"\)/i);
   assert.match(route, /Cache-Control": "no-store"/);
