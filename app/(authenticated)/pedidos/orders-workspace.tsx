@@ -36,6 +36,7 @@ import {
 } from "@/components/icons";
 import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
+import { getSafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type {
   CreateSupplierOrderInput,
@@ -337,6 +338,31 @@ function StatusBadge({
   );
 }
 
+function SafisaPickupBadge({ order }: { order: SupplierOrderSummary }) {
+  const kind = getSafisaPickupAlertKind({
+    orderedQuantity: order.orderedQuantity,
+    cancelledQuantity: order.cancelledQuantity,
+    readyQuantity: order.readyQuantity,
+    readyWaitingPickupQuantity: order.readyWaitingPickupQuantity,
+  });
+
+  if (!kind) return null;
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-1.5 py-0.5 text-[0.58rem] font-black ${
+        kind === "FULLY_READY"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+          : "border-sky-200 bg-sky-50 text-sky-900"
+      }`}
+    >
+      {kind === "FULLY_READY"
+        ? "Pronto para retirada"
+        : "Há unidades prontas"}
+    </span>
+  );
+}
+
 function ClosureBadge({
   closureKind,
   compact = false,
@@ -402,7 +428,10 @@ function MobileOrderSituation({ order }: { order: SupplierOrderSummary }) {
 
   return (
     <div className="min-w-0">
-      <StatusBadge status={order.status} compact />
+      <div className="flex flex-wrap items-center gap-1">
+        <StatusBadge status={order.status} compact />
+        <SafisaPickupBadge order={order} />
+      </div>
       <p className="mt-1 text-[0.68rem] leading-tight font-black text-text-primary">
         {quantityFormatter.format(order.pickedQuantity)}/
         {quantityFormatter.format(order.orderedQuantity)}
@@ -3269,6 +3298,12 @@ function OrderDetailsDialog({
               canceladas.
             </p>
           ) : null}
+          {order.readyWaitingPickupQuantity > 0 ? (
+            <p className="mt-1.5 text-xs font-bold text-emerald-800">
+              Pronto aguardando retirada: {" "}
+              {quantityFormatter.format(order.readyWaitingPickupQuantity)}
+            </p>
+          ) : null}
         </section>
 
         {readOnly ? (
@@ -3693,6 +3728,13 @@ function ActiveSupplierOrdersWorkspace({
     });
 
     return result.sort((first, second) => {
+      const firstHasReadyPickup = first.readyWaitingPickupQuantity > 0;
+      const secondHasReadyPickup = second.readyWaitingPickupQuantity > 0;
+
+      if (firstHasReadyPickup !== secondHasReadyPickup) {
+        return firstHasReadyPickup ? -1 : 1;
+      }
+
       if (sort === "NUMBER") {
         return compareText(first.negotiationNumber, second.negotiationNumber);
       }
@@ -4077,6 +4119,9 @@ function ActiveSupplierOrdersWorkspace({
                     </td>
                     <td className="px-2 py-2.5 sm:px-4 sm:py-3">
                       <StatusBadge status={order.status} />
+                      <div className="mt-1">
+                        <SafisaPickupBadge order={order} />
+                      </div>
                       {order.status === "COMPLETED" ? (
                         <span className="mt-1 block text-[0.68rem] font-bold text-emerald-800">
                           Aguardando finalização

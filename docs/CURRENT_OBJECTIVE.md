@@ -5,8 +5,8 @@
 - **Prioridade:** alta para a operação interna do piloto
 - **Estado:** WAITING_HUMAN_REVIEW
 - **Classificação:** A — dados e contratos oficiais existentes são suficientes
-- **Branch de execução:** `agent/safisa-pickup-alerts`
-- **Base:** `origin/main` em `3bc7ffc69583d6f97056d477ced59b8486422863`
+- **Branch de execução:** `agent/safisa-pickup-alerts-implementation`
+- **Base:** `origin/main` em `7783b436072b0864fc29537c96dc6eb01b4f7477`
 - **Dependência concluída:** NK-SAF-003, PR #10 mesclado e MIG-SAF-004 aplicada em produção
 
 ## Encerramento de NK-SAF-003
@@ -72,20 +72,24 @@ passaria a ser necessária para preferências persistentes por usuário, como
   painel ou acesso ao contrato interno; não há service role no cliente nem query
   livre.
 
-## Plano posterior, após revisão humana
+## Implementação local A–E
 
 1. **Fase A — dados/contratos:** adaptador server-side tipado sobre a RPC
-   existente, agrupamento por Pedido, limites e ordenação sem N+1.
-2. **Fase B — sino e painel global:** contador acessível, foco, Escape e links
-   internos validados.
-3. **Fase C — Dashboard:** bloco condicional e compacto.
-4. **Fase D — Pedidos:** priorização, badge e deep-link para o detalhe.
-5. **Fase E — testes:** estados vazio/parcial/total/concluído/cancelado,
-   responsividade e atualizações concorrentes.
+   oficial, enriquecido por uma única leitura batelada de resumos para calcular
+   o agregado do Pedido sem N+1.
+2. **Fase B — sino e painel global:** contador de Pedidos ativos, painel somente
+   leitura, foco, Escape, clique externo e links internos.
+3. **Fase C — Home:** bloco compacto, condicional e limitado aos três primeiros
+   Pedidos; não reserva espaço quando vazio.
+4. **Fase D — Pedidos:** priorização estável de retirada pronta, badge textual e
+   indicador no detalhe; o fluxo oficial de retirada permanece inalterado.
+5. **Fase E — atualização e testes:** atualização do estado do sino em foco e a
+   cada 60 segundos somente com a aba visível, sem `router.refresh()` global;
+   testes unitários e de integração estática aguardam validação visual humana.
 
 ## Fora do escopo desta fase
 
-- implementação de UI, Server Actions, RPCs ou migrations;
+- ações mutáveis, Server Actions, RPCs novas ou migrations;
 - qualquer escrita remota, operação real, alteração de Vercel ou merge.
 
-**Ponto de parada:** `WAITING_HUMAN_REVIEW`.
+**Ponto de parada:** `WAITING_HUMAN_REVIEW` após validação visual humana.

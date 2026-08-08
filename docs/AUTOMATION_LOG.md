@@ -287,3 +287,14 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Decisão técnica:** `NO_MIGRATION_REQUIRED`; persistência somente será reavaliada se forem aprovados estados individuais persistentes, como lido/não lido ou dismiss.
 - **Escopo desta fase:** nenhuma implementação, migration, consulta ou escrita remota, alteração de Vercel, operação real ou merge.
 - **Próxima ação:** revisão humana da UX, do ciclo de alerta e do plano de implementação A–E.
+
+## 2026-08-08 — NK-SAF-004 implementação A–E
+
+- **Estado anterior:** `WAITING_HUMAN_REVIEW` após auditoria documental.
+- **Estado novo:** `WAITING_HUMAN_REVIEW` aguardando validação visual humana.
+- **Branch:** `agent/safisa-pickup-alerts-implementation`, a partir de `origin/main` em `7783b436072b0864fc29537c96dc6eb01b4f7477`.
+- **Dados:** `public.list_safisa_ready_pickup_alerts(500)` é a fonte oficial por linha; uma leitura batelada de `supplier_order_summaries` complementa somente os agregados necessários para distinguir Pedido total e parcialmente preparado, sem N+1.
+- **Interface:** sino interno no shell desktop/mobile, painel somente leitura e navegável, bloco condicional na Home, priorização/badge em Pedidos e indicação da quantidade pronta aguardando retirada no detalhe.
+- **Atualização:** foco da janela e intervalo de 60 segundos apenas quando a aba está visível; nenhuma atualização global com `router.refresh()`, para não interromper formulários operacionais.
+- **Segurança:** endpoint interno somente leitura exige sessão e perfil interno ativo; Portal Safisa não recebe o sino; nenhum service role, estado de lido, tabela de notificações, ação mutável, migration, acesso remoto ou operação real.
+- **Próxima ação:** concluir validações locais, criar PR draft e aguardar revisão visual humana.
