@@ -38,6 +38,7 @@ import { routeManualStockEntryAction } from "@/lib/ai/manual-stock-entry-routing
 import { routeManualStockOutputAction } from "@/lib/ai/manual-stock-output-routing";
 import { routeConfigurationAssemblyAction } from "@/lib/ai/configuration-assembly-routing";
 import { routeConfigurationDisassemblyAction } from "@/lib/ai/configuration-disassembly-routing";
+import { routeSupplierOrderFinalizationAction } from "@/lib/ai/supplier-order-finalization-routing";
 import {
   createAssistantSupplierOrderStockEntryPreview,
 } from "@/lib/assistant-supplier-order-stock-entry";
@@ -59,6 +60,7 @@ import {
   createAssistantConfigurationDisassemblyPreview,
   createAssistantConfigurationDisassemblyPreviewFromSelection,
 } from "@/lib/assistant-configuration-disassembly";
+import { createAssistantSupplierOrderFinalizationPreview } from "@/lib/assistant-supplier-order-finalization";
 import { routePurchaseRecommendationQuestion } from "@/lib/ai/purchase-recommendation-routing";
 import {
   customerFacingInventoryLabels,
@@ -946,6 +948,7 @@ export async function answerAssistantQuestion(
   const manualStockOutputRoute = routeManualStockOutputAction(message);
   const configurationAssemblyRoute = routeConfigurationAssemblyAction(message);
   const configurationDisassemblyRoute = routeConfigurationDisassemblyAction(message);
+  const supplierOrderFinalizationRoute = routeSupplierOrderFinalizationAction(message);
   const pickupRoute = routeSupplierOrderPickupAction(message);
   const purchaseRecommendationRoute =
     routePurchaseRecommendationQuestion(message);
@@ -1029,6 +1032,25 @@ export async function answerAssistantQuestion(
   if (configurationDisassemblySelection) {
     return createAssistantConfigurationDisassemblyPreviewFromSelection(
       configurationDisassemblySelection,
+      { userId, profileName },
+    );
+  }
+
+  if (supplierOrderFinalizationRoute.kind === "BUTTON_CONFIRMATION_TEXT") {
+    return { message: "Use o botão Confirmar finalização na prévia. Nenhum Pedido foi finalizado por esta mensagem." };
+  }
+
+  if (supplierOrderFinalizationRoute.kind === "CANCEL") {
+    return { message: "Finalização cancelada. Nenhum Pedido foi alterado." };
+  }
+
+  if (supplierOrderFinalizationRoute.kind === "INVALID") {
+    return { message: supplierOrderFinalizationRoute.message };
+  }
+
+  if (supplierOrderFinalizationRoute.kind === "ACTION") {
+    return createAssistantSupplierOrderFinalizationPreview(
+      supplierOrderFinalizationRoute.request,
       { userId, profileName },
     );
   }

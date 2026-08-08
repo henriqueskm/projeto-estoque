@@ -299,6 +299,23 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Segurança:** endpoint interno somente leitura exige sessão e perfil interno ativo; Portal Safisa não recebe o sino; nenhum service role, estado de lido, tabela de notificações, ação mutável, migration, acesso remoto ou operação real.
 - **Próxima ação:** concluir validações locais, criar PR draft e aguardar revisão visual humana.
 
+## 2026-08-08 — NK-ORD-004
+
+- **NK-DIS-002:** `DONE`; PR #13 mesclado, validação visual aprovada e
+  Vercel/main green, sem migration necessária.
+- **Hardening técnico:** a cobertura local passou a exercitar resolução,
+  prévia, token, confirmação mockada, replay, conflito e falha de releitura;
+  a releitura também rejeita versão ou elegibilidade alteradas antes de chamar
+  a ação oficial.
+- **Contrato oficial:** `public.finalize_supplier_order(uuid, timestamptz, text,
+  uuid)` exige Pedido `COMPLETED` sem retirada pendente, aplica lock do Pedido e
+  linhas, compara `updated_at` integral e registra idempotência/evento.
+- **Implementação:** intenção determinística, prévia HMAC curta, confirmação
+  exclusiva por botão, endpoint POST fixo e resultado estruturado para a
+  finalização; `finalization_note` permanece `null`.
+- **Estado novo:** `WAITING_HUMAN_VISUAL_REVIEW`; nenhuma migration, escrita
+  remota ou finalização real foi executada.
+
 ## 2026-08-08 — NK-SAF-004 / NK-DIS-002
 
 - **NK-SAF-004:** `DONE`. PR #12 mesclado em `main`; produção e Vercel green;

@@ -55,6 +55,8 @@ import {
   type AssistantConfigurationDisassemblySelection,
   type AssistantConfigurationDisassemblyPreviewBlock,
   type AssistantConfigurationDisassemblyResultBlock,
+  type AssistantSupplierOrderFinalizationPreviewBlock,
+  type AssistantSupplierOrderFinalizationResultBlock,
 } from "@/lib/assistant-types";
 import type { StockSummary } from "@/lib/home-data";
 
@@ -190,6 +192,8 @@ export function AssistantHome({
   const [confirmingConfigurationAssemblyMessageId, setConfirmingConfigurationAssemblyMessageId] =
     useState<string | null>(null);
   const [confirmingConfigurationDisassemblyMessageId, setConfirmingConfigurationDisassemblyMessageId] =
+    useState<string | null>(null);
+  const [confirmingSupplierOrderFinalizationMessageId, setConfirmingSupplierOrderFinalizationMessageId] =
     useState<string | null>(null);
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -1094,6 +1098,66 @@ export function AssistantHome({
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
+  function replaceSupplierOrderFinalizationPreview(
+    messageId: string,
+    block: AssistantSupplierOrderFinalizationResultBlock,
+  ) {
+    setMessages((current) => current.map((message) => message.id === messageId
+      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      : message));
+  }
+
+  async function handleSupplierOrderFinalizationConfirmation(
+    messageId: string,
+    block: AssistantSupplierOrderFinalizationPreviewBlock,
+  ) {
+    if (actionInFlightRef.current || requestInFlightRef.current || isInteractionLocked ||
+      block.state !== "pending" || !block.proposalToken) return;
+    actionInFlightRef.current = true;
+    setConfirmingSupplierOrderFinalizationMessageId(messageId);
+    setIsPending(true);
+    setFeedback(null);
+    try {
+      const response = await fetch("/api/assistant/actions/supplier-order-finalization", {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proposalToken: block.proposalToken }),
+      });
+      const body: unknown = await response.json().catch(() => null);
+      const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+      const parsed = parseAssistantStructuredBlock(record?.block);
+      if (!response.ok || !parsed || parsed.kind !== "supplier_order_finalization_result") {
+        throw new Error("invalid_supplier_order_finalization_result");
+      }
+      replaceSupplierOrderFinalizationPreview(messageId, parsed);
+      if (parsed.outcome === "success") startStockRefresh(() => router.refresh());
+    } catch {
+      replaceSupplierOrderFinalizationPreview(messageId, {
+        kind: "supplier_order_finalization_result", action: "supplier_order_finalization", outcome: "error",
+        title: "Resultado não confirmado", message: "Não foi possível confirmar a finalização. Confira o Pedido antes de tentar novamente.",
+        order: null, occurredAt: null, idempotentReplay: false, actions: [{ kind: "link", label: "Abrir Pedidos", href: "/pedidos" }],
+      });
+    } finally {
+      actionInFlightRef.current = false;
+      setConfirmingSupplierOrderFinalizationMessageId(null);
+      shouldRestoreFocusRef.current = true;
+      setIsPending(false);
+    }
+  }
+
+  function handleSupplierOrderFinalizationCancellation(
+    messageId: string,
+    block: AssistantSupplierOrderFinalizationPreviewBlock,
+  ) {
+    if (actionInFlightRef.current || isInteractionLocked || block.state !== "pending") return;
+    replaceSupplierOrderFinalizationPreview(messageId, {
+      kind: "supplier_order_finalization_result", action: "supplier_order_finalization", outcome: "cancelled",
+      title: "Prévia cancelada", message: "Nenhum Pedido foi finalizado.", order: block.order,
+      occurredAt: null, idempotentReplay: false, actions: [],
+    });
+    shouldRestoreFocusRef.current = true;
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1437,6 +1501,13 @@ export function AssistantHome({
                             handleConfigurationDisassemblyCancellation(chatMessage.id, block);
                           }}
                           confirmingConfigurationDisassembly={confirmingConfigurationDisassemblyMessageId === chatMessage.id}
+                          onSupplierOrderFinalizationConfirm={(block) => {
+                            void handleSupplierOrderFinalizationConfirmation(chatMessage.id, block);
+                          }}
+                          onSupplierOrderFinalizationCancel={(block) => {
+                            handleSupplierOrderFinalizationCancellation(chatMessage.id, block);
+                          }}
+                          confirmingSupplierOrderFinalization={confirmingSupplierOrderFinalizationMessageId === chatMessage.id}
                         />
                       ) : (
                         <AssistantMessageContent

@@ -4,7 +4,7 @@ import {
   parseAssistantStructuredBlock,
   type AssistantStructuredBlock,
 } from "@/lib/assistant-types";
-import { expireStockEntryPreview, expireSupplierOrderPickupPreview } from "@/lib/ai/assistant-action-persistence";
+import { expireStockEntryPreview, expireSupplierOrderFinalizationPreview, expireSupplierOrderPickupPreview } from "@/lib/ai/assistant-action-persistence";
 
 export const assistantSessionVersion = 1;
 export const assistantSessionStoragePrefix =
@@ -268,6 +268,8 @@ function sanitizeStructuredBlock(
         block: expireSupplierOrderPickupPreview(block),
         mediaReferences: [],
       };
+    case "supplier_order_finalization_preview":
+      return { block: expireSupplierOrderFinalizationPreview(block), mediaReferences: [] };
     case "supplier_order_stock_entry_preview":
     case "manual_stock_entry_preview":
     case "manual_stock_output_preview":
@@ -279,6 +281,7 @@ function sanitizeStructuredBlock(
     case "manual_stock_output_result":
     case "configuration_assembly_result":
     case "configuration_disassembly_result":
+    case "supplier_order_finalization_result":
       return { block, mediaReferences: [] };
     case "assistant_action_result":
       return { block, mediaReferences: [] };
