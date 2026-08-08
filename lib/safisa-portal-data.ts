@@ -6,6 +6,7 @@ import type {
   SafisaOrderLine,
   SafisaOrderList,
   SafisaOrderSummary,
+  SafisaPortalOrderState,
   SafisaReadinessStatus,
 } from "@/lib/safisa-portal-types";
 
@@ -55,6 +56,11 @@ function closureKind(value: unknown): SafisaClosureKind {
   throw new SafisaPortalDataError("Situação de encerramento inválida.");
 }
 
+function portalState(value: unknown): SafisaPortalOrderState {
+  if (value === "ACTIVE" || value === "COMPLETED") return value;
+  throw new SafisaPortalDataError("SituaÃ§Ã£o do portal invÃ¡lida.");
+}
+
 function boolean(value: unknown, field: string): boolean {
   if (typeof value !== "boolean") {
     throw new SafisaPortalDataError(`Resposta inválida no campo ${field}.`);
@@ -79,6 +85,7 @@ function parseSummary(value: unknown): SafisaOrderSummary {
     ),
     readinessStatus: readinessStatus(value.readiness_status),
     closureKind: closureKind(value.closure_kind),
+    portalState: portalState(value.portal_state),
     isReadOnly: boolean(value.is_read_only, "is_read_only"),
     updatedAt: requiredString(value.updated_at, "updated_at"),
   };
@@ -145,8 +152,10 @@ function throwRpcError(error: PostgrestError): never {
 
 export async function listSafisaOrders(
   supabase: SupabaseClient,
+  state: SafisaPortalOrderState = "ACTIVE",
 ): Promise<SafisaOrderList> {
-  const { data, error } = await supabase.rpc("list_safisa_authorized_orders", {
+  const { data, error } = await supabase.rpc("list_safisa_orders", {
+    p_state: state,
     p_limit: 100,
     p_offset: 0,
   });
@@ -166,7 +175,7 @@ export async function getSafisaOrder(
   supabase: SupabaseClient,
   supplierOrderId: string,
 ): Promise<SafisaOrderDetail> {
-  const { data, error } = await supabase.rpc("get_safisa_authorized_order", {
+  const { data, error } = await supabase.rpc("get_safisa_order", {
     p_supplier_order_id: supplierOrderId,
   });
   if (error) throwRpcError(error);
@@ -187,6 +196,7 @@ export async function getSafisaOrder(
     ),
     readinessStatus: readinessStatus(data.readiness_status),
     closureKind: closureKind(data.closure_kind),
+    portalState: portalState(data.portal_state),
     isReadOnly: boolean(data.is_read_only, "is_read_only"),
     updatedAt: requiredString(data.updated_at, "updated_at"),
     lines: data.lines.map(parseLine),

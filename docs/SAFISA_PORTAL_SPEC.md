@@ -385,3 +385,31 @@ O domínio de Pedidos e as RPCs Safisa agora fornecem a base necessária ao Port
 Safisa. O MVP foi implementado e validado somente contra fixtures locais; contas
 Safisa reais, memberships, publicação de Pedidos e o piloto continuam dependentes
 de provisionamento administrativo e revisão humana posterior.
+
+## NK-SAF-003 — ciclo automático por Pedido
+
+DEC-SAF-010 supersede as decisões anteriores de publicação explícita e de
+transição legado (DEC-SAF-003 e DEC-SAF-009), que permanecem neste documento
+somente como histórico da implantação inicial. Safisa é o único fornecedor:
+todo `supplier_order` é automaticamente Safisa-managed, sem criar ou consultar
+uma linha de `safisa_order_authorizations` para decidir visibilidade, alertas ou
+retirada. A tabela e suas RPCs de publicação/revogação permanecem deprecadas por
+compatibilidade e auditoria, sem apagar seus registros históricos.
+
+O Portal usa os leitores semânticos `list_safisa_orders` e
+`get_safisa_order`. Um Pedido não cancelado fica **Em andamento** quando
+`waiting_pickup_quantity > 0` e fica **Concluído** (somente leitura) quando esse
+valor é zero; `stocked_quantity` não altera essa classificação. Pedidos
+cancelados não aparecem no Portal e permanecem no histórico interno.
+
+A prontidão é estrita para todos os Pedidos: `picked_quantity <= ready_quantity`.
+O botão interno “Retirar tudo que está pronto” limita-se ao pronto ainda não
+retirado. “Excluir pedido” é um cancelamento lógico auditado (DEC-SAF-011), exige
+motivo e nunca faz `DELETE` físico; ele é bloqueado enquanto houver
+`ready_quantity > picked_quantity`, para que unidades prontas não sejam
+descartadas silenciosamente.
+
+MIG-SAF-004 é incremental sobre MIG-SAF-001 e MIG-SAF-003, não cria
+autorizações, memberships, eventos ou backfill operacional de prontidão. A
+validação foi executada apenas em Supabase Local com fixtures fictícias,
+incluindo quatro disputas PostgreSQL reais. Nenhuma mutação remota ocorreu.
