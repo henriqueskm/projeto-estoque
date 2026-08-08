@@ -4,6 +4,7 @@ export type SafisaReadinessStatus =
   | "COMPLETELY_READY";
 
 export type SafisaClosureKind = "FINALIZED" | "CANCELLED" | null;
+export type SafisaPortalOrderState = "ACTIVE" | "COMPLETED";
 
 export type SafisaOrderSummary = {
   supplierOrderId: string;
@@ -17,6 +18,7 @@ export type SafisaOrderSummary = {
   readyWaitingPickupQuantity: number;
   readinessStatus: SafisaReadinessStatus;
   closureKind: SafisaClosureKind;
+  portalState: SafisaPortalOrderState;
   isReadOnly: boolean;
   updatedAt: string;
 };

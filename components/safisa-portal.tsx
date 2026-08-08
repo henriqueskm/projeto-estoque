@@ -22,7 +22,8 @@ import type {
 
 type Props = {
   displayName: string;
-  orders: SafisaOrderSummary[];
+  activeOrders: SafisaOrderSummary[];
+  completedOrders: SafisaOrderSummary[];
   selectedOrder: SafisaOrderDetail | null;
   loadMessage?: string;
 };
@@ -54,13 +55,17 @@ function Metric({ label, value, tone = "neutral" }: { label: string; value: numb
   );
 }
 
-export function SafisaPortal({ displayName, orders, selectedOrder, loadMessage }: Props) {
+export function SafisaPortal({ displayName, activeOrders, completedOrders, selectedOrder, loadMessage }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<SafisaActionResult | null>(null);
   const [confirmation, setConfirmation] = useState<PendingConfirmation>(null);
+  const [selectedList, setSelectedList] = useState<"ACTIVE" | "COMPLETED">(
+    selectedOrder?.portalState ?? "ACTIVE",
+  );
   const operationLock = useRef(false);
+  const orders = selectedList === "ACTIVE" ? activeOrders : completedOrders;
 
   function completeAction(lineId: string, action: () => Promise<SafisaActionResult>) {
     if (isPending || operationLock.current) return;
@@ -103,14 +108,19 @@ export function SafisaPortal({ displayName, orders, selectedOrder, loadMessage }
         <section aria-labelledby="orders-title" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <p className="text-xs font-black tracking-[0.14em] text-blue-800 uppercase">Pedidos publicados</p>
+              <p className="text-xs font-black tracking-[0.14em] text-blue-800 uppercase">Pedidos Safisa</p>
               <h1 id="orders-title" className="mt-1 text-2xl font-black tracking-tight text-slate-950">Pedidos Safisa</h1>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{orders.length}</span>
           </div>
 
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Situação dos pedidos">
+            <button type="button" role="tab" aria-selected={selectedList === "ACTIVE"} onClick={() => setSelectedList("ACTIVE")} className={`min-h-10 rounded-lg px-3 text-sm font-black focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${selectedList === "ACTIVE" ? "bg-white text-blue-900 shadow-sm" : "text-slate-600 hover:text-slate-950"}`}>Em andamento</button>
+            <button type="button" role="tab" aria-selected={selectedList === "COMPLETED"} onClick={() => setSelectedList("COMPLETED")} className={`min-h-10 rounded-lg px-3 text-sm font-black focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${selectedList === "COMPLETED" ? "bg-white text-blue-900 shadow-sm" : "text-slate-600 hover:text-slate-950"}`}>Concluídos</button>
+          </div>
+
           {orders.length === 0 ? (
-            <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm font-semibold text-slate-600">Nenhum pedido disponível no momento.</div>
+            <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm font-semibold text-slate-600">{selectedList === "ACTIVE" ? "Nenhum pedido em andamento no momento." : "Nenhum pedido concluído no momento."}</div>
           ) : (
             <div className="mt-4 space-y-3">
               {orders.map((order) => {
@@ -148,7 +158,7 @@ export function SafisaPortal({ displayName, orders, selectedOrder, loadMessage }
 
           {!selectedOrder ? (
             <div className="flex min-h-72 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-              <div><div aria-hidden="true" className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-blue-100 text-2xl font-black text-blue-800">✓</div><h2 className="mt-4 text-xl font-black text-slate-950">Selecione um pedido</h2><p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">Veja os itens publicados e informe as novas unidades que ficaram prontas.</p></div>
+              <div><div aria-hidden="true" className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-blue-100 text-2xl font-black text-blue-800">✓</div><h2 className="mt-4 text-xl font-black text-slate-950">Selecione um pedido</h2><p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">Veja os itens do pedido e informe as novas unidades que ficaram prontas.</p></div>
             </div>
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
