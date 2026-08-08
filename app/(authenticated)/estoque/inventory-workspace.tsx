@@ -116,7 +116,7 @@ const configurationStateDetails: Record<
 };
 
 const stickyHeaderClassName =
-  "sticky top-16 z-30 bg-brand-charcoal px-2 py-2 text-[0.62rem] font-bold uppercase tracking-wide text-slate-200 sm:px-3 sm:text-xs";
+  "sticky top-14 z-30 bg-brand-charcoal px-2 py-2 text-[0.62rem] font-bold uppercase tracking-wide text-slate-200 sm:px-3 sm:text-xs lg:top-0";
 
 function normalizeSearch(value: string) {
   return value

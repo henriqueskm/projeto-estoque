@@ -28,6 +28,7 @@ import { AssistantNewConversationDialog } from "@/components/assistant-new-conve
 import { AssistantRestoredMediaControl } from "@/components/assistant-restored-media-control";
 import { AssistantStructuredBlockView } from "@/components/assistant-structured-block";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
+import { SafisaPickupAlertHomeSummary } from "@/components/safisa-pickup-alerts";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
 import {
   assistantMessageMaxLength,
@@ -352,7 +353,7 @@ export function AssistantHome({
       latestScrollTopRef.current = scrollTop;
       window.requestAnimationFrame(() => {
         conversation.scrollTo({
-          top: scrollTop > 0 ? scrollTop : conversation.scrollHeight,
+          top: scrollTop,
           behavior: "auto",
         });
       });
@@ -1175,6 +1176,8 @@ export function AssistantHome({
                   }}
                 />
               </div>
+
+              <SafisaPickupAlertHomeSummary />
 
               <Link
                 href="/estoque"
