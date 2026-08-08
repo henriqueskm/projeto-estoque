@@ -613,17 +613,17 @@ function DialogShell({
           onClose();
         }
       }}
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] backdrop-blur-[2px] sm:p-6"
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 p-2 pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] backdrop-blur-[2px] sm:p-5"
     >
       <div
-        className={`nk-dialog-enter flex max-h-[min(48rem,calc(100dvh-1.5rem))] w-full flex-col overflow-hidden rounded-2xl border border-brand-charcoal/15 bg-surface shadow-[0_28px_90px_-36px_rgba(0,0,0,0.85)] ${
-          wide ? "max-w-6xl" : "max-w-xl"
+        className={`nk-dialog-enter flex max-h-[min(46rem,calc(100dvh-1rem))] w-full flex-col overflow-hidden rounded-2xl border border-brand-charcoal/15 bg-surface shadow-[0_28px_90px_-36px_rgba(0,0,0,0.85)] ${
+          wide ? "max-w-[61.25rem]" : "max-w-xl"
         }`}
       >
         <div
           className={`relative z-20 flex shrink-0 items-start justify-between gap-3 overflow-visible border-b border-white/10 bg-gradient-to-br from-brand-charcoal to-brand-charcoal-soft text-white ${
             compactMobileHeader
-              ? "px-3 py-2 sm:px-4 sm:py-3"
+              ? "px-3 py-2 sm:px-4 sm:py-2.5"
               : "px-4 py-3 sm:px-5 sm:py-4"
           }`}
         >
@@ -3256,7 +3256,7 @@ function OrderDetailsDialog({
         </div>
 
         <section
-          className="border-b border-border-neutral px-3 py-2.5 sm:px-4 sm:py-3"
+          className="border-b border-border-neutral px-3 py-2 sm:px-4 sm:py-2.5"
           aria-labelledby={`${titleId}-progress`}
         >
           <h3
@@ -3265,12 +3265,27 @@ function OrderDetailsDialog({
           >
             Progresso geral
           </h3>
-          <p className="text-xs font-bold text-text-primary sm:text-sm">
-            {quantityFormatter.format(order.orderedQuantity)} solicitadas ·{" "}
-            {quantityFormatter.format(order.pickedQuantity)} retiradas ·{" "}
-            {quantityFormatter.format(order.waitingPickupQuantity)} faltantes
-          </p>
-          <div className="mt-1.5 flex items-center justify-between gap-3 font-mono text-xs font-black text-text-primary">
+          <dl className="grid grid-cols-3 gap-2 text-xs sm:max-w-md sm:gap-3">
+            <div>
+              <dt className="font-semibold text-text-muted">Solicitado</dt>
+              <dd className="font-mono text-sm font-black text-text-primary sm:text-base">
+                {quantityFormatter.format(order.orderedQuantity)}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-text-muted">Retirado</dt>
+              <dd className="font-mono text-sm font-black text-emerald-700 sm:text-base">
+                {quantityFormatter.format(order.pickedQuantity)}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-text-muted">Faltam</dt>
+              <dd className="font-mono text-sm font-black text-amber-800 sm:text-base">
+                {quantityFormatter.format(order.waitingPickupQuantity)}
+              </dd>
+            </div>
+          </dl>
+          <div className="mt-1 flex items-center justify-between gap-3 font-mono text-[0.68rem] font-black text-text-primary sm:text-xs">
             <span>
               {quantityFormatter.format(order.pickedQuantity)}/
               {quantityFormatter.format(order.orderedQuantity)}
@@ -3296,13 +3311,14 @@ function OrderDetailsDialog({
             />
           </div>
           {order.cancelledQuantity > 0 ? (
-            <p className="mt-1.5 text-xs font-bold text-red-800">
+            <p className="mt-1 text-xs font-bold text-red-800">
               {quantityFormatter.format(order.cancelledQuantity)} unidades
               canceladas.
             </p>
           ) : null}
           {order.readyWaitingPickupQuantity > 0 ? (
-            <p className="mt-1.5 text-xs font-bold text-emerald-800">
+            <p className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-emerald-800">
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-600" />
               Pronto aguardando retirada: {" "}
               {quantityFormatter.format(order.readyWaitingPickupQuantity)}
             </p>
@@ -3350,7 +3366,7 @@ function OrderDetailsDialog({
         ) : null}
 
         <section
-          className="px-3 py-2.5 sm:px-4 sm:py-3"
+          className="px-3 py-2 sm:px-4 sm:py-2.5"
           aria-labelledby={`${titleId}-items`}
         >
           <h3
@@ -3377,18 +3393,21 @@ function OrderDetailsDialog({
                 item.compatibleKitImages.length > 0;
 
               return (
-                <article key={item.id} className="px-2.5 py-1.5 sm:px-3 sm:py-2">
+                <article key={item.id} className="px-2.5 py-2 sm:px-3 sm:py-2.5">
                   <div
-                    className={`grid min-w-0 items-center gap-x-1.5 ${
+                    className={`grid min-w-0 items-start gap-x-1.5 ${
                       hasImage
-                        ? "grid-cols-[auto_auto_auto_minmax(0,1fr)]"
-                        : "grid-cols-[auto_auto_minmax(0,1fr)]"
+                        ? "grid-cols-[auto_auto_auto_auto_minmax(0,1fr)]"
+                        : "grid-cols-[auto_auto_auto_minmax(0,1fr)]"
                     }`}
                   >
                     <span className="rounded-full bg-app-background px-1.5 py-0.5 text-[0.58rem] font-black text-text-muted uppercase sm:text-[0.62rem]">
                       {compactItemTypeLabel(item.itemTypeSnapshot)}
                     </span>
-                    <strong className="font-mono text-xs font-black text-text-primary sm:text-sm">
+                    <span className="pt-0.5 font-mono text-[0.62rem] font-bold text-text-muted sm:text-xs">
+                      Cód.
+                    </span>
+                    <strong className="pt-0.5 font-mono text-xs font-black text-text-primary sm:text-sm">
                       {code}
                     </strong>
                     {hasImage ? (
@@ -3398,7 +3417,7 @@ function OrderDetailsDialog({
                         compatibleKitImages={item.compatibleKitImages}
                       />
                     ) : null}
-                    <p className="line-clamp-2 min-w-0 break-words text-xs leading-4 font-semibold text-text-primary sm:text-sm sm:leading-5">
+                    <p className="min-w-0 break-words text-xs leading-4 font-semibold text-text-primary sm:text-sm sm:leading-5">
                       {item.descriptionSnapshot}
                       {item.modelSnapshot &&
                       !normalizeSearch(item.descriptionSnapshot).includes(
@@ -3415,13 +3434,7 @@ function OrderDetailsDialog({
                     </p>
                   </div>
 
-                  <div
-                    className={`mt-1 grid items-end gap-1.5 ${
-                      canChangePickup
-                        ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto]"
-                        : "grid-cols-1"
-                    }`}
-                  >
+                  <div className="mt-1.5 flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1.5">
                     <div className="min-w-0">
                       <ItemQuantityIndicators
                         cancelledQuantity={item.cancelledQuantity}
@@ -3432,9 +3445,9 @@ function OrderDetailsDialog({
                         }
                       />
                       {item.readyWaitingPickupQuantity > 0 ? (
-                        <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[0.68rem] leading-4 font-bold text-emerald-900 sm:text-xs">
+                        <p className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[0.68rem] leading-4 font-bold text-emerald-900 sm:text-xs">
                           <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-emerald-600" />
-                          Pronto para retirar: {" "}
+                          Pronto: {" "}
                           <strong className="font-mono font-black">
                             {quantityFormatter.format(
                               item.readyWaitingPickupQuantity,
@@ -3443,7 +3456,7 @@ function OrderDetailsDialog({
                         </p>
                       ) : null}
                       {item.waitingStockQuantity > 0 ? (
-                        <p className="text-[0.68rem] leading-4 font-semibold text-amber-900 sm:text-xs">
+                        <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-amber-900 sm:text-xs">
                           Aguardando entrada:{" "}
                           <strong className="font-mono font-black">
                             {quantityFormatter.format(
@@ -3455,7 +3468,7 @@ function OrderDetailsDialog({
                     </div>
 
                     {canChangePickup ? (
-                      <div className="flex flex-wrap items-end justify-start gap-1.5 sm:justify-end">
+                      <div className="flex flex-wrap items-end gap-1.5">
                         <div>
                           <span className="mb-0.5 block text-[0.58rem] font-black text-text-muted uppercase">
                             Retirado
@@ -3534,7 +3547,7 @@ function OrderDetailsDialog({
 
       {hasFooterActions ? (
         <div
-          className={`grid shrink-0 gap-2 border-t border-border-neutral bg-app-background/95 p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:flex sm:justify-end sm:p-3 ${
+          className={`grid shrink-0 gap-1.5 border-t border-border-neutral bg-app-background/95 p-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:flex sm:justify-end sm:p-2.5 ${
             canMarkAll && canCreateStockEntry
               ? "grid-cols-2"
               : "grid-cols-1"

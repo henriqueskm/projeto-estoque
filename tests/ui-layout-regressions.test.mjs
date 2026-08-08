@@ -32,3 +32,13 @@ test("order dialogs use a restrained entry transition and integrated visual surf
   assert.match(globals, /@keyframes nk-dialog-enter/);
   assert.match(globals, /animation: nk-dialog-enter 180ms/);
 });
+
+test("wide order dialogs stay proportionate and keep item controls near their metrics", () => {
+  const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
+
+  assert.match(orders, /max-w-\[61\.25rem\]/);
+  assert.match(orders, /max-h-\[min\(46rem,calc\(100dvh-1rem\)\)\]/);
+  assert.match(orders, /grid-cols-3 gap-2 text-xs/);
+  assert.match(orders, /Cód\./);
+  assert.match(orders, /flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1\.5/);
+});

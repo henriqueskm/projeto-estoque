@@ -245,7 +245,7 @@ test("shows ready pickup quantities per item without inventing a zero badge", ()
     3,
   );
   assert.match(orders, /item\.readyWaitingPickupQuantity > 0/);
-  assert.match(orders, /Pronto para retirar:/);
+  assert.match(orders, /Pronto:/);
   assert.match(orders, /item\.readyWaitingPickupQuantity/);
 });
 
