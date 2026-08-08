@@ -57,9 +57,12 @@ export type SupplierOrderSummary = {
   closedByName: string | null;
   lineCount: number;
   orderedQuantity: number;
+  readyQuantity: number;
   pickedQuantity: number;
   cancelledQuantity: number;
   waitingPickupQuantity: number;
+  waitingReadyQuantity: number;
+  readyWaitingPickupQuantity: number;
   stockedQuantity: number;
   waitingStockQuantity: number;
   pickupPercentage: number;
@@ -82,10 +85,13 @@ export type SupplierOrderItem = {
   imageUrl: string | null;
   compatibleKitImages: CompatibleKitImageOption[];
   orderedQuantity: number;
+  readyQuantity: number;
   pickedQuantity: number;
   stockedQuantity: number;
   cancelledQuantity: number;
   waitingPickupQuantity: number;
+  waitingReadyQuantity: number;
+  readyWaitingPickupQuantity: number;
   waitingStockQuantity: number;
   position: number;
   notes: string | null;

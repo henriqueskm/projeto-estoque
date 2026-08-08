@@ -528,6 +528,12 @@ function mapRpcError(
     );
   }
 
+  if (normalizedMessage.includes("ready quantities still awaiting pickup")) {
+    return actionError(
+      "Este pedido possui unidades informadas como prontas e ainda não retiradas. Resolva a quantidade pronta antes de excluir o pedido.",
+    );
+  }
+
   if (
     normalizedMessage.includes("picked plus cancelled") ||
     normalizedMessage.includes("lower than stocked") ||

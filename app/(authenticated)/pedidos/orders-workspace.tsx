@@ -2122,10 +2122,10 @@ function ConfirmationDialog({
   const isCancellation = kind !== "MARK_ALL";
   const title =
     kind === "MARK_ALL"
-      ? "Marcar tudo como retirado"
+      ? "Retirar tudo que está pronto"
       : kind === "CANCEL"
-        ? "Cancelar pedido"
-        : "Cancelar saldo restante";
+        ? "Excluir pedido"
+        : "Excluir saldo restante";
 
   useAccessibleDialog(
     dialogRef,
@@ -2177,10 +2177,10 @@ function ConfirmationDialog({
 
       onSuccess(
         kind === "MARK_ALL"
-          ? "Todas as quantidades restantes foram marcadas como retiradas."
+          ? "Todas as quantidades prontas foram marcadas como retiradas."
           : kind === "CANCEL"
-            ? "Pedido cancelado."
-            : "Saldo restante cancelado.",
+            ? "Pedido excluído das listas ativas e mantido no histórico."
+            : "Saldo restante excluído das listas ativas e mantido no histórico.",
       );
     });
   }
@@ -2200,10 +2200,10 @@ function ConfirmationDialog({
           className="text-sm leading-6 font-semibold text-text-muted"
         >
           {kind === "MARK_ALL"
-            ? "Marcar todas as quantidades restantes como retiradas no fornecedor?"
+            ? "Marcar como retiradas somente as quantidades já informadas como prontas pela Safisa?"
             : kind === "CANCEL"
-              ? "O pedido será preservado e todas as quantidades ainda intocadas serão canceladas."
-              : "As quantidades já retiradas serão preservadas; somente o que falta retirar será cancelado."}
+              ? "Este pedido será removido das listas ativas e mantido no histórico. As quantidades ainda intocadas serão canceladas."
+              : "Este saldo restante será removido das listas ativas e mantido no histórico. As quantidades já retiradas serão preservadas."}
         </p>
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-950">
           Isso não altera o estoque.
@@ -2212,7 +2212,7 @@ function ConfirmationDialog({
         {isCancellation ? (
           <label className="mt-4 block">
             <span className="mb-1.5 block text-xs font-black tracking-wide text-text-primary uppercase">
-              Motivo do cancelamento
+              Motivo da exclusão
             </span>
             <textarea
               ref={reasonInputRef}
@@ -2962,7 +2962,7 @@ function OrderDetailsDialog({
     !readOnly &&
     order.status !== "CANCELLED" &&
     order.status !== "COMPLETED" &&
-    order.waitingPickupQuantity > 0;
+    order.readyWaitingPickupQuantity > 0;
   const canCancelFull =
     canEdit &&
     order.pickedQuantity === 0 &&
@@ -3009,7 +3009,7 @@ function OrderDetailsDialog({
             onClick={() => setConfirmation("CANCEL")}
             className="nk-focus min-h-9 rounded-lg border border-red-300/80 px-3 text-xs font-black text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Cancelar pedido
+            Excluir pedido
           </button>
         ) : null}
         {canCancelRemaining ? (
@@ -3019,7 +3019,7 @@ function OrderDetailsDialog({
             onClick={() => setConfirmation("CANCEL_REMAINING")}
             className="nk-focus min-h-9 rounded-lg border border-red-300/80 px-3 text-xs font-black text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Cancelar saldo restante
+            Excluir saldo restante
           </button>
         ) : null}
         {canFinalize ? (
@@ -3083,7 +3083,7 @@ function OrderDetailsDialog({
                 }}
                 className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
               >
-                Cancelar pedido
+                Excluir pedido
               </button>
             ) : null}
             {canCancelRemaining ? (
@@ -3102,7 +3102,7 @@ function OrderDetailsDialog({
                 }}
                 className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
               >
-                Cancelar saldo restante
+                Excluir saldo restante
               </button>
             ) : null}
             {canFinalize ? (
@@ -3132,7 +3132,10 @@ function OrderDetailsDialog({
 
   function updatePicked(item: SupplierOrderItem, nextValue: number) {
     const minimum = item.stockedQuantity;
-    const maximum = item.orderedQuantity - item.cancelledQuantity;
+    const maximum = Math.min(
+      item.orderedQuantity - item.cancelledQuantity,
+      item.readyQuantity,
+    );
     const bounded = Math.max(minimum, Math.min(maximum, nextValue));
 
     delete pickedKeysRef.current[item.id];
@@ -3143,7 +3146,10 @@ function OrderDetailsDialog({
   function savePicked(item: SupplierOrderItem) {
     const value = pickedDrafts[item.id] ?? item.pickedQuantity;
     const minimum = item.stockedQuantity;
-    const maximum = item.orderedQuantity - item.cancelledQuantity;
+    const maximum = Math.min(
+      item.orderedQuantity - item.cancelledQuantity,
+      item.readyQuantity,
+    );
 
     if (
       !Number.isInteger(value) ||
@@ -3151,7 +3157,7 @@ function OrderDetailsDialog({
       value > maximum
     ) {
       setError(
-        "A quantidade retirada deve ficar entre o que já entrou no estoque e o total disponível.",
+        "A quantidade retirada deve ficar entre o que já entrou no estoque e o total informado como pronto.",
       );
       return;
     }

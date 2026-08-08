@@ -43,9 +43,12 @@ export type SupplierOrderSummaryRow = {
   closed_by_name_snapshot: string | null;
   line_count: number;
   ordered_quantity: number;
+  ready_quantity: number;
   picked_quantity: number;
   cancelled_quantity: number;
   waiting_pickup_quantity: number;
+  waiting_ready_quantity: number;
+  ready_waiting_pickup_quantity: number;
   stocked_quantity: number;
   waiting_stock_quantity: number;
   pickup_percentage: number | string;
@@ -64,10 +67,13 @@ export type SupplierOrderItemRow = {
   item_type_snapshot: string;
   commercial_code_snapshot: string | null;
   ordered_quantity: number;
+  ready_quantity: number;
   picked_quantity: number;
   stocked_quantity: number;
   cancelled_quantity: number;
   waiting_pickup_quantity: number;
+  waiting_ready_quantity: number;
+  ready_waiting_pickup_quantity: number;
   waiting_stock_quantity: number;
   position: number;
   notes: string | null;
@@ -165,10 +171,10 @@ function asSafeInteger(value: unknown) {
 }
 
 export const supplierOrderSummarySelect =
-  "id, negotiation_number, order_date, notes, created_by_name_snapshot, created_at, updated_at, cancelled_at, cancelled_by_name_snapshot, cancellation_note, finalized_at, finalized_by_name_snapshot, finalization_note, is_finalized, is_active_order, is_in_history, closure_kind, closed_at, closed_by_name_snapshot, line_count, ordered_quantity, picked_quantity, cancelled_quantity, waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity, pickup_percentage, status";
+  "id, negotiation_number, order_date, notes, created_by_name_snapshot, created_at, updated_at, cancelled_at, cancelled_by_name_snapshot, cancellation_note, finalized_at, finalized_by_name_snapshot, finalization_note, is_finalized, is_active_order, is_in_history, closure_kind, closed_at, closed_by_name_snapshot, line_count, ordered_quantity, ready_quantity, picked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_ready_quantity, ready_waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity, pickup_percentage, status";
 
 export const supplierOrderItemSelect =
-  "id, supplier_order_id, item_id, commercial_configuration_id, commercial_configuration_code_id, code_snapshot, description_snapshot, model_snapshot, item_type_snapshot, commercial_code_snapshot, ordered_quantity, picked_quantity, stocked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_stock_quantity, position, notes, created_at, updated_at";
+  "id, supplier_order_id, item_id, commercial_configuration_id, commercial_configuration_code_id, code_snapshot, description_snapshot, model_snapshot, item_type_snapshot, commercial_code_snapshot, ordered_quantity, ready_quantity, picked_quantity, stocked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_ready_quantity, ready_waiting_pickup_quantity, position, notes, created_at, updated_at";
 
 export function mapSupplierOrderSummary(
   row: SupplierOrderSummaryRow,
@@ -201,9 +207,12 @@ export function mapSupplierOrderSummary(
     closedByName: row.closed_by_name_snapshot,
     lineCount: asSafeInteger(row.line_count),
     orderedQuantity: asSafeInteger(row.ordered_quantity),
+    readyQuantity: asSafeInteger(row.ready_quantity),
     pickedQuantity: asSafeInteger(row.picked_quantity),
     cancelledQuantity: asSafeInteger(row.cancelled_quantity),
     waitingPickupQuantity: asSafeInteger(row.waiting_pickup_quantity),
+    waitingReadyQuantity: asSafeInteger(row.waiting_ready_quantity),
+    readyWaitingPickupQuantity: asSafeInteger(row.ready_waiting_pickup_quantity),
     stockedQuantity: asSafeInteger(row.stocked_quantity),
     waitingStockQuantity: asSafeInteger(row.waiting_stock_quantity),
     pickupPercentage: Number(row.pickup_percentage) || 0,
@@ -240,10 +249,13 @@ export function mapSupplierOrderItem(
     imageUrl: null,
     compatibleKitImages: [],
     orderedQuantity: asSafeInteger(row.ordered_quantity),
+    readyQuantity: asSafeInteger(row.ready_quantity),
     pickedQuantity: asSafeInteger(row.picked_quantity),
     stockedQuantity: asSafeInteger(row.stocked_quantity),
     cancelledQuantity: asSafeInteger(row.cancelled_quantity),
     waitingPickupQuantity: asSafeInteger(row.waiting_pickup_quantity),
+    waitingReadyQuantity: asSafeInteger(row.waiting_ready_quantity),
+    readyWaitingPickupQuantity: asSafeInteger(row.ready_waiting_pickup_quantity),
     waitingStockQuantity: asSafeInteger(row.waiting_stock_quantity),
     position: asSafeInteger(row.position),
     notes: row.notes,
