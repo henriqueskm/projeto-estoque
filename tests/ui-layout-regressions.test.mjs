@@ -40,5 +40,7 @@ test("wide order dialogs stay proportionate and keep item controls near their me
   assert.match(orders, /max-h-\[min\(46rem,calc\(100dvh-1rem\)\)\]/);
   assert.match(orders, /grid-cols-3 gap-2 text-xs/);
   assert.match(orders, /Cód\./);
-  assert.match(orders, /flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1\.5/);
+  assert.match(orders, /sm:grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  assert.match(orders, /sm:justify-end/);
+  assert.match(orders, /bg-gradient-to-b from-sky-600 to-sky-700/);
 });

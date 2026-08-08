@@ -3434,7 +3434,13 @@ function OrderDetailsDialog({
                     </p>
                   </div>
 
-                  <div className="mt-1.5 flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1.5">
+                  <div
+                    className={`mt-1.5 grid min-w-0 items-end gap-x-3 gap-y-1.5 ${
+                      canChangePickup
+                        ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto]"
+                        : "grid-cols-1"
+                    }`}
+                  >
                     <div className="min-w-0">
                       <ItemQuantityIndicators
                         cancelledQuantity={item.cancelledQuantity}
@@ -3468,7 +3474,7 @@ function OrderDetailsDialog({
                     </div>
 
                     {canChangePickup ? (
-                      <div className="flex flex-wrap items-end gap-1.5">
+                      <div className="flex flex-wrap items-end justify-start gap-1.5 sm:justify-end">
                         <div>
                           <span className="mb-0.5 block text-[0.58rem] font-black text-text-muted uppercase">
                             Retirado
@@ -3488,8 +3494,9 @@ function OrderDetailsDialog({
                           type="button"
                           disabled={!changed || isPending}
                           onClick={() => savePicked(item)}
-                          className="nk-focus min-h-8 rounded-lg bg-sky-700 px-2.5 text-[0.65rem] font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+                          className="nk-focus inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-sky-800/20 bg-gradient-to-b from-sky-600 to-sky-700 px-3 text-[0.68rem] font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:from-sky-700 hover:to-sky-800 hover:shadow disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-none disabled:bg-slate-300 disabled:text-slate-600 disabled:shadow-none"
                         >
+                          <CheckIcon aria-hidden="true" className="size-3" />
                           {isPending && pendingItemId === item.id
                             ? "Salvando..."
                             : "Salvar"}
