@@ -303,6 +303,10 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 
 - **NK-DIS-002:** `DONE`; PR #13 mesclado, validação visual aprovada e
   Vercel/main green, sem migration necessária.
+- **Hardening técnico:** a cobertura local passou a exercitar resolução,
+  prévia, token, confirmação mockada, replay, conflito e falha de releitura;
+  a releitura também rejeita versão ou elegibilidade alteradas antes de chamar
+  a ação oficial.
 - **Contrato oficial:** `public.finalize_supplier_order(uuid, timestamptz, text,
   uuid)` exige Pedido `COMPLETED` sem retirada pendente, aplica lock do Pedido e
   linhas, compara `updated_at` integral e registra idempotência/evento.
