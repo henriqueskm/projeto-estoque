@@ -272,11 +272,13 @@ function sanitizeStructuredBlock(
     case "manual_stock_entry_preview":
     case "manual_stock_output_preview":
     case "configuration_assembly_preview":
+    case "configuration_disassembly_preview":
       return { block: expireStockEntryPreview(block), mediaReferences: [] };
     case "supplier_order_stock_entry_result":
     case "manual_stock_entry_result":
     case "manual_stock_output_result":
     case "configuration_assembly_result":
+    case "configuration_disassembly_result":
       return { block, mediaReferences: [] };
     case "assistant_action_result":
       return { block, mediaReferences: [] };

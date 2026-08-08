@@ -33,6 +33,9 @@ import type {
   AssistantConfigurationAssemblyPreviewBlock,
   AssistantConfigurationAssemblyResultBlock,
   AssistantConfigurationAssemblySelection,
+  AssistantConfigurationDisassemblyPreviewBlock,
+  AssistantConfigurationDisassemblyResultBlock,
+  AssistantConfigurationDisassemblySelection,
   AssistantStockEntryTarget,
   AssistantServoModelInventoryAction,
   AssistantServoModelInventoryBreakdownBlock,
@@ -2002,6 +2005,77 @@ function ConfigurationAssemblyResult({ block }: { block: AssistantConfigurationA
   </div>;
 }
 
+function ConfigurationDisassemblyPreview({ block, disabled, confirming, onConfirm, onCancel, onPromptSelect }: {
+  block: AssistantConfigurationDisassemblyPreviewBlock;
+  disabled: boolean;
+  confirming: boolean;
+  onConfirm?: (block: AssistantConfigurationDisassemblyPreviewBlock) => void;
+  onCancel?: (block: AssistantConfigurationDisassemblyPreviewBlock) => void;
+  onPromptSelect?: (prompt: string) => void;
+}) {
+  const [locallyExpired, setLocallyExpired] = useState(false);
+  useEffect(() => {
+    if (block.state !== "pending" || !block.expiresAt) return;
+    const timeout = window.setTimeout(() => setLocallyExpired(true), Math.max(Date.parse(block.expiresAt) - Date.now(), 0));
+    return () => window.clearTimeout(timeout);
+  }, [block.expiresAt, block.state]);
+  const expired = block.state === "expired" || locallyExpired;
+  return <div className="min-w-0">
+    <p className="text-[0.65rem] font-black tracking-[0.12em] text-violet-800 uppercase">Ação operacional</p>
+    <h3 className="text-base font-black text-text-primary sm:text-lg">{expired ? "Prévia expirada" : block.title}</h3>
+    <p className="mt-1 text-xs font-semibold text-text-muted sm:text-sm">{expired ? "Gere uma nova prévia com os saldos atuais." : block.message}</p>
+    <article className="mt-3 rounded-xl border border-violet-200 bg-violet-50/35 p-3">
+      <ConfigurationAssemblyTargetHeader target={block.target} />
+      <div className="mt-3 grid grid-cols-3 gap-1.5">
+        <PickupMetric label="Montados agora" value={block.target.currentStock} />
+        <PickupMetric label="Desmontagem" value={block.quantity} emphasis />
+        <PickupMetric label="Montados depois" value={block.mountedStockAfter} emphasis />
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-1.5">
+        <PickupMetric label={`Servo ${block.target.servo.code} depois`} value={block.servoStockAfter} />
+        <PickupMetric label={`Kit ${block.target.installationKit.code} depois`} value={block.installationKitStockAfter} />
+      </div>
+    </article>
+    <p className="mt-3 text-xs font-semibold text-text-muted">A desmontagem devolverá a mesma quantidade de Servos e Kits avulsos. O banco fará a validação final.</p>
+    {expired ? <button type="button" disabled={disabled || !onPromptSelect} onClick={() => onPromptSelect?.(block.regeneratePrompt)}
+      className="nk-focus mt-4 min-h-11 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:opacity-50">Gerar nova prévia</button>
+      : <div className="mt-4 grid grid-cols-2 gap-2">
+        <button type="button" disabled={disabled || confirming || block.state !== "pending" || !block.proposalToken || !onConfirm}
+          aria-busy={confirming} onClick={() => onConfirm?.(block)}
+          className="nk-focus min-h-11 rounded-xl bg-violet-700 px-3 text-sm font-black text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50">
+          {confirming ? "Registrando desmontagem..." : block.confirmLabel}
+        </button>
+        <button type="button" disabled={disabled || confirming || block.state !== "pending" || !onCancel} onClick={() => onCancel?.(block)}
+          className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary disabled:opacity-50">{block.cancelLabel}</button>
+      </div>}
+  </div>;
+}
+
+function ConfigurationDisassemblyResult({ block }: { block: AssistantConfigurationDisassemblyResultBlock }) {
+  const tone = block.outcome === "success" ? "border-emerald-200 bg-emerald-50/55" : "border-red-200 bg-red-50/45";
+  return <div className="min-w-0">
+    <div className={`rounded-xl border p-3 ${tone}`}>
+      <p className="text-[0.65rem] font-black tracking-[0.12em] text-brand-gold-ink uppercase">Resultado da ação</p>
+      <h3 className="text-base font-black text-text-primary sm:text-lg">{block.title}</h3>
+      <p className="mt-1 text-sm font-semibold text-text-muted">{block.message}</p>
+      {block.idempotentReplay ? <span className="mt-2 inline-flex rounded-full bg-violet-100 px-2 py-1 text-[0.62rem] font-black text-violet-900 uppercase">Resultado idempotente</span> : null}
+      {block.refreshWarning ? <p role="status" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-950">A operação foi concluída; a atualização visual pode exigir recarregar a página.</p> : null}
+    </div>
+    {block.target && block.mountedStockBefore !== null && block.mountedStockAfter !== null &&
+      block.servoStockAfter !== null && block.installationKitStockAfter !== null ? <article className="mt-3 rounded-xl border border-border-neutral bg-white p-3">
+        <ConfigurationAssemblyTargetHeader target={block.target} />
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          <PickupMetric label="Antes" value={block.mountedStockBefore} />
+          <PickupMetric label="Desmontagem" value={block.quantity} emphasis />
+          <PickupMetric label="Depois" value={block.mountedStockAfter} emphasis />
+        </div>
+        <p className="mt-2 text-xs font-semibold text-text-muted">Saldos avulsos após a desmontagem: Servo {block.target.servo.code}: {block.servoStockAfter}; Kit {block.target.installationKit.code}: {block.installationKitStockAfter}.</p>
+      </article> : null}
+    {block.actions.length ? <div className="mt-4 flex flex-wrap gap-2">{block.actions.map((action) => action.kind === "link" ? <Link key={`${action.label}-${action.href}`} href={action.href}
+      className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary">{action.label}</Link> : null)}</div> : null}
+  </div>;
+}
+
 const clarificationGroups: Array<{
   label: string;
   categories: AssistantClarificationCategory[];
@@ -2030,9 +2104,11 @@ function AssistantClarification({
       stockEntrySelection?: AssistantStockEntrySelection;
       stockOutputSelection?: AssistantStockOutputSelection;
       configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
+      configurationDisassemblySelection?: AssistantConfigurationDisassemblySelection;
       cancelStockEntry?: boolean;
       cancelStockOutput?: boolean;
       cancelConfigurationAssembly?: boolean;
+      cancelConfigurationDisassembly?: boolean;
     },
   ) => void;
 }) {
@@ -2093,6 +2169,9 @@ function AssistantClarification({
                         ...(option.configurationAssemblySelection
                           ? { configurationAssemblySelection: option.configurationAssemblySelection }
                           : {}),
+                        ...(option.configurationDisassemblySelection
+                          ? { configurationDisassemblySelection: option.configurationDisassemblySelection }
+                          : {}),
                         ...(option.id === "entry-cancel"
                           ? { cancelStockEntry: true }
                           : {}),
@@ -2102,9 +2181,12 @@ function AssistantClarification({
                         ...(option.id === "assembly-cancel"
                           ? { cancelConfigurationAssembly: true }
                           : {}),
+                        ...(option.id === "disassembly-cancel"
+                          ? { cancelConfigurationDisassembly: true }
+                          : {}),
                       })
                     }
-                    aria-label={option.id === "entry-cancel" ? "Cancelar entrada" : option.id === "output-cancel" ? "Cancelar saída" : option.id === "assembly-cancel" ? "Cancelar montagem" : `Enviar sugestão: ${option.prompt}`}
+                    aria-label={option.id === "entry-cancel" ? "Cancelar entrada" : option.id === "output-cancel" ? "Cancelar saída" : option.id === "assembly-cancel" ? "Cancelar montagem" : option.id === "disassembly-cancel" ? "Cancelar desmontagem" : `Enviar sugestão: ${option.prompt}`}
                     className="nk-focus flex min-h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-border-neutral bg-app-background px-3 py-2 text-left transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <span
@@ -2149,6 +2231,9 @@ export function AssistantStructuredBlockView({
   onConfigurationAssemblyConfirm,
   onConfigurationAssemblyCancel,
   confirmingConfigurationAssembly = false,
+  onConfigurationDisassemblyConfirm,
+  onConfigurationDisassemblyCancel,
+  confirmingConfigurationDisassembly = false,
 }: {
   block: AssistantStructuredBlock;
   disabled?: boolean;
@@ -2161,9 +2246,11 @@ export function AssistantStructuredBlockView({
       stockEntrySelection?: AssistantStockEntrySelection;
       stockOutputSelection?: AssistantStockOutputSelection;
       configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
+      configurationDisassemblySelection?: AssistantConfigurationDisassemblySelection;
       cancelStockEntry?: boolean;
       cancelStockOutput?: boolean;
       cancelConfigurationAssembly?: boolean;
+      cancelConfigurationDisassembly?: boolean;
     },
   ) => void;
   onPickupConfirm?: (
@@ -2183,6 +2270,9 @@ export function AssistantStructuredBlockView({
   onConfigurationAssemblyConfirm?: (block: AssistantConfigurationAssemblyPreviewBlock) => void;
   onConfigurationAssemblyCancel?: (block: AssistantConfigurationAssemblyPreviewBlock) => void;
   confirmingConfigurationAssembly?: boolean;
+  onConfigurationDisassemblyConfirm?: (block: AssistantConfigurationDisassemblyPreviewBlock) => void;
+  onConfigurationDisassemblyCancel?: (block: AssistantConfigurationDisassemblyPreviewBlock) => void;
+  confirmingConfigurationDisassembly?: boolean;
 }) {
   switch (block.kind) {
     case "supplier_order_stock_entry_preview":
@@ -2202,6 +2292,11 @@ export function AssistantStructuredBlockView({
         onConfirm={onConfigurationAssemblyConfirm} onCancel={onConfigurationAssemblyCancel} onPromptSelect={onPromptSelect} />;
     case "configuration_assembly_result":
       return <ConfigurationAssemblyResult block={block} />;
+    case "configuration_disassembly_preview":
+      return <ConfigurationDisassemblyPreview block={block} disabled={disabled} confirming={confirmingConfigurationDisassembly}
+        onConfirm={onConfigurationDisassemblyConfirm} onCancel={onConfigurationDisassemblyCancel} onPromptSelect={onPromptSelect} />;
+    case "configuration_disassembly_result":
+      return <ConfigurationDisassemblyResult block={block} />;
     case "assistant_action_preview":
       return (
         <SupplierOrderPickupPreview

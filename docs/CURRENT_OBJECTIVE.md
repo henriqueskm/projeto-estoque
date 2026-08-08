@@ -1,15 +1,33 @@
 # Objetivo atual
 
-- **ID:** NK-SAF-004
-- **Título:** Alertas internos de retirada Safisa
-- **Prioridade:** alta para a operação interna do piloto
-- **Estado:** WAITING_HUMAN_REVIEW
-- **Classificação:** A — dados e contratos oficiais existentes são suficientes
-- **Branch de execução:** `agent/safisa-pickup-alerts-implementation`
-- **Base:** `origin/main` em `7783b436072b0864fc29537c96dc6eb01b4f7477`
-- **Dependência concluída:** NK-SAF-003, PR #10 mesclado e MIG-SAF-004 aplicada em produção
+- **ID:** NK-DIS-002
+- **Título:** Implementação da desmontagem pela Assistente
+- **Prioridade:** alta
+- **Estado:** WAITING_HUMAN_VISUAL_REVIEW
+- **Classificação:** B — contrato oficial existente, com integração de aplicação
+- **Branch de execução:** `agent/assistant-disassembly`
+- **Base:** `origin/main` em `a6aa8f28eb7b20e82d7ce963b97064979db1b794`
+- **Dependência concluída:** NK-DIS-001; NK-SAF-004 concluído no PR #12.
 
-## Encerramento de NK-SAF-003
+## Escopo desta implementação
+
+- intenção determinística para desmontagem de Servo com kit;
+- resolução segura por código comercial, modelo ou seleção estruturada;
+- prévia assinada por HMAC, confirmação exclusiva por botão e rota fixa
+  `/api/assistant/actions/configuration-disassembly`;
+- execução exclusivamente pela ação interna `disassembleCommercialConfiguration`,
+  que termina na RPC oficial `public.disassemble_commercial_configuration`;
+- recibo estruturado, idempotência e expiração sem persistir proposalToken.
+
+Nenhuma migration, alteração de RPC, operação remota ou desmontagem real é
+parte deste objetivo. A próxima etapa é a validação visual humana autenticada.
+
+## Histórico do objetivo anterior: NK-SAF-004
+
+NK-SAF-004 foi concluído e mesclado no PR #12; os detalhes abaixo permanecem
+como registro da arquitetura aprovada dos alertas Safisa.
+
+### Encerramento de NK-SAF-003
 
 - todo Pedido é Safisa-managed automaticamente e não depende de publicação por Pedido;
 - a MIG-SAF-004 está aplicada em produção, sem backfill operacional;

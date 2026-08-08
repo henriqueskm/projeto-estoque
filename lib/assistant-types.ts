@@ -59,6 +59,12 @@ export type AssistantConfigurationAssemblySelection = {
   quantity: number;
 };
 
+export type AssistantConfigurationDisassemblySelection = {
+  action: "configuration_disassembly_target";
+  commercialCodeId: string;
+  quantity: number;
+};
+
 export type AssistantChatRequest = {
   message: string;
   lastItemQuery?: string;
@@ -69,6 +75,7 @@ export type AssistantChatRequest = {
   stockEntrySelection?: AssistantStockEntrySelection;
   stockOutputSelection?: AssistantStockOutputSelection;
   configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
+  configurationDisassemblySelection?: AssistantConfigurationDisassemblySelection;
 };
 
 export type AssistantStockEntryTarget = {
@@ -323,6 +330,54 @@ export type AssistantConfigurationAssemblyResultBlock = {
 
 export type AssistantConfigurationAssemblyConfirmationResult = {
   block: AssistantConfigurationAssemblyResultBlock;
+  contextSupplierOrderId: null;
+  contextSupplierOrderCatalogCode: null;
+};
+
+export type AssistantConfigurationDisassemblyTarget = AssistantConfigurationAssemblyTarget;
+
+export type AssistantConfigurationDisassemblyPreviewBlock = {
+  kind: "configuration_disassembly_preview";
+  action: "configuration_disassembly";
+  state: "pending" | "expired" | "cancelled";
+  title: "Confirmar desmontagem" | "PrÃ©via expirada";
+  message: string;
+  proposalToken: string | null;
+  expiresAt: string | null;
+  target: AssistantConfigurationDisassemblyTarget;
+  quantity: number;
+  mountedStockAfter: number;
+  servoStockAfter: number;
+  installationKitStockAfter: number;
+  totalQuantity: number;
+  confirmLabel: "Confirmar desmontagem";
+  cancelLabel: "Cancelar";
+  regeneratePrompt: string;
+};
+
+export type AssistantConfigurationDisassemblyResultBlock = {
+  kind: "configuration_disassembly_result";
+  action: "configuration_disassembly";
+  outcome: "success" | "error" | "cancelled" | "expired";
+  title: string;
+  message: string;
+  target: AssistantConfigurationDisassemblyTarget | null;
+  quantity: number;
+  mountedStockBefore: number | null;
+  mountedStockAfter: number | null;
+  servoStockBefore: number | null;
+  servoStockAfter: number | null;
+  installationKitStockBefore: number | null;
+  installationKitStockAfter: number | null;
+  occurredAt: string | null;
+  reference: string | null;
+  idempotentReplay: boolean;
+  refreshWarning?: boolean;
+  actions: Array<AssistantActionResultLink | AssistantActionResultPrompt>;
+};
+
+export type AssistantConfigurationDisassemblyConfirmationResult = {
+  block: AssistantConfigurationDisassemblyResultBlock;
   contextSupplierOrderId: null;
   contextSupplierOrderCatalogCode: null;
 };
@@ -646,6 +701,7 @@ export type AssistantClarificationOption = {
   stockEntrySelection?: AssistantStockEntrySelection;
   stockOutputSelection?: AssistantStockOutputSelection;
   configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
+  configurationDisassemblySelection?: AssistantConfigurationDisassemblySelection;
 };
 
 const stockEntryUuidPattern =
@@ -692,6 +748,16 @@ export function parseAssistantConfigurationAssemblySelection(
 ): AssistantConfigurationAssemblySelection | null {
   if (!isRecord(value) || Object.keys(value).length !== 3 ||
     value.action !== "configuration_assembly_target" ||
+    typeof value.commercialCodeId !== "string" || !stockEntryUuidPattern.test(value.commercialCodeId) ||
+    !isNonnegativeInteger(value.quantity) || value.quantity === 0) return null;
+  return { action: value.action, commercialCodeId: value.commercialCodeId.toLowerCase(), quantity: value.quantity };
+}
+
+export function parseAssistantConfigurationDisassemblySelection(
+  value: unknown,
+): AssistantConfigurationDisassemblySelection | null {
+  if (!isRecord(value) || Object.keys(value).length !== 3 ||
+    value.action !== "configuration_disassembly_target" ||
     typeof value.commercialCodeId !== "string" || !stockEntryUuidPattern.test(value.commercialCodeId) ||
     !isNonnegativeInteger(value.quantity) || value.quantity === 0) return null;
   return { action: value.action, commercialCodeId: value.commercialCodeId.toLowerCase(), quantity: value.quantity };
@@ -847,7 +913,9 @@ export type AssistantStructuredBlock =
   | AssistantManualStockOutputPreviewBlock
   | AssistantManualStockOutputResultBlock
   | AssistantConfigurationAssemblyPreviewBlock
-  | AssistantConfigurationAssemblyResultBlock;
+  | AssistantConfigurationAssemblyResultBlock
+  | AssistantConfigurationDisassemblyPreviewBlock
+  | AssistantConfigurationDisassemblyResultBlock;
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -1892,7 +1960,7 @@ function parseStockEntryResultActions(value: unknown) {
 
 function parseOperationalPreviewBase(
   value: Record<string, unknown>,
-  confirmLabel: "Confirmar entrada" | "Confirmar saída" | "Confirmar montagem" = "Confirmar entrada",
+  confirmLabel: "Confirmar entrada" | "Confirmar saída" | "Confirmar montagem" | "Confirmar desmontagem" = "Confirmar entrada",
 ) {
   const pending = value.state === "pending";
   if (
@@ -2045,6 +2113,52 @@ export function parseAssistantStructuredBlock(
       (value.refreshWarning !== true || value.quantity !== 0 || metrics.some((metric) => metric !== null))) return null;
     return { kind: value.kind, action: value.action,
       outcome: value.outcome as AssistantConfigurationAssemblyResultBlock["outcome"], title: value.title.trim(),
+      message: value.message.trim(), target, quantity: value.quantity,
+      mountedStockBefore: value.mountedStockBefore as number | null, mountedStockAfter: value.mountedStockAfter as number | null,
+      servoStockBefore: value.servoStockBefore as number | null, servoStockAfter: value.servoStockAfter as number | null,
+      installationKitStockBefore: value.installationKitStockBefore as number | null,
+      installationKitStockAfter: value.installationKitStockAfter as number | null,
+      occurredAt: value.occurredAt as string | null, reference: value.reference as string | null,
+      idempotentReplay: value.idempotentReplay, ...(value.refreshWarning ? { refreshWarning: true } : {}), actions };
+  }
+
+  if (value.kind === "configuration_disassembly_preview") {
+    const base = parseOperationalPreviewBase(value, "Confirmar desmontagem");
+    const target = parseConfigurationAssemblyTarget(value.target);
+    if (!base || value.action !== "configuration_disassembly" || !target ||
+      !isNonnegativeInteger(value.quantity) || value.quantity === 0 || value.quantity !== base.totalQuantity ||
+      value.quantity > target.currentStock || !isNonnegativeInteger(value.mountedStockAfter) ||
+      !isNonnegativeInteger(value.servoStockAfter) || !isNonnegativeInteger(value.installationKitStockAfter) ||
+      value.mountedStockAfter !== target.currentStock - value.quantity ||
+      value.servoStockAfter !== target.servo.currentStock + value.quantity ||
+      value.installationKitStockAfter !== target.installationKit.currentStock + value.quantity) return null;
+    return { kind: value.kind, action: value.action, ...base,
+      title: base.title as AssistantConfigurationDisassemblyPreviewBlock["title"], target, quantity: value.quantity,
+      mountedStockAfter: value.mountedStockAfter, servoStockAfter: value.servoStockAfter,
+      installationKitStockAfter: value.installationKitStockAfter,
+      confirmLabel: "Confirmar desmontagem", cancelLabel: "Cancelar" };
+  }
+
+  if (value.kind === "configuration_disassembly_result") {
+    const actions = parseStockEntryResultActions(value.actions);
+    const target = value.target === null ? null : parseConfigurationAssemblyTarget(value.target);
+    const metrics = [value.mountedStockBefore, value.mountedStockAfter, value.servoStockBefore, value.servoStockAfter,
+      value.installationKitStockBefore, value.installationKitStockAfter];
+    if (value.action !== "configuration_disassembly" || !["success", "error", "cancelled", "expired"].includes(String(value.outcome)) ||
+      typeof value.title !== "string" || !value.title.trim() || typeof value.message !== "string" || !value.message.trim() ||
+      !isNonnegativeInteger(value.quantity) || metrics.some((metric) => metric !== null && !isNonnegativeInteger(metric)) ||
+      (value.occurredAt !== null && (typeof value.occurredAt !== "string" || Number.isNaN(Date.parse(value.occurredAt)))) ||
+      (value.reference !== null && (typeof value.reference !== "string" || !uuidPattern.test(value.reference))) ||
+      typeof value.idempotentReplay !== "boolean" || (value.refreshWarning !== undefined && typeof value.refreshWarning !== "boolean") ||
+      !actions || (value.target !== null && !target)) return null;
+    if (value.outcome === "success" && target && (value.quantity === 0 || metrics.some((metric) => metric === null) ||
+      value.mountedStockAfter !== Number(value.mountedStockBefore) - value.quantity ||
+      value.servoStockAfter !== Number(value.servoStockBefore) + value.quantity ||
+      value.installationKitStockAfter !== Number(value.installationKitStockBefore) + value.quantity)) return null;
+    if (value.outcome === "success" && !target &&
+      (value.refreshWarning !== true || value.quantity !== 0 || metrics.some((metric) => metric !== null))) return null;
+    return { kind: value.kind, action: value.action,
+      outcome: value.outcome as AssistantConfigurationDisassemblyResultBlock["outcome"], title: value.title.trim(),
       message: value.message.trim(), target, quantity: value.quantity,
       mountedStockBefore: value.mountedStockBefore as number | null, mountedStockAfter: value.mountedStockAfter as number | null,
       servoStockBefore: value.servoStockBefore as number | null, servoStockAfter: value.servoStockAfter as number | null,
@@ -2413,6 +2527,10 @@ export function parseAssistantStructuredBlock(
         isRecord(option) && option.configurationAssemblySelection !== undefined
           ? parseAssistantConfigurationAssemblySelection(option.configurationAssemblySelection)
           : undefined;
+      const configurationDisassemblySelection =
+        isRecord(option) && option.configurationDisassemblySelection !== undefined
+          ? parseAssistantConfigurationDisassemblySelection(option.configurationDisassemblySelection)
+          : undefined;
 
       if (
         !isRecord(option) ||
@@ -2440,6 +2558,7 @@ export function parseAssistantStructuredBlock(
         (option.stockEntrySelection !== undefined && stockEntrySelection === null) ||
         (option.stockOutputSelection !== undefined && stockOutputSelection === null) ||
         (option.configurationAssemblySelection !== undefined && configurationAssemblySelection === null) ||
+        (option.configurationDisassemblySelection !== undefined && configurationDisassemblySelection === null) ||
         ![
           "inventory",
           "supplier_orders",
@@ -2475,6 +2594,7 @@ export function parseAssistantStructuredBlock(
         ...(stockEntrySelection ? { stockEntrySelection } : {}),
         ...(stockOutputSelection ? { stockOutputSelection } : {}),
         ...(configurationAssemblySelection ? { configurationAssemblySelection } : {}),
+        ...(configurationDisassemblySelection ? { configurationDisassemblySelection } : {}),
       };
     });
     const ids = parsedOptions.map((option) => option?.id);
@@ -2495,6 +2615,9 @@ export function parseAssistantStructuredBlock(
               : "",
             option.configurationAssemblySelection
               ? JSON.stringify(option.configurationAssemblySelection)
+              : "",
+            option.configurationDisassemblySelection
+              ? JSON.stringify(option.configurationDisassemblySelection)
               : "",
           ].join(":")
         : null,
