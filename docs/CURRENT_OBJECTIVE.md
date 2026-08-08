@@ -1,27 +1,35 @@
 # Objetivo atual
 
-- **ID:** NK-ORD-004
-- **Título:** Finalização de Pedido pela Assistente
+- **ID:** NK-ORD-006
+- **Título:** Entrada no Estoque a partir do Pedido pela Assistente
 - **Prioridade:** crítica
 - **Estado:** WAITING_HUMAN_VISUAL_REVIEW
-- **Classificação:** B — contrato oficial existente, com integração de aplicação
-- **Branch de execução:** `agent/assistant-order-finalization`
-- **Base:** `origin/main` em `28bf362463074edc8f42116674545f4a297ffb99`
-- **Dependências concluídas:** NK-ORD-001; NK-DIS-002 concluído no PR #13.
+- **Classificação:** B — contrato oficial existente, com correção de integração de aplicação
+- **Branch de execução:** `agent/assistant-order-stock-entry`
+- **Base:** `origin/main` em `715221ae87643c0010d9b93a9b2a0cffc2fb3e52`
+- **Dependências concluídas:** NK-ORD-001; NK-ORD-004 concluído no PR #14.
 
 ## Escopo desta implementação
 
-- intenção determinística para finalizar Pedido por negociação/número;
-- resolução server-side sem aproximação insegura;
-- prévia assinada por HMAC, confirmação exclusiva por botão e rota fixa
-  `/api/assistant/actions/supplier-order-finalization`;
-- execução exclusivamente pela ação existente `finalizeSupplierOrder`, que chama
-  `public.finalize_supplier_order` com `finalization_note = null`;
-- recibo estruturado, idempotência, conflito de versão e expiração sem persistir
-  proposalToken.
+- corrigir a projeção de `waiting_stock_quantity` em linhas de Pedido;
+- selecionar somente `picked_quantity - stocked_quantity`, sem usar prontidão Safisa;
+- preservar roteamento determinístico, prévia HMAC curta e confirmação exclusiva por botão;
+- manter a rota fixa `/api/assistant/actions/supplier-order-stock-entry`;
+- executar exclusivamente pela Server Action existente
+  `createSupplierOrderStockEntryAction`, que chama
+  `public.create_supplier_order_stock_entry` com `p_note = null`;
+- revalidar a versão integral e a disponibilidade antes da ação oficial;
+- preservar recibo estruturado, idempotência, conflito e sucesso com refresh warning.
 
-Nenhuma migration, alteração de RPC, operação remota ou finalização real é
-parte deste objetivo. A próxima etapa é a validação visual humana autenticada.
+Nenhuma migration, alteração de RPC, operação remota ou entrada real é parte
+deste objetivo. A próxima etapa é a validação visual humana autenticada.
+
+## Encerramento de NK-ORD-004
+
+- **Estado:** `DONE`.
+- **PR:** [#14](https://github.com/henriqueskm/projeto-estoque/pull/14) mesclado.
+- **Validação humana:** visual e teste operacional aprovados.
+- **Main/produção:** checks verdes no merge, sem migration ou alteração de RPC.
 
 ## Histórico do objetivo anterior: NK-SAF-004
 
