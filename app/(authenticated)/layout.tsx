@@ -3,33 +3,38 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { AssistantConversationProvider } from "@/components/assistant-conversation-provider";
 import { AssistantFloatingLink } from "@/components/assistant-floating-link";
 import { AuthenticatedProfileProvider } from "@/components/authenticated-profile-provider";
+import { SafisaPickupAlertProvider } from "@/components/safisa-pickup-alert-provider";
 import { requireActiveProfile } from "@/lib/auth";
+import { loadSafisaPickupAlerts } from "@/lib/safisa-pickup-alerts";
 
 export default async function AuthenticatedLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   const profile = await requireActiveProfile();
+  const safisaPickupAlerts = await loadSafisaPickupAlerts();
 
   return (
     <AuthenticatedProfileProvider
       displayName={profile.displayName}
       hasRegisteredName={profile.hasRegisteredName}
     >
-      <AssistantConversationProvider
-        key={profile.id}
-        userId={profile.id}
-      >
-        <div className="min-h-dvh bg-app-background">
-          <AppSidebar
-            userName={profile.displayName}
-            hasRegisteredName={profile.hasRegisteredName}
-          />
-          <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-dvh lg:pl-64">
-            {children}
+      <SafisaPickupAlertProvider initialResult={safisaPickupAlerts}>
+        <AssistantConversationProvider
+          key={profile.id}
+          userId={profile.id}
+        >
+          <div className="min-h-dvh bg-app-background">
+            <AppSidebar
+              userName={profile.displayName}
+              hasRegisteredName={profile.hasRegisteredName}
+            />
+            <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-dvh lg:pl-64">
+              {children}
+            </div>
+            <AssistantFloatingLink />
           </div>
-          <AssistantFloatingLink />
-        </div>
-      </AssistantConversationProvider>
+        </AssistantConversationProvider>
+      </SafisaPickupAlertProvider>
     </AuthenticatedProfileProvider>
   );
 }

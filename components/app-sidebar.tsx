@@ -12,6 +12,7 @@ import {
 } from "react";
 import { logout } from "@/app/auth/actions";
 import { BrandMark } from "@/components/brand-mark";
+import { SafisaPickupAlertBell } from "@/components/safisa-pickup-alerts";
 import {
   AssistantIcon,
   ChevronDownIcon,
@@ -320,13 +321,16 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
   return (
     <>
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-brand-gold/20 bg-brand-charcoal pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-white shadow-[14px_0_38px_-30px_rgba(0,0,0,0.8)] lg:flex">
+        <div className="mx-4 mt-4 flex items-center gap-2 border-b border-white/10 pb-5">
         <Link
           href="/"
           aria-label="Ir para o Assistente IA"
-          className="nk-focus mx-4 mt-4 rounded-xl border-b border-white/10 px-2 pb-5"
+          className="nk-focus min-w-0 flex-1 rounded-xl px-2"
         >
           <BrandMark variant="full" size="sm" inverted />
         </Link>
+          <SafisaPickupAlertBell />
+        </div>
         <NavigationContent
           idSuffix="desktop"
           pathname={pathname}
@@ -359,6 +363,9 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
           >
             <BrandMark variant="full" size="sm" inverted />
           </Link>
+          <div className="ml-auto">
+            <SafisaPickupAlertBell />
+          </div>
         </div>
       </header>
 
