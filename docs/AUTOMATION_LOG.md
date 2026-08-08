@@ -277,3 +277,13 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Validação local:** baseline + MIG-SAF-001 + MIG-SAF-003 + MIG-SAF-004; A–O aprovados com quatro cenários concorrentes PostgreSQL reais e fixtures fictícias.
 - **Remoto:** nenhuma leitura, escrita, `db push`, alteração de Auth, membership, Pedido, Estoque ou RPC remota.
 - **Próxima ação:** revisão humana do PR draft antes de qualquer merge ou operação de piloto.
+
+## 2026-08-08 — NK-SAF-003 / NK-SAF-004
+
+- **NK-SAF-003:** `DONE`. PR #10 mesclado em `main` (`3bc7ffc69583d6f97056d477ced59b8486422863`); MIG-SAF-004 aplicada em produção sob protocolo controlado; Portal Safisa validado em produção, incluindo ciclo automático, abas `Em andamento`/`Concluídos` e layout compacto.
+- **NK-SAF-004:** auditoria documental concluída em `agent/safisa-pickup-alerts`.
+- **Arquitetura:** alertas internos atuais são derivados por `ready_quantity - picked_quantity`; total preparado usa o agregado de `ready_quantity + cancelled_quantity`; cancelados e Pedidos sem retirada pendente não geram alerta.
+- **Contratos reutilizáveis:** `supplier_order_summaries`, `supplier_order_item_details`, `safisa_portal_events` e `public.list_safisa_ready_pickup_alerts(p_limit)`; a RPC atual já exige perfil interno ativo e retorna dados por linha suficientes para agrupamento por Pedido.
+- **Decisão técnica:** `NO_MIGRATION_REQUIRED`; persistência somente será reavaliada se forem aprovados estados individuais persistentes, como lido/não lido ou dismiss.
+- **Escopo desta fase:** nenhuma implementação, migration, consulta ou escrita remota, alteração de Vercel, operação real ou merge.
+- **Próxima ação:** revisão humana da UX, do ciclo de alerta e do plano de implementação A–E.
