@@ -272,6 +272,7 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 
 - **Estado novo:** WAITING_HUMAN_REVIEW.
 - **Branch:** `agent/safisa-automatic-orders`.
+- **Pull request:** [#10](https://github.com/henriqueskm/projeto-estoque/pull/10) (draft).
 - **Resumo:** MIG-SAF-004 torna todo Pedido automaticamente Safisa-managed, cria leitores sem autorização por Pedido, separa Portal em Em andamento/Concluídos, aplica prontidão estrita universal e protege cancelamento auditado contra prontidão pendente.
 - **Validação local:** baseline + MIG-SAF-001 + MIG-SAF-003 + MIG-SAF-004; A–O aprovados com quatro cenários concorrentes PostgreSQL reais e fixtures fictícias.
 - **Remoto:** nenhuma leitura, escrita, `db push`, alteração de Auth, membership, Pedido, Estoque ou RPC remota.

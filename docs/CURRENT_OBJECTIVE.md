@@ -6,7 +6,7 @@
 - **Estado:** WAITING_HUMAN_REVIEW
 - **Classificação:** B — aplicação sobre RPCs oficiais já implantadas
 - **Branch de execução:** `agent/safisa-automatic-orders`
-- **Pull request:** pendente de criação como draft
+- **Pull request:** [#10](https://github.com/henriqueskm/projeto-estoque/pull/10) (draft)
 - **Base:** `origin/main` no merge aprovado `5e94db50f1b017749a486eae01b7edece75279b1`
 - **Dependências:** MIG-SAF-001 e MIG-SAF-003 aplicadas no Supabase remoto
 
