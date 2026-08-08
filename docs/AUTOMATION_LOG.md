@@ -267,3 +267,12 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Banco local:** baseline + MIG-SAF-001 + MIG-SAF-003, fixtures exclusivamente fictícias; A–H, cinco concorrências e transição legado aprovadas.
 - **Pull request:** [#9](https://github.com/henriqueskm/projeto-estoque/pull/9) (draft).
 - **Próxima ação:** revisão humana do PR draft antes de qualquer provisionamento ou publicação do piloto.
+
+## 2026-08-07 — NK-SAF-003
+
+- **Estado novo:** WAITING_HUMAN_REVIEW.
+- **Branch:** `agent/safisa-automatic-orders`.
+- **Resumo:** MIG-SAF-004 torna todo Pedido automaticamente Safisa-managed, cria leitores sem autorização por Pedido, separa Portal em Em andamento/Concluídos, aplica prontidão estrita universal e protege cancelamento auditado contra prontidão pendente.
+- **Validação local:** baseline + MIG-SAF-001 + MIG-SAF-003 + MIG-SAF-004; A–O aprovados com quatro cenários concorrentes PostgreSQL reais e fixtures fictícias.
+- **Remoto:** nenhuma leitura, escrita, `db push`, alteração de Auth, membership, Pedido, Estoque ou RPC remota.
+- **Próxima ação:** revisão humana do PR draft antes de qualquer merge ou operação de piloto.

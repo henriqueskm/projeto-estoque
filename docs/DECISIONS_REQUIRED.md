@@ -77,10 +77,12 @@ aguarda revisão humana; merge da interface ainda não está autorizado.
 | DEC-ASM-MERGE | NK-ASM-002 | PR #3 revisado e mesclado em `main`. |
 | DEC-SAF-001 | NK-SAF-001 | Contas individuais, provisionamento administrativo, membership próprio e ativação/desativação individual; conta Safisa não é perfil interno. |
 | DEC-SAF-002 | NK-SAF-001 | Signup público será desabilitado futuramente em alteração remota separada; contas serão criadas administrativamente. |
-| DEC-SAF-003 | NK-SAF-001 | Publicação e revogação explícitas por Pedido, sem publicação automática e sem apagar auditoria. |
+| DEC-SAF-003 | NK-SAF-001 | **SUPERSEDED por DEC-SAF-010.** Publicação e revogação explícitas foram preservadas apenas como histórico/compatibilidade. |
 | DEC-SAF-004 | NK-SAF-001 | Incremento atômico/idempotente; correção absoluta com justificativa, confirmação, versão e auditoria, inclusive por usuário interno autorizado. |
 | DEC-SAF-005 | NK-SAF-001 | Ação “Retirar tudo que está pronto”, limitada ao pronto ainda não retirado e validada transacionalmente. |
 | DEC-SAF-006 | NK-SAF-001 | Cancelamento silencioso de prontidão bloqueado; somente saldo ainda não pronto pode ser cancelado separadamente. |
 | DEC-SAF-007 | NK-SAF-001 | Pedidos encerrados ficam somente leitura enquanto autorizados; revogação remove acesso sem apagar dados ou auditoria. |
 | DEC-SAF-008 | NK-SAF-001 | Portal em `/safisa` no mesmo deploy, com layout, navegação, guards e autorização server-side/banco separados. |
-| DEC-SAF-009 | MIG-SAF-003 | Pedido sem linha em `safisa_order_authorizations` mantém retirada legada e autoavança `ready_quantity` até `picked_quantity`; a primeira publicação torna o Pedido Safisa-managed permanentemente, e revogação não restaura o regime legado. |
+| DEC-SAF-009 | MIG-SAF-003 | **SUPERSEDED por DEC-SAF-010.** A transição legado foi necessária para a implantação inicial e permanece como histórico da decisão. |
+| DEC-SAF-010 | NK-SAF-003 | Safisa é o único fornecedor: todo `supplier_order` é automaticamente Safisa-managed e visível a memberships ativas enquanto tiver quantidade pendente de retirada. |
+| DEC-SAF-011 | NK-SAF-003 | “Excluir pedido” significa cancelamento lógico auditado, nunca `DELETE` físico; cancelados saem das listas ativas e permanecem no histórico. |
