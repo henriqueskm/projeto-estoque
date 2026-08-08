@@ -11,6 +11,7 @@ import {
   initializeSafisaPickupAlertReadState,
   safisaPickupAlertUnavailableMessage,
 } from "../lib/safisa-pickup-alert-state.ts";
+import { maximumSafisaPickupQuantity } from "../lib/safisa-portal-readiness.ts";
 
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -233,6 +234,47 @@ test("keeps the normal empty state only for confirmed zero alerts", () => {
   assert.equal(state.hasConfirmedData, true);
   assert.equal(state.error, null);
   assert.equal(state.data.alertCount, 0);
+});
+
+test("shows ready pickup quantities per item without inventing a zero badge", () => {
+  const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
+  const readyWaitingPickupByItem = [1, 0, 2];
+
+  assert.equal(
+    readyWaitingPickupByItem.reduce((total, quantity) => total + quantity, 0),
+    3,
+  );
+  assert.match(orders, /item\.readyWaitingPickupQuantity > 0/);
+  assert.match(orders, /Pronto para retirar:/);
+  assert.match(orders, /item\.readyWaitingPickupQuantity/);
+});
+
+test("limits total picked quantity to the valid ready quantity", () => {
+  const cases = [
+    { ordered: 5, cancelled: 0, ready: 1, picked: 0, maximum: 1, waiting: 1 },
+    { ordered: 5, cancelled: 0, ready: 3, picked: 1, maximum: 3, waiting: 2 },
+    { ordered: 5, cancelled: 0, ready: 3, picked: 3, maximum: 3, waiting: 0 },
+    { ordered: 10, cancelled: 3, ready: 7, picked: 2, maximum: 7, waiting: 5 },
+  ];
+
+  cases.forEach(({ ordered, cancelled, ready, picked, maximum, waiting }) => {
+    assert.equal(
+      maximumSafisaPickupQuantity(ordered, cancelled, ready),
+      maximum,
+    );
+    assert.equal(Math.max(0, ready - picked), waiting);
+  });
+});
+
+test("uses the readiness ceiling in the internal pickup control", () => {
+  const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
+
+  assert.match(orders, /maximumSafisaPickupQuantity\(/);
+  assert.match(orders, /maximum=\{maximum\}/);
+  assert.match(
+    orders,
+    /A quantidade retirada deve ficar entre o que já entrou no estoque e o total informado como pronto/,
+  );
 });
 
 test("renders a read-only internal bell, Home summary, and order navigation", () => {

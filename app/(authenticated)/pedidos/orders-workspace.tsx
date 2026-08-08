@@ -37,6 +37,7 @@ import {
 import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { getSafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";
+import { maximumSafisaPickupQuantity } from "@/lib/safisa-portal-readiness";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type {
   CreateSupplierOrderInput,
@@ -3161,8 +3162,9 @@ function OrderDetailsDialog({
 
   function updatePicked(item: SupplierOrderItem, nextValue: number) {
     const minimum = item.stockedQuantity;
-    const maximum = Math.min(
-      item.orderedQuantity - item.cancelledQuantity,
+    const maximum = maximumSafisaPickupQuantity(
+      item.orderedQuantity,
+      item.cancelledQuantity,
       item.readyQuantity,
     );
     const bounded = Math.max(minimum, Math.min(maximum, nextValue));
@@ -3175,8 +3177,9 @@ function OrderDetailsDialog({
   function savePicked(item: SupplierOrderItem) {
     const value = pickedDrafts[item.id] ?? item.pickedQuantity;
     const minimum = item.stockedQuantity;
-    const maximum = Math.min(
-      item.orderedQuantity - item.cancelledQuantity,
+    const maximum = maximumSafisaPickupQuantity(
+      item.orderedQuantity,
+      item.cancelledQuantity,
       item.readyQuantity,
     );
 
@@ -3359,8 +3362,11 @@ function OrderDetailsDialog({
           <div className="mt-1.5 divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral bg-white">
             {items.map((item) => {
               const minimum = item.stockedQuantity;
-              const maximum =
-                item.orderedQuantity - item.cancelledQuantity;
+              const maximum = maximumSafisaPickupQuantity(
+                item.orderedQuantity,
+                item.cancelledQuantity,
+                item.readyQuantity,
+              );
               const pickedValue =
                 pickedDrafts[item.id] ?? item.pickedQuantity;
               const changed = pickedValue !== item.pickedQuantity;
@@ -3425,6 +3431,17 @@ function OrderDetailsDialog({
                           item.waitingPickupQuantity
                         }
                       />
+                      {item.readyWaitingPickupQuantity > 0 ? (
+                        <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[0.68rem] leading-4 font-bold text-emerald-900 sm:text-xs">
+                          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-emerald-600" />
+                          Pronto para retirar: {" "}
+                          <strong className="font-mono font-black">
+                            {quantityFormatter.format(
+                              item.readyWaitingPickupQuantity,
+                            )}
+                          </strong>
+                        </p>
+                      ) : null}
                       {item.waitingStockQuantity > 0 ? (
                         <p className="text-[0.68rem] leading-4 font-semibold text-amber-900 sm:text-xs">
                           Aguardando entrada:{" "}

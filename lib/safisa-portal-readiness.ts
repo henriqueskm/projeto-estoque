@@ -24,3 +24,13 @@ export function maximumReadyQuantity(
 ) {
   return readyQuantity + waitingReadyQuantity;
 }
+
+export function maximumSafisaPickupQuantity(
+  orderedQuantity: number,
+  cancelledQuantity: number,
+  readyQuantity: number,
+) {
+  const validOrderedQuantity = Math.max(0, orderedQuantity - cancelledQuantity);
+
+  return Math.max(0, Math.min(validOrderedQuantity, readyQuantity));
+}
