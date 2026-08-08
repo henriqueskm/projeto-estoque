@@ -382,6 +382,39 @@ export type AssistantConfigurationDisassemblyConfirmationResult = {
   contextSupplierOrderCatalogCode: null;
 };
 
+export type AssistantSupplierOrderFinalizationPreviewBlock = {
+  kind: "supplier_order_finalization_preview";
+  action: "supplier_order_finalization";
+  state: "pending" | "expired" | "cancelled";
+  title: string;
+  message: string;
+  proposalToken: string | null;
+  expiresAt: string | null;
+  order: AssistantSupplierOrderCard;
+  confirmLabel: "Confirmar finalização";
+  cancelLabel: "Cancelar";
+  regeneratePrompt: string;
+};
+
+export type AssistantSupplierOrderFinalizationResultBlock = {
+  kind: "supplier_order_finalization_result";
+  action: "supplier_order_finalization";
+  outcome: "success" | "conflict" | "error" | "cancelled" | "expired";
+  title: string;
+  message: string;
+  order: AssistantSupplierOrderCard | null;
+  occurredAt: string | null;
+  idempotentReplay: boolean;
+  refreshWarning?: boolean;
+  actions: Array<AssistantActionResultLink | AssistantActionResultPrompt>;
+};
+
+export type AssistantSupplierOrderFinalizationConfirmationResult = {
+  block: AssistantSupplierOrderFinalizationResultBlock;
+  contextSupplierOrderId: string | null;
+  contextSupplierOrderCatalogCode: null;
+};
+
 export type AssistantChatSuccess = {
   message: string;
   contextItemQuery?: string | null;
@@ -915,7 +948,9 @@ export type AssistantStructuredBlock =
   | AssistantConfigurationAssemblyPreviewBlock
   | AssistantConfigurationAssemblyResultBlock
   | AssistantConfigurationDisassemblyPreviewBlock
-  | AssistantConfigurationDisassemblyResultBlock;
+  | AssistantConfigurationDisassemblyResultBlock
+  | AssistantSupplierOrderFinalizationPreviewBlock
+  | AssistantSupplierOrderFinalizationResultBlock;
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -2165,6 +2200,43 @@ export function parseAssistantStructuredBlock(
       installationKitStockBefore: value.installationKitStockBefore as number | null,
       installationKitStockAfter: value.installationKitStockAfter as number | null,
       occurredAt: value.occurredAt as string | null, reference: value.reference as string | null,
+      idempotentReplay: value.idempotentReplay, ...(value.refreshWarning ? { refreshWarning: true } : {}), actions };
+  }
+
+  if (value.kind === "supplier_order_finalization_preview") {
+    const order = parseSupplierOrderCard(value.order);
+    const pending = value.state === "pending";
+    if (value.action !== "supplier_order_finalization" || !order ||
+      !["pending", "expired", "cancelled"].includes(String(value.state)) ||
+      typeof value.title !== "string" || !value.title.trim() || value.title.length > 120 ||
+      typeof value.message !== "string" || !value.message.trim() || value.message.length > 500 ||
+      (pending ? typeof value.proposalToken !== "string" || value.proposalToken.length > 4096 ||
+        !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value.proposalToken) ||
+        typeof value.expiresAt !== "string" || Number.isNaN(Date.parse(value.expiresAt))
+        : value.proposalToken !== null || value.expiresAt !== null) ||
+      value.confirmLabel !== "Confirmar finalização" || value.cancelLabel !== "Cancelar" ||
+      typeof value.regeneratePrompt !== "string" || !value.regeneratePrompt.trim() || value.regeneratePrompt.length > 240) return null;
+    return { kind: value.kind, action: value.action,
+      state: value.state as AssistantSupplierOrderFinalizationPreviewBlock["state"], title: value.title.trim(),
+      message: value.message.trim(), proposalToken: pending ? value.proposalToken as string : null,
+      expiresAt: pending ? value.expiresAt as string : null, order,
+      confirmLabel: "Confirmar finalização", cancelLabel: "Cancelar", regeneratePrompt: value.regeneratePrompt.trim() };
+  }
+
+  if (value.kind === "supplier_order_finalization_result") {
+    const order = value.order === null ? null : parseSupplierOrderCard(value.order);
+    const actions = parseStockEntryResultActions(value.actions);
+    if (value.action !== "supplier_order_finalization" ||
+      !["success", "conflict", "error", "cancelled", "expired"].includes(String(value.outcome)) ||
+      typeof value.title !== "string" || !value.title.trim() || value.title.length > 120 ||
+      typeof value.message !== "string" || !value.message.trim() || value.message.length > 500 ||
+      (value.order !== null && !order) ||
+      (value.occurredAt !== null && (typeof value.occurredAt !== "string" || Number.isNaN(Date.parse(value.occurredAt)))) ||
+      typeof value.idempotentReplay !== "boolean" ||
+      (value.refreshWarning !== undefined && typeof value.refreshWarning !== "boolean") || !actions) return null;
+    return { kind: value.kind, action: value.action,
+      outcome: value.outcome as AssistantSupplierOrderFinalizationResultBlock["outcome"], title: value.title.trim(),
+      message: value.message.trim(), order, occurredAt: value.occurredAt as string | null,
       idempotentReplay: value.idempotentReplay, ...(value.refreshWarning ? { refreshWarning: true } : {}), actions };
   }
 

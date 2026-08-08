@@ -36,6 +36,8 @@ import type {
   AssistantConfigurationDisassemblyPreviewBlock,
   AssistantConfigurationDisassemblyResultBlock,
   AssistantConfigurationDisassemblySelection,
+  AssistantSupplierOrderFinalizationPreviewBlock,
+  AssistantSupplierOrderFinalizationResultBlock,
   AssistantStockEntryTarget,
   AssistantServoModelInventoryAction,
   AssistantServoModelInventoryBreakdownBlock,
@@ -2076,6 +2078,65 @@ function ConfigurationDisassemblyResult({ block }: { block: AssistantConfigurati
   </div>;
 }
 
+function SupplierOrderFinalizationPreview({ block, disabled, confirming, onConfirm, onCancel, onPromptSelect }: {
+  block: AssistantSupplierOrderFinalizationPreviewBlock;
+  disabled: boolean;
+  confirming: boolean;
+  onConfirm?: (block: AssistantSupplierOrderFinalizationPreviewBlock) => void;
+  onCancel?: (block: AssistantSupplierOrderFinalizationPreviewBlock) => void;
+  onPromptSelect?: (prompt: string) => void;
+}) {
+  const [locallyExpired, setLocallyExpired] = useState(false);
+  useEffect(() => {
+    if (block.state !== "pending" || !block.expiresAt) return;
+    const timeout = window.setTimeout(() => setLocallyExpired(true), Math.max(Date.parse(block.expiresAt) - Date.now(), 0));
+    return () => window.clearTimeout(timeout);
+  }, [block.expiresAt, block.state]);
+  const expired = block.state === "expired" || locallyExpired;
+  return <div className="min-w-0">
+    <p className="text-[0.65rem] font-black tracking-[0.12em] text-violet-800 uppercase">Ação operacional</p>
+    <h3 className="text-base font-black text-text-primary sm:text-lg">{expired ? "Prévia expirada" : block.title}</h3>
+    <p className="mt-1 text-xs font-semibold text-text-muted sm:text-sm">{expired ? "Gere uma nova prévia com os dados atuais." : block.message}</p>
+    <article className="mt-3 rounded-xl border border-violet-200 bg-violet-50/35 p-3">
+      <PickupOrderHeader order={block.order} />
+      <div className="mt-3 grid grid-cols-3 gap-1.5">
+        <PickupMetric label="Solicitado" value={block.order.orderedQuantity} />
+        <PickupMetric label="Retirado" value={block.order.pickedQuantity} emphasis />
+        <PickupMetric label="Pendente" value={block.order.waitingPickupQuantity} />
+      </div>
+      <p className="mt-3 text-xs font-semibold text-text-muted">Este Pedido será encerrado e passará para o Histórico/finalizados.</p>
+    </article>
+    {expired ? <button type="button" disabled={disabled || !onPromptSelect} onClick={() => onPromptSelect?.(block.regeneratePrompt)}
+      className="nk-focus mt-4 min-h-11 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:opacity-50">Gerar nova prévia</button>
+      : <div className="mt-4 grid grid-cols-2 gap-2">
+        <button type="button" disabled={disabled || confirming || !block.proposalToken || !onConfirm}
+          aria-busy={confirming} onClick={() => onConfirm?.(block)}
+          className="nk-focus min-h-11 rounded-xl bg-emerald-700 px-3 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
+          {confirming ? "Finalizando Pedido..." : block.confirmLabel}
+        </button>
+        <button type="button" disabled={disabled || confirming || !onCancel} onClick={() => onCancel?.(block)}
+          className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary disabled:opacity-50">{block.cancelLabel}</button>
+      </div>}
+  </div>;
+}
+
+function SupplierOrderFinalizationResult({ block }: { block: AssistantSupplierOrderFinalizationResultBlock }) {
+  const tone = block.outcome === "success" ? "border-emerald-200 bg-emerald-50/55" :
+    block.outcome === "conflict" ? "border-amber-200 bg-amber-50/55" : "border-red-200 bg-red-50/45";
+  return <div className="min-w-0">
+    <div className={`rounded-xl border p-3 ${tone}`}>
+      <p className="text-[0.65rem] font-black tracking-[0.12em] text-brand-gold-ink uppercase">Resultado da ação</p>
+      <h3 className="text-base font-black text-text-primary sm:text-lg">{block.title}</h3>
+      <p className="mt-1 text-sm font-semibold text-text-muted">{block.message}</p>
+      {block.idempotentReplay ? <span className="mt-2 inline-flex rounded-full bg-violet-100 px-2 py-1 text-[0.62rem] font-black text-violet-900 uppercase">Resultado idempotente</span> : null}
+      {block.refreshWarning ? <p role="status" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-950">A operação foi concluída; a atualização visual pode exigir recarregar a página.</p> : null}
+    </div>
+    {block.order ? <div className="mt-3"><PickupOrderHeader order={block.order} /></div> : null}
+    {block.actions.length ? <div className="mt-4 flex flex-wrap gap-2">{block.actions.map((action) => action.kind === "link" ? <Link key={`${action.label}-${action.href}`} href={action.href}
+      className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary">{action.label}</Link> : null)}</div> : null}
+  </div>;
+}
+
 const clarificationGroups: Array<{
   label: string;
   categories: AssistantClarificationCategory[];
@@ -2234,6 +2295,9 @@ export function AssistantStructuredBlockView({
   onConfigurationDisassemblyConfirm,
   onConfigurationDisassemblyCancel,
   confirmingConfigurationDisassembly = false,
+  onSupplierOrderFinalizationConfirm,
+  onSupplierOrderFinalizationCancel,
+  confirmingSupplierOrderFinalization = false,
 }: {
   block: AssistantStructuredBlock;
   disabled?: boolean;
@@ -2273,6 +2337,9 @@ export function AssistantStructuredBlockView({
   onConfigurationDisassemblyConfirm?: (block: AssistantConfigurationDisassemblyPreviewBlock) => void;
   onConfigurationDisassemblyCancel?: (block: AssistantConfigurationDisassemblyPreviewBlock) => void;
   confirmingConfigurationDisassembly?: boolean;
+  onSupplierOrderFinalizationConfirm?: (block: AssistantSupplierOrderFinalizationPreviewBlock) => void;
+  onSupplierOrderFinalizationCancel?: (block: AssistantSupplierOrderFinalizationPreviewBlock) => void;
+  confirmingSupplierOrderFinalization?: boolean;
 }) {
   switch (block.kind) {
     case "supplier_order_stock_entry_preview":
@@ -2297,6 +2364,11 @@ export function AssistantStructuredBlockView({
         onConfirm={onConfigurationDisassemblyConfirm} onCancel={onConfigurationDisassemblyCancel} onPromptSelect={onPromptSelect} />;
     case "configuration_disassembly_result":
       return <ConfigurationDisassemblyResult block={block} />;
+    case "supplier_order_finalization_preview":
+      return <SupplierOrderFinalizationPreview block={block} disabled={disabled} confirming={confirmingSupplierOrderFinalization}
+        onConfirm={onSupplierOrderFinalizationConfirm} onCancel={onSupplierOrderFinalizationCancel} onPromptSelect={onPromptSelect} />;
+    case "supplier_order_finalization_result":
+      return <SupplierOrderFinalizationResult block={block} />;
     case "assistant_action_preview":
       return (
         <SupplierOrderPickupPreview

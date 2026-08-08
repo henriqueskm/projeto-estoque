@@ -3,6 +3,7 @@ import type {
   AssistantManualStockOutputPreviewBlock,
   AssistantConfigurationAssemblyPreviewBlock,
   AssistantConfigurationDisassemblyPreviewBlock,
+  AssistantSupplierOrderFinalizationPreviewBlock,
   AssistantSupplierOrderPickupPreviewBlock,
   AssistantSupplierOrderStockEntryPreviewBlock,
 } from "@/lib/assistant-types";
@@ -41,4 +42,17 @@ export function expireStockEntryPreview<T extends
     proposalToken: null,
     expiresAt: null,
   } as T;
+}
+
+export function expireSupplierOrderFinalizationPreview(
+  block: AssistantSupplierOrderFinalizationPreviewBlock,
+): AssistantSupplierOrderFinalizationPreviewBlock {
+  return {
+    ...block,
+    state: "expired",
+    title: "Prévia expirada",
+    message: "Solicite novamente a finalização para confirmar com os dados atuais.",
+    proposalToken: null,
+    expiresAt: null,
+  };
 }

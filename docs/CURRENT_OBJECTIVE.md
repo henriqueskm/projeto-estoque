@@ -1,25 +1,26 @@
 # Objetivo atual
 
-- **ID:** NK-DIS-002
-- **Título:** Implementação da desmontagem pela Assistente
-- **Prioridade:** alta
+- **ID:** NK-ORD-004
+- **Título:** Finalização de Pedido pela Assistente
+- **Prioridade:** crítica
 - **Estado:** WAITING_HUMAN_VISUAL_REVIEW
 - **Classificação:** B — contrato oficial existente, com integração de aplicação
-- **Branch de execução:** `agent/assistant-disassembly`
-- **Base:** `origin/main` em `a6aa8f28eb7b20e82d7ce963b97064979db1b794`
-- **Dependência concluída:** NK-DIS-001; NK-SAF-004 concluído no PR #12.
+- **Branch de execução:** `agent/assistant-order-finalization`
+- **Base:** `origin/main` em `28bf362463074edc8f42116674545f4a297ffb99`
+- **Dependências concluídas:** NK-ORD-001; NK-DIS-002 concluído no PR #13.
 
 ## Escopo desta implementação
 
-- intenção determinística para desmontagem de Servo com kit;
-- resolução segura por código comercial, modelo ou seleção estruturada;
+- intenção determinística para finalizar Pedido por negociação/número;
+- resolução server-side sem aproximação insegura;
 - prévia assinada por HMAC, confirmação exclusiva por botão e rota fixa
-  `/api/assistant/actions/configuration-disassembly`;
-- execução exclusivamente pela ação interna `disassembleCommercialConfiguration`,
-  que termina na RPC oficial `public.disassemble_commercial_configuration`;
-- recibo estruturado, idempotência e expiração sem persistir proposalToken.
+  `/api/assistant/actions/supplier-order-finalization`;
+- execução exclusivamente pela ação existente `finalizeSupplierOrder`, que chama
+  `public.finalize_supplier_order` com `finalization_note = null`;
+- recibo estruturado, idempotência, conflito de versão e expiração sem persistir
+  proposalToken.
 
-Nenhuma migration, alteração de RPC, operação remota ou desmontagem real é
+Nenhuma migration, alteração de RPC, operação remota ou finalização real é
 parte deste objetivo. A próxima etapa é a validação visual humana autenticada.
 
 ## Histórico do objetivo anterior: NK-SAF-004
