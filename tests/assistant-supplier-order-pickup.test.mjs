@@ -12,6 +12,8 @@ import {
   parseSupplierOrderPickupRpcResult,
 } from "../lib/ai/supplier-order-pickup-execution.ts";
 import {
+  calculateSupplierOrderPickupTarget,
+  routeSupplierOrderPickupAction,
   summarizeSupplierOrderMarkAll,
   validateSupplierOrderPickupLine,
 } from "../lib/ai/supplier-order-pickup-routing.ts";
@@ -34,6 +36,64 @@ function line(overrides = {}) {
     ...overrides,
   };
 }
+
+test("direct pickup quantities route as increments", () => {
+  const cases = [
+    ["Retire 1 do Cód. 11A no Pedido 1212", 1, "11A", "1212"],
+    ["retirar 2 do 2e no pedido teste 01", 2, "2E", "teste 01"],
+    ["Retire uma do código 6A.", 1, "6A", null],
+    ["RETIRE 1 DO CÓD. 11A NO PEDIDO 1212", 1, "11A", "1212"],
+  ];
+
+  for (const [message, requestedQuantity, catalogCode, negotiationNumber] of cases) {
+    assert.deepEqual(routeSupplierOrderPickupAction(message), {
+      kind: "PICKUP_ACTION",
+      request: {
+        mode: "increment",
+        catalogCode,
+        requestedQuantity,
+        negotiationNumber,
+      },
+    });
+  }
+
+  assert.deepEqual(calculateSupplierOrderPickupTarget("increment", 2, 1), {
+    targetPickedQuantity: 3,
+    addedQuantity: 1,
+  });
+});
+
+test("explicit totals remain set_total and genuinely ambiguous wording remains ambiguous", () => {
+  for (const message of [
+    "Defina o total retirado do Cód. 11A como 3 no Pedido 1212",
+    "Deixe o total retirado do Cód. 11A em 3 no Pedido 1212",
+  ]) {
+    const result = routeSupplierOrderPickupAction(message);
+    assert.equal(result.kind, "PICKUP_ACTION");
+    assert.equal(result.request.mode, "set_total");
+    assert.equal(result.request.requestedQuantity, 3);
+    assert.equal(result.request.catalogCode, "11A");
+    assert.equal(result.request.negotiationNumber, "1212");
+  }
+
+  assert.deepEqual(
+    routeSupplierOrderPickupAction("Marque 3 do Cód. 11A no Pedido 1212"),
+    {
+      kind: "AMBIGUOUS_PICKUP_MODE",
+      catalogCode: "11A",
+      requestedQuantity: 3,
+      negotiationNumber: "1212",
+    },
+  );
+});
+
+test("confirmation text and pickup reads never become direct pickup actions", () => {
+  assert.equal(routeSupplierOrderPickupAction("sim").kind, "BUTTON_CONFIRMATION_TEXT");
+  assert.equal(
+    routeSupplierOrderPickupAction("Quanto foi retirado do Cód. 11A no Pedido 1212?").kind,
+    "NOT_PICKUP_ACTION",
+  );
+});
 
 test("ready quantity, not ordered quantity, bounds each pickup preview", () => {
   assert.deepEqual(validateSupplierOrderPickupLine("increment", 1, line({ readyQuantity: 0, pickedQuantity: 0, stockedQuantity: 0 })), {
