@@ -438,3 +438,15 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   nova e zero alteração de RPC.
 - **Preview Vercel:** somente visual e não mutável até aplicação coordenada da
   MIG-ORD-007A; teste operacional aguarda autorização posterior.
+
+## 2026-08-12 — NK-ORD-007B1
+
+- **Estado:** refinamento visual implementado; NK-ORD-007B permanece
+  `WAITING_HUMAN_VISUAL_REVIEW` no PR draft #18.
+- **Ações globais:** retirada total aparece somente com quantidade pronta
+  aguardando retirada; entrada no estoque aparece somente com backlog histórico.
+- **Layout:** o rodapé largo foi substituído por dock compacto, sticky e interno
+  à região rolável, com retirada como ação principal e regularização como ação
+  secundária.
+- **Escopo:** nenhuma regra operacional, action, RPC, migration ou estado remoto
+  foi alterado.

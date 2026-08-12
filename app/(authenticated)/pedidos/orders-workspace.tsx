@@ -38,6 +38,7 @@ import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { getSafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";
 import { maximumSafisaPickupQuantity } from "@/lib/safisa-portal-readiness";
+import { getSupplierOrderGlobalActionVisibility } from "@/lib/supplier-order-global-actions";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type {
   CreateSupplierOrderInput,
@@ -3017,12 +3018,13 @@ function OrderDetailsDialog({
     order.status === "COMPLETED" &&
     order.closureKind === null &&
     order.cancelledAt === null;
-  const canCreateStockEntry = items.some(
-    (item) => item.waitingStockQuantity > 0,
-  );
+  const globalActionVisibility = getSupplierOrderGlobalActionVisibility({
+    canMarkAll,
+    readyWaitingPickupQuantity: order.readyWaitingPickupQuantity,
+    waitingStockQuantity: order.waitingStockQuantity,
+  });
   const hasHeaderActions =
     canEdit || canCancelFull || canCancelRemaining || canFinalize;
-  const hasFooterActions = canMarkAll || canCreateStockEntry;
   const waitingStockMessage =
     order.waitingStockQuantity === 1
       ? "1 unidade aguarda entrada no estoque"
@@ -3586,41 +3588,40 @@ function OrderDetailsDialog({
             {error}
           </p>
         ) : null}
-      </div>
 
-      {hasFooterActions ? (
-        <div
-          className={`grid shrink-0 gap-1.5 border-t border-border-neutral bg-app-background/95 p-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:flex sm:justify-end sm:p-2.5 ${
-            canMarkAll && canCreateStockEntry
-              ? "grid-cols-2"
-              : "grid-cols-1"
-          }`}
-        >
-          {canMarkAll ? (
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => setConfirmation("MARK_ALL")}
-              className="nk-focus min-h-11 min-w-0 rounded-xl border border-emerald-700 bg-white px-2 text-center text-xs leading-tight font-black text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 sm:px-4 sm:text-sm"
-            >
-              Retirar tudo que está pronto
-            </button>
-          ) : null}
-          {canCreateStockEntry ? (
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => {
-                setError(null);
-                setStockEntryOpen(true);
-              }}
-              className="nk-focus min-h-11 min-w-0 rounded-xl bg-emerald-700 px-2 text-center text-xs leading-tight font-black text-white transition hover:bg-emerald-800 disabled:opacity-50 sm:px-4 sm:text-sm"
-            >
-              Dar entrada no estoque
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+        {globalActionVisibility.showDock ? (
+          <div
+            data-testid="supplier-order-action-dock"
+            className="pointer-events-none sticky bottom-2 z-10 flex justify-end px-2.5 pb-[max(0.125rem,env(safe-area-inset-bottom))] sm:px-4"
+          >
+            <div className="pointer-events-auto inline-flex max-w-full flex-wrap justify-end gap-1.5 rounded-2xl border border-brand-charcoal/15 bg-surface/95 p-1.5 shadow-[0_14px_32px_-18px_rgba(23,29,33,0.65)] backdrop-blur-sm">
+              {globalActionVisibility.showMarkAll ? (
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => setConfirmation("MARK_ALL")}
+                  className="nk-focus min-h-10 min-w-0 rounded-xl border border-emerald-700 bg-emerald-700 px-3 text-center text-xs leading-tight font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300 disabled:text-slate-600 sm:px-4 sm:text-sm"
+                >
+                  Retirar tudo que está pronto
+                </button>
+              ) : null}
+              {globalActionVisibility.showStockEntry ? (
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => {
+                    setError(null);
+                    setStockEntryOpen(true);
+                  }}
+                  className="nk-focus min-h-10 min-w-0 rounded-xl border border-brand-charcoal/25 bg-white px-3 text-center text-xs leading-tight font-black text-text-primary transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/35 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 sm:px-4 sm:text-sm"
+                >
+                  Dar entrada no estoque
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </DialogShell>
   );
 }
