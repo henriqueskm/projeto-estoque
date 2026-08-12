@@ -374,6 +374,25 @@ begin
 end;
 $$;
 
+-- Current pickup workers require universal readiness and automatically create
+-- the matching stock entry. Seed readiness as fixture state, outside the
+-- authenticated client contract, before exercising those workers.
+reset role;
+
+update public.supplier_order_items
+set ready_quantity = 3
+where supplier_order_id = (
+  select physical_order_id from supplier_order_test_context
+);
+
+update public.supplier_order_items
+set ready_quantity = ordered_quantity
+where supplier_order_id = (
+  select configuration_order_id from supplier_order_test_context
+);
+
+set local role authenticated;
+
 -- E and M: pickup 0 -> 3 of 5 becomes PARTIAL.
 insert into supplier_order_test_results (test_name, result)
 select
@@ -408,12 +427,13 @@ select pg_temp.expect_supplier_order_error(
 )
 from supplier_order_test_context;
 
--- G and N: mark all picked, then status is COMPLETED.
+-- G and N: mark all on the independent configuration order, then status is
+-- COMPLETED. The physical order remains partial for cancellation checks.
 insert into supplier_order_test_results (test_name, result)
 select
   'all_picked',
   public.mark_supplier_order_all_picked(
-    context.physical_order_id,
+    context.configuration_order_id,
     null,
     gen_random_uuid()
   )
@@ -431,16 +451,8 @@ begin
 end;
 $$;
 
--- H: emulate future stock allocation inside this rollback-only test, then reject
--- a pickup reduction below stocked_quantity.
-reset role;
-
-update public.supplier_order_items
-set stocked_quantity = 2
-where id = (select physical_line_id from supplier_order_test_context);
-
-set local role authenticated;
-
+-- H: atomic pickup already stocked the three picked units; a reduction is
+-- rejected by the canonical monotonic pickup contract.
 select pg_temp.expect_supplier_order_error(
   format(
     'select public.set_supplier_order_item_picked_quantity(%L::uuid, 1, null, %L::uuid)',
@@ -449,17 +461,6 @@ select pg_temp.expect_supplier_order_error(
   )
 )
 from supplier_order_test_context;
-
-insert into supplier_order_test_results (test_name, result)
-select
-  'restore_partial_pickup',
-  public.set_supplier_order_item_picked_quantity(
-    context.physical_line_id,
-    3,
-    'Prepare remaining-cancellation verification',
-    gen_random_uuid()
-  )
-from supplier_order_test_context as context;
 
 -- I and O: untouched order can be fully cancelled and derives CANCELLED.
 insert into supplier_order_test_results (test_name, result)
@@ -751,6 +752,18 @@ where summary.id = (
   where test_name = 'mutation_create'
 );
 
+reset role;
+
+update public.supplier_order_items
+set ready_quantity = 2
+where supplier_order_id = (
+  select (result ->> 'supplier_order_id')::uuid
+  from supplier_order_test_results
+  where test_name = 'mutation_create'
+);
+
+set local role authenticated;
+
 insert into supplier_order_test_results (test_name, result)
 select
   'mutation_pick',
@@ -866,7 +879,8 @@ from supplier_order_test_context as context;
 reset role;
 
 update public.supplier_order_items
-set cancelled_quantity = 2
+set cancelled_quantity = 2,
+    ready_quantity = 3
 where supplier_order_id = (
   select (result ->> 'supplier_order_id')::uuid
   from supplier_order_test_results
@@ -910,7 +924,7 @@ begin
       select physical_line_id from supplier_order_test_context
     )
       and picked_quantity = 3
-      and stocked_quantity = 2
+      and stocked_quantity = 3
       and cancelled_quantity = 2
   ) then
     raise exception
@@ -957,98 +971,73 @@ from supplier_order_test_context;
 
 reset role;
 
--- P: no supplier-order operation changed any stock or stock audit table.
+-- P: pickup and stock entry are one atomic operation. Every picked unit in
+-- this fixture is stocked exactly once and no movement is orphaned.
 do $$
 declare
-  v_after jsonb;
+  v_before jsonb := (
+    select signature from supplier_order_stock_baseline
+  );
 begin
-  select jsonb_build_object(
-    'movement_batches', (
-      select count(*) from public.movement_batches
-    ),
-    'stock_movements', (
-      select count(*) from public.stock_movements
-    ),
-    'configuration_stock_movements', (
-      select count(*) from public.configuration_stock_movements
-    ),
-    'assembly_operations', (
-      select count(*) from public.assembly_operations
-    ),
-    'inbound_batch_lines', (
-      select count(*) from public.inbound_batch_lines
-    ),
-    'outbound_batch_lines', (
-      select count(*) from public.outbound_batch_lines
-    ),
-    'nk_stats_test_v1_batches', (
+  if exists (
+    select 1
+    from public.supplier_order_items
+    where supplier_order_id in (
+      select physical_order_id from supplier_order_test_context
+      union all
+      select configuration_order_id from supplier_order_test_context
+      union all
+      select (result ->> 'supplier_order_id')::uuid
+      from supplier_order_test_results
+      where test_name in ('mutation_create', 'partial_cancel_create')
+    )
+      and stocked_quantity <> picked_quantity
+  ) then
+    raise exception 'P failed: pickup and stock entry quantities diverged.';
+  end if;
+
+  if exists (
+    select 1
+    from public.supplier_order_stock_entries as entry
+    left join public.movement_batches as batch on batch.id = entry.movement_batch_id
+    where entry.supplier_order_id in (
+      select physical_order_id from supplier_order_test_context
+      union all
+      select configuration_order_id from supplier_order_test_context
+      union all
+      select (result ->> 'supplier_order_id')::uuid
+      from supplier_order_test_results
+      where test_name in ('mutation_create', 'partial_cancel_create')
+    )
+      and batch.id is null
+  ) then
+    raise exception 'P failed: pickup created an orphaned stock entry.';
+  end if;
+
+  if (select count(*) from public.assembly_operations)
+      <> (v_before ->> 'assembly_operations')::integer
+    or (select count(*) from public.outbound_batch_lines)
+      <> (v_before ->> 'outbound_batch_lines')::integer
+    or (
       select count(*)
       from public.movement_batches
       where split_part(coalesce(description, ''), '|', 1) = 'NK_STATS_TEST_V1'
-    ),
-    'item_minimums', (
-      select md5(
-        coalesce(
-          string_agg(
-            id::text || ':' || minimum_stock::text || ':' || updated_at::text,
-            ',' order by id
-          ),
-          ''
-        )
-      )
+    ) <> (v_before ->> 'nk_stats_test_v1_batches')::integer
+    or (
+      select md5(coalesce(string_agg(
+        id::text || ':' || minimum_stock::text || ':' || updated_at::text,
+        ',' order by id
+      ), ''))
       from public.items
-    ),
-    'configuration_minimums', (
-      select md5(
-        coalesce(
-          string_agg(
-            id::text || ':' || minimum_stock::text || ':' || updated_at::text,
-            ',' order by id
-          ),
-          ''
-        )
-      )
+    ) <> v_before ->> 'item_minimums'
+    or (
+      select md5(coalesce(string_agg(
+        id::text || ':' || minimum_stock::text || ':' || updated_at::text,
+        ',' order by id
+      ), ''))
       from public.commercial_configurations
-    ),
-    'stock_balances', (
-      select jsonb_build_object(
-        'count', count(*),
-        'quantity', coalesce(sum(quantity), 0),
-        'signature', md5(
-          coalesce(
-            string_agg(
-              item_id::text || ':' || quantity::text || ':' || updated_at::text,
-              ',' order by item_id
-            ),
-            ''
-          )
-        )
-      )
-      from public.stock_balances
-    ),
-    'configuration_stock_balances', (
-      select jsonb_build_object(
-        'count', count(*),
-        'quantity', coalesce(sum(quantity), 0),
-        'signature', md5(
-          coalesce(
-            string_agg(
-              configuration_id::text || ':' || quantity::text || ':' || updated_at::text,
-              ',' order by configuration_id
-            ),
-            ''
-          )
-        )
-      )
-      from public.configuration_stock_balances
-    )
-  )
-  into v_after;
-
-  if v_after is distinct from (
-    select signature from supplier_order_stock_baseline
-  ) then
-    raise exception 'P failed: an inventory or stock-audit table changed.';
+    ) <> v_before ->> 'configuration_minimums' then
+    raise exception 'P failed: pickup changed an unrelated stock contract.';
   end if;
 end;
 $$;

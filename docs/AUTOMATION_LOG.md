@@ -620,3 +620,34 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Próxima ação:** revisão humana do SQL, estratégia de lock e testes antes de
   qualquer autorização separada de aplicação remota. NK-ORD-008B não foi
   iniciado.
+
+## 2026-08-12 — MIG-ORD-008A DB review final
+
+- **Estado novo:** `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`; PR #22 pronta
+  para revisão humana, sem merge e sem autorização de rollout remoto.
+- **Executor comprovado:** Supabase CLI `2.112.0`, resolvida pelo
+  `npx --no-install` e executada pelo binário Windows do cache local. O cenário
+  principal usou `db push --local --yes`; history e segunda execução foram
+  verificados com `migration list --local` e `db push --local --dry-run`.
+- **Cenário A:** os quatro legados aprovados foram convertidos, os quatro
+  eventos técnicos foram criados e itens, quantidades, lifecycle, Safisa e
+  snapshots históricos permaneceram preservados.
+- **Cenário B:** a divergência deliberada de uma precondição falhou pelo mesmo
+  runner; nenhum update, evento, constraint, wrapper ou registro de history
+  ficou parcialmente aplicado.
+- **Cenário C:** o rebuild limpo com zero legados aplicou CHECK, UNIQUE e
+  wrappers, registrou history uma vez e ficou sem migration pendente.
+- **Transação:** `KEEP_EXPLICIT_TRANSACTION = YES`; zero warning relacionado a
+  transação, pipeline ou history. O lock bloqueia writers e permite readers;
+  não foi adicionado `lock_timeout` após a validação completa do arquivo.
+- **Preflight remoto read-only:** projeto `isdjboconmwaqipjrjvp` permaneceu com
+  exatamente os quatro pares aprovados, zero colisão dos destinos, zero grupo
+  duplicado, zero outro valor incompatível e zero colisão das chaves técnicas.
+  Nenhuma RPC mutável ou escrita remota foi executada.
+- **Regressões:** identidade estática/local, fundação de Pedidos atualizada ao
+  contrato de retirada+entrada atômica, Safisa, finalização, retirada, entrada,
+  concorrência/rollback atômicos e `db lint` local foram aprovados. A fixture
+  de fundação continua rollback-only e nenhum worker foi alterado.
+- **Próxima ação:** revisão humana e merge do PR #22. Qualquer rollout remoto
+  exige autorização própria e preflight de produção estrito com exatamente
+  4/4 identidades legadas.

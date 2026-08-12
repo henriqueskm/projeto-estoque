@@ -3,8 +3,8 @@
 - **ID:** MIG-ORD-008A
 - **Título:** Identidade única e numérica da negociação
 - **Prioridade:** crítica
-- **Fase:** migration implementada e validada somente em banco local
-- **Estado:** `IMPLEMENTED_LOCAL / WAITING_DB_REVIEW`
+- **Fase:** DB review concluído; migration ainda não aplicada remotamente
+- **Estado:** `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`
 - **Classificação:** **C — migration obrigatória**
 - **Dependência:** NK-ORD-008 `ARCHITECTURE_APPROVED`
 - **Base:** `97c02174eedb545544c7b8397e1115033dc212bb`
@@ -59,8 +59,19 @@ e não foi misturado nesta migration.
 Testes locais descartáveis comprovaram rollback integral, aplicação sobre os
 quatro legados, aplicação sobre instalação limpa, preservação de dados,
 leading zeros, rejeição de formato, reserva em cancelados/finalizados, replay,
-conflito idempotente e corrida com duas conexões. Nenhuma aplicação remota está
-autorizada nesta fase.
+conflito idempotente e corrida com duas conexões. O gate final executou a
+migration pelo runner real da Supabase CLI 2.112.0: o history foi registrado
+uma única vez, o segundo `db push --local --dry-run` não encontrou pendências e
+uma precondição deliberadamente inválida reverteu SQL e history integralmente.
+
+`KEEP_EXPLICIT_TRANSACTION = YES`: não houve warning de `BEGIN`, `COMMIT`,
+pipeline ou migration history. O lock `SHARE ROW EXCLUSIVE` bloqueia escritas
+concorrentes e preserva leituras; com sete Pedidos e janela controlada, a seção
+crítica é curta. Não foi adicionado `lock_timeout`, evitando tornar o rollout
+sensível a um limite arbitrário depois de o SQL ter sido validado. A regra
+interna `v_legacy_order_count in (0, 4)` permanece intencional para rebuild
+limpo e produção atual; o preflight do rollout remoto deverá exigir exatamente
+os quatro pares aprovados. Nenhuma aplicação remota está autorizada nesta fase.
 
 ## Conclusão executiva
 
