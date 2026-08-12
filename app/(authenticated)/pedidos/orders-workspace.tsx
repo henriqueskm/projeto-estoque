@@ -1180,6 +1180,11 @@ function OrderFormDialog({
       return;
     }
 
+    if (!/^[0-9]+$/.test(normalizedNumber)) {
+      setError("Informe somente números no Nº do Pedido.");
+      return;
+    }
+
     if (!orderDate) {
       setError("Informe a data do pedido.");
       return;
@@ -1268,6 +1273,8 @@ function OrderFormDialog({
               <input
                 ref={firstInputRef}
                 type="text"
+                inputMode="numeric"
+                pattern="[0-9]+"
                 required
                 maxLength={120}
                 disabled={isPending}

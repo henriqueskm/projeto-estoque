@@ -686,3 +686,28 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   retirada, entrada de Estoque ou operação Safisa foi executado.
 - **Próxima etapa:** NK-ORD-008B — foto → Gemini → validação → preview, sem
   criação real de Pedido.
+## 2026-08-12 — NK-ORD-008B / implementação da prévia por foto
+
+- **Base:** `origin/main` em
+  `56cf09f9a0e7bcb7503ef58512112969aa19af7b`, contendo os PRs #22 e #23 e o
+  rollout verificado de MIG-ORD-008A.
+- **Branch:** `agent/assistant-photo-order-preview`.
+- **Escopo:** câmera/galeria/arquivo → preparação client-side → multipart
+  same-origin → Gemini 3.6 Flash com structured output → validação server-side
+  contra catálogo → `supplier_order_photo_preview`.
+- **Segurança:** arquivo somente em memória; MIME + magic bytes; limite de
+  3,9 MB no servidor; profile interno ativo; `store: false`; zero ferramenta;
+  prompt visual tratado como dado; zero fuzzy matching; zero UUID exposto;
+  zero imagem/base64/token em storage ou logs.
+- **Contrato visual:** estados `READY_FOR_REVIEW`, `NEEDS_REVIEW`,
+  `DUPLICATE_NEGOTIATION`, `NOT_A_SUPPLIER_ORDER`, `UNREADABLE` e `ERROR`,
+  sempre com banner explícito de que nenhum Pedido foi criado.
+- **Bloqueio operacional:** esta etapa não contém proposal token, botão de
+  criação, rota de confirmação, import de `createSupplierOrder`, RPC mutável ou
+  escrita no Supabase.
+- **UX tradicional:** negociação continua `text`, com `inputMode=numeric`,
+  pattern digits-only e a mesma validação preventiva na Server Action; zeros à
+  esquerda permanecem significativos.
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_PHOTO_REVIEW`.
+- **Próxima etapa:** NK-ORD-008C, validação visual com fotos reais controladas.
+  NK-ORD-008D só poderá habilitar confirmação/criação após nova autorização.
