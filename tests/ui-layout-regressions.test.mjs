@@ -47,3 +47,21 @@ test("wide order dialogs stay proportionate and keep item controls near their me
   assert.match(orders, /sm:justify-end/);
   assert.match(orders, /bg-gradient-to-b from-sky-600 to-sky-700/);
 });
+
+test("order detail opens available item images from the code without an eye button", () => {
+  const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
+  const image = read("components/commercial-configuration-image.tsx");
+  const compatibleImages = read("components/compatible-kit-images.tsx");
+  const detail = orders.slice(orders.indexOf('aria-labelledby={`${titleId}-items`}'));
+
+  assert.match(orders, /function OrderItemImageCode/);
+  assert.match(detail, /<OrderItemImageCode/);
+  assert.doesNotMatch(detail, /<OrderItemImageButton/);
+  assert.match(orders, /triggerLabel={`Ver imagem do Cód\. \$\{code\}`}/);
+  assert.match(orders, /Cód\. \{code\}/);
+  assert.match(image, /triggerVariant === "code-link"/);
+  assert.match(image, /underline-offset-4/);
+  assert.match(compatibleImages, /triggerVariant === "code-link"/);
+  assert.match(compatibleImages, /aria-label=\{actionLabel\}/);
+  assert.doesNotMatch(detail, />\s*Ver imagem\s*</);
+});

@@ -185,6 +185,45 @@ function OrderItemImageButton({
   );
 }
 
+function OrderItemImageCode({
+  code,
+  compatibleKitImages,
+  imageUrl,
+}: {
+  code: string;
+  compatibleKitImages: CompatibleKitImageOption[];
+  imageUrl: string | null;
+}) {
+  if (compatibleKitImages.length > 0) {
+    return (
+      <CompatibleKitImages
+        kitCode={code}
+        options={compatibleKitImages}
+        triggerLabel={`Ver imagem do Cód. ${code}`}
+        triggerVariant="code-link"
+      />
+    );
+  }
+
+  if (imageUrl) {
+    return (
+      <CommercialConfigurationImage
+        commercialCodes={[code]}
+        imageUrl={imageUrl}
+        triggerLabel={`Ver imagem do Cód. ${code}`}
+        triggerText={`Cód. ${code}`}
+        triggerVariant="code-link"
+      />
+    );
+  }
+
+  return (
+    <span className="pt-0.5 font-mono text-xs font-black text-text-primary sm:text-sm">
+      Cód. {code}
+    </span>
+  );
+}
+
 function ItemQuantityIndicators({
   cancelledQuantity,
   orderedQuantity,
@@ -3409,35 +3448,18 @@ function OrderDetailsDialog({
               );
               const code =
                 item.commercialCodeSnapshot ?? item.codeSnapshot;
-              const hasImage =
-                Boolean(item.imageUrl) ||
-                item.compatibleKitImages.length > 0;
 
               return (
                 <article key={item.id} className="px-2.5 py-2 sm:px-3 sm:py-2.5">
-                  <div
-                    className={`grid min-w-0 items-start gap-x-1.5 ${
-                      hasImage
-                        ? "grid-cols-[auto_auto_auto_auto_minmax(0,1fr)]"
-                        : "grid-cols-[auto_auto_auto_minmax(0,1fr)]"
-                    }`}
-                  >
+                  <div className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-x-1.5">
                     <span className="rounded-full bg-app-background px-1.5 py-0.5 text-[0.58rem] font-black text-text-muted uppercase sm:text-[0.62rem]">
                       {compactItemTypeLabel(item.itemTypeSnapshot)}
                     </span>
-                    <span className="pt-0.5 font-mono text-[0.62rem] font-bold text-text-muted sm:text-xs">
-                      Cód.
-                    </span>
-                    <strong className="pt-0.5 font-mono text-xs font-black text-text-primary sm:text-sm">
-                      {code}
-                    </strong>
-                    {hasImage ? (
-                      <OrderItemImageButton
-                        code={code}
-                        imageUrl={item.imageUrl}
-                        compatibleKitImages={item.compatibleKitImages}
-                      />
-                    ) : null}
+                    <OrderItemImageCode
+                      code={code}
+                      imageUrl={item.imageUrl}
+                      compatibleKitImages={item.compatibleKitImages}
+                    />
                     <p className="min-w-0 break-words text-xs leading-4 font-semibold text-text-primary sm:text-sm sm:leading-5">
                       {item.descriptionSnapshot}
                       {item.modelSnapshot &&
