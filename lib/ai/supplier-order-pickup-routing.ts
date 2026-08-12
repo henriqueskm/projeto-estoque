@@ -169,7 +169,7 @@ function extractPickupMode(message: string):
       `\\b(?:defina|definir)\\s+(?:o\\s+)?total\\s+retirado\\b.*?\\b(?:como|em)\\s+${quantityCapture}\\b`,
     ),
     new RegExp(
-      `\\b(?:deixe|deixar)\\s+(?:o\\s+)?total(?:\\s+retirado)?\\s+em\\s+${quantityCapture}\\b`,
+      `\\b(?:deixe|deixar)\\s+(?:o\\s+)?total(?:\\s+retirado)?\\b.*?\\bem\\s+${quantityCapture}\\b`,
     ),
     new RegExp(
       `\\b(?:marque|marcar)\\s+(?:o\\s+)?total(?:\\s+retirado)?\\s+como\\s+${quantityCapture}\\b`,
@@ -192,6 +192,9 @@ function extractPickupMode(message: string):
   const incrementQuantity = extractQuantity(message, [
     new RegExp(
       `\\b(?:retire|retirar|marque|marcar|registre|registrar)\\b.*?\\bmais\\s+${quantityCapture}\\b`,
+    ),
+    new RegExp(
+      `\\b(?:retire|retirar)\\s+${quantityCapture}(?:\\s+unidades?)?\\b`,
     ),
     new RegExp(
       `\\bacrescente\\s+${quantityCapture}(?:\\s+unidades?)?(?:\\s+(?:como\\s+)?retirad[oa]s?)?\\b`,
