@@ -10,7 +10,12 @@ import type {
 } from "@/lib/assistant-types";
 import { createSupplierOrderStockEntryProposalToken, verifySupplierOrderStockEntryProposalToken } from "@/lib/ai/stock-entry-action-tokens";
 import type { SupplierOrderStockEntryRequest } from "@/lib/ai/supplier-order-stock-entry-routing";
+import {
+  selectSupplierOrderStockEntryLines,
+  validateSupplierOrderStockEntryConfirmation,
+} from "@/lib/ai/supplier-order-stock-entry-plan";
 import { loadTargetsForSupplierOrderItems, resolveSupplierOrderLines } from "@/lib/assistant-stock-entry-data";
+import { createSupplierOrderStockEntryAction } from "@/app/(authenticated)/pedidos/actions";
 import { mapSupplierOrderItem, mapSupplierOrderSummary, supplierOrderItemSelect, supplierOrderSummarySelect, type SupplierOrderItemRow, type SupplierOrderSummaryRow } from "@/lib/supplier-orders-data";
 import type { SupplierOrderItem, SupplierOrderSummary } from "@/lib/supplier-orders-types";
 import { createClient } from "@/lib/supabase/server";
@@ -72,28 +77,34 @@ export async function createAssistantSupplierOrderStockEntryPreview(
   const order = loadedOrder.order;
   const loadedLines = await loadLines(supabase, order.id);
   if (loadedLines.failed) return response(resultBlock("Consulta indisponível", "Não foi possível carregar as linhas do Pedido agora.", "error", order));
-  const available = loadedLines.items.filter((item) => item.waitingStockQuantity > 0);
-  let selected: SupplierOrderItem[] = [];
-  if (request.allAvailable && request.targetQueries.length === 0) selected = available;
-  else {
-    for (const query of request.targetQueries) {
-      const matches = resolveSupplierOrderLines(loadedLines.items, query).filter((item) => item.waitingStockQuantity > 0);
-      if (matches.length !== 1) {
-        return response(resultBlock(matches.length ? "Item ambíguo" : "Item indisponível",
-          matches.length ? `Mais de uma linha corresponde a ${query}. Abra o Pedido para escolher a linha exata.` : `Não encontrei ${query} com quantidade retirada aguardando entrada neste Pedido.`, "error", order));
-      }
-      selected.push(matches[0]);
-    }
+  const selection = selectSupplierOrderStockEntryLines(
+    request,
+    loadedLines.items,
+    (query) => resolveSupplierOrderLines(loadedLines.items, query),
+  );
+  if (selection.kind === "ambiguous") {
+    return response(resultBlock("Item ambíguo", `Mais de uma linha corresponde a ${selection.query}. Abra o Pedido para escolher a linha exata.`, "error", order));
   }
-  selected = Array.from(new Map(selected.map((item) => [item.id, item])).values()).sort((a, b) => a.id.localeCompare(b.id));
-  if (!selected.length) return response(resultBlock("Nada aguardando entrada", "Este Pedido não possui unidades retiradas aguardando entrada no Estoque.", "error", order));
+  if (selection.kind === "unavailable") {
+    return response(resultBlock("Item indisponível", `Não encontrei ${selection.query} com quantidade retirada aguardando entrada neste Pedido.`, "error", order));
+  }
+  if (selection.kind === "quantity_invalid") {
+    return response(resultBlock("Quantidade inválida", "Informe uma quantidade inteira positiva para registrar a entrada.", "error", order));
+  }
+  if (selection.kind === "none") {
+    return response(resultBlock("Nada aguardando entrada", "Este Pedido não possui unidades retiradas aguardando entrada no Estoque.", "error", order));
+  }
+  const selected = selection.lines.map((line) => line.item);
   if (selected.length > maximumPreviewLines) return response(resultBlock("Muitas linhas para confirmar", `Esta entrada possui mais de ${maximumPreviewLines} linhas. Abra o Pedido para revisar antes de registrar.`, "error", order));
   const targetsResult = await loadTargetsForSupplierOrderItems(supabase, selected);
   if (targetsResult.failed || selected.some((item) => !targetsResult.targets.has(item.id))) {
     return response(resultBlock("Alvo indisponível", "Um item do Pedido não está mais disponível para entrada.", "error", order));
   }
+  const selectedQuantityById = new Map(
+    selection.lines.map((line) => [line.item.id, line.quantity]),
+  );
   const lines = selected.map((item) => {
-    const entryQuantity = request.allAvailable ? item.waitingStockQuantity : request.quantity!;
+    const entryQuantity = selectedQuantityById.get(item.id)!;
     const target = targetsResult.targets.get(item.id)!;
     return { supplierOrderItemId: item.id, target, orderedQuantity: item.orderedQuantity,
       pickedQuantity: item.pickedQuantity, stockedQuantity: item.stockedQuantity,
@@ -128,8 +139,6 @@ export async function createAssistantSupplierOrderStockEntryPreview(
   return { message: block.message, structuredBlock: block, contextSupplierOrderId: order.id, contextSupplierOrderCatalogCode: null };
 }
 
-type RpcReceipt = { supplier_order_stock_entry_id?: unknown; movement_batch_id?: unknown; stock_entry_line_count?: unknown; stock_entry_quantity?: unknown; stock_entry_created_at?: unknown };
-
 export async function confirmAssistantSupplierOrderStockEntry(proposalToken: string): Promise<AssistantSupplierOrderStockEntryConfirmationResult> {
   const supabase = await createClient();
   const { data: claims } = await supabase.auth.getClaims();
@@ -148,26 +157,35 @@ export async function confirmAssistantSupplierOrderStockEntry(proposalToken: str
   const [orderResult, linesResult] = await Promise.all([loadOrderById(supabase, payload.supplierOrderId), loadLines(supabase, payload.supplierOrderId)]);
   const order = orderResult.order;
   if (orderResult.failed || linesResult.failed || !order) return { block: resultBlock("Pedido indisponível", "Não foi possível revalidar o Pedido.", "error"), contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
-  if (order.updatedAt !== payload.expectedUpdatedAt) return { block: resultBlock("Pedido alterado", "Este Pedido mudou desde a prévia. Gere uma nova prévia.", "conflict", order), contextSupplierOrderId: order.id, contextSupplierOrderCatalogCode: null };
-  const lineById = new Map(linesResult.items.map((item) => [item.id, item]));
-  if (payload.lines.some((line) => { const item = lineById.get(line.supplierOrderItemId); return !item || line.quantity > item.waitingStockQuantity; })) {
+  const confirmationState = validateSupplierOrderStockEntryConfirmation(
+    payload.expectedUpdatedAt,
+    order.updatedAt,
+    payload.lines,
+    linesResult.items,
+  );
+  if (confirmationState === "order_changed") return { block: resultBlock("Pedido alterado", "Este Pedido mudou desde a prévia. Gere uma nova prévia.", "conflict", order), contextSupplierOrderId: order.id, contextSupplierOrderCatalogCode: null };
+  if (confirmationState === "availability_changed") {
     return { block: resultBlock("Disponibilidade alterada", "A quantidade aguardando entrada mudou. Gere uma nova prévia.", "conflict", order), contextSupplierOrderId: order.id, contextSupplierOrderCatalogCode: null };
   }
   const existingBatch = await supabase.from("movement_batches").select("id")
     .eq("user_id", userId).eq("idempotency_key", payload.idempotencyKey).maybeSingle();
-  const { data, error } = await supabase.rpc("create_supplier_order_stock_entry", {
-    p_supplier_order_id: payload.supplierOrderId,
-    p_lines: payload.lines.map((line) => ({ supplier_order_item_id: line.supplierOrderItemId, quantity: line.quantity })),
-    p_note: null, p_expected_updated_at: payload.expectedUpdatedAt, p_idempotency_key: payload.idempotencyKey,
+  const operation = await createSupplierOrderStockEntryAction({
+    supplierOrderId: payload.supplierOrderId,
+    lines: payload.lines,
+    note: null,
+    expectedUpdatedAt: payload.expectedUpdatedAt,
+    idempotencyKey: payload.idempotencyKey,
   });
-  if (error) {
-    const conflict = error.code === "40001" || error.message.toLowerCase().includes("changed after");
-    return { block: resultBlock(conflict ? "Pedido alterado" : "Entrada não registrada", conflict ? "Este Pedido mudou desde a prévia. Gere uma nova prévia." : "Não foi possível registrar a entrada agora.", conflict ? "conflict" : "error", order), contextSupplierOrderId: order.id, contextSupplierOrderCatalogCode: null };
+  if (!operation.ok) {
+    const conflict = Boolean(operation.stale);
+    const message = operation.transportUncertain
+      ? "Não foi possível confirmar o resultado. Confira o Pedido antes de tentar novamente."
+      : operation.error;
+    return { block: resultBlock(conflict ? "Pedido alterado" : "Entrada não registrada", conflict ? "Este Pedido mudou desde a prévia. Gere uma nova prévia." : message, conflict ? "conflict" : "error", order), contextSupplierOrderId: order.id, contextSupplierOrderCatalogCode: null };
   }
-  const receipt = data as RpcReceipt;
-  const entryId = typeof receipt?.supplier_order_stock_entry_id === "string" && uuidPattern.test(receipt.supplier_order_stock_entry_id) ? receipt.supplier_order_stock_entry_id : null;
-  const batchId = typeof receipt?.movement_batch_id === "string" && uuidPattern.test(receipt.movement_batch_id) ? receipt.movement_batch_id : null;
-  const occurredAt = typeof receipt?.stock_entry_created_at === "string" && !Number.isNaN(Date.parse(receipt.stock_entry_created_at)) ? receipt.stock_entry_created_at : null;
+  const entryId = operation.receipt.supplierOrderStockEntryId;
+  const batchId = operation.receipt.movementBatchId;
+  const occurredAt = operation.receipt.stockEntryCreatedAt;
   const baseSuccess: AssistantSupplierOrderStockEntryResultBlock = { kind: "supplier_order_stock_entry_result", action: "supplier_order_stock_entry", outcome: "success",
     title: "Entrada concluída", message: `Entrada pelo Pedido ${order.negotiationNumber} registrada.`, order: orderCard(order), lines: [],
     linesProcessed: payload.lines.length, totalQuantity: payload.lines.reduce((sum, line) => sum + line.quantity, 0),

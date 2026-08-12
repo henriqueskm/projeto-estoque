@@ -4,6 +4,11 @@ import test from "node:test";
 import { createManualStockEntryProposalToken, createSupplierOrderStockEntryProposalToken, verifyManualStockEntryProposalToken, verifySupplierOrderStockEntryProposalToken } from "../lib/ai/stock-entry-action-tokens.ts";
 import { createManualStockEntryIdentitySelection, matchesExactManualStockEntryModel, normalizeManualStockEntryModel, routeManualStockEntryAction } from "../lib/ai/manual-stock-entry-routing.ts";
 import { routeSupplierOrderStockEntryAction } from "../lib/ai/supplier-order-stock-entry-routing.ts";
+import {
+  selectSupplierOrderStockEntryLines,
+  toSafeWaitingStockQuantity,
+  validateSupplierOrderStockEntryConfirmation,
+} from "../lib/ai/supplier-order-stock-entry-plan.ts";
 import { handleStockEntryActionRequest, parseStockEntryActionBody, stockEntryRequestIsSameOrigin } from "../lib/ai/stock-entry-http-contract.ts";
 import { ASSISTANT_MANUAL_STOCK_ENTRY_DESCRIPTION } from "../lib/ai/manual-stock-entry-contract.ts";
 import { expireStockEntryPreview } from "../lib/ai/assistant-action-persistence.ts";
@@ -266,4 +271,76 @@ test("Route Handler mockado rejeita campo extra e origem cruzada antes do execut
   assert.equal(extraField.status, 400);
   assert.equal(crossOrigin.status, 403);
   assert.equal(calls, 0);
+});
+
+test("mapeia waiting_stock_quantity e seleciona somente retiradas aguardando entrada", () => {
+  const mappedWaitingQuantity = toSafeWaitingStockQuantity(1);
+  assert.equal(mappedWaitingQuantity, 1);
+
+  const items = [
+    { id: "line-1", waitingStockQuantity: mappedWaitingQuantity, pickedQuantity: 1, stockedQuantity: 0 },
+    { id: "line-2", waitingStockQuantity: 0, pickedQuantity: 4, stockedQuantity: 4 },
+    // A prontidão Safisa não participa da disponibilidade de entrada no Estoque.
+    { id: "line-3", waitingStockQuantity: 0, pickedQuantity: 0, stockedQuantity: 0, readyQuantity: 8 },
+  ];
+
+  const allAvailable = selectSupplierOrderStockEntryLines(
+    { allAvailable: true, quantity: null, targetQueries: [] },
+    items,
+    () => [],
+  );
+  assert.deepEqual(allAvailable, {
+    kind: "ok",
+    lines: [{ item: items[0], quantity: 1 }],
+  });
+
+  const specific = selectSupplierOrderStockEntryLines(
+    { allAvailable: false, quantity: 1, targetQueries: ["1H"] },
+    items,
+    () => [items[0]],
+  );
+  assert.deepEqual(specific, {
+    kind: "ok",
+    lines: [{ item: items[0], quantity: 1 }],
+  });
+
+  const alreadyStocked = selectSupplierOrderStockEntryLines(
+    { allAvailable: false, quantity: 1, targetQueries: ["1H"] },
+    [items[1]],
+    () => [items[1]],
+  );
+  assert.deepEqual(alreadyStocked, { kind: "unavailable", query: "1H" });
+});
+
+test("revalida versão e disponibilidade antes da confirmação de entrada por Pedido", () => {
+  const lines = [{ supplierOrderItemId: lineId, quantity: 1 }];
+  const currentItems = [{ id: lineId, waitingStockQuantity: 1 }];
+
+  assert.equal(
+    validateSupplierOrderStockEntryConfirmation(
+      "2026-08-08T12:00:00.123456Z",
+      "2026-08-08T12:00:00.123456Z",
+      lines,
+      currentItems,
+    ),
+    "ok",
+  );
+  assert.equal(
+    validateSupplierOrderStockEntryConfirmation(
+      "2026-08-08T12:00:00.123456Z",
+      "2026-08-08T12:00:01.123456Z",
+      lines,
+      currentItems,
+    ),
+    "order_changed",
+  );
+  assert.equal(
+    validateSupplierOrderStockEntryConfirmation(
+      "2026-08-08T12:00:00.123456Z",
+      "2026-08-08T12:00:00.123456Z",
+      lines,
+      [{ id: lineId, waitingStockQuantity: 0 }],
+    ),
+    "availability_changed",
+  );
 });

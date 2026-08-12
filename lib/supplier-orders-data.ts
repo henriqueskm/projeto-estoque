@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 import { createCompatibleKitImageMap } from "@/lib/compatible-kit-images";
+import { toSafeWaitingStockQuantity } from "./ai/supplier-order-stock-entry-plan";
 import {
   physicalItemTypes,
   type PhysicalItemType,
@@ -174,7 +175,7 @@ export const supplierOrderSummarySelect =
   "id, negotiation_number, order_date, notes, created_by_name_snapshot, created_at, updated_at, cancelled_at, cancelled_by_name_snapshot, cancellation_note, finalized_at, finalized_by_name_snapshot, finalization_note, is_finalized, is_active_order, is_in_history, closure_kind, closed_at, closed_by_name_snapshot, line_count, ordered_quantity, ready_quantity, picked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_ready_quantity, ready_waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity, pickup_percentage, status";
 
 export const supplierOrderItemSelect =
-  "id, supplier_order_id, item_id, commercial_configuration_id, commercial_configuration_code_id, code_snapshot, description_snapshot, model_snapshot, item_type_snapshot, commercial_code_snapshot, ordered_quantity, ready_quantity, picked_quantity, stocked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_ready_quantity, ready_waiting_pickup_quantity, position, notes, created_at, updated_at";
+  "id, supplier_order_id, item_id, commercial_configuration_id, commercial_configuration_code_id, code_snapshot, description_snapshot, model_snapshot, item_type_snapshot, commercial_code_snapshot, ordered_quantity, ready_quantity, picked_quantity, stocked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_ready_quantity, ready_waiting_pickup_quantity, waiting_stock_quantity, position, notes, created_at, updated_at";
 
 export function mapSupplierOrderSummary(
   row: SupplierOrderSummaryRow,
@@ -214,7 +215,7 @@ export function mapSupplierOrderSummary(
     waitingReadyQuantity: asSafeInteger(row.waiting_ready_quantity),
     readyWaitingPickupQuantity: asSafeInteger(row.ready_waiting_pickup_quantity),
     stockedQuantity: asSafeInteger(row.stocked_quantity),
-    waitingStockQuantity: asSafeInteger(row.waiting_stock_quantity),
+    waitingStockQuantity: toSafeWaitingStockQuantity(row.waiting_stock_quantity),
     pickupPercentage: Number(row.pickup_percentage) || 0,
     status: row.status,
   };
@@ -256,7 +257,7 @@ export function mapSupplierOrderItem(
     waitingPickupQuantity: asSafeInteger(row.waiting_pickup_quantity),
     waitingReadyQuantity: asSafeInteger(row.waiting_ready_quantity),
     readyWaitingPickupQuantity: asSafeInteger(row.ready_waiting_pickup_quantity),
-    waitingStockQuantity: asSafeInteger(row.waiting_stock_quantity),
+    waitingStockQuantity: toSafeWaitingStockQuantity(row.waiting_stock_quantity),
     position: asSafeInteger(row.position),
     notes: row.notes,
     createdAt: row.created_at,

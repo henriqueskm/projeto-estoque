@@ -328,3 +328,18 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Segurança:** aliases identificam a configuração física única; proposalToken,
   idempotency key e saldo não são persistidos na conversa; texto não executa.
 - **Estado novo:** `WAITING_HUMAN_VISUAL_REVIEW` após validações locais.
+
+## 2026-08-08 — NK-ORD-004 / NK-ORD-006
+
+- **NK-ORD-004:** `DONE`; PR #14 mesclado, com validação visual e teste
+  operacional humano aprovados. Nenhuma migration ou alteração de RPC foi
+  necessária.
+- **NK-ORD-006:** correção local iniciada para a entrada no Estoque a partir de
+  Pedido. A projeção de `waiting_stock_quantity` foi incluída na leitura de
+  linhas, e a seleção usa exclusivamente `picked_quantity - stocked_quantity`.
+- **Execução:** a confirmação HMAC pela rota fixa reutiliza
+  `createSupplierOrderStockEntryAction`; a chamada direta duplicada à RPC foi
+  removida da Assistente. Permanecem a revalidação, a idempotência e o recibo
+  oficial.
+- **Estado novo:** `WAITING_HUMAN_VISUAL_REVIEW`; nenhuma entrada real,
+  chamada remota de escrita ou migration foi executada.
