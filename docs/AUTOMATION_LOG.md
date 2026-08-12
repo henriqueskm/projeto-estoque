@@ -422,6 +422,7 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   pendente no histórico remoto.
 - **Estado novo:** `IMPLEMENTED / WAITING_HUMAN_VISUAL_REVIEW`.
 - **Branch:** `agent/atomic-pickup-stock-entry-app`.
+- **PR draft:** [#18](https://github.com/henriqueskm/projeto-estoque/pull/18).
 - **UI tradicional:** redução bloqueada no valor já retirado, teto definido por
   `ready_quantity`, delta positivo e entrada automática exibidos, e retirada
   total renomeada para “Retirar tudo que está pronto”.

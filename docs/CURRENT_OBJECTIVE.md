@@ -6,6 +6,7 @@
 - **Fase:** aplicação
 - **Estado:** `IMPLEMENTED / WAITING_HUMAN_VISUAL_REVIEW`
 - **Branch:** `agent/atomic-pickup-stock-entry-app`
+- **PR draft:** [#18](https://github.com/henriqueskm/projeto-estoque/pull/18)
 - **Base:** `origin/main` em `bd60909efacf7825c7a0284221535ac1eafaaebd`
 - **Dependência:** MIG-ORD-007A `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`.
 
