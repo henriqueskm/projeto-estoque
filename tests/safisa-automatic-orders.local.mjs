@@ -103,7 +103,7 @@ assert.deepEqual(
   active.orders.map((order) => order.supplier_order_id).sort(),
 );
 
-// G-K: strict readiness, completion by pickup only, and no stock-entry dependency.
+// G-K: strict readiness and atomic stock entry for newly picked deltas.
 asAuthenticatedFailure(ids.internal, `select public.set_supplier_order_item_picked_quantity('${lineId(1)}', 1, null, '${key(6)}')`, /cannot exceed ready_quantity/i);
 asAuthenticated(ids.safisaA, `select public.increment_safisa_ready_quantity('${lineId(1)}', 3, '${key(7)}')`);
 asAuthenticated(ids.internal, `select public.set_supplier_order_item_picked_quantity('${lineId(1)}', 3, null, '${key(8)}')`);
@@ -115,7 +115,7 @@ assert.equal(active.orders.some((order) => order.supplier_order_id === orderId(5
 const completed = jsonFrom(asAuthenticated(ids.safisaA, "select public.list_safisa_orders('COMPLETED', 100, 0)"));
 assert.equal(completed.orders.some((order) => order.supplier_order_id === orderId(5)), true);
 assert.equal(jsonFrom(asAuthenticated(ids.safisaA, `select public.get_safisa_order('${orderId(5)}')`)).is_read_only, true);
-assert.equal(number(`select stocked_quantity from public.supplier_order_items where id = '${lineId(5)}'`), 0);
+assert.equal(number(`select stocked_quantity from public.supplier_order_items where id = '${lineId(5)}'`), 7);
 
 // L-N: cancellation is auditable, preserves picked quantities, and blocks ready pending pickup.
 asAuthenticated(ids.internal, `select public.cancel_supplier_order('${orderId(6)}', 'Local audited cancellation', '${key(11)}')`);

@@ -383,3 +383,33 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   `db push`, alteração de RPC, commit ou merge ocorreu durante a auditoria.
 - **Próxima ação:** revisão humana da arquitetura antes da escrita de SQL ou
   código operacional.
+
+## 2026-08-11 — MIG-ORD-007A
+
+- **NK-ORD-007:** `ARCHITECTURE_APPROVED`; PR #16 mesclado em `main` no commit
+  `393f989d85a83d0051172d37fffee7e96263b819`.
+- **Estado novo:** `WAITING_DB_REVIEW`.
+- **Branch:** `agent/atomic-pickup-stock-entry`.
+- **Migration:**
+  `20260812023500_atomic_supplier_order_pickup_stock_entry.sql`, SHA-256
+  `040f6ec6aa50ffd7062f20c2229bd098194662fc245fceff456c95428c39c343`.
+- **Arquitetura:** novo primitive privado compartilhado aplica a entrada física;
+  retirada individual e `mark_all` passam a lançar somente o delta recém-retirado
+  dentro da mesma transação; o standalone do NK-ORD-006 reutiliza o primitive.
+- **Backlog:** `picked_quantity - stocked_quantity` anterior permanece
+  inalterado. Nenhum backfill ou absorção automática foi criado.
+- **Safisa:** o teto é `ready_quantity`; redução de retirada é rejeitada;
+  `mark_all` cria um batch e uma entrada para todos os deltas positivos.
+- **Idempotência:** o evento de retirada continua como ledger primário; a
+  operação composta não cria `STOCK_ENTRY_CREATED` com a mesma chave. Replay e
+  conflito de payload foram aprovados localmente.
+- **Validação dinâmica:** A–M aprovados, incluindo ITEM, configuração, aliases,
+  backlog, redução, mark-all, dois tipos de rollback, standalone, finalização,
+  wrappers checked e três concorrências com duas conexões reais.
+- **Reconstruções:** duas execuções independentes produziram
+  `SchemaSignature 888958aa8d3058dfa0ace13ffe17a02a` e
+  `CatalogSignature 9e010282ce86835cb5973da9b50a5d52`.
+- **Remoto:** nenhuma leitura ou escrita remota, `db push`, migration aplicada,
+  retirada real, entrada real, alteração de Auth/Vercel ou merge.
+- **Próxima ação:** revisão humana do SQL e dos testes antes de qualquer
+  autorização de aplicação remota ou integração da UI/Assistente.
