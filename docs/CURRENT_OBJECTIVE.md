@@ -1,15 +1,31 @@
 # Objetivo atual
 
-- **ID:** MIG-ORD-008A
-- **Título:** Identidade única e numérica da negociação
-- **Prioridade:** crítica
-- **Fase:** DB review concluído; migration ainda não aplicada remotamente
-- **Estado:** `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`
-- **Classificação:** **C — migration obrigatória**
-- **Dependência:** NK-ORD-008 `ARCHITECTURE_APPROVED`
-- **Base:** `97c02174eedb545544c7b8397e1115033dc212bb`
-- **Branch:** `agent/supplier-order-negotiation-identity`
-- **PR draft:** [#22](https://github.com/henriqueskm/projeto-estoque/pull/22)
+- **ID:** NK-ORD-008B
+- **Título:** Foto → Gemini → validação → preview
+- **Prioridade:** alta
+- **Fase:** aplicação sem criação real de Pedido
+- **Estado:** `READY`
+- **Classificação:** **B — ajustes de aplicação sobre contratos aprovados**
+- **Dependências:** NK-ORD-008 `ARCHITECTURE_APPROVED`; MIG-ORD-008A
+  `DONE / APPLIED_REMOTE / VERIFIED`
+- **Base:** `88378d524ef70dab51de565ba3bb0ada0c139b8d`
+- **Branch:** a definir
+- **PR:** pendente
+
+## Rollout remoto concluído — MIG-ORD-008A
+
+Em 2026-08-12, a migration
+`20260812133046_enforce_supplier_order_negotiation_identity.sql` foi aplicada
+uma única vez no projeto `EstoqueNK` (`isdjboconmwaqipjrjvp`) pela Supabase CLI
+`2.112.0`. O histórico ficou alinhado e o dry-run posterior confirmou zero
+migrations pendentes.
+
+Os quatro IDs aprovados foram preservados e receberam as identidades
+`99990000`, `99990001`, `99990003` e `99990004`. Foram criados exatamente
+quatro eventos técnicos `ORDER_HEADER_UPDATED`; itens, quantidades, lifecycle,
+relações Safisa, entradas, lotes, movimentos e saldos mantiveram contagens e
+fingerprints. O banco agora impõe `TEXT NOT NULL`, formato ASCII digits-only de
+1–120 caracteres e unicidade global não parcial.
 
 ## Implementação local MIG-ORD-008A
 
@@ -24,8 +40,9 @@ numéricas. A decisão humana aprovou o mapeamento fechado abaixo:
 | `e92bc06f-5721-4082-b77a-def6954e3300` | `teste 03` | `99990003` |
 | `af7a39f6-c4a2-4e92-b183-d8196aa775d1` | `Teste 04` | `99990004` |
 
-A pré-validação remota confirmou novamente os quatro pares e a ausência dos
-quatro números novos. Nenhuma escrita remota foi executada.
+A pré-validação remota confirmou os quatro pares e a ausência dos quatro
+números novos. O rollout posterior converteu exclusivamente esse conjunto e
+registrou os eventos técnicos previstos.
 
 A migration incremental
 `20260812133046_enforce_supplier_order_negotiation_identity.sql`:
@@ -70,8 +87,8 @@ concorrentes e preserva leituras; com sete Pedidos e janela controlada, a seçã
 crítica é curta. Não foi adicionado `lock_timeout`, evitando tornar o rollout
 sensível a um limite arbitrário depois de o SQL ter sido validado. A regra
 interna `v_legacy_order_count in (0, 4)` permanece intencional para rebuild
-limpo e produção atual; o preflight do rollout remoto deverá exigir exatamente
-os quatro pares aprovados. Nenhuma aplicação remota está autorizada nesta fase.
+limpo e produção atual; o preflight do rollout remoto exigiu exatamente os
+quatro pares aprovados e a aplicação remota foi concluída e verificada.
 
 ## Conclusão executiva
 
@@ -83,15 +100,12 @@ e unicidade de maneira atômica no PostgreSQL.
 
 Consequentemente:
 
-- `MIGRATION_REQUIRED = YES`;
-- a próxima etapa é MIG-ORD-008A — unicidade global e contrato numérico da
-  negociação;
-- antes de escrever SQL, MIG-ORD-008A deve auditar read-only duplicatas,
-  caracteres não numéricos, espaços e qualquer dado legado incompatível;
-- nenhum dado legado pode ser corrigido automaticamente;
-- NK-ORD-008A de aplicação pode avançar isoladamente para interpretação e
-  preview sem escrita, mas a confirmação/criação depende da migration aprovada e
-  aplicada em etapa própria.
+- `MIGRATION_REQUIRED = YES`, atendido por MIG-ORD-008A;
+- MIG-ORD-008A está `DONE / APPLIED_REMOTE / VERIFIED`;
+- a próxima etapa é NK-ORD-008B — foto, Gemini, validação de catálogo e preview;
+- NK-ORD-008B não cria Pedido real e não habilita confirmação operacional;
+- a criação segura permanece em fase posterior, depois da validação visual da
+  interpretação.
 
 ## Estado atual de câmera e galeria
 
@@ -303,9 +317,10 @@ migration garante atomicidade diante de confirmações concorrentes.
 
 ### Estado de MIG-ORD-008A
 
-A auditoria e a implementação local foram concluídas com o mapeamento humano
-explícito dos quatro legados. A migration permanece não aplicada remotamente e
-aguarda revisão de banco. NK-ORD-008B não deve começar automaticamente.
+A auditoria, a implementação local e o rollout remoto foram concluídos com o
+mapeamento humano explícito dos quatro legados. O histórico remoto, as
+constraints, os wrappers, os eventos e a preservação operacional foram
+verificados. NK-ORD-008B está liberado para implementação sem escrita.
 
 ## Preview e correção
 
@@ -398,16 +413,16 @@ ilegível, total divergente ou documento desconhecido. Resposta recomendada:
 
 ## Plano de implementação recomendado
 
-### NK-ORD-008A — interpretação sem escrita
+### NK-ORD-008B — interpretação sem escrita
 
 Upload, validação, resize, Gemini multimodal, schema estrito, resolução de
 catálogo, conflitos, preview e correção por busca. Nenhum botão cria Pedido.
 Validar com dataset sintético/controlado e depois com fotos reais sob aprovação
 humana.
 
-### NK-ORD-008B — confirmação segura
+### Fase posterior — confirmação segura
 
-Somente depois da migration de unicidade: proposal token, rota fixa, releitura,
+Com a migration de unicidade já aplicada: proposal token, rota fixa, releitura,
 contrato oficial, idempotência e card de resultado. Nenhuma criação por texto.
 
 ### NK-ORD-008C — validação visual controlada
