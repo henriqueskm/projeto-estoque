@@ -73,10 +73,10 @@ psql(`
   ), created_orders as (
     insert into public.supplier_orders (id, negotiation_number, order_date, created_by, created_by_name_snapshot, finalized_at, finalized_by, finalized_by_name_snapshot)
     values
-      ('20000000-0000-4000-8000-000000000201', 'SAF-UI-001', current_date, '${accounts[0].id}', '${accounts[0].name}', null, null, null),
-      ('20000000-0000-4000-8000-000000000202', 'SAF-UI-ENCERRADO', current_date - 1, '${accounts[0].id}', '${accounts[0].name}', now(), '${accounts[0].id}', '${accounts[0].name}'),
-      ('20000000-0000-4000-8000-000000000203', 'SAF-UI-OCULTO', current_date - 2, '${accounts[0].id}', '${accounts[0].name}', null, null, null),
-      ('20000000-0000-4000-8000-000000000204', 'SAF-UI-REVOGADO', current_date - 3, '${accounts[0].id}', '${accounts[0].name}', null, null, null)
+      ('20000000-0000-4000-8000-000000000201', '924001', current_date, '${accounts[0].id}', '${accounts[0].name}', null, null, null),
+      ('20000000-0000-4000-8000-000000000202', '924002', current_date - 1, '${accounts[0].id}', '${accounts[0].name}', now(), '${accounts[0].id}', '${accounts[0].name}'),
+      ('20000000-0000-4000-8000-000000000203', '924003', current_date - 2, '${accounts[0].id}', '${accounts[0].name}', null, null, null),
+      ('20000000-0000-4000-8000-000000000204', '924004', current_date - 3, '${accounts[0].id}', '${accounts[0].name}', null, null, null)
     returning id
   )
   insert into public.supplier_order_items (

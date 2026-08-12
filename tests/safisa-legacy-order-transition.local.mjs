@@ -145,7 +145,7 @@ function orderSql(suffix) {
     insert into public.supplier_orders (
       id, negotiation_number, order_date, created_by, created_by_name_snapshot
     ) values (
-      '${orderId(suffix)}', 'LEGACY-LOCAL-${suffix}', current_date,
+      '${orderId(suffix)}', '921${String(suffix).padStart(3, "0")}', current_date,
       '${ids.internal}', 'Internal Local'
     );
   `;

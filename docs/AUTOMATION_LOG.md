@@ -581,3 +581,73 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   dados automaticamente.
 - **Escopo desta decisão:** somente documentação no PR #21; nenhuma migration,
   RPC, alteração funcional, escrita Supabase ou merge.
+
+## 2026-08-12 — MIG-ORD-008A
+
+- **Estado:** `IMPLEMENTED_LOCAL / WAITING_DB_REVIEW`; branch
+  `agent/supplier-order-negotiation-identity`, baseada no merge da PR #21 em
+  `97c02174eedb545544c7b8397e1115033dc212bb`; PR draft
+  [#22](https://github.com/henriqueskm/projeto-estoque/pull/22).
+- **Auditoria remota read-only:** projeto `EstoqueNK`
+  (`isdjboconmwaqipjrjvp`) confirmou sete Pedidos, zero duplicata exata, os
+  quatro pares ID/negociação aprovados e zero colisão com `99990000`,
+  `99990001`, `99990003` e `99990004`.
+- **Mapeamento aprovado:** `teste 00 → 99990000` para
+  `26e08e22-a2fb-4e8d-8605-4ccdb57d4773`; `teste 01 → 99990001` para
+  `db02621b-b6c1-4e7a-8fef-b63fc3e60d50`; `teste 03 → 99990003` para
+  `e92bc06f-5721-4082-b77a-def6954e3300`; `Teste 04 → 99990004` para
+  `af7a39f6-c4a2-4e92-b183-d8196aa775d1`.
+- **Persistência:** as views leem a negociação dinamicamente por UUID. Os 19
+  eventos que guardam o valor antigo são snapshots históricos e permanecem
+  imutáveis; quatro novos eventos técnicos `ORDER_HEADER_UPDATED` documentam a
+  transição sem atribuí-la a usuário humano.
+- **Migration:**
+  `20260812133046_enforce_supplier_order_negotiation_identity.sql` aplica
+  guardas exatas, updates fechados, CHECK ASCII digits-only de 1–120, UNIQUE
+  global sem filtro e remove o índice não único redundante somente depois.
+- **Contrato oficial:** wrappers públicos mantêm assinatura, autenticação,
+  profile ativo, `SECURITY DEFINER`, `search_path` e grants; formato e colisão
+  retornam erros sanitizados, enquanto o worker privado preserva idempotência e
+  catálogo.
+- **Testes locais:** rollback forçado, preservação de itens/quantidades/status/
+  finalização/Safisa, instalações com e sem legado, leading zeros, inválidos,
+  duplicata, cancelado, finalizado, replay, conflito de payload e concorrência
+  com duas conexões foram aprovados. Reconstrução limpa terminou com zero
+  Pedidos/eventos e a nova UNIQUE presente; `db lint` retornou zero erro.
+- **Remoto:** zero dado alterado, zero migration aplicada, zero Pedido criado,
+  zero quantidade/estoque alterados, zero RPC mutável e zero backfill fora do
+  mapeamento local aprovado.
+- **Próxima ação:** revisão humana do SQL, estratégia de lock e testes antes de
+  qualquer autorização separada de aplicação remota. NK-ORD-008B não foi
+  iniciado.
+
+## 2026-08-12 — MIG-ORD-008A DB review final
+
+- **Estado novo:** `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`; PR #22 pronta
+  para revisão humana, sem merge e sem autorização de rollout remoto.
+- **Executor comprovado:** Supabase CLI `2.112.0`, resolvida pelo
+  `npx --no-install` e executada pelo binário Windows do cache local. O cenário
+  principal usou `db push --local --yes`; history e segunda execução foram
+  verificados com `migration list --local` e `db push --local --dry-run`.
+- **Cenário A:** os quatro legados aprovados foram convertidos, os quatro
+  eventos técnicos foram criados e itens, quantidades, lifecycle, Safisa e
+  snapshots históricos permaneceram preservados.
+- **Cenário B:** a divergência deliberada de uma precondição falhou pelo mesmo
+  runner; nenhum update, evento, constraint, wrapper ou registro de history
+  ficou parcialmente aplicado.
+- **Cenário C:** o rebuild limpo com zero legados aplicou CHECK, UNIQUE e
+  wrappers, registrou history uma vez e ficou sem migration pendente.
+- **Transação:** `KEEP_EXPLICIT_TRANSACTION = YES`; zero warning relacionado a
+  transação, pipeline ou history. O lock bloqueia writers e permite readers;
+  não foi adicionado `lock_timeout` após a validação completa do arquivo.
+- **Preflight remoto read-only:** projeto `isdjboconmwaqipjrjvp` permaneceu com
+  exatamente os quatro pares aprovados, zero colisão dos destinos, zero grupo
+  duplicado, zero outro valor incompatível e zero colisão das chaves técnicas.
+  Nenhuma RPC mutável ou escrita remota foi executada.
+- **Regressões:** identidade estática/local, fundação de Pedidos atualizada ao
+  contrato de retirada+entrada atômica, Safisa, finalização, retirada, entrada,
+  concorrência/rollback atômicos e `db lint` local foram aprovados. A fixture
+  de fundação continua rollback-only e nenhum worker foi alterado.
+- **Próxima ação:** revisão humana e merge do PR #22. Qualquer rollout remoto
+  exige autorização própria e preflight de produção estrito com exatamente
+  4/4 identidades legadas.

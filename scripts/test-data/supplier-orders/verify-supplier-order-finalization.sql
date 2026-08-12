@@ -145,37 +145,37 @@ cross join lateral (
   values
     (
       context.pending_order_id,
-      'NK-SUPPLIER-FINALIZATION-PENDING',
+      '930001',
       null::timestamptz
     ),
     (
       context.partial_order_id,
-      'NK-SUPPLIER-FINALIZATION-PARTIAL',
+      '930002',
       null::timestamptz
     ),
     (
       context.completed_order_id,
-      'NK-SUPPLIER-FINALIZATION-COMPLETED',
+      '930003',
       null::timestamptz
     ),
     (
       context.stale_order_id,
-      'NK-SUPPLIER-FINALIZATION-STALE',
+      '930004',
       null::timestamptz
     ),
     (
       context.cancelled_order_id,
-      'NK-SUPPLIER-FINALIZATION-CANCELLED',
+      '930005',
       now()
     ),
     (
       context.whitespace_order_id,
-      'NK-SUPPLIER-FINALIZATION-WHITESPACE',
+      '930006',
       null::timestamptz
     ),
     (
       context.active_completed_order_id,
-      'NK-SUPPLIER-FINALIZATION-ACTIVE-COMPLETED',
+      '930007',
       null::timestamptz
     )
 ) as fixture(order_id, negotiation_number, cancelled_at);
@@ -187,6 +187,7 @@ insert into public.supplier_order_items (
   description_snapshot,
   item_type_snapshot,
   ordered_quantity,
+  ready_quantity,
   picked_quantity,
   stocked_quantity,
   cancelled_quantity,
@@ -199,6 +200,7 @@ select
   context.item_description,
   context.item_type,
   fixture.ordered_quantity,
+  fixture.picked_quantity,
   fixture.picked_quantity,
   fixture.stocked_quantity,
   fixture.cancelled_quantity,
@@ -742,8 +744,9 @@ from supplier_order_finalization_context;
 
 select pg_temp.expect_supplier_order_finalization_error(
   format(
-    'select public.cancel_supplier_order(%L::uuid, null, %L::uuid)',
+    'select public.cancel_supplier_order(%L::uuid, %L, %L::uuid)',
     completed_order_id,
+    'Teste de cancelamento.',
     gen_random_uuid()
   ),
   'finalized supplier order'
@@ -752,8 +755,9 @@ from supplier_order_finalization_context;
 
 select pg_temp.expect_supplier_order_finalization_error(
   format(
-    'select public.cancel_supplier_order_remaining(%L::uuid, null, %L::uuid)',
+    'select public.cancel_supplier_order_remaining(%L::uuid, %L, %L::uuid)',
     completed_order_id,
+    'Teste de cancelamento.',
     gen_random_uuid()
   ),
   'finalized supplier order'
