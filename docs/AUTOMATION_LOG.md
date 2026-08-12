@@ -586,7 +586,8 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 
 - **Estado:** `IMPLEMENTED_LOCAL / WAITING_DB_REVIEW`; branch
   `agent/supplier-order-negotiation-identity`, baseada no merge da PR #21 em
-  `97c02174eedb545544c7b8397e1115033dc212bb`.
+  `97c02174eedb545544c7b8397e1115033dc212bb`; PR draft
+  [#22](https://github.com/henriqueskm/projeto-estoque/pull/22).
 - **Auditoria remota read-only:** projeto `EstoqueNK`
   (`isdjboconmwaqipjrjvp`) confirmou sete Pedidos, zero duplicata exata, os
   quatro pares ID/negociação aprovados e zero colisão com `99990000`,

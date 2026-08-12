@@ -9,6 +9,7 @@
 - **Dependência:** NK-ORD-008 `ARCHITECTURE_APPROVED`
 - **Base:** `97c02174eedb545544c7b8397e1115033dc212bb`
 - **Branch:** `agent/supplier-order-negotiation-identity`
+- **PR draft:** [#22](https://github.com/henriqueskm/projeto-estoque/pull/22)
 
 ## Implementação local MIG-ORD-008A
 
