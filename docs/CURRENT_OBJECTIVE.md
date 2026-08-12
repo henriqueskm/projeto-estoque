@@ -1,38 +1,28 @@
 # Objetivo atual
 
-- **ID:** NK-ORD-007
-- **Título:** Retirada com entrada automática no Estoque
-- **Prioridade:** crítica
-- **Fase:** validação operacional
-- **Estado:** `WAITING_HUMAN_OPERATIONAL_TEST`
-- **Migration:** `20260812023500_atomic_supplier_order_pickup_stock_entry.sql`
-- **Aplicação:** `APPLIED_REMOTE / VERIFIED` em `isdjboconmwaqipjrjvp`
-- **Aplicação web:** PR [#18](https://github.com/henriqueskm/projeto-estoque/pull/18) `MERGED / DEPLOYED`
-- **Main implantada:** `86d3f3ad72ebe129ec2d2cc2ca5099bf9624e815`
+- **ID:** NK-ORD-008
+- **Título:** Criar Pedido a partir de foto pela Assistente
+- **Prioridade:** alta
+- **Fase:** auditoria
+- **Estado:** `READY_FOR_AUDIT`
+- **Dependência concluída:** NK-ORD-007 `DONE`
 
-## Contrato em produção
+## Objetivo resumido
 
-Toda nova retirada positiva de Pedido executa, na mesma transação PostgreSQL:
+`foto/câmera → interpretação multimodal → validação com catálogo → preview → confirmação por botão → Pedido normal/ativo`
 
-`retirada do delta + entrada automática do mesmo delta no Estoque`
+## Escopo da próxima auditoria
 
-A disponibilidade operacional continua sendo `ready_quantity - picked_quantity`.
-O backlog histórico `picked_quantity - stocked_quantity` anterior ao rollout não
-foi absorvido e permanece separado no fluxo explícito NK-ORD-006.
+- identificar o contrato oficial para criação de Pedido normal/ativo;
+- definir como a imagem será recebida e interpretada sem tornar o modelo fonte
+  de verdade para códigos, quantidades ou identidades do catálogo;
+- preservar preview e confirmação explícita antes de qualquer escrita;
+- avaliar segurança, idempotência, concorrência, auditoria e limites do payload;
+- não implementar nem executar operação real durante a auditoria.
 
-## Validação concluída
+## Prioridade registrada
 
-- migration remota presente e histórico local/remoto alinhado;
-- primitive privado sem EXECUTE para `public`, `anon` ou `authenticated`;
-- workers individual e total chamam o primitive físico compartilhado;
-- wrappers públicos e entrada standalone de backlog preservados;
-- fingerprints, contagens e totais operacionais permaneceram inalterados;
-- PR #18 mesclado e deploy de produção da nova `main` aprovado;
-- smoke test anônimo confirmou login interno, redirecionamentos autenticados e
-  login Safisa.
+NK-QA-001 permanece válido e `READY`, mas sua execução foi adiada até a
+conclusão de NK-ORD-008 por decisão explícita de prioridade.
 
-## Gate restante
-
-O usuário deve executar uma única retirada controlada de uma unidade pronta e
-confirmar Pedido, Estoque e Histórico. O Codex não executou retirada, entrada ou
-qualquer operação operacional durante o rollout.
+Os bloqueios de NK-ORD-002, NK-ORD-003 e NK-ORD-005 permanecem inalterados.
