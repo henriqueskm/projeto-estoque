@@ -3592,9 +3592,9 @@ function OrderDetailsDialog({
         {globalActionVisibility.showDock ? (
           <div
             data-testid="supplier-order-action-dock"
-            className="pointer-events-none sticky bottom-2 z-10 flex justify-end px-2.5 pb-[max(0.125rem,env(safe-area-inset-bottom))] sm:px-4"
+            className="pointer-events-none sticky bottom-2 z-10 flex justify-end px-2 pb-[max(0.125rem,env(safe-area-inset-bottom))] sm:px-4"
           >
-            <div className="pointer-events-auto inline-flex max-w-full flex-wrap justify-end gap-1.5 rounded-2xl border border-brand-charcoal/15 bg-surface/95 p-1.5 shadow-[0_14px_32px_-18px_rgba(23,29,33,0.65)] backdrop-blur-sm">
+            <div className="pointer-events-auto flex w-fit max-w-[min(100%,17rem)] flex-col items-stretch gap-1 rounded-xl border border-brand-charcoal/15 bg-surface/95 p-1 shadow-[0_10px_24px_-18px_rgba(23,29,33,0.6)] backdrop-blur-sm sm:inline-flex sm:w-auto sm:max-w-full sm:flex-row sm:items-center sm:gap-1.5 sm:rounded-2xl sm:p-1.5 sm:shadow-[0_14px_32px_-18px_rgba(23,29,33,0.65)]">
               {globalActionVisibility.showMarkAll ? (
                 <button
                   type="button"

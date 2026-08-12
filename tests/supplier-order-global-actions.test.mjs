@@ -67,7 +67,11 @@ test("uses a compact sticky dock inside the scroll region", () => {
 
   assert.match(workspace, /data-testid="supplier-order-action-dock"/);
   assert.match(workspace, /pointer-events-none sticky bottom-2/);
-  assert.match(workspace, /inline-flex max-w-full flex-wrap/);
+  assert.match(workspace, /max-w-\[min\(100%,17rem\)\] flex-col/);
+  assert.match(workspace, /sm:flex-row sm:items-center/);
+  assert.match(workspace, /bg-surface\/95 p-1 shadow/);
+  assert.match(workspace, /min-h-10/);
+  assert.doesNotMatch(workspace, /inline-flex max-w-full flex-wrap/);
   assert.doesNotMatch(
     workspace,
     /grid shrink-0 gap-1\.5 border-t border-border-neutral bg-app-background\/95/,

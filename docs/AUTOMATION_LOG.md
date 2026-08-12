@@ -450,3 +450,13 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   secundária.
 - **Escopo:** nenhuma regra operacional, action, RPC, migration ou estado remoto
   foi alterado.
+
+## 2026-08-12 — NK-ORD-007B2
+
+- **Estado:** compactação mobile implementada no PR draft #18; NK-ORD-007B
+  permanece `WAITING_HUMAN_VISUAL_REVIEW`.
+- **Mobile:** dock limitado a `17rem`, padding e gap reduzidos, ações empilhadas
+  de forma densa e área de toque preservada; uma única ação encolhe naturalmente.
+- **Desktop:** composição horizontal anterior preservada a partir de `sm`.
+- **Escopo:** somente classes responsivas e testes estruturais; nenhuma regra de
+  visibilidade, operação, action, RPC, migration ou estado remoto foi alterado.

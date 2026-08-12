@@ -30,6 +30,8 @@ test("order dialogs use a restrained entry transition and integrated visual surf
   assert.match(orders, /border-brand-charcoal\/15/);
   assert.match(orders, /bg-surface\/95/);
   assert.match(orders, /sticky bottom-2/);
+  assert.match(orders, /flex-col items-stretch gap-1/);
+  assert.match(orders, /sm:flex-row sm:items-center/);
   assert.match(globals, /@keyframes nk-dialog-enter/);
   assert.match(globals, /animation: nk-dialog-enter 180ms/);
 });
