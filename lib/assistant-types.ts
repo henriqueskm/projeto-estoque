@@ -814,11 +814,15 @@ export type AssistantSupplierOrderPickupPreviewItem = {
   displayCode: string;
   description: string;
   orderedQuantity: number;
+  readyQuantity: number;
   cancelledQuantity: number;
   stockedQuantity: number;
+  waitingStockQuantity: number;
   currentPickedQuantity: number;
+  availableQuantity: number;
   requestedQuantity: number;
   addedQuantity: number;
+  automaticStockEntryQuantity: number;
   targetPickedQuantity: number;
   remainingAfter: number;
 };
@@ -827,9 +831,12 @@ export type AssistantSupplierOrderPickupPreviewLine = {
   id: string;
   displayCode: string;
   description: string;
+  readyQuantity: number;
   currentPickedQuantity: number;
+  availableQuantity: number;
   targetPickedQuantity: number;
   addedQuantity: number;
+  automaticStockEntryQuantity: number;
   alreadyComplete: boolean;
 };
 
@@ -851,7 +858,7 @@ export type AssistantSupplierOrderPickupPreviewBlock = {
     hiddenItemCount: number;
   };
   warnings: string[];
-  confirmLabel: "Confirmar retirada";
+  confirmLabel: "Confirmar retirada + entrada";
   cancelLabel: "Cancelar";
   regeneratePrompt: string;
 };
@@ -889,10 +896,12 @@ export type AssistantSupplierOrderPickupResultBlock = {
     addedPickedQuantity: number;
     currentPickedQuantity: number;
     remainingPickupQuantity: number;
+    automaticStockEntryQuantity: number | null;
   };
   markAll?: {
     changedLines: number;
     addedPickedQuantity: number;
+    automaticStockEntryQuantity: number | null;
   };
   idempotentReplay: boolean;
   refreshWarning?: boolean;
@@ -1818,23 +1827,29 @@ function parseSupplierOrderPickupPreviewItem(
     typeof value.description !== "string" ||
     !value.description.trim() ||
     !isNonnegativeInteger(value.orderedQuantity) ||
+    !isNonnegativeInteger(value.readyQuantity) ||
     !isNonnegativeInteger(value.cancelledQuantity) ||
     !isNonnegativeInteger(value.stockedQuantity) ||
+    !isNonnegativeInteger(value.waitingStockQuantity) ||
     !isNonnegativeInteger(value.currentPickedQuantity) ||
+    !isNonnegativeInteger(value.availableQuantity) ||
     !isNonnegativeInteger(value.requestedQuantity) ||
     !isNonnegativeInteger(value.addedQuantity) ||
+    !isNonnegativeInteger(value.automaticStockEntryQuantity) ||
     !isNonnegativeInteger(value.targetPickedQuantity) ||
     !isNonnegativeInteger(value.remainingAfter) ||
     value.requestedQuantity === 0 ||
     value.addedQuantity === 0 ||
+    value.automaticStockEntryQuantity !== value.addedQuantity ||
     value.targetPickedQuantity !==
       value.currentPickedQuantity + value.addedQuantity ||
-    value.targetPickedQuantity + value.cancelledQuantity >
+    value.readyQuantity + value.cancelledQuantity >
       value.orderedQuantity ||
+    value.targetPickedQuantity > value.readyQuantity ||
+    value.availableQuantity !==
+      value.readyQuantity - value.currentPickedQuantity ||
     value.remainingAfter !==
-      value.orderedQuantity -
-        value.cancelledQuantity -
-        value.targetPickedQuantity ||
+      value.readyQuantity - value.targetPickedQuantity ||
     value.stockedQuantity > value.currentPickedQuantity
   ) {
     return null;
@@ -1854,12 +1869,19 @@ function parseSupplierOrderPickupPreviewLine(
     !value.displayCode.trim() ||
     typeof value.description !== "string" ||
     !value.description.trim() ||
+    !isNonnegativeInteger(value.readyQuantity) ||
     !isNonnegativeInteger(value.currentPickedQuantity) ||
+    !isNonnegativeInteger(value.availableQuantity) ||
     !isNonnegativeInteger(value.targetPickedQuantity) ||
     !isNonnegativeInteger(value.addedQuantity) ||
+    !isNonnegativeInteger(value.automaticStockEntryQuantity) ||
     typeof value.alreadyComplete !== "boolean" ||
     value.targetPickedQuantity !==
       value.currentPickedQuantity + value.addedQuantity ||
+    value.targetPickedQuantity !== value.readyQuantity ||
+    value.availableQuantity !==
+      value.readyQuantity - value.currentPickedQuantity ||
+    value.automaticStockEntryQuantity !== value.addedQuantity ||
     value.alreadyComplete !== (value.addedQuantity === 0)
   ) {
     return null;
@@ -2339,7 +2361,7 @@ export function parseAssistantStructuredBlock(
           !warning.trim() ||
           warning.length > 240,
       ) ||
-      value.confirmLabel !== "Confirmar retirada" ||
+      value.confirmLabel !== "Confirmar retirada + entrada" ||
       value.cancelLabel !== "Cancelar" ||
       typeof value.regeneratePrompt !== "string" ||
       !value.regeneratePrompt.trim() ||
@@ -2388,7 +2410,7 @@ export function parseAssistantStructuredBlock(
           }
         : {}),
       warnings: warnings.map((warning) => String(warning).trim()),
-      confirmLabel: "Confirmar retirada",
+      confirmLabel: "Confirmar retirada + entrada",
       cancelLabel: "Cancelar",
       regeneratePrompt: value.regeneratePrompt.trim(),
     };
@@ -2450,13 +2472,22 @@ export function parseAssistantStructuredBlock(
           !isNonnegativeInteger(item.addedPickedQuantity) ||
           !isNonnegativeInteger(item.currentPickedQuantity) ||
           !isNonnegativeInteger(item.remainingPickupQuantity) ||
+          (item.automaticStockEntryQuantity !== null &&
+            !isNonnegativeInteger(item.automaticStockEntryQuantity)) ||
+          (item.automaticStockEntryQuantity !== null &&
+            item.automaticStockEntryQuantity !== item.addedPickedQuantity) ||
           item.currentPickedQuantity !==
             item.previousPickedQuantity +
               item.addedPickedQuantity)) ||
       (markAll !== undefined &&
         (!isRecord(markAll) ||
           !isNonnegativeInteger(markAll.changedLines) ||
-          !isNonnegativeInteger(markAll.addedPickedQuantity))) ||
+          !isNonnegativeInteger(markAll.addedPickedQuantity) ||
+          (markAll.automaticStockEntryQuantity !== null &&
+            !isNonnegativeInteger(markAll.automaticStockEntryQuantity)) ||
+          (markAll.automaticStockEntryQuantity !== null &&
+            markAll.automaticStockEntryQuantity !==
+              markAll.addedPickedQuantity))) ||
       (item !== undefined && markAll !== undefined)
     ) {
       return null;

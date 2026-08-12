@@ -2207,7 +2207,9 @@ function ConfirmationDialog({
 
       onSuccess(
         kind === "MARK_ALL"
-          ? "Todas as quantidades prontas foram marcadas como retiradas."
+          ? result.receipt.automaticStockEntry
+            ? `${quantityFormatter.format(result.receipt.automaticStockEntry.quantity)} unidades foram retiradas e adicionadas automaticamente ao estoque.`
+            : "As quantidades prontas foram retiradas. Confira a atualização do estoque."
           : kind === "CANCEL"
             ? "Pedido excluído das listas ativas e mantido no histórico."
             : "Saldo restante excluído das listas ativas e mantido no histórico.",
@@ -2230,13 +2232,21 @@ function ConfirmationDialog({
           className="text-sm leading-6 font-semibold text-text-muted"
         >
           {kind === "MARK_ALL"
-            ? "Marcar como retiradas somente as quantidades já informadas como prontas pela Safisa?"
+            ? "Retirar somente as quantidades informadas como prontas pela Safisa? As novas unidades retiradas entrarão automaticamente no Estoque."
             : kind === "CANCEL"
               ? "Este pedido será removido das listas ativas e mantido no histórico. As quantidades ainda intocadas serão canceladas."
               : "Este saldo restante será removido das listas ativas e mantido no histórico. As quantidades já retiradas serão preservadas."}
         </p>
-        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-950">
-          Isso não altera o estoque.
+        <p
+          className={`mt-3 rounded-xl border px-4 py-3 text-sm font-black ${
+            kind === "MARK_ALL"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+              : "border-amber-200 bg-amber-50 text-amber-950"
+          }`}
+        >
+          {kind === "MARK_ALL"
+            ? `Entrada automática no estoque: +${quantityFormatter.format(order.readyWaitingPickupQuantity)}`
+            : "Isso não altera o estoque."}
         </p>
 
         {isCancellation ? (
@@ -3161,7 +3171,7 @@ function OrderDetailsDialog({
   ) : null;
 
   function updatePicked(item: SupplierOrderItem, nextValue: number) {
-    const minimum = item.stockedQuantity;
+    const minimum = item.pickedQuantity;
     const maximum = maximumSafisaPickupQuantity(
       item.orderedQuantity,
       item.cancelledQuantity,
@@ -3176,7 +3186,7 @@ function OrderDetailsDialog({
 
   function savePicked(item: SupplierOrderItem) {
     const value = pickedDrafts[item.id] ?? item.pickedQuantity;
-    const minimum = item.stockedQuantity;
+    const minimum = item.pickedQuantity;
     const maximum = maximumSafisaPickupQuantity(
       item.orderedQuantity,
       item.cancelledQuantity,
@@ -3189,7 +3199,7 @@ function OrderDetailsDialog({
       value > maximum
     ) {
       setError(
-        "A quantidade retirada deve ficar entre o que já entrou no estoque e o total informado como pronto.",
+        "A retirada já registrada não pode ser reduzida, e o novo total não pode ultrapassar o que a Safisa informou como pronto.",
       );
       return;
     }
@@ -3216,7 +3226,12 @@ function OrderDetailsDialog({
       }
 
       delete pickedKeysRef.current[item.id];
-      onMutated(`Retirada de ${item.codeSnapshot} atualizada.`);
+      const automaticEntry = result.receipt.automaticStockEntry;
+      onMutated(
+        automaticEntry
+          ? `${quantityFormatter.format(automaticEntry.quantity)} ${automaticEntry.quantity === 1 ? "unidade retirada e adicionada" : "unidades retiradas e adicionadas"} automaticamente ao estoque para o Cód. ${item.codeSnapshot}.`
+          : `Retirada de ${item.codeSnapshot} atualizada. Confira a atualização do estoque.`,
+      );
     });
   }
 
@@ -3377,7 +3392,7 @@ function OrderDetailsDialog({
           </h3>
           <div className="mt-1.5 divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral bg-white">
             {items.map((item) => {
-              const minimum = item.stockedQuantity;
+              const minimum = item.pickedQuantity;
               const maximum = maximumSafisaPickupQuantity(
                 item.orderedQuantity,
                 item.cancelledQuantity,
@@ -3386,6 +3401,10 @@ function OrderDetailsDialog({
               const pickedValue =
                 pickedDrafts[item.id] ?? item.pickedQuantity;
               const changed = pickedValue !== item.pickedQuantity;
+              const pickupDelta = Math.max(
+                pickedValue - item.pickedQuantity,
+                0,
+              );
               const code =
                 item.commercialCodeSnapshot ?? item.codeSnapshot;
               const hasImage =
@@ -3461,9 +3480,21 @@ function OrderDetailsDialog({
                           </strong>
                         </p>
                       ) : null}
+                      <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                        Pronto pela Safisa:{" "}
+                        <strong className="font-mono font-black text-text-primary">
+                          {quantityFormatter.format(item.readyQuantity)}
+                        </strong>{" "}
+                        · Disponível para retirar:{" "}
+                        <strong className="font-mono font-black text-emerald-800">
+                          {quantityFormatter.format(
+                            item.readyWaitingPickupQuantity,
+                          )}
+                        </strong>
+                      </p>
                       {item.waitingStockQuantity > 0 ? (
                         <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-amber-900 sm:text-xs">
-                          Aguardando entrada:{" "}
+                          Pendente antigo de entrada:{" "}
                           <strong className="font-mono font-black">
                             {quantityFormatter.format(
                               item.waitingStockQuantity,
@@ -3477,7 +3508,7 @@ function OrderDetailsDialog({
                       <div className="flex flex-wrap items-end justify-start gap-1.5 sm:justify-end">
                         <div>
                           <span className="mb-0.5 block text-[0.58rem] font-black text-text-muted uppercase">
-                            Retirado
+                            Nova retirada
                           </span>
                           <CompactQuantityControl
                             label={`Quantidade retirada de ${code}`}
@@ -3498,9 +3529,14 @@ function OrderDetailsDialog({
                         >
                           <CheckIcon aria-hidden="true" className="size-3" />
                           {isPending && pendingItemId === item.id
-                            ? "Salvando..."
-                            : "Salvar"}
+                            ? "Confirmando..."
+                            : "Confirmar retirada + entrada"}
                         </button>
+                        {pickupDelta > 0 ? (
+                          <p className="basis-full text-left text-[0.68rem] font-black text-emerald-800 sm:text-right">
+                            Retirar agora: {quantityFormatter.format(pickupDelta)} · Entrada automática no estoque: +{quantityFormatter.format(pickupDelta)}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -3567,7 +3603,7 @@ function OrderDetailsDialog({
               onClick={() => setConfirmation("MARK_ALL")}
               className="nk-focus min-h-11 min-w-0 rounded-xl border border-emerald-700 bg-white px-2 text-center text-xs leading-tight font-black text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 sm:px-4 sm:text-sm"
             >
-              Marcar tudo como retirado
+              Retirar tudo que está pronto
             </button>
           ) : null}
           {canCreateStockEntry ? (

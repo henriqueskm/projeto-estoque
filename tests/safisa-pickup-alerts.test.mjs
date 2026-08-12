@@ -271,9 +271,10 @@ test("uses the readiness ceiling in the internal pickup control", () => {
 
   assert.match(orders, /maximumSafisaPickupQuantity\(/);
   assert.match(orders, /maximum=\{maximum\}/);
+  assert.match(orders, /const minimum = item\.pickedQuantity/);
   assert.match(
     orders,
-    /A quantidade retirada deve ficar entre o que já entrou no estoque e o total informado como pronto/,
+    /A retirada já registrada não pode ser reduzida, e o novo total não pode ultrapassar o que a Safisa informou como pronto/,
   );
 });
 

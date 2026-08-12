@@ -1411,42 +1411,37 @@ function SupplierOrderPickupPreview({
           </p>
           <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             <PickupMetric
-              label="Solicitado"
-              value={block.item.orderedQuantity}
+              label="Pronto pela Safisa"
+              value={block.item.readyQuantity}
             />
             <PickupMetric
-              label="Retirado atualmente"
+              label="Já retirado"
               value={block.item.currentPickedQuantity}
             />
             <PickupMetric
-              label={
-                block.mode === "increment"
-                  ? "Retirar agora"
-                  : "Novo total"
-              }
-              value={
-                block.mode === "increment"
-                  ? block.item.addedQuantity
-                  : block.item.targetPickedQuantity
-              }
-              emphasis
+              label="Disponível para retirar"
+              value={block.item.availableQuantity}
             />
-            {block.mode === "set_total" ? (
-              <PickupMetric
-                label="Aumento real"
-                value={block.item.addedQuantity}
-              />
-            ) : null}
             <PickupMetric
-              label="Após a operação"
-              value={block.item.targetPickedQuantity}
+              label="Retirar agora"
+              value={block.item.addedQuantity}
               emphasis
             />
             <PickupMetric
-              label="Ainda para retirar"
+              label="Entrada automática"
+              value={block.item.automaticStockEntryQuantity}
+              emphasis
+            />
+            <PickupMetric
+              label="Restará pronto"
               value={block.item.remainingAfter}
             />
           </div>
+          {block.item.waitingStockQuantity > 0 ? (
+            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-950">
+              Pendente antigo de entrada: {quantityFormatter.format(block.item.waitingStockQuantity)}. Esse saldo não faz parte desta confirmação.
+            </p>
+          ) : null}
           {block.item.cancelledQuantity > 0 ? (
             <p className="mt-2 text-xs font-black text-red-800">
               Cancelado:{" "}
@@ -1465,7 +1460,7 @@ function SupplierOrderPickupPreview({
               emphasis
             />
             <PickupMetric
-              label="Unidades adicionais"
+              label="Unidades retiradas"
               value={block.markAll.addedPickedQuantity}
               emphasis
             />
@@ -1485,9 +1480,7 @@ function SupplierOrderPickupPreview({
                   </span>
                 </span>
                 <span className="shrink-0 font-mono text-xs font-black tabular-nums text-text-primary">
-                  {item.alreadyComplete
-                    ? "Já completo"
-                    : `${quantityFormatter.format(item.currentPickedQuantity)} → ${quantityFormatter.format(item.targetPickedQuantity)}`}
+                  Retirar {quantityFormatter.format(item.addedQuantity)} → Estoque +{quantityFormatter.format(item.automaticStockEntryQuantity)}
                 </span>
               </div>
             ))}
@@ -1636,6 +1629,13 @@ function SupplierOrderPickupResult({
               value={block.item.addedPickedQuantity}
               emphasis
             />
+            {block.item.automaticStockEntryQuantity !== null ? (
+              <PickupMetric
+                label="Entrada no Estoque"
+                value={block.item.automaticStockEntryQuantity}
+                emphasis
+              />
+            ) : null}
             <PickupMetric
               label="Retirado total"
               value={block.item.currentPickedQuantity}
@@ -1661,6 +1661,13 @@ function SupplierOrderPickupResult({
             value={block.markAll.addedPickedQuantity}
             emphasis
           />
+          {block.markAll.automaticStockEntryQuantity !== null ? (
+            <PickupMetric
+              label="Entrada no Estoque"
+              value={block.markAll.automaticStockEntryQuantity}
+              emphasis
+            />
+          ) : null}
         </div>
       ) : null}
 
