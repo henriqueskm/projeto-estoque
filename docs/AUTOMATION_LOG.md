@@ -460,3 +460,59 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Desktop:** composição horizontal anterior preservada a partir de `sm`.
 - **Escopo:** somente classes responsivas e testes estruturais; nenhuma regra de
   visibilidade, operação, action, RPC, migration ou estado remoto foi alterado.
+
+## 2026-08-12 — NK-ORD-007C
+
+- **MIG-ORD-007A:** `APPLIED_REMOTE / VERIFIED` no projeto
+  `isdjboconmwaqipjrjvp` às 09:15 BRT, usando exclusivamente `supabase db push
+  --linked` para a migration `20260812023500_atomic_supplier_order_pickup_stock_entry.sql`.
+- **Integridade:** SHA-256
+  `040f6ec6aa50ffd7062f20c2229bd098194662fc245fceff456c95428c39c343`;
+  histórico local/remoto alinhado e dry-run posterior sem pendências.
+- **Contrato remoto:** primitive compartilhado `SECURITY INVOKER`, `search_path`
+  vazio e sem EXECUTE para `public`, `anon` ou `authenticated`; workers de linha
+  e retirada total chamam o primitive e retornam o receipt da entrada automática.
+- **Zero efeito operacional:** `picked_total=17`, `stocked_total=9`, fingerprints
+  dos saldos, 46 movement batches, 5 entradas vinculadas, 7 linhas de entrada e
+  contagens de movimentos permaneceram idênticos antes/depois; nenhum backfill.
+- **NK-ORD-007B:** PR [#18](https://github.com/henriqueskm/projeto-estoque/pull/18)
+  mesclado com HEAD aprovado `69df6544d2b7bbf4dbc46d8a44baaea13104f8eb`;
+  merge commit `86d3f3ad72ebe129ec2d2cc2ca5099bf9624e815` implantado com sucesso na Vercel.
+- **Smoke test:** alias de produção carregou login interno e Safisa; `/pedidos`,
+  `/estoque` e a Home redirecionaram corretamente sem sessão. A inspeção
+  autenticada não foi contornada.
+- **Operações:** nenhuma retirada, entrada, alteração manual de saldo ou
+  regularização do backlog foi executada pelo Codex.
+- **Estado novo:** NK-ORD-007 `WAITING_HUMAN_OPERATIONAL_TEST`.
+
+## 2026-08-12 — NK-ORD-007D / NK-ORD-007E
+
+- **NK-ORD-007D:** `DONE`; PR
+  [#20](https://github.com/henriqueskm/projeto-estoque/pull/20) mesclado em
+  `main` no commit `f3f20ca4dfdf2db6df2346fce4fc88fc90fae380`, com validação visual
+  aprovada. “Retire N” e “Retirar N” representam incremento direto; comandos
+  explícitos de total continuam separados e frases genuinamente ambíguas ainda
+  pedem esclarecimento.
+- **Teste operacional humano:** o usuário confirmou uma única vez a retirada
+  de `1` unidade do `Cód. 11A` no Pedido `1212`. A interface apresentou retirada
+  `1`, entrada automática `+1`, total retirado `1` e nenhuma unidade pronta
+  restante; a ação global desapareceu após zerar a disponibilidade.
+- **Verificação remota read-only:** o Pedido `1212` foi resolvido de forma única;
+  a linha `11A` ficou com `ready=1`, `picked=1`, `stocked=1`,
+  `waiting_pickup=0` e `waiting_stock=0`.
+- **Cadeia auditável:** um único evento `PICKED_QUANTITY_CHANGED` registrou
+  `0→1`; uma única entrada vinculada de quantidade `1` criou um único batch
+  `INBOUND / MANUAL` e um único movimento da configuração física `0→1`.
+  Evento, entrada, batch e movimento compartilham o mesmo instante, usuário e
+  chave de idempotência. Não houve duplicidade nem movimento em item avulso.
+- **Backlog histórico:** a linha `Cód. 11E` permaneceu com
+  `waiting_stock_quantity=1`, comprovando que a operação composta do `11A` não
+  absorveu a pendência anterior.
+- **Estado final:** MIG-ORD-007A `DONE / APPLIED_REMOTE / VERIFIED`,
+  NK-ORD-007B `DONE / MERGED / DEPLOYED` e NK-ORD-007 `DONE`.
+- **Próxima prioridade:** NK-ORD-008 — Criar Pedido a partir de foto pela
+  Assistente — `READY_FOR_AUDIT`. NK-QA-001 permanece válido, mas foi adiado até
+  NK-ORD-008 por decisão explícita de prioridade.
+- **Segurança:** toda a verificação utilizou somente `SELECT`; nenhuma nova
+  retirada, entrada, alteração de estoque, RPC mutável, migration ou `db push`
+  foi executado pelo Codex.
