@@ -651,3 +651,38 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Próxima ação:** revisão humana e merge do PR #22. Qualquer rollout remoto
   exige autorização própria e preflight de produção estrito com exatamente
   4/4 identidades legadas.
+
+## 2026-08-12 — MIG-ORD-008A rollout remoto controlado
+
+- **Estado:** `DONE / APPLIED_REMOTE / VERIFIED`; PR #22 mesclado em
+  `88378d524ef70dab51de565ba3bb0ada0c139b8d` e migration `20260812133046`
+  alinhada no histórico local/remoto do projeto `EstoqueNK`
+  (`isdjboconmwaqipjrjvp`).
+- **Integridade:** SHA-256 do conteúdo Git aprovado
+  `24160a71dc7501f5f65a08668c082a5b1836bd85d29b6eed9bf031bd603c9dc9`;
+  arquivo e migrations históricas permaneceram inalterados.
+- **Preflight:** sete Pedidos; 4/4 pares legados exatos; zero colisão dos novos
+  números; zero duplicata, incompatibilidade adicional ou colisão das chaves
+  técnicas; zero writer ativo e zero evento recente de Pedido na janela final.
+- **Aplicação:** Supabase CLI `2.112.0`; dry-run listou somente
+  `20260812133046_enforce_supplier_order_negotiation_identity.sql`; um único
+  `db push --linked` foi executado entre 16:38:16 e 16:38:41
+  (America/São_Paulo); dry-run posterior ficou vazio.
+- **Resultado:** os quatro UUIDs foram preservados e as negociações passaram a
+  `99990000`, `99990001`, `99990003` e `99990004`. `updated_at` avançou nos
+  quatro registros pelo trigger vigente, sem alteração de lifecycle ou
+  quantidades.
+- **Auditoria:** exatamente quatro eventos `ORDER_HEADER_UPDATED`, com
+  `user_id = NULL`, snapshot `MIG-ORD-008A`, motivo
+  `legacy_negotiation_identity_migration` e pares anterior/novo corretos.
+- **Contrato remoto:** `negotiation_number` continua `TEXT NOT NULL`; CHECK
+  ASCII digits-only de 1–120 e UNIQUE global não parcial estão presentes; o
+  índice comum anterior foi removido. Wrappers de criação/edição continuam
+  `SECURITY DEFINER`, `search_path` vazio, com EXECUTE apenas para
+  `authenticated` e `service_role`, sem `anon`/`PUBLIC`.
+- **Preservação:** itens, quantidades, status, finalização, cancelamento,
+  vínculos Safisa, stock entries, lotes, movimentos, saldos físicos e todos os
+  eventos anteriores mantiveram contagens, totais e fingerprints. Nenhum Pedido,
+  retirada, entrada de Estoque ou operação Safisa foi executado.
+- **Próxima etapa:** NK-ORD-008B — foto → Gemini → validação → preview, sem
+  criação real de Pedido.
