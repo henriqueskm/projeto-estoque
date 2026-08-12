@@ -516,3 +516,47 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Segurança:** toda a verificação utilizou somente `SELECT`; nenhuma nova
   retirada, entrada, alteração de estoque, RPC mutável, migration ou `db push`
   foi executado pelo Codex.
+
+## 2026-08-12 — NK-ORD-008
+
+- **Estado:** `AUDITED / WAITING_ARCHITECTURE_REVIEW`; classificação **D**.
+- **Base/branch:** `origin/main` em
+  `2d0c7a6802b63eaaa9663f564d3a21ee1d4ebc5e`, branch
+  `agent/assistant-photo-order-audit`.
+- **Câmera/galeria:** os inputs locais existem e geram preview por object URL,
+  mas o anexo não sai do browser. O chat envia apenas JSON textual; não existe
+  endpoint multipart/base64 nem resize, MIME real, limite de bytes ou chamada
+  multimodal.
+- **Amostras reais:** duas fotos foram inspecionadas somente no host, sem upload
+  ou persistência. Negociação, `Data Negociação`, códigos, descrições impressas,
+  quantidades e ordem das linhas parecem extraíveis. Manuscritos sobrepostos,
+  recortes, baixo contraste e caracteres semelhantes exigem revisão humana.
+- **Provider:** o projeto já usa Google Gemini Developer API com
+  `gemini-3.6-flash`, modelo GA multimodal e com structured output. Recomendado
+  preservar esse provider/modelo, `store: false`, imagem inline descartável e
+  validação server-side; fallback seguro é nova foto/revisão, não escolha
+  automática por outro modelo.
+- **Contrato oficial:** `createSupplierOrder` exige sessão, profile interno
+  ativo com nome e chama `public.create_supplier_order`. O worker valida o
+  catálogo ativo antes da primeira escrita, cria Pedido/linhas, snapshots e
+  `ORDER_CREATED` na mesma transação e possui idempotência por usuário/chave.
+  O lifecycle Safisa automático é preservado por esse contrato.
+- **Catálogo:** somente o backend resolve `ITEM` ou
+  `COMMERCIAL_CONFIGURATION`; o código comercial lido é preservado para aliases.
+  Zero match, conflito descrição/código ou ambiguidade bloqueiam confirmação;
+  fuzzy match não escolhe alvo.
+- **Bloqueio:** `negotiation_number` aceita 1–120 caracteres após `trim`, possui
+  índice não único e o worker permite duplicatas. Um preflight não elimina
+  corrida concorrente. É necessária decisão humana sobre escopo/normalização da
+  unicidade; `MIGRATION_REQUIRED = UNCERTAIN` até essa decisão.
+- **Arquitetura:** NK-ORD-008A implementará apenas upload, visão, schema,
+  catálogo, preview e correção. NK-ORD-008B adicionará HMAC e confirmação por
+  botão depois da decisão. NK-ORD-008C fará validação visual e NK-ORD-008D, teste
+  operacional controlado.
+- **Privacidade/custo:** JPEG/PNG, máximo bruto recomendado de 10 MiB e
+  processado de 4 MiB, lado maior até 2.400–2.560 px, uma análise concorrente e
+  rate limit por usuário. Estimativa inicial para `gemini-3.6-flash` standard:
+  US$ 0,005–0,02/foto, a medir no dataset real. Nenhuma foto deve ir a Storage,
+  banco, sessão ou logs.
+- **Escopo preservado:** nenhuma migration, RPC, código funcional, Pedido,
+  escrita Supabase, configuração Vercel, imagem versionada ou merge.
