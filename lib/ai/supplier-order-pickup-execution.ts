@@ -23,6 +23,8 @@ export type SupplierOrderPickupRpcFailureKind =
   | "version_conflict"
   | "permission_denied"
   | "rpc_not_found"
+  | "not_ready"
+  | "reduction_not_allowed"
   | "invalid_quantity"
   | "incompatible_order"
   | "temporary"
@@ -50,12 +52,22 @@ type SupplierOrderPickupLineRpcResult = {
   newPickedQuantity: number;
   pickedQuantityDelta: number;
   idempotentReplay: boolean;
+  stockEntry: SupplierOrderPickupStockEntryReceipt | null;
 };
 
 type SupplierOrderPickupMarkAllRpcResult = {
   changedLineCount: number;
   addedPickedQuantity: number;
   idempotentReplay: boolean;
+  stockEntry: SupplierOrderPickupStockEntryReceipt | null;
+};
+
+export type SupplierOrderPickupStockEntryReceipt = {
+  supplierOrderStockEntryId: string;
+  movementBatchId: string;
+  lineCount: number;
+  quantity: number;
+  createdAt: string;
 };
 
 export type SupplierOrderPickupParsedRpcResult =
@@ -81,6 +93,49 @@ function safeInteger(value: unknown) {
         : Number.NaN;
 
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseStockEntryReceipt(
+  data: Record<string, unknown>,
+): SupplierOrderPickupStockEntryReceipt | null | "invalid" {
+  const fields = [
+    data.supplier_order_stock_entry_id,
+    data.movement_batch_id,
+    data.stock_entry_line_count,
+    data.stock_entry_quantity,
+    data.stock_entry_created_at,
+  ];
+
+  if (fields.every((field) => field === undefined || field === null)) {
+    return null;
+  }
+
+  const lineCount = safeInteger(data.stock_entry_line_count);
+  const quantity = safeInteger(data.stock_entry_quantity);
+  const createdAt = data.stock_entry_created_at;
+  if (
+    typeof data.supplier_order_stock_entry_id !== "string" ||
+    !uuidPattern.test(data.supplier_order_stock_entry_id) ||
+    typeof data.movement_batch_id !== "string" ||
+    !uuidPattern.test(data.movement_batch_id) ||
+    lineCount === null ||
+    lineCount < 1 ||
+    quantity === null ||
+    quantity < 1 ||
+    typeof createdAt !== "string" ||
+    Number.isNaN(Date.parse(createdAt))
+  ) {
+    return "invalid";
+  }
+
+  return {
+    supplierOrderStockEntryId:
+      data.supplier_order_stock_entry_id.toLowerCase(),
+    movementBatchId: data.movement_batch_id.toLowerCase(),
+    lineCount,
+    quantity,
+    createdAt,
+  };
 }
 
 function normalizedErrorText(error: SupplierOrderPickupRpcError) {
@@ -210,6 +265,24 @@ export function classifySupplierOrderPickupRpcFailure(
   }
 
   if (
+    hasAnyText(text, [
+      "picked_quantity cannot exceed ready_quantity",
+      "cannot exceed ready_quantity",
+    ])
+  ) {
+    return "not_ready";
+  }
+
+  if (
+    hasAnyText(text, [
+      "picked_quantity cannot be reduced",
+      "cannot be reduced by the pickup operation",
+    ])
+  ) {
+    return "reduction_not_allowed";
+  }
+
+  if (
     ["22003", "22023", "23514"].includes(error.code ?? "") &&
     hasAnyText(text, [
       "quantity",
@@ -265,11 +338,26 @@ export function parseSupplierOrderPickupRpcResult(
     return null;
   }
 
+  const stockEntry = parseStockEntryReceipt(data);
+
+  if (stockEntry === "invalid") {
+    return null;
+  }
+
   if (mode === "mark_all") {
     const changedLineCount = safeInteger(data.changed_line_count);
     const addedPickedQuantity = safeInteger(data.added_picked_quantity);
 
     if (changedLineCount === null || addedPickedQuantity === null) {
+      return null;
+    }
+
+    if (
+      (addedPickedQuantity > 0 &&
+        stockEntry !== null &&
+        stockEntry.quantity !== addedPickedQuantity) ||
+      (addedPickedQuantity === 0 && stockEntry !== null)
+    ) {
       return null;
     }
 
@@ -279,6 +367,7 @@ export function parseSupplierOrderPickupRpcResult(
         changedLineCount,
         addedPickedQuantity,
         idempotentReplay: data.idempotent_replay,
+        stockEntry,
       },
     };
   }
@@ -299,6 +388,16 @@ export function parseSupplierOrderPickupRpcResult(
     return null;
   }
 
+
+  if (
+    (pickedQuantityDelta > 0 &&
+      stockEntry !== null &&
+      stockEntry.quantity !== pickedQuantityDelta) ||
+    (pickedQuantityDelta === 0 && stockEntry !== null)
+  ) {
+    return null;
+  }
+
   return {
     mode: "line",
     value: {
@@ -306,6 +405,7 @@ export function parseSupplierOrderPickupRpcResult(
       newPickedQuantity,
       pickedQuantityDelta,
       idempotentReplay: data.idempotent_replay,
+      stockEntry,
     },
   };
 }

@@ -19,10 +19,12 @@ type CommercialConfigurationImageProps = {
   compact?: boolean;
   openOnMount?: boolean;
   triggerLabel?: string;
+  triggerText?: string;
   triggerVariant?:
     | "thumbnail"
     | "menu-item"
     | "text-link"
+    | "code-link"
     | "icon-button"
     | "selector-action"
     | "assistant-action";
@@ -38,6 +40,7 @@ export function CommercialConfigurationImage({
   compact = false,
   openOnMount = false,
   triggerLabel,
+  triggerText,
   triggerVariant = "thumbnail",
 }: CommercialConfigurationImageProps) {
   const [isOpen, setIsOpen] = useState(
@@ -120,6 +123,7 @@ export function CommercialConfigurationImage({
 
   const isMenuItem = triggerVariant === "menu-item";
   const isTextLink = triggerVariant === "text-link";
+  const isCodeLink = triggerVariant === "code-link";
   const isIconButton = triggerVariant === "icon-button";
   const isSelectorAction = triggerVariant === "selector-action";
   const isAssistantAction = triggerVariant === "assistant-action";
@@ -142,7 +146,9 @@ export function CommercialConfigurationImage({
         aria-label={
           isIconButton || isSelectorAction || isAssistantAction
             ? actionLabel
-            : `${isMenuItem || isTextLink ? "Visualizar" : "Ampliar"} ${altText.toLocaleLowerCase("pt-BR")}`
+            : isCodeLink
+              ? actionLabel
+              : `${isMenuItem || isTextLink ? "Visualizar" : "Ampliar"} ${altText.toLocaleLowerCase("pt-BR")}`
         }
         title={isIconButton ? actionLabel : undefined}
         className={
@@ -150,6 +156,8 @@ export function CommercialConfigurationImage({
             ? "nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
             : isTextLink
               ? "nk-focus mt-0.5 inline-flex min-h-11 items-center rounded-lg px-0.5 text-[0.65rem] font-bold text-violet-800"
+              : isCodeLink
+                ? "nk-focus -my-1 inline-flex min-h-8 items-center rounded px-0.5 font-mono text-xs font-black text-text-primary underline decoration-brand-gold-dark/70 decoration-1 underline-offset-4 transition hover:decoration-2 sm:text-sm"
               : isIconButton
                 ? "nk-focus inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-800 transition hover:border-violet-400 hover:bg-violet-100"
                 : isAssistantAction
@@ -167,6 +175,8 @@ export function CommercialConfigurationImage({
           <span className="rounded-md border border-violet-200 bg-surface px-1.5 py-1 leading-4 transition hover:border-violet-400 hover:bg-violet-50">
             Ver foto
           </span>
+        ) : isCodeLink ? (
+          triggerText ?? codeLabel
         ) : isIconButton ? (
           <EyeIcon className="size-4" />
         ) : isAssistantAction ? (

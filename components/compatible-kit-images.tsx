@@ -17,13 +17,15 @@ type CompatibleKitImagesProps = {
   kitCode: string;
   options: CompatibleKitImageOption[];
   openOnMount?: boolean;
-  triggerVariant?: "icon-button" | "assistant-action";
+  triggerLabel?: string;
+  triggerVariant?: "icon-button" | "assistant-action" | "code-link";
 };
 
 export function CompatibleKitImages({
   kitCode,
   options,
   openOnMount = false,
+  triggerLabel,
   triggerVariant = "icon-button",
 }: CompatibleKitImagesProps) {
   const [isOpen, setIsOpen] = useState(
@@ -97,9 +99,10 @@ export function CompatibleKitImages({
   }
 
   const actionLabel =
-    options.length === 1
+    triggerLabel ??
+    (options.length === 1
       ? `Ver foto do kit ${kitCode}`
-      : `Ver fotos do kit ${kitCode}`;
+      : `Ver fotos do kit ${kitCode}`);
 
   if (options.length === 1) {
     const option = options[0];
@@ -110,6 +113,9 @@ export function CompatibleKitImages({
         imageUrl={option.imageUrl}
         openOnMount={openOnMount}
         triggerLabel={actionLabel}
+        triggerText={
+          triggerVariant === "code-link" ? `Cód. ${kitCode}` : undefined
+        }
         triggerVariant={triggerVariant}
       />
     );
@@ -131,11 +137,15 @@ export function CompatibleKitImages({
         className={
           triggerVariant === "assistant-action"
             ? "nk-focus inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-900 transition hover:border-violet-400 hover:bg-violet-100"
+            : triggerVariant === "code-link"
+              ? "nk-focus -my-1 inline-flex min-h-8 items-center rounded px-0.5 font-mono text-xs font-black text-text-primary underline decoration-brand-gold-dark/70 decoration-1 underline-offset-4 transition hover:decoration-2 sm:text-sm"
             : "nk-focus inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-800 transition hover:border-violet-400 hover:bg-violet-100"
         }
       >
         {triggerVariant === "assistant-action" ? (
           "Ver fotos"
+        ) : triggerVariant === "code-link" ? (
+          `Cód. ${kitCode}`
         ) : (
           <EyeIcon className="size-4" />
         )}

@@ -46,6 +46,14 @@ type RpcReceipt = {
   pickup_percentage?: unknown;
   status?: unknown;
   updated_at?: unknown;
+  supplier_order_stock_entry_id?: unknown;
+  movement_batch_id?: unknown;
+  stock_entry_line_count?: unknown;
+  stock_entry_quantity?: unknown;
+  stock_entry_created_at?: unknown;
+  picked_quantity_delta?: unknown;
+  added_picked_quantity?: unknown;
+  idempotent_replay?: unknown;
 };
 
 type RpcStockEntryReceipt = RpcReceipt & {
@@ -392,6 +400,55 @@ function parseNonnegativeInteger(value: unknown): number | null {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function parseAutomaticStockEntry(
+  receipt: RpcReceipt,
+): SupplierOrderReceipt["automaticStockEntry"] | null | undefined {
+  const stockFields = [
+    receipt.supplier_order_stock_entry_id,
+    receipt.movement_batch_id,
+    receipt.stock_entry_line_count,
+    receipt.stock_entry_quantity,
+    receipt.stock_entry_created_at,
+  ];
+
+  if (stockFields.every((field) => field === undefined || field === null)) {
+    return undefined;
+  }
+
+  const lineCount = parseNonnegativeInteger(receipt.stock_entry_line_count);
+  const quantity = parseNonnegativeInteger(receipt.stock_entry_quantity);
+  const pickedQuantityDelta = parseNonnegativeInteger(
+    receipt.picked_quantity_delta ?? receipt.added_picked_quantity,
+  );
+
+  if (
+    !isUuid(receipt.supplier_order_stock_entry_id) ||
+    !isUuid(receipt.movement_batch_id) ||
+    lineCount === null ||
+    lineCount < 1 ||
+    quantity === null ||
+    quantity < 1 ||
+    pickedQuantityDelta === null ||
+    quantity !== pickedQuantityDelta ||
+    typeof receipt.stock_entry_created_at !== "string" ||
+    Number.isNaN(Date.parse(receipt.stock_entry_created_at)) ||
+    typeof receipt.idempotent_replay !== "boolean"
+  ) {
+    return null;
+  }
+
+  return {
+    supplierOrderStockEntryId:
+      receipt.supplier_order_stock_entry_id.toLowerCase(),
+    movementBatchId: receipt.movement_batch_id.toLowerCase(),
+    lineCount,
+    quantity,
+    createdAt: receipt.stock_entry_created_at,
+    pickedQuantityDelta,
+    idempotentReplay: receipt.idempotent_replay,
+  };
+}
+
 function parseReceipt(data: unknown): SupplierOrderReceipt | null {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     return null;
@@ -412,6 +469,7 @@ function parseReceipt(data: unknown): SupplierOrderReceipt | null {
     receipt.waiting_stock_quantity,
   );
   const pickupPercentage = Number(receipt.pickup_percentage);
+  const automaticStockEntry = parseAutomaticStockEntry(receipt);
   const status: SupplierOrderStatus | null =
     typeof receipt.status === "string"
       ? (supplierOrderStatuses.find(
@@ -430,6 +488,7 @@ function parseReceipt(data: unknown): SupplierOrderReceipt | null {
     stockedQuantity === null ||
     waitingStockQuantity === null ||
     !Number.isFinite(pickupPercentage) ||
+    automaticStockEntry === null ||
     !status ||
     typeof receipt.updated_at !== "string" ||
     Number.isNaN(Date.parse(receipt.updated_at))
@@ -450,6 +509,7 @@ function parseReceipt(data: unknown): SupplierOrderReceipt | null {
     pickupPercentage,
     status,
     updatedAt: receipt.updated_at,
+    ...(automaticStockEntry ? { automaticStockEntry } : {}),
   };
 }
 
@@ -516,6 +576,19 @@ function mapRpcError(
   if (normalizedMessage.includes("idempotency")) {
     return actionError(
       "Não foi possível repetir esta operação. Atualize os dados e tente novamente.",
+    );
+  }
+
+  if (normalizedMessage.includes("picked_quantity cannot be reduced")) {
+    return actionError(
+      "A retirada já registrada não pode ser reduzida por este fluxo.",
+    );
+  }
+
+  if (normalizedMessage.includes("picked_quantity cannot exceed ready_quantity")) {
+    return actionError(
+      "A quantidade pronta disponível mudou. Atualize o Pedido e revise a retirada.",
+      true,
     );
   }
 

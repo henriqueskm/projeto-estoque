@@ -38,6 +38,7 @@ import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { getSafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";
 import { maximumSafisaPickupQuantity } from "@/lib/safisa-portal-readiness";
+import { getSupplierOrderGlobalActionVisibility } from "@/lib/supplier-order-global-actions";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type {
   CreateSupplierOrderInput,
@@ -181,6 +182,45 @@ function OrderItemImageButton({
       imageUrl={imageUrl}
       triggerVariant="icon-button"
     />
+  );
+}
+
+function OrderItemImageCode({
+  code,
+  compatibleKitImages,
+  imageUrl,
+}: {
+  code: string;
+  compatibleKitImages: CompatibleKitImageOption[];
+  imageUrl: string | null;
+}) {
+  if (compatibleKitImages.length > 0) {
+    return (
+      <CompatibleKitImages
+        kitCode={code}
+        options={compatibleKitImages}
+        triggerLabel={`Ver imagem do Cód. ${code}`}
+        triggerVariant="code-link"
+      />
+    );
+  }
+
+  if (imageUrl) {
+    return (
+      <CommercialConfigurationImage
+        commercialCodes={[code]}
+        imageUrl={imageUrl}
+        triggerLabel={`Ver imagem do Cód. ${code}`}
+        triggerText={`Cód. ${code}`}
+        triggerVariant="code-link"
+      />
+    );
+  }
+
+  return (
+    <span className="pt-0.5 font-mono text-xs font-black text-text-primary sm:text-sm">
+      Cód. {code}
+    </span>
   );
 }
 
@@ -2207,7 +2247,9 @@ function ConfirmationDialog({
 
       onSuccess(
         kind === "MARK_ALL"
-          ? "Todas as quantidades prontas foram marcadas como retiradas."
+          ? result.receipt.automaticStockEntry
+            ? `${quantityFormatter.format(result.receipt.automaticStockEntry.quantity)} unidades foram retiradas e adicionadas automaticamente ao estoque.`
+            : "As quantidades prontas foram retiradas. Confira a atualização do estoque."
           : kind === "CANCEL"
             ? "Pedido excluído das listas ativas e mantido no histórico."
             : "Saldo restante excluído das listas ativas e mantido no histórico.",
@@ -2230,13 +2272,21 @@ function ConfirmationDialog({
           className="text-sm leading-6 font-semibold text-text-muted"
         >
           {kind === "MARK_ALL"
-            ? "Marcar como retiradas somente as quantidades já informadas como prontas pela Safisa?"
+            ? "Retirar somente as quantidades informadas como prontas pela Safisa? As novas unidades retiradas entrarão automaticamente no Estoque."
             : kind === "CANCEL"
               ? "Este pedido será removido das listas ativas e mantido no histórico. As quantidades ainda intocadas serão canceladas."
               : "Este saldo restante será removido das listas ativas e mantido no histórico. As quantidades já retiradas serão preservadas."}
         </p>
-        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-950">
-          Isso não altera o estoque.
+        <p
+          className={`mt-3 rounded-xl border px-4 py-3 text-sm font-black ${
+            kind === "MARK_ALL"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+              : "border-amber-200 bg-amber-50 text-amber-950"
+          }`}
+        >
+          {kind === "MARK_ALL"
+            ? `Entrada automática no estoque: +${quantityFormatter.format(order.readyWaitingPickupQuantity)}`
+            : "Isso não altera o estoque."}
         </p>
 
         {isCancellation ? (
@@ -3007,12 +3057,13 @@ function OrderDetailsDialog({
     order.status === "COMPLETED" &&
     order.closureKind === null &&
     order.cancelledAt === null;
-  const canCreateStockEntry = items.some(
-    (item) => item.waitingStockQuantity > 0,
-  );
+  const globalActionVisibility = getSupplierOrderGlobalActionVisibility({
+    canMarkAll,
+    readyWaitingPickupQuantity: order.readyWaitingPickupQuantity,
+    waitingStockQuantity: order.waitingStockQuantity,
+  });
   const hasHeaderActions =
     canEdit || canCancelFull || canCancelRemaining || canFinalize;
-  const hasFooterActions = canMarkAll || canCreateStockEntry;
   const waitingStockMessage =
     order.waitingStockQuantity === 1
       ? "1 unidade aguarda entrada no estoque"
@@ -3161,7 +3212,7 @@ function OrderDetailsDialog({
   ) : null;
 
   function updatePicked(item: SupplierOrderItem, nextValue: number) {
-    const minimum = item.stockedQuantity;
+    const minimum = item.pickedQuantity;
     const maximum = maximumSafisaPickupQuantity(
       item.orderedQuantity,
       item.cancelledQuantity,
@@ -3176,7 +3227,7 @@ function OrderDetailsDialog({
 
   function savePicked(item: SupplierOrderItem) {
     const value = pickedDrafts[item.id] ?? item.pickedQuantity;
-    const minimum = item.stockedQuantity;
+    const minimum = item.pickedQuantity;
     const maximum = maximumSafisaPickupQuantity(
       item.orderedQuantity,
       item.cancelledQuantity,
@@ -3189,7 +3240,7 @@ function OrderDetailsDialog({
       value > maximum
     ) {
       setError(
-        "A quantidade retirada deve ficar entre o que já entrou no estoque e o total informado como pronto.",
+        "A retirada já registrada não pode ser reduzida, e o novo total não pode ultrapassar o que a Safisa informou como pronto.",
       );
       return;
     }
@@ -3216,7 +3267,12 @@ function OrderDetailsDialog({
       }
 
       delete pickedKeysRef.current[item.id];
-      onMutated(`Retirada de ${item.codeSnapshot} atualizada.`);
+      const automaticEntry = result.receipt.automaticStockEntry;
+      onMutated(
+        automaticEntry
+          ? `${quantityFormatter.format(automaticEntry.quantity)} ${automaticEntry.quantity === 1 ? "unidade retirada e adicionada" : "unidades retiradas e adicionadas"} automaticamente ao estoque para o Cód. ${item.codeSnapshot}.`
+          : `Retirada de ${item.codeSnapshot} atualizada. Confira a atualização do estoque.`,
+      );
     });
   }
 
@@ -3377,7 +3433,7 @@ function OrderDetailsDialog({
           </h3>
           <div className="mt-1.5 divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral bg-white">
             {items.map((item) => {
-              const minimum = item.stockedQuantity;
+              const minimum = item.pickedQuantity;
               const maximum = maximumSafisaPickupQuantity(
                 item.orderedQuantity,
                 item.cancelledQuantity,
@@ -3386,37 +3442,24 @@ function OrderDetailsDialog({
               const pickedValue =
                 pickedDrafts[item.id] ?? item.pickedQuantity;
               const changed = pickedValue !== item.pickedQuantity;
+              const pickupDelta = Math.max(
+                pickedValue - item.pickedQuantity,
+                0,
+              );
               const code =
                 item.commercialCodeSnapshot ?? item.codeSnapshot;
-              const hasImage =
-                Boolean(item.imageUrl) ||
-                item.compatibleKitImages.length > 0;
 
               return (
                 <article key={item.id} className="px-2.5 py-2 sm:px-3 sm:py-2.5">
-                  <div
-                    className={`grid min-w-0 items-start gap-x-1.5 ${
-                      hasImage
-                        ? "grid-cols-[auto_auto_auto_auto_minmax(0,1fr)]"
-                        : "grid-cols-[auto_auto_auto_minmax(0,1fr)]"
-                    }`}
-                  >
+                  <div className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-x-1.5">
                     <span className="rounded-full bg-app-background px-1.5 py-0.5 text-[0.58rem] font-black text-text-muted uppercase sm:text-[0.62rem]">
                       {compactItemTypeLabel(item.itemTypeSnapshot)}
                     </span>
-                    <span className="pt-0.5 font-mono text-[0.62rem] font-bold text-text-muted sm:text-xs">
-                      Cód.
-                    </span>
-                    <strong className="pt-0.5 font-mono text-xs font-black text-text-primary sm:text-sm">
-                      {code}
-                    </strong>
-                    {hasImage ? (
-                      <OrderItemImageButton
-                        code={code}
-                        imageUrl={item.imageUrl}
-                        compatibleKitImages={item.compatibleKitImages}
-                      />
-                    ) : null}
+                    <OrderItemImageCode
+                      code={code}
+                      imageUrl={item.imageUrl}
+                      compatibleKitImages={item.compatibleKitImages}
+                    />
                     <p className="min-w-0 break-words text-xs leading-4 font-semibold text-text-primary sm:text-sm sm:leading-5">
                       {item.descriptionSnapshot}
                       {item.modelSnapshot &&
@@ -3461,9 +3504,21 @@ function OrderDetailsDialog({
                           </strong>
                         </p>
                       ) : null}
+                      <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                        Pronto pela Safisa:{" "}
+                        <strong className="font-mono font-black text-text-primary">
+                          {quantityFormatter.format(item.readyQuantity)}
+                        </strong>{" "}
+                        · Disponível para retirar:{" "}
+                        <strong className="font-mono font-black text-emerald-800">
+                          {quantityFormatter.format(
+                            item.readyWaitingPickupQuantity,
+                          )}
+                        </strong>
+                      </p>
                       {item.waitingStockQuantity > 0 ? (
                         <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-amber-900 sm:text-xs">
-                          Aguardando entrada:{" "}
+                          Pendente antigo de entrada:{" "}
                           <strong className="font-mono font-black">
                             {quantityFormatter.format(
                               item.waitingStockQuantity,
@@ -3477,7 +3532,7 @@ function OrderDetailsDialog({
                       <div className="flex flex-wrap items-end justify-start gap-1.5 sm:justify-end">
                         <div>
                           <span className="mb-0.5 block text-[0.58rem] font-black text-text-muted uppercase">
-                            Retirado
+                            Nova retirada
                           </span>
                           <CompactQuantityControl
                             label={`Quantidade retirada de ${code}`}
@@ -3498,9 +3553,14 @@ function OrderDetailsDialog({
                         >
                           <CheckIcon aria-hidden="true" className="size-3" />
                           {isPending && pendingItemId === item.id
-                            ? "Salvando..."
-                            : "Salvar"}
+                            ? "Confirmando..."
+                            : "Confirmar retirada + entrada"}
                         </button>
+                        {pickupDelta > 0 ? (
+                          <p className="basis-full text-left text-[0.68rem] font-black text-emerald-800 sm:text-right">
+                            Retirar agora: {quantityFormatter.format(pickupDelta)} · Entrada automática no estoque: +{quantityFormatter.format(pickupDelta)}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -3550,41 +3610,40 @@ function OrderDetailsDialog({
             {error}
           </p>
         ) : null}
-      </div>
 
-      {hasFooterActions ? (
-        <div
-          className={`grid shrink-0 gap-1.5 border-t border-border-neutral bg-app-background/95 p-2 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:flex sm:justify-end sm:p-2.5 ${
-            canMarkAll && canCreateStockEntry
-              ? "grid-cols-2"
-              : "grid-cols-1"
-          }`}
-        >
-          {canMarkAll ? (
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => setConfirmation("MARK_ALL")}
-              className="nk-focus min-h-11 min-w-0 rounded-xl border border-emerald-700 bg-white px-2 text-center text-xs leading-tight font-black text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 sm:px-4 sm:text-sm"
-            >
-              Marcar tudo como retirado
-            </button>
-          ) : null}
-          {canCreateStockEntry ? (
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => {
-                setError(null);
-                setStockEntryOpen(true);
-              }}
-              className="nk-focus min-h-11 min-w-0 rounded-xl bg-emerald-700 px-2 text-center text-xs leading-tight font-black text-white transition hover:bg-emerald-800 disabled:opacity-50 sm:px-4 sm:text-sm"
-            >
-              Dar entrada no estoque
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+        {globalActionVisibility.showDock ? (
+          <div
+            data-testid="supplier-order-action-dock"
+            className="pointer-events-none sticky bottom-2 z-10 flex justify-end px-2 pb-[max(0.125rem,env(safe-area-inset-bottom))] sm:px-4"
+          >
+            <div className="pointer-events-auto flex w-fit max-w-[min(100%,17rem)] flex-col items-stretch gap-1 rounded-xl border border-brand-charcoal/15 bg-surface/95 p-1 shadow-[0_10px_24px_-18px_rgba(23,29,33,0.6)] backdrop-blur-sm sm:inline-flex sm:w-auto sm:max-w-full sm:flex-row sm:items-center sm:gap-1.5 sm:rounded-2xl sm:p-1.5 sm:shadow-[0_14px_32px_-18px_rgba(23,29,33,0.65)]">
+              {globalActionVisibility.showMarkAll ? (
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => setConfirmation("MARK_ALL")}
+                  className="nk-focus min-h-10 min-w-0 rounded-xl border border-emerald-700 bg-emerald-700 px-3 text-center text-xs leading-tight font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300 disabled:text-slate-600 sm:px-4 sm:text-sm"
+                >
+                  Retirar tudo que está pronto
+                </button>
+              ) : null}
+              {globalActionVisibility.showStockEntry ? (
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => {
+                    setError(null);
+                    setStockEntryOpen(true);
+                  }}
+                  className="nk-focus min-h-10 min-w-0 rounded-xl border border-brand-charcoal/25 bg-white px-3 text-center text-xs leading-tight font-black text-text-primary transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/35 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 sm:px-4 sm:text-sm"
+                >
+                  Dar entrada no estoque
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </DialogShell>
   );
 }

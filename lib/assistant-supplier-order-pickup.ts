@@ -263,6 +263,18 @@ function rpcFailurePresentation(kind: SupplierOrderPickupRpcFailureKind) {
         message:
           "A operação de retirada está temporariamente indisponível. O Pedido permanece sem alteração.",
       };
+    case "not_ready":
+      return {
+        title: "Quantidade pronta alterada",
+        message:
+          "A quantidade pronta disponível mudou. Gere uma nova prévia antes de confirmar.",
+      };
+    case "reduction_not_allowed":
+      return {
+        title: "Redução não permitida",
+        message:
+          "A retirada já registrada não pode ser reduzida por este fluxo.",
+      };
     case "invalid_quantity":
       return {
         title: "Quantidade inválida",
@@ -727,7 +739,7 @@ function createNoChangeBlock(
         : "Nenhuma alteração necessária",
     message:
       request.mode === "mark_all"
-        ? "Todos os itens disponíveis deste Pedido já foram retirados."
+        ? "Nenhum item está pronto aguardando retirada neste Pedido."
         : `O Cód. ${item ? displayCode(item) : request.catalogCode} já está com o total retirado informado.`,
     order: toOrderCard(order),
     actions: [
@@ -811,8 +823,8 @@ function buildPreview(
     state: "pending" as const,
     title:
       request.mode === "mark_all"
-        ? "Confirmar retirada de todos os itens"
-        : "Confirmar retirada",
+        ? "Retirada + entrada no estoque"
+        : "Retirada + entrada no estoque",
     message: `Pedido ${order.negotiationNumber} · ${statusLabel(order)}`,
     proposalToken: signedProposal.token,
     expiresAt: new Date(
@@ -820,34 +832,33 @@ function buildPreview(
     ).toISOString(),
     order: toOrderCard(order),
     warnings: [] as string[],
-    confirmLabel: "Confirmar retirada" as const,
+    confirmLabel: "Confirmar retirada + entrada" as const,
     cancelLabel: "Cancelar" as const,
     regeneratePrompt: createCanonicalRegeneratePrompt(request, order),
   };
   let block: AssistantSupplierOrderPickupPreviewBlock;
 
   if (request.mode === "mark_all") {
-    const lines = items.map((item) => {
-      const targetPickedQuantity =
-        item.orderedQuantity - item.cancelledQuantity;
-      const addedQuantity = Math.max(
-        targetPickedQuantity - item.pickedQuantity,
-        0,
-      );
+    const lines = items
+      .filter((item) => item.readyQuantity > item.pickedQuantity)
+      .map((item) => {
+        const targetPickedQuantity = item.readyQuantity;
+        const addedQuantity = targetPickedQuantity - item.pickedQuantity;
 
-      return {
-        id: item.id,
-        displayCode: displayCode(item),
-        description: item.descriptionSnapshot,
-        currentPickedQuantity: item.pickedQuantity,
-        targetPickedQuantity,
-        addedQuantity,
-        alreadyComplete: addedQuantity === 0,
-      };
-    });
-    const changedLines = lines.filter(
-      (line) => !line.alreadyComplete,
-    ).length;
+        return {
+          id: item.id,
+          displayCode: displayCode(item),
+          description: item.descriptionSnapshot,
+          readyQuantity: item.readyQuantity,
+          currentPickedQuantity: item.pickedQuantity,
+          availableQuantity: addedQuantity,
+          targetPickedQuantity,
+          addedQuantity,
+          automaticStockEntryQuantity: addedQuantity,
+          alreadyComplete: false,
+        };
+      });
+    const changedLines = lines.length;
     const addedPickedQuantity = lines.reduce(
       (total, line) => total + line.addedQuantity,
       0,
@@ -875,16 +886,17 @@ function buildPreview(
         displayCode: displayCode(item),
         description: item.descriptionSnapshot,
         orderedQuantity: item.orderedQuantity,
+        readyQuantity: item.readyQuantity,
         cancelledQuantity: item.cancelledQuantity,
         stockedQuantity: item.stockedQuantity,
+        waitingStockQuantity: item.waitingStockQuantity,
         currentPickedQuantity: item.pickedQuantity,
+        availableQuantity: item.readyQuantity - item.pickedQuantity,
         requestedQuantity: request.requestedQuantity!,
         addedQuantity: target.addedQuantity,
+        automaticStockEntryQuantity: target.addedQuantity,
         targetPickedQuantity: target.targetPickedQuantity,
-        remainingAfter:
-          item.orderedQuantity -
-          item.cancelledQuantity -
-          target.targetPickedQuantity,
+        remainingAfter: item.readyQuantity - target.targetPickedQuantity,
       },
     };
   }
@@ -1118,8 +1130,8 @@ export async function createAssistantSupplierOrderPickupPreview(
 
   if (validation.kind === "reduction") {
     return actionErrorResponse(
-      "Redução não disponível",
-      "Nesta fase a Assistente não reduz quantidades já retiradas.",
+      "Redução não permitida",
+      "A retirada já registrada não pode ser reduzida por este fluxo.",
       order,
     );
   }
@@ -1129,9 +1141,17 @@ export async function createAssistantSupplierOrderPickupPreview(
   }
 
   if (validation.kind === "above_limit") {
+    const availableQuantity = validation.availableQuantity;
+
     return actionErrorResponse(
-      "Quantidade acima do limite",
-      `O máximo retirável do Cód. ${displayCode(item)} neste Pedido é ${validation.pickupLimit}.`,
+      availableQuantity === 0
+        ? "Item ainda não está pronto para retirada"
+        : "Quantidade pronta insuficiente",
+      availableQuantity === 0
+        ? `Cód. ${displayCode(item)} · Pronto pela Safisa: ${item.readyQuantity} · Já retirado: ${item.pickedQuantity} · Disponível para retirar: 0. Aguarde a Safisa informar que o item está pronto.`
+        : request.mode === "increment"
+          ? `Você solicitou ${request.requestedQuantity} unidades, mas apenas ${availableQuantity} ${availableQuantity === 1 ? "está pronta aguardando retirada" : "estão prontas aguardando retirada"}.`
+          : `O total solicitado ultrapassa o que está pronto. Pronto pela Safisa: ${item.readyQuantity} · Já retirado: ${item.pickedQuantity} · Disponível para retirar: ${availableQuantity}.`,
       order,
     );
   }
@@ -1210,10 +1230,14 @@ function confirmedPickupWithRefreshWarning(
   let block: AssistantSupplierOrderPickupResultBlock;
 
   if (parsedRpcResult.mode === "mark_all") {
+    const automaticStockEntryQuantity =
+      parsedRpcResult.value.stockEntry?.quantity ?? null;
     block = {
       ...createResultBlock({
         outcome: "success",
-        title: "Retirada registrada",
+        title: automaticStockEntryQuantity === null
+          ? "Retirada registrada"
+          : "Retirada e entrada concluídas",
         message: supplierOrderPickupRefreshWarning,
         order: toOrderCard(order),
         actions,
@@ -1223,6 +1247,7 @@ function confirmedPickupWithRefreshWarning(
         changedLines: parsedRpcResult.value.changedLineCount,
         addedPickedQuantity:
           parsedRpcResult.value.addedPickedQuantity,
+        automaticStockEntryQuantity,
       },
     };
   } else {
@@ -1233,11 +1258,15 @@ function confirmedPickupWithRefreshWarning(
       parsedRpcResult.value.newPickedQuantity;
     const addedPickedQuantity =
       parsedRpcResult.value.pickedQuantityDelta;
+    const automaticStockEntryQuantity =
+      parsedRpcResult.value.stockEntry?.quantity ?? null;
 
     block = {
       ...createResultBlock({
         outcome: "success",
-        title: "Retirada registrada",
+        title: automaticStockEntryQuantity === null
+          ? "Retirada registrada"
+          : "Retirada e entrada concluídas",
         message: supplierOrderPickupRefreshWarning,
         order: toOrderCard(order),
         actions,
@@ -1251,11 +1280,10 @@ function confirmedPickupWithRefreshWarning(
         addedPickedQuantity,
         currentPickedQuantity,
         remainingPickupQuantity: Math.max(
-          fallbackItem.orderedQuantity -
-            fallbackItem.cancelledQuantity -
-            currentPickedQuantity,
+          fallbackItem.readyQuantity - currentPickedQuantity,
           0,
         ),
+        automaticStockEntryQuantity,
       },
     };
   }
@@ -1480,8 +1508,7 @@ export async function confirmAssistantSupplierOrderPickup(
 
   if (payload.mode !== "mark_all") {
     const targetPickedQuantity = payload.targetPickedQuantity;
-    const pickupLimit =
-      item!.orderedQuantity - item!.cancelledQuantity;
+    const pickupLimit = item!.readyQuantity;
 
     if (
       targetPickedQuantity === null ||
@@ -1693,6 +1720,8 @@ export async function confirmAssistantSupplierOrderPickup(
       parsedRpcResult.value.changedLineCount;
     const addedPickedQuantity =
       parsedRpcResult.value.addedPickedQuantity;
+    const automaticStockEntryQuantity =
+      parsedRpcResult.value.stockEntry?.quantity ?? null;
 
     block = {
       ...createResultBlock({
@@ -1703,15 +1732,17 @@ export async function confirmAssistantSupplierOrderPickup(
         title:
           changedLines === 0 && !idempotentReplay
             ? "Nenhuma alteração necessária"
-            : "Retirada registrada",
+            : automaticStockEntryQuantity === null
+              ? "Retirada registrada"
+              : "Retirada e entrada concluídas",
         message:
           changedLines === 0 && !idempotentReplay
             ? "Todos os itens disponíveis deste Pedido já estavam retirados."
             : `${addedPickedQuantity} ${
                 addedPickedQuantity === 1
-                  ? "unidade adicional marcada como retirada"
-                  : "unidades adicionais marcadas como retiradas"
-              }.`,
+                  ? "unidade retirada"
+                  : "unidades retiradas"
+              }${automaticStockEntryQuantity === null ? "." : ` e +${automaticStockEntryQuantity} no Estoque.`}`,
         order: toOrderCard(finalOrder),
         actions: baseActions,
       }),
@@ -1719,6 +1750,7 @@ export async function confirmAssistantSupplierOrderPickup(
       markAll: {
         changedLines,
         addedPickedQuantity,
+        automaticStockEntryQuantity,
       },
     };
   } else {
@@ -1735,12 +1767,18 @@ export async function confirmAssistantSupplierOrderPickup(
       parsedRpcResult.value.newPickedQuantity;
     const addedPickedQuantity =
       parsedRpcResult.value.pickedQuantityDelta;
+    const automaticStockEntryQuantity =
+      parsedRpcResult.value.stockEntry?.quantity ?? null;
 
     block = {
       ...createResultBlock({
         outcome: "success",
-        title: "Retirada registrada",
-        message: `Cód. ${displayCode(finalItem!)} atualizado no Pedido ${finalOrder.negotiationNumber}.`,
+        title: automaticStockEntryQuantity === null
+          ? "Retirada registrada"
+          : "Retirada e entrada concluídas",
+        message: automaticStockEntryQuantity === null
+          ? `Cód. ${displayCode(finalItem!)} atualizado no Pedido ${finalOrder.negotiationNumber}.`
+          : `Cód. ${displayCode(finalItem!)} · Retirado agora: ${addedPickedQuantity} · Entrada no Estoque: +${automaticStockEntryQuantity}.`,
         order: toOrderCard(finalOrder),
         actions: baseActions,
       }),
@@ -1753,7 +1791,8 @@ export async function confirmAssistantSupplierOrderPickup(
         addedPickedQuantity,
         currentPickedQuantity,
         remainingPickupQuantity:
-          finalItem!.waitingPickupQuantity,
+          finalItem!.readyWaitingPickupQuantity,
+        automaticStockEntryQuantity,
       },
     };
   }

@@ -234,6 +234,15 @@ export type SupplierOrderReceipt = {
   pickupPercentage: number;
   status: SupplierOrderStatus;
   updatedAt: string;
+  automaticStockEntry?: {
+    supplierOrderStockEntryId: string;
+    movementBatchId: string;
+    lineCount: number;
+    quantity: number;
+    createdAt: string;
+    pickedQuantityDelta: number;
+    idempotentReplay: boolean;
+  };
 };
 
 export type SupplierOrderStockEntryReceipt = SupplierOrderReceipt & {

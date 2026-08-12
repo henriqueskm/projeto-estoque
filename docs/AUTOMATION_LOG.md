@@ -413,3 +413,50 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   retirada real, entrada real, alteração de Auth/Vercel ou merge.
 - **Próxima ação:** revisão humana do SQL e dos testes antes de qualquer
   autorização de aplicação remota ou integração da UI/Assistente.
+
+## 2026-08-12 — NK-ORD-007B
+
+- **MIG-ORD-007A:** `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`; PR #17 mesclado
+  em `main` no commit `bd60909efacf7825c7a0284221535ac1eafaaebd`; migration
+  `20260812023500_atomic_supplier_order_pickup_stock_entry.sql` permanece
+  pendente no histórico remoto.
+- **Estado novo:** `IMPLEMENTED / WAITING_HUMAN_VISUAL_REVIEW`.
+- **Branch:** `agent/atomic-pickup-stock-entry-app`.
+- **PR draft:** [#18](https://github.com/henriqueskm/projeto-estoque/pull/18).
+- **UI tradicional:** redução bloqueada no valor já retirado, teto definido por
+  `ready_quantity`, delta positivo e entrada automática exibidos, e retirada
+  total renomeada para “Retirar tudo que está pronto”.
+- **Assistente:** preview e revalidação usam `ready_quantity - picked_quantity`;
+  `increment`, `set_total` e `mark_all` deixam explícita a entrada automática e
+  mantêm o backlog histórico separado.
+- **Execução:** uma única RPC mutável oficial por confirmação; nenhuma segunda
+  chamada de entrada; receipt composto reconhece entrada, batch, quantidade,
+  timestamp, delta e replay com compatibilidade para retornos anteriores.
+- **Segurança:** HMAC, vínculo ao usuário, expiração, microssegundos,
+  idempotência, confirmação por botão e mensagens sanitizadas preservados.
+- **Remoto:** zero escrita, zero operação real, zero `db push`, zero migration
+  nova e zero alteração de RPC.
+- **Preview Vercel:** somente visual e não mutável até aplicação coordenada da
+  MIG-ORD-007A; teste operacional aguarda autorização posterior.
+
+## 2026-08-12 — NK-ORD-007B1
+
+- **Estado:** refinamento visual implementado; NK-ORD-007B permanece
+  `WAITING_HUMAN_VISUAL_REVIEW` no PR draft #18.
+- **Ações globais:** retirada total aparece somente com quantidade pronta
+  aguardando retirada; entrada no estoque aparece somente com backlog histórico.
+- **Layout:** o rodapé largo foi substituído por dock compacto, sticky e interno
+  à região rolável, com retirada como ação principal e regularização como ação
+  secundária.
+- **Escopo:** nenhuma regra operacional, action, RPC, migration ou estado remoto
+  foi alterado.
+
+## 2026-08-12 — NK-ORD-007B2
+
+- **Estado:** compactação mobile implementada no PR draft #18; NK-ORD-007B
+  permanece `WAITING_HUMAN_VISUAL_REVIEW`.
+- **Mobile:** dock limitado a `17rem`, padding e gap reduzidos, ações empilhadas
+  de forma densa e área de toque preservada; uma única ação encolhe naturalmente.
+- **Desktop:** composição horizontal anterior preservada a partir de `sm`.
+- **Escopo:** somente classes responsivas e testes estruturais; nenhuma regra de
+  visibilidade, operação, action, RPC, migration ou estado remoto foi alterado.

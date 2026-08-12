@@ -368,6 +368,7 @@ export function calculateSupplierOrderPickupTarget(
 
 export type SupplierOrderPickupLineState = {
   orderedQuantity: number;
+  readyQuantity: number;
   cancelledQuantity: number;
   stockedQuantity: number;
   pickedQuantity: number;
@@ -379,6 +380,7 @@ export type SupplierOrderPickupLineValidation =
       targetPickedQuantity: number;
       addedQuantity: number;
       remainingAfter: number;
+      availableQuantity: number;
     }
   | {
       kind:
@@ -388,6 +390,7 @@ export type SupplierOrderPickupLineValidation =
         | "above_limit"
         | "below_stocked";
       pickupLimit: number;
+      availableQuantity: number;
     };
 
 export function validateSupplierOrderPickupLine(
@@ -397,12 +400,16 @@ export function validateSupplierOrderPickupLine(
 ): SupplierOrderPickupLineValidation {
   const values = [
     item.orderedQuantity,
+    item.readyQuantity,
     item.cancelledQuantity,
     item.stockedQuantity,
     item.pickedQuantity,
   ];
-  const pickupLimit =
-    item.orderedQuantity - item.cancelledQuantity;
+  const pickupLimit = item.readyQuantity;
+  const availableQuantity = Math.max(
+    item.readyQuantity - item.pickedQuantity,
+    0,
+  );
   const target = calculateSupplierOrderPickupTarget(
     mode,
     item.pickedQuantity,
@@ -414,27 +421,29 @@ export function validateSupplierOrderPickupLine(
       (value) => !Number.isSafeInteger(value) || value < 0,
     ) ||
     item.cancelledQuantity > item.orderedQuantity ||
+    item.readyQuantity + item.cancelledQuantity > item.orderedQuantity ||
+    item.pickedQuantity > item.readyQuantity ||
     item.pickedQuantity > pickupLimit ||
     item.stockedQuantity > item.pickedQuantity ||
     !target
   ) {
-    return { kind: "invalid", pickupLimit };
+    return { kind: "invalid", pickupLimit, availableQuantity };
   }
 
   if (target.targetPickedQuantity < item.pickedQuantity) {
-    return { kind: "reduction", pickupLimit };
+    return { kind: "reduction", pickupLimit, availableQuantity };
   }
 
   if (target.targetPickedQuantity === item.pickedQuantity) {
-    return { kind: "no_change", pickupLimit };
+    return { kind: "no_change", pickupLimit, availableQuantity };
   }
 
   if (target.targetPickedQuantity > pickupLimit) {
-    return { kind: "above_limit", pickupLimit };
+    return { kind: "above_limit", pickupLimit, availableQuantity };
   }
 
   if (target.targetPickedQuantity < item.stockedQuantity) {
-    return { kind: "below_stocked", pickupLimit };
+    return { kind: "below_stocked", pickupLimit, availableQuantity };
   }
 
   return {
@@ -442,6 +451,7 @@ export function validateSupplierOrderPickupLine(
     targetPickedQuantity: target.targetPickedQuantity,
     addedQuantity: target.addedQuantity,
     remainingAfter: pickupLimit - target.targetPickedQuantity,
+    availableQuantity,
   };
 }
 
@@ -451,9 +461,7 @@ export function summarizeSupplierOrderMarkAll(
   return items.reduce(
     (summary, item) => {
       const addedQuantity = Math.max(
-        item.orderedQuantity -
-          item.cancelledQuantity -
-          item.pickedQuantity,
+        item.readyQuantity - item.pickedQuantity,
         0,
       );
 
