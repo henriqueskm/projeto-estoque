@@ -164,7 +164,7 @@ function fixtureOrder(suffix, { ready = 0, picked = 0, cancelled = 0, closed = f
       id, negotiation_number, order_date, created_by,
       created_by_name_snapshot${closed ? ", finalized_at, finalized_by, finalized_by_name_snapshot" : ""}
     ) values (
-      '${orderId(suffix)}', 'SAF-LOCAL-${suffix}', current_date, '${ids.internal}',
+      '${orderId(suffix)}', '920${String(suffix).padStart(3, "0")}', current_date, '${ids.internal}',
       'Internal Local'${closed ? `, now(), '${ids.internal}', 'Internal Local'` : ""}
     );
     insert into public.supplier_order_items (

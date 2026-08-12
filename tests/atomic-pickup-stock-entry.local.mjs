@@ -116,7 +116,7 @@ function order(n, lines) {
   return `insert into public.supplier_orders (
     id, negotiation_number, order_date, created_by, created_by_name_snapshot
   ) values (
-    '${orderId(n)}', 'ATOMIC-${n}', current_date, '${internal}', 'Internal Local'
+    '${orderId(n)}', '923${String(n).padStart(3, "0")}', current_date, '${internal}', 'Internal Local'
   ); ${lines.join("\n")}`;
 }
 

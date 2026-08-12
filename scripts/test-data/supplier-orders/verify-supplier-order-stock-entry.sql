@@ -321,19 +321,19 @@ cross join lateral (
   values
     (
       context.active_order_id,
-      'NK-SUPPLIER-STOCK-ENTRY-ACTIVE',
+      '940001',
       null::timestamptz,
       null::timestamptz
     ),
     (
       context.finalized_order_id,
-      'NK-SUPPLIER-STOCK-ENTRY-FINALIZED',
+      '940002',
       now(),
       null::timestamptz
     ),
     (
       context.cancelled_order_id,
-      'NK-SUPPLIER-STOCK-ENTRY-CANCELLED',
+      '940003',
       null::timestamptz,
       now()
     )
@@ -354,6 +354,7 @@ insert into public.supplier_order_items (
   description_snapshot,
   item_type_snapshot,
   ordered_quantity,
+  ready_quantity,
   picked_quantity,
   stocked_quantity,
   cancelled_quantity,
@@ -369,6 +370,7 @@ select
   'SERVER_PENDING',
   'LOOSE_PART',
   fixture.ordered_quantity,
+  fixture.picked_quantity,
   fixture.picked_quantity,
   0,
   fixture.cancelled_quantity,
@@ -676,7 +678,7 @@ begin
       and source = 'MANUAL'
       and user_id = v_context.user_id
       and user_name_snapshot = v_context.user_name
-      and description like 'Entrada pelo pedido NK-SUPPLIER-STOCK-ENTRY-ACTIVE%'
+      and description like 'Entrada pelo pedido 940001%'
   ) then
     raise exception 'AC/AI failed: the normal inbound batch is inconsistent.';
   end if;

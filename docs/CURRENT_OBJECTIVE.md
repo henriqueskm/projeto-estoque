@@ -1,14 +1,65 @@
 # Objetivo atual
 
-- **ID:** NK-ORD-008
-- **Título:** Criar Pedido a partir de foto pela Assistente
-- **Prioridade:** alta
-- **Fase:** arquitetura aprovada
-- **Estado:** `ARCHITECTURE_APPROVED`
+- **ID:** MIG-ORD-008A
+- **Título:** Identidade única e numérica da negociação
+- **Prioridade:** crítica
+- **Fase:** migration implementada e validada somente em banco local
+- **Estado:** `IMPLEMENTED_LOCAL / WAITING_DB_REVIEW`
 - **Classificação:** **C — migration obrigatória**
-- **Dependência concluída:** NK-ORD-007 `DONE`
-- **Base auditada:** `2d0c7a6802b63eaaa9663f564d3a21ee1d4ebc5e`
-- **Branch documental:** `agent/assistant-photo-order-audit`
+- **Dependência:** NK-ORD-008 `ARCHITECTURE_APPROVED`
+- **Base:** `97c02174eedb545544c7b8397e1115033dc212bb`
+- **Branch:** `agent/supplier-order-negotiation-identity`
+
+## Implementação local MIG-ORD-008A
+
+A auditoria read-only no projeto `isdjboconmwaqipjrjvp` encontrou sete
+Pedidos, nenhuma duplicata exata e quatro negociações históricas de teste não
+numéricas. A decisão humana aprovou o mapeamento fechado abaixo:
+
+| Supplier order ID | Valor anterior | Identidade aprovada |
+|---|---|---|
+| `26e08e22-a2fb-4e8d-8605-4ccdb57d4773` | `teste 00` | `99990000` |
+| `db02621b-b6c1-4e7a-8fef-b63fc3e60d50` | `teste 01` | `99990001` |
+| `e92bc06f-5721-4082-b77a-def6954e3300` | `teste 03` | `99990003` |
+| `af7a39f6-c4a2-4e92-b183-d8196aa775d1` | `Teste 04` | `99990004` |
+
+A pré-validação remota confirmou novamente os quatro pares e a ausência dos
+quatro números novos. Nenhuma escrita remota foi executada.
+
+A migration incremental
+`20260812133046_enforce_supplier_order_negotiation_identity.sql`:
+
+- aceita uma instalação limpa sem os quatro registros ou exige o conjunto
+  completo e exato; qualquer presença parcial ou divergência aborta;
+- atualiza somente os quatro UUIDs aprovados, dentro de transação explícita;
+- preserva itens, quantidades, status, finalização, relações Safisa e snapshots
+  históricos;
+- adiciona um `ORDER_HEADER_UPDATED` técnico por transição, com `user_id =
+  NULL`, snapshot `MIG-ORD-008A` e valores anterior/novo no `details`;
+- mantém `negotiation_number` como `TEXT NOT NULL`, exige `^[0-9]+$` e
+  comprimento de 1–120;
+- adiciona UNIQUE global sem filtro de lifecycle e remove o índice comum apenas
+  depois da garantia única;
+- preserva as assinaturas, autenticação, profile, grants, `SECURITY DEFINER` e
+  `search_path` dos wrappers públicos de criação/edição;
+- preserva o replay idempotente no worker e traduz somente a violação da nova
+  UNIQUE para erro de domínio sanitizado.
+
+As colunas `negotiation_number` nas duas views de resumo são leituras dinâmicas
+por `supplier_order_id`. Os JSONs em `supplier_order_events.details` são
+snapshots históricos imutáveis e não foram reescritos; os novos eventos técnicos
+registram a transição de identidade.
+
+A UI tradicional ainda usa um campo textual livre e pode permitir que o usuário
+tente valores como `teste 05`, `12-12` ou `ABC`. O banco passa a rejeitar esses
+valores; o alinhamento preventivo da UX fica para uma etapa de aplicação posterior
+e não foi misturado nesta migration.
+
+Testes locais descartáveis comprovaram rollback integral, aplicação sobre os
+quatro legados, aplicação sobre instalação limpa, preservação de dados,
+leading zeros, rejeição de formato, reserva em cancelados/finalizados, replay,
+conflito idempotente e corrida com duas conexões. Nenhuma aplicação remota está
+autorizada nesta fase.
 
 ## Conclusão executiva
 
@@ -231,23 +282,18 @@ O contrato de negócio aprovado é:
 Exemplos válidos: `1212`, `54821`, `000123`. Exemplos inválidos:
 `Pedido 1212`, `12-12`, `12/12`, `12 12`, `ABC123`.
 
-O schema atual ainda aceita 1–120 caracteres após `trim`, possui apenas índice
-comum e permite duplicatas. A aplicação deve fazer consulta preflight para uma
+O schema remoto vigente antes da aplicação da migration ainda aceita 1–120
+caracteres após `trim`, possui apenas índice comum e permite duplicatas. A
+aplicação deve fazer consulta preflight para uma
 UX amigável (`Este Pedido já existe` / `Abrir Pedido`), mas isso não substitui a
 constraint de formato e o índice/constraint único no PostgreSQL. Somente a
 migration garante atomicidade diante de confirmações concorrentes.
 
-### Próxima etapa: MIG-ORD-008A
+### Estado de MIG-ORD-008A
 
-MIG-ORD-008A deve auditar somente leitura, antes de qualquer SQL ou correção:
-
-- negociações duplicadas;
-- valores com qualquer caractere não numérico;
-- espaços externos ou internos;
-- valores vazios ou outros dados incompatíveis com o contrato aprovado.
-
-O resultado da auditoria deve separar conflitos e propor transição segura. Não
-renomear, excluir, mesclar ou corrigir Pedido automaticamente.
+A auditoria e a implementação local foram concluídas com o mapeamento humano
+explícito dos quatro legados. A migration permanece não aplicada remotamente e
+aguarda revisão de banco. NK-ORD-008B não deve começar automaticamente.
 
 ## Preview e correção
 

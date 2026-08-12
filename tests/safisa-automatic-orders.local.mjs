@@ -56,7 +56,7 @@ async function race(first, second) {
 function fixtureOrder(suffix, { ready = 0, picked = 0, cancelled = 0 } = {}) {
   return `
     insert into public.supplier_orders (id, negotiation_number, order_date, created_by, created_by_name_snapshot)
-    values ('${orderId(suffix)}', 'AUTO-SAF-${suffix}', current_date, '${ids.internal}', 'Internal Local');
+    values ('${orderId(suffix)}', '922${String(suffix).padStart(3, "0")}', current_date, '${ids.internal}', 'Internal Local');
     insert into public.supplier_order_items (
       id, supplier_order_id, item_id, code_snapshot, description_snapshot, model_snapshot,
       item_type_snapshot, ordered_quantity, ready_quantity, picked_quantity, stocked_quantity,

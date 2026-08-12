@@ -233,7 +233,7 @@ insert into supplier_order_test_results (test_name, result)
 select
   'physical_create',
   public.create_supplier_order(
-    'NK-SUPPLIER-VERIFY-PHYSICAL',
+    '910001',
     current_date,
     'Administrative rollback verification',
     jsonb_build_array(
@@ -279,7 +279,7 @@ insert into supplier_order_test_results (test_name, result)
 select
   'physical_retry',
   public.create_supplier_order(
-    'NK-SUPPLIER-VERIFY-PHYSICAL',
+    '910001',
     current_date,
     'Administrative rollback verification',
     jsonb_build_array(
@@ -324,7 +324,7 @@ insert into supplier_order_test_results (test_name, result)
 select
   'configuration_create',
   public.create_supplier_order(
-    'NK-SUPPLIER-VERIFY-CONFIGURATION',
+    '910002',
     current_date,
     null,
     jsonb_build_array(
@@ -466,7 +466,7 @@ insert into supplier_order_test_results (test_name, result)
 select
   'cancellation_create',
   public.create_supplier_order(
-    'NK-SUPPLIER-VERIFY-CANCEL',
+    '910003',
     current_date,
     null,
     jsonb_build_array(
@@ -615,7 +615,7 @@ $$;
 select pg_temp.expect_supplier_order_error(
   format(
     'select public.create_supplier_order(%L, current_date, null, %L::jsonb, %L::uuid)',
-    'NK-SUPPLIER-INACTIVE-PROFILE-MUST-FAIL',
+    '910004',
     jsonb_build_array(
       jsonb_build_object(
         'kind', 'ITEM',
@@ -638,7 +638,7 @@ select set_config(
 select pg_temp.expect_supplier_order_error(
   format(
     'select public.create_supplier_order(%L, current_date, null, %L::jsonb, %L::uuid)',
-    'NK-SUPPLIER-WRONG-ALIAS-MUST-FAIL',
+    '910005',
     jsonb_build_array(
       jsonb_build_object(
         'kind', 'COMMERCIAL_CONFIGURATION',
@@ -657,7 +657,7 @@ from supplier_order_test_context;
 select pg_temp.expect_supplier_order_error(
   format(
     'select public.create_supplier_order(%L, current_date, null, %L::jsonb, %L::uuid)',
-    'NK-SUPPLIER-TWO-TARGETS-MUST-FAIL',
+    '910006',
     jsonb_build_array(
       jsonb_build_object(
         'kind', 'ITEM',
@@ -674,7 +674,7 @@ from supplier_order_test_context;
 select pg_temp.expect_supplier_order_error(
   format(
     'select public.create_supplier_order(%L, current_date, null, %L::jsonb, %L::uuid)',
-    'NK-SUPPLIER-NO-TARGET-MUST-FAIL',
+    '910007',
     jsonb_build_array(
       jsonb_build_object(
         'kind', 'ITEM',
@@ -690,7 +690,7 @@ from supplier_order_test_context;
 select pg_temp.expect_supplier_order_error(
   format(
     'select public.create_supplier_order(%L, current_date, %L, %L::jsonb, %L::uuid)',
-    'NK-SUPPLIER-VERIFY-PHYSICAL',
+    '910001',
     'Administrative rollback verification',
     jsonb_build_array(
       jsonb_build_object(
@@ -709,7 +709,7 @@ insert into supplier_order_test_results (test_name, result)
 select
   'mutation_create',
   public.create_supplier_order(
-    'NK-SUPPLIER-VERIFY-MUTATION',
+    '910008',
     current_date,
     null,
     jsonb_build_array(
@@ -849,7 +849,7 @@ insert into supplier_order_test_results (test_name, result)
 select
   'partial_cancel_create',
   public.create_supplier_order(
-    'NK-SUPPLIER-VERIFY-PARTIAL-CANCEL',
+    '910009',
     current_date,
     null,
     jsonb_build_array(
