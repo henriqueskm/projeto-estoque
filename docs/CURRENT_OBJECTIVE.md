@@ -1,58 +1,38 @@
 # Objetivo atual
 
-- **ID:** NK-ORD-007B
-- **Título:** Aplicação da retirada + entrada automática no Estoque
+- **ID:** NK-ORD-007
+- **Título:** Retirada com entrada automática no Estoque
 - **Prioridade:** crítica
-- **Fase:** aplicação
-- **Estado:** `IMPLEMENTED / WAITING_HUMAN_VISUAL_REVIEW`
-- **Branch:** `agent/atomic-pickup-stock-entry-app`
-- **PR draft:** [#18](https://github.com/henriqueskm/projeto-estoque/pull/18)
-- **Base:** `origin/main` em `bd60909efacf7825c7a0284221535ac1eafaaebd`
-- **Dependência:** MIG-ORD-007A `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`.
+- **Fase:** validação operacional
+- **Estado:** `WAITING_HUMAN_OPERATIONAL_TEST`
+- **Migration:** `20260812023500_atomic_supplier_order_pickup_stock_entry.sql`
+- **Aplicação:** `APPLIED_REMOTE / VERIFIED` em `isdjboconmwaqipjrjvp`
+- **Aplicação web:** PR [#18](https://github.com/henriqueskm/projeto-estoque/pull/18) `MERGED / DEPLOYED`
+- **Main implantada:** `86d3f3ad72ebe129ec2d2cc2ca5099bf9624e815`
 
-## Contrato alinhado
+## Contrato em produção
 
-A UI tradicional e a Assistente tratam toda nova retirada positiva como uma
-operação composta:
+Toda nova retirada positiva de Pedido executa, na mesma transação PostgreSQL:
 
 `retirada do delta + entrada automática do mesmo delta no Estoque`
 
-A disponibilidade operacional é exclusivamente:
+A disponibilidade operacional continua sendo `ready_quantity - picked_quantity`.
+O backlog histórico `picked_quantity - stocked_quantity` anterior ao rollout não
+foi absorvido e permanece separado no fluxo explícito NK-ORD-006.
 
-`ready_quantity - picked_quantity`
+## Validação concluída
 
-Uma retirada não pode ser reduzida por esse fluxo. `set_total` igual ao valor
-atual não cria operação, e `mark_all` considera somente linhas com delta pronto
-positivo.
-
-## Backlog histórico
-
-O saldo antigo `picked_quantity - stocked_quantity` permanece separado e deve
-ser regularizado pelo fluxo NK-ORD-006. A nova confirmação não absorve esse
-backlog.
-
-## Execução
-
-A aplicação mantém uma única chamada mutável por confirmação:
-
-- `set_supplier_order_item_picked_quantity_checked`, para linha;
-- `mark_supplier_order_all_picked_checked`, para retirada total.
-
-Não existe segunda chamada a `create_supplier_order_stock_entry`. A entrada
-automática pertence à transação da MIG-ORD-007A e seus campos são reconhecidos
-no receipt composto sem tornar respostas antigas obrigatoriamente inválidas.
-
-## Segurança e validação
-
-- confirmação somente por botão e proposalToken HMAC;
-- `expected_updated_at` mantém precisão integral;
-- mensagens textuais como “sim” não executam;
-- erros de prontidão, redução e concorrência são sanitizados;
-- nenhuma migration nova ou alteração de RPC foi criada;
-- nenhuma escrita remota ou operação real foi executada.
+- migration remota presente e histórico local/remoto alinhado;
+- primitive privado sem EXECUTE para `public`, `anon` ou `authenticated`;
+- workers individual e total chamam o primitive físico compartilhado;
+- wrappers públicos e entrada standalone de backlog preservados;
+- fingerprints, contagens e totais operacionais permaneceram inalterados;
+- PR #18 mesclado e deploy de produção da nova `main` aprovado;
+- smoke test anônimo confirmou login interno, redirecionamentos autenticados e
+  login Safisa.
 
 ## Gate restante
 
-O Preview da Vercel é exclusivamente visual e não mutável enquanto a
-MIG-ORD-007A não estiver aplicada no banco remoto. O teste operacional deve
-aguardar uma implantação coordenada da migration e autorização humana própria.
+O usuário deve executar uma única retirada controlada de uma unidade pronta e
+confirmar Pedido, Estoque e Histórico. O Codex não executou retirada, entrada ou
+qualquer operação operacional durante o rollout.
