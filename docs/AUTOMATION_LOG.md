@@ -343,3 +343,43 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   oficial.
 - **Estado novo:** `WAITING_HUMAN_VISUAL_REVIEW`; nenhuma entrada real,
   chamada remota de escrita ou migration foi executada.
+
+## 2026-08-11 — NK-ORD-006 / NK-ORD-007
+
+- **NK-ORD-006:** `DONE`; PR #15 mesclado em `main`. A projeção de
+  `waiting_stock_quantity`, as entradas individual e total, a prévia e a
+  confirmação real foram validadas. Pedido e Estoque permaneceram consistentes
+  e nenhuma migration foi necessária.
+- **NK-ORD-007:** auditoria de retirada com entrada automática concluída em
+  `agent/pickup-auto-stock-audit`, baseada em `origin/main` no commit
+  `8f2a044e2fd94a3720ef9800432496f5f2eaf549`.
+- **Estado atual:** retirada e entrada por Pedido são transações independentes.
+  A retirada altera `picked_quantity` e grava evento; a entrada posterior usa
+  `picked_quantity - stocked_quantity`, cria batch `INBOUND/MANUAL`, movimentos,
+  vínculos e atualiza `stocked_quantity`.
+- **Regra aprovada para o desenho:** somente
+  `new_picked_quantity - previous_picked_quantity` entra automaticamente. O
+  backlog anterior permanece inalterado e continua sendo regularizado pelo
+  NK-ORD-006.
+- **Bloqueio arquitetural:** duas RPCs não oferecem atomicidade e os eventos de
+  Pedido possuem unicidade por usuário/chave. Uma chave não pode representar
+  ingenuamente `PICKED_QUANTITY_CHANGED` e `STOCK_ENTRY_CREATED`, enquanto duas
+  chaves permitiriam sucesso parcial ou duplicidade.
+- **Recomendação:** migration com worker privado composto e uma única fronteira
+  de idempotência; wrappers canônicos de retirada delegam a esse worker, que
+  reutiliza um primitive privado compartilhado de entrada física. O evento de
+  retirada permanece como ledger primário, e entrada/batch/movimentos preservam
+  a trilha técnica.
+- **Safisa:** toda prévia e execução deve limitar o novo delta a
+  `ready_quantity - picked_quantity`. Foi registrada a lacuna atual da prévia da
+  Assistente que ainda usa `ordered_quantity - cancelled_quantity` em parte do
+  caminho e deve ser corrigida na implementação.
+- **Concorrência:** ordem recomendada de locks é idempotência, Pedido, linhas em
+  UUID crescente, catálogo e saldos físicos em ordem determinística. A versão
+  integral do Pedido é validada sob lock; falha em qualquer etapa reverte
+  retirada, entrada, saldo e auditoria.
+- **Classificação:** C — `MIGRATION_REQUIRED`.
+- **Remoto:** nenhuma consulta ou escrita remota, operação real, migration,
+  `db push`, alteração de RPC, commit ou merge ocorreu durante a auditoria.
+- **Próxima ação:** revisão humana da arquitetura antes da escrita de SQL ou
+  código operacional.
