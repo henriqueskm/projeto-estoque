@@ -10,7 +10,7 @@
   `DONE / APPLIED_REMOTE / VERIFIED`
 - **Base:** `56cf09f9a0e7bcb7503ef58512112969aa19af7b`
 - **Branch:** `agent/assistant-photo-order-preview`
-- **PR:** draft desta implementação
+- **PR:** [#24](https://github.com/henriqueskm/projeto-estoque/pull/24) (draft)
 
 ## Implementação NK-ORD-008B
 

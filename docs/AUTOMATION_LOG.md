@@ -692,6 +692,7 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   `56cf09f9a0e7bcb7503ef58512112969aa19af7b`, contendo os PRs #22 e #23 e o
   rollout verificado de MIG-ORD-008A.
 - **Branch:** `agent/assistant-photo-order-preview`.
+- **PR:** [#24](https://github.com/henriqueskm/projeto-estoque/pull/24) (draft).
 - **Escopo:** câmera/galeria/arquivo → preparação client-side → multipart
   same-origin → Gemini 3.6 Flash com structured output → validação server-side
   contra catálogo → `supplier_order_photo_preview`.
