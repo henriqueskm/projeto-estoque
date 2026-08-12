@@ -560,3 +560,24 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   banco, sessão ou logs.
 - **Escopo preservado:** nenhuma migration, RPC, código funcional, Pedido,
   escrita Supabase, configuração Vercel, imagem versionada ou merge.
+
+## 2026-08-12 — NK-ORD-008 / decisão de identidade da negociação
+
+- **Decisão humana aprovada:** a negociação permanece texto, aceita somente
+  dígitos ASCII `0–9`, preserva zeros à esquerda e é única globalmente em todos
+  os estados do Pedido, inclusive concluído ou cancelado.
+- **Comparação:** exata após trim externo; `001212` e `1212` são identidades
+  diferentes. Espaços internos, letras, hífens, barras e demais caracteres são
+  inválidos. Não há fuzzy matching.
+- **Não reutilização:** negociação de Pedido cancelado continua reservada; uma
+  negociação já usada nunca pode criar outro Pedido silenciosamente.
+- **Classificação nova:** NK-ORD-008 passa de D para **C**, com estado
+  `ARCHITECTURE_APPROVED` e `MIGRATION_REQUIRED`.
+- **Garantia atômica:** preflight na aplicação continua obrigatório para UX, mas
+  não substitui constraint de formato e unicidade global no PostgreSQL.
+- **Próxima etapa:** MIG-ORD-008A — unicidade global e contrato numérico da
+  negociação. Antes de escrever a migration, auditar read-only duplicatas,
+  valores não numéricos, espaços e todo dado legado incompatível, sem alterar
+  dados automaticamente.
+- **Escopo desta decisão:** somente documentação no PR #21; nenhuma migration,
+  RPC, alteração funcional, escrita Supabase ou merge.

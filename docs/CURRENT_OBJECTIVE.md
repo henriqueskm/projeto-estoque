@@ -3,9 +3,9 @@
 - **ID:** NK-ORD-008
 - **Título:** Criar Pedido a partir de foto pela Assistente
 - **Prioridade:** alta
-- **Fase:** auditoria de arquitetura concluída
-- **Estado:** `AUDITED / WAITING_ARCHITECTURE_REVIEW`
-- **Classificação:** **D — exige decisão de negócio**
+- **Fase:** arquitetura aprovada
+- **Estado:** `ARCHITECTURE_APPROVED`
+- **Classificação:** **C — migration obrigatória**
 - **Dependência concluída:** NK-ORD-007 `DONE`
 - **Base auditada:** `2d0c7a6802b63eaaa9663f564d3a21ee1d4ebc5e`
 - **Branch documental:** `agent/assistant-photo-order-audit`
@@ -14,23 +14,21 @@
 
 O fluxo é tecnicamente viável sem armazenar a foto e pode reutilizar o contrato
 oficial transacional de criação de Pedido. O provider atual, Gemini Developer
-API com `gemini-3.6-flash`, já suporta imagem e saída estruturada. O bloqueio
-para iniciar a implementação completa é a regra de duplicidade da negociação:
-o banco atual aceita negociações repetidas e não define normalização ou escopo
-de unicidade. Uma consulta anterior à criação melhora a UX, mas não impede uma
-corrida entre duas confirmações simultâneas.
+API com `gemini-3.6-flash`, já suporta imagem e saída estruturada. A regra de
+identidade da negociação foi aprovada e exige uma migration para impor formato
+e unicidade de maneira atômica no PostgreSQL.
 
 Consequentemente:
 
-- `MIGRATION_REQUIRED = UNCERTAIN` até a decisão sobre unicidade;
-- **se a negociação tiver de ser única com garantia concorrente**, será
-  necessária uma migration/alteração do contrato oficial;
-- **se repetição continuar permitida pelo domínio**, nenhuma migration é
-  necessária, mas a expectativa “Pedido existente nunca duplica” deve ser
-  reformulada;
-- NK-ORD-008A pode avançar isoladamente para interpretação e preview, sem
-  escrita, após revisão desta arquitetura;
-- NK-ORD-008B permanece bloqueada até a decisão da negociação.
+- `MIGRATION_REQUIRED = YES`;
+- a próxima etapa é MIG-ORD-008A — unicidade global e contrato numérico da
+  negociação;
+- antes de escrever SQL, MIG-ORD-008A deve auditar read-only duplicatas,
+  caracteres não numéricos, espaços e qualquer dado legado incompatível;
+- nenhum dado legado pode ser corrigido automaticamente;
+- NK-ORD-008A de aplicação pode avançar isoladamente para interpretação e
+  preview sem escrita, mas a confirmação/criação depende da migration aprovada e
+  aplicada em etapa própria.
 
 ## Estado atual de câmera e galeria
 
@@ -213,22 +211,43 @@ Pedidos novos são normais/ativos. Pelo ciclo Safisa automático vigente, todos 
 Pedidos não cancelados participam do portal sem publicação individual; criar o
 Pedido pelo contrato oficial preserva essa integração sem lógica adicional.
 
-### Lacuna de negociação duplicada
+### Identidade aprovada da negociação
 
-`negotiation_number` é obrigatório, recebe apenas `trim`, aceita 1–120
-caracteres e possui índice comum, não unicidade. Não há normalização de caixa e
-o worker não rejeita duplicatas. Portanto, “abrir o Pedido existente e nunca
-duplicar” não é hoje uma garantia do contrato oficial.
+O contrato de negócio aprovado é:
 
-Antes de NK-ORD-008B é preciso decidir:
+1. `negotiation_number` continua armazenado como texto/identificador;
+2. aceita somente caracteres ASCII `0–9` depois de `trim` externo;
+3. é único globalmente, inclusive entre Pedidos pendentes, parciais,
+   concluídos e cancelados;
+4. Pedido cancelado não libera a negociação;
+5. a comparação é exata depois do trim externo;
+6. zeros à esquerda são preservados e não normalizados: `001212` é diferente
+   de `1212`;
+7. letras, espaços internos, hífens, barras e quaisquer outros caracteres são
+   inválidos;
+8. não existe fuzzy matching para negociação;
+9. uma negociação usada nunca cria silenciosamente outro Pedido.
 
-1. negociação única entre todos os Pedidos, inclusive encerrados/cancelados;
-2. negociação única somente entre Pedidos não cancelados/ativos;
-3. comparação exata ou normalizada (caixa, espaços e outros separadores);
-4. ou manutenção explícita da duplicidade permitida.
+Exemplos válidos: `1212`, `54821`, `000123`. Exemplos inválidos:
+`Pedido 1212`, `12-12`, `12/12`, `12 12`, `ABC123`.
 
-Uma busca preflight deve sempre melhorar a UX e mostrar “Este Pedido já existe”,
-mas somente uma regra atômica no banco elimina a corrida concorrente.
+O schema atual ainda aceita 1–120 caracteres após `trim`, possui apenas índice
+comum e permite duplicatas. A aplicação deve fazer consulta preflight para uma
+UX amigável (`Este Pedido já existe` / `Abrir Pedido`), mas isso não substitui a
+constraint de formato e o índice/constraint único no PostgreSQL. Somente a
+migration garante atomicidade diante de confirmações concorrentes.
+
+### Próxima etapa: MIG-ORD-008A
+
+MIG-ORD-008A deve auditar somente leitura, antes de qualquer SQL ou correção:
+
+- negociações duplicadas;
+- valores com qualquer caractere não numérico;
+- espaços externos ou internos;
+- valores vazios ou outros dados incompatíveis com o contrato aprovado.
+
+O resultado da auditoria deve separar conflitos e propor transição segura. Não
+renomear, excluir, mesclar ou corrigir Pedido automaticamente.
 
 ## Preview e correção
 
@@ -330,7 +349,7 @@ humana.
 
 ### NK-ORD-008B — confirmação segura
 
-Somente depois da decisão de unicidade: proposal token, rota fixa, releitura,
+Somente depois da migration de unicidade: proposal token, rota fixa, releitura,
 contrato oficial, idempotência e card de resultado. Nenhuma criação por texto.
 
 ### NK-ORD-008C — validação visual controlada
@@ -353,7 +372,7 @@ token adulterado e double click/replay.
 
 ## Riscos restantes
 
-- decisão e eventual proteção atômica da unicidade de negociação;
+- auditoria dos dados legados e implantação controlada da unicidade global;
 - precisão real em códigos pequenos e manuscritos;
 - retenção/privacidade do provider para documentos comerciais;
 - rate limit compartilhado entre instâncias serverless;
