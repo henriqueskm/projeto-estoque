@@ -6,6 +6,9 @@ import type {
 export type SupplierOrderPhotoCatalogTarget = {
   identity: string;
   codeIdentity: string;
+  kind: "ITEM" | "COMMERCIAL_CONFIGURATION";
+  targetId: string;
+  commercialConfigurationCodeId: string | null;
   code: string;
   description: string;
 };

@@ -1,14 +1,14 @@
 import { physicalItemTypes } from "@/lib/inbound-types";
 import type { createClient } from "@/lib/supabase/server";
 import type { SupplierOrderPhotoCatalogTarget } from "@/lib/assistant-supplier-order-photo";
+export {
+  normalizeSupplierOrderPhotoCode,
+  resolveSupplierOrderPhotoCatalogCode,
+} from "@/lib/assistant-supplier-order-photo-catalog-resolution";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 export class SupplierOrderPhotoCatalogError extends Error {}
-
-export function normalizeSupplierOrderPhotoCode(value: string) {
-  return value.trim().toLocaleUpperCase("pt-BR");
-}
 
 export async function loadSupplierOrderPhotoCatalog(
   supabase: SupabaseClient,
@@ -29,7 +29,8 @@ export async function loadSupplierOrderPhotoCatalog(
   }>;
   const itemById = new Map(items.map((item) => [item.id, item]));
   const physicalTargets: SupplierOrderPhotoCatalogTarget[] = items.map((item) => ({
-    identity: `ITEM:${item.id}`, codeIdentity: item.id, code: item.code, description: item.description,
+    identity: `ITEM:${item.id}`, codeIdentity: item.id, kind: "ITEM", targetId: item.id,
+    commercialConfigurationCodeId: null, code: item.code, description: item.description,
   }));
   const configurationById = new Map(
     ((configurationsResult.data ?? []) as Array<{
@@ -46,22 +47,12 @@ export async function loadSupplierOrderPhotoCatalog(
     return [{
       identity: `CONFIGURATION:${configuration.id}`,
       codeIdentity: code.id,
+      kind: "COMMERCIAL_CONFIGURATION" as const,
+      targetId: configuration.id,
+      commercialConfigurationCodeId: code.id,
       code: code.code,
       description: configuration.description?.trim() || `${servo.description} + ${kit.code}`,
     } satisfies SupplierOrderPhotoCatalogTarget];
   });
   return [...physicalTargets, ...configurationTargets];
-}
-
-export function resolveSupplierOrderPhotoCatalogCode(
-  catalog: SupplierOrderPhotoCatalogTarget[],
-  code: string,
-) {
-  const normalized = normalizeSupplierOrderPhotoCode(code);
-  const matches = catalog.filter(
-    (target) => normalizeSupplierOrderPhotoCode(target.code) === normalized,
-  );
-  return matches.length === 1 ? { kind: "FOUND" as const, target: matches[0] }
-    : matches.length === 0 ? { kind: "NOT_FOUND" as const }
-      : { kind: "AMBIGUOUS" as const };
 }

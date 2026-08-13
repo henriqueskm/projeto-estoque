@@ -13,7 +13,11 @@ export function isAssistantOrderPhotoSameOrigin(request: Request) {
   catch { return false; }
 }
 
-export async function authenticateAssistantOrderPhotoRequest(request: Request) {
+export async function authenticateAssistantOrderPhotoRequest(
+  request: Request,
+  options: { maxBodyBytes?: number; requireProfileName?: boolean } = {},
+) {
+  const maxBodyBytes = options.maxBodyBytes ?? 8_192;
   if (!isAssistantOrderPhotoSameOrigin(request)) {
     return { error: assistantOrderPhotoJson({ error: "Origem da solicitação não permitida." }, 403) };
   }
@@ -21,7 +25,7 @@ export async function authenticateAssistantOrderPhotoRequest(request: Request) {
     return { error: assistantOrderPhotoJson({ error: "Envie os dados em JSON." }, 415) };
   }
   const length = request.headers.get("content-length");
-  if (length && (!/^\d+$/.test(length) || Number(length) > 8_192)) {
+  if (length && (!/^\d+$/.test(length) || Number(length) > maxBodyBytes)) {
     return { error: assistantOrderPhotoJson({ error: "A solicitação é inválida." }, 413) };
   }
   const supabase = await createClient();
@@ -31,17 +35,25 @@ export async function authenticateAssistantOrderPhotoRequest(request: Request) {
     return { error: assistantOrderPhotoJson({ error: "Sua sessão expirou. Entre novamente." }, 401) };
   }
   const { data: profile, error: profileError } = await supabase.from("profiles")
-    .select("id").eq("id", userId).eq("is_active", true).maybeSingle();
+    .select("id, name").eq("id", userId).eq("is_active", true).maybeSingle();
   if (profileError) return { error: assistantOrderPhotoJson({ error: "Não foi possível validar seu acesso agora." }, 503) };
   if (!profile) return { error: assistantOrderPhotoJson({ error: "Seu perfil não está ativo." }, 403) };
-  return { supabase };
+  if (options.requireProfileName &&
+    (typeof profile.name !== "string" || !profile.name.trim())) {
+    return { error: assistantOrderPhotoJson({ error: "Seu perfil precisa ter um nome cadastrado antes de criar um Pedido." }, 403) };
+  }
+  return { supabase, userId: userId.toLowerCase() };
 }
 
-export async function readExactJson(request: Request, keys: readonly string[]) {
+export async function readExactJson(
+  request: Request,
+  keys: readonly string[],
+  maxBodyBytes = 8_192,
+) {
   let value: unknown;
   try {
     const text = await request.text();
-    if (new TextEncoder().encode(text).byteLength > 8_192) return null;
+    if (new TextEncoder().encode(text).byteLength > maxBodyBytes) return null;
     value = JSON.parse(text);
   } catch { return null; }
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;

@@ -76,12 +76,14 @@ test("endpoints são fixos, estritos, autenticados e não criam Pedido nem estoq
   assert.doesNotMatch(resolveRoute + createRoute, /Gemini|create_supplier_order|stock_inbound|movement_batch/);
 });
 
-test("UI usa modal/bottom sheet, bloqueia duplo clique e mantém criação de Pedido ausente", () => {
+test("UI C3B mantém modal/bottom sheet e bloqueio de duplo clique junto da criação segura", () => {
   const view = readFileSync(new URL("../components/assistant-structured-block.tsx", import.meta.url), "utf8");
   assert.match(view, /Cadastrar peça avulsa/);
   assert.match(view, /role="dialog"/);
   assert.match(view, /aria-modal="true"/);
   assert.match(view, /items-end[\s\S]*sm:items-center/);
   assert.match(view, /if \(!dialog \|\| submitInFlightRef\.current \|\| !onUpdate\) return/);
-  assert.doesNotMatch(view, />Criar Pedido</);
+  assert.match(view, /"Criar Pedido"/);
+  assert.match(view, /prepare-create/);
+  assert.match(view, /confirm-create/);
 });
