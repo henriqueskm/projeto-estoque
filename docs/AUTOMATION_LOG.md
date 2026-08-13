@@ -805,6 +805,7 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 
 - **Base:** `origin/main` em `351962c18e1c1d091d371e27f2c773e4a30eae71`.
 - **Branch:** `agent/assistant-photo-loose-part-registration`.
+- **PR:** [#27](https://github.com/henriqueskm/projeto-estoque/pull/27) (draft).
 - **Estado:** `IMPLEMENTED / WAITING_HUMAN_TEST`.
 - **Contrato da prévia:** motivos bloqueantes tipados distinguem código ausente,
   desconhecido, ambíguo ou incerto, conflito, quantidade e revisão visual.

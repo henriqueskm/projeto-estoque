@@ -10,7 +10,7 @@
   mesclada pelo PR #24; política de revisão da foto aprovada
 - **Base:** `351962c18e1c1d091d371e27f2c773e4a30eae71`
 - **Branch:** `agent/assistant-photo-loose-part-registration`
-- **PR:** pendente
+- **PR:** [#27](https://github.com/henriqueskm/projeto-estoque/pull/27) (draft)
 
 ## Implementação NK-ORD-008C3B
 
