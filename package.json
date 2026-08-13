@@ -21,6 +21,7 @@
     "test:assistant-supplier-order-pickup": "node --experimental-strip-types --test tests/assistant-supplier-order-pickup.test.mjs",
     "test:assistant-supplier-order-photo": "node --experimental-strip-types --test tests/assistant-supplier-order-photo.test.mjs",
     "test:assistant-photo-loose-part": "node --experimental-strip-types --test tests/assistant-photo-loose-part.test.mjs",
+    "test:assistant-photo-order-create": "node --experimental-strip-types --test tests/assistant-photo-order-create.test.mjs",
     "test:supplier-order-global-actions": "node --experimental-strip-types --test tests/supplier-order-global-actions.test.mjs",
     "test:supplier-order-negotiation-identity": "node --test tests/supplier-order-negotiation-identity.test.mjs",
     "test:supplier-order-negotiation-identity:local": "node tests/supplier-order-negotiation-identity.local.mjs",

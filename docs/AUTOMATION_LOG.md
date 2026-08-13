@@ -825,3 +825,35 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   cobrança são classificadas server-side como `NON_STOCK_CHARGE`, excluídas do
   total e mantidas apenas como warning informativo. Match exato de catálogo
   sempre prevalece; produtos físicos desconhecidos continuam registráveis.
+
+## 2026-08-13 — NK-ORD-008D / criação segura a partir da prévia da foto
+
+- **Base:** `origin/main` em `cb1f82c2e8402eab6a794f210efb7207097d8b61`,
+  merge do PR #27 e do commit funcional aprovado `1b0d3d3...`.
+- **Branch:** `agent/assistant-photo-order-create`.
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_CREATE_TEST`.
+- **Fechamento C3B:** `DONE / HUMAN_TEST_APPROVED / MERGED`; correção exata,
+  cadastro catalog-only e exclusão de encargos foram preservados.
+- **Preparação:** endpoint fixo e same-origin aceita somente negociação, data e
+  linhas código/quantidade, exige profile ativo com nome, re-resolve o catálogo
+  exato e recusa duplicidade antes de assinar.
+- **Proposta:** HMAC-SHA256 com ação específica, versão, user binding, validade
+  de dez minutos e idempotency key criada no servidor; limite da criação por
+  foto em 100 linhas e token/body próprios de até 64/70 KiB.
+- **Confirmação:** endpoint fixo aceita exatamente `proposalToken`, revalida
+  usuário, tempo e identidade atual de cada target e reutiliza a Server Action
+  oficial `createSupplierOrder`/`public.create_supplier_order`.
+- **UX:** primeiro clique apenas prepara; modal desktop/bottom sheet mobile
+  mostra resumo canônico. Somente “Confirmar criação” executa, com bloqueio de
+  duplo clique, foco, Escape, Tab trap, backdrop e retorno de foco.
+- **Persistência:** token fica somente em memória e não entra na conversa. O
+  resultado persistível contém negociação, totais, status e link interno, sem
+  UUID exposto na apresentação.
+- **Segurança operacional:** zero Gemini na preparação/confirmação, nenhuma
+  foto/base64 persistida, `notes = null`, nenhuma movimentação de Estoque e
+  nenhuma operação Safisa.
+- **Testes:** contrato estrito, leading zeros, catálogo exato, unknown,
+  ambiguidade, duplicidade, token adulterado/expirado/cruzado, mudança de
+  catálogo, replay, corrida de negociação e transport uncertainty cobertos por
+  mocks locais. Nenhum Pedido remoto foi criado.
+- **Próxima etapa:** revisão do PR draft e um teste humano controlado separado.

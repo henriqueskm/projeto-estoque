@@ -7,8 +7,13 @@ import {
   parseAssistantSupplierOrderPhotoPreviewBlock,
   type AssistantSupplierOrderPhotoPreviewBlock,
 } from "@/lib/assistant-supplier-order-photo-contract";
+import {
+  parseAssistantSupplierOrderPhotoCreateResultBlock,
+  type AssistantSupplierOrderPhotoCreateResultBlock,
+} from "@/lib/assistant-supplier-order-photo-create-contract";
 
 export type { AssistantSupplierOrderPhotoPreviewBlock } from "@/lib/assistant-supplier-order-photo-contract";
+export type { AssistantSupplierOrderPhotoCreateResultBlock } from "@/lib/assistant-supplier-order-photo-create-contract";
 
 export const assistantMessageMaxLength = 2000;
 export const assistantQueryMaxLength = 120;
@@ -943,6 +948,7 @@ export type AssistantPurchaseRecommendationBlock = {
 
 export type AssistantStructuredBlock =
   | AssistantSupplierOrderPhotoPreviewBlock
+  | AssistantSupplierOrderPhotoCreateResultBlock
   | AssistantInventoryAlertsBlock
   | AssistantCatalogMediaBlock
   | AssistantInventoryItemSummaryBlock
@@ -2059,6 +2065,10 @@ export function parseAssistantStructuredBlock(
 
   if (value.kind === "supplier_order_photo_preview") {
     return parseAssistantSupplierOrderPhotoPreviewBlock(value);
+  }
+
+  if (value.kind === "supplier_order_photo_create_result") {
+    return parseAssistantSupplierOrderPhotoCreateResultBlock(value);
   }
 
   if (value.kind === "supplier_order_stock_entry_preview") {

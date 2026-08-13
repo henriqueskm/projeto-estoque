@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import type {
@@ -39,6 +39,7 @@ import type {
   AssistantSupplierOrderFinalizationPreviewBlock,
   AssistantSupplierOrderFinalizationResultBlock,
   AssistantSupplierOrderPhotoPreviewBlock,
+  AssistantSupplierOrderPhotoCreateResultBlock,
   AssistantStockEntryTarget,
   AssistantServoModelInventoryAction,
   AssistantServoModelInventoryBreakdownBlock,
@@ -48,6 +49,14 @@ import type {
 } from "@/lib/assistant-types";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
 import { updateSupplierOrderPhotoPreviewLine } from "@/lib/assistant-supplier-order-photo-preview";
+import {
+  createSupplierOrderPhotoPrepareInputFromPreview,
+  parseAssistantSupplierOrderPhotoCreateResultBlock,
+  parseSupplierOrderPhotoCreatePreparation,
+  supplierOrderPhotoPreviewCanCreate,
+  type SupplierOrderPhotoCreatePreparation,
+} from "@/lib/assistant-supplier-order-photo-create-contract";
+import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
 const orderDateFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -71,7 +80,9 @@ function SupplierOrderPhotoPreview({
 }: {
   block: AssistantSupplierOrderPhotoPreviewBlock;
   disabled: boolean;
-  onUpdate?: (block: AssistantSupplierOrderPhotoPreviewBlock) => void;
+  onUpdate?: (
+    block: AssistantSupplierOrderPhotoPreviewBlock | AssistantSupplierOrderPhotoCreateResultBlock,
+  ) => void;
 }) {
   const [dialog, setDialog] = useState<null | { mode: "correct" | "create"; lineIndex: number; code: string; description: string }>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -81,7 +92,17 @@ function SupplierOrderPhotoPreview({
   const dialogRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const submitInFlightRef = useRef(false);
+  const createInFlightRef = useRef(false);
+  const createTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const createDialogRef = useRef<HTMLElement>(null);
+  const createCancelRef = useRef<HTMLButtonElement>(null);
+  const [createProposal, setCreateProposal] = useState<SupplierOrderPhotoCreatePreparation | null>(null);
+  const [isPreparingCreate, setIsPreparingCreate] = useState(false);
+  const [isConfirmingCreate, setIsConfirmingCreate] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const createDialogTitleId = useId();
   const dialogMode = dialog?.mode;
+  useDocumentScrollLock(Boolean(dialog || createProposal));
 
   useEffect(() => {
     if (!dialogMode) return;
@@ -108,6 +129,36 @@ function SupplierOrderPhotoPreview({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [dialogMode, isSubmitting]);
+
+  useEffect(() => {
+    if (!createProposal) return;
+    createCancelRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isConfirmingCreate) {
+        event.preventDefault();
+        setCreateProposal(null);
+        setCreateError(null);
+        window.requestAnimationFrame(() => createTriggerRef.current?.focus());
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const controls = createDialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!controls?.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [createProposal, isConfirmingCreate]);
 
   function closeDialog() {
     if (isSubmitting) return;
@@ -165,6 +216,90 @@ function SupplierOrderPhotoPreview({
       setIsSubmitting(false);
     }
   }
+
+  async function prepareCreate(trigger: HTMLButtonElement) {
+    if (createInFlightRef.current || disabled || !onUpdate) return;
+    const input = createSupplierOrderPhotoPrepareInputFromPreview(block);
+    if (!input) {
+      setCreateError("Revise todos os dados antes de criar o Pedido.");
+      return;
+    }
+    createTriggerRef.current = trigger;
+    createInFlightRef.current = true;
+    setIsPreparingCreate(true);
+    setCreateError(null);
+    try {
+      const response = await fetch("/api/assistant/order-photo/prepare-create", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      const record = payload && typeof payload === "object" && !Array.isArray(payload)
+        ? payload as Record<string, unknown> : null;
+      const duplicate = parseAssistantSupplierOrderPhotoCreateResultBlock(record?.block);
+      if (duplicate?.outcome === "duplicate") {
+        onUpdate(duplicate);
+        return;
+      }
+      const preparation = parseSupplierOrderPhotoCreatePreparation(record?.preparation);
+      if (!response.ok || record?.status !== "READY" || !preparation) {
+        throw new Error(typeof record?.error === "string"
+          ? record.error : "Não foi possível preparar a criação agora.");
+      }
+      setCreateProposal(preparation);
+    } catch (error) {
+      setCreateError(error instanceof Error
+        ? error.message : "Não foi possível preparar a criação agora.");
+    } finally {
+      createInFlightRef.current = false;
+      setIsPreparingCreate(false);
+    }
+  }
+
+  function closeCreateDialog() {
+    if (isConfirmingCreate) return;
+    setCreateProposal(null);
+    setCreateError(null);
+    window.requestAnimationFrame(() => createTriggerRef.current?.focus());
+  }
+
+  async function confirmCreate() {
+    if (!createProposal || createInFlightRef.current || !onUpdate) return;
+    createInFlightRef.current = true;
+    setIsConfirmingCreate(true);
+    setCreateError(null);
+    try {
+      const response = await fetch("/api/assistant/order-photo/confirm-create", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposalToken: createProposal.proposalToken }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      const record = payload && typeof payload === "object" && !Array.isArray(payload)
+        ? payload as Record<string, unknown> : null;
+      const result = parseAssistantSupplierOrderPhotoCreateResultBlock(record?.block);
+      if (!response.ok || !result) {
+        throw new Error(typeof record?.error === "string"
+          ? record.error
+          : "Não foi possível confirmar o resultado. Verifique se o Pedido foi criado antes de iniciar uma nova tentativa.");
+      }
+      onUpdate(result);
+      setCreateProposal(null);
+    } catch (error) {
+      setCreateError(error instanceof Error
+        ? error.message
+        : "Não foi possível confirmar o resultado. Verifique se o Pedido foi criado antes de iniciar uma nova tentativa.");
+    } finally {
+      createInFlightRef.current = false;
+      setIsConfirmingCreate(false);
+    }
+  }
+
   const stateLabels = {
     READY_FOR_REVIEW: "Pronta para revisão",
     NEEDS_REVIEW: "Precisa de revisão",
@@ -287,6 +422,22 @@ function SupplierOrderPhotoPreview({
             Abrir Pedido {block.existingOrder.negotiationNumber}
           </Link>
         ) : null}
+
+        {supplierOrderPhotoPreviewCanCreate(block) ? (
+          <div className="border-t border-border-neutral pt-3">
+            <button
+              type="button"
+              disabled={disabled || isPreparingCreate || isSubmitting}
+              onClick={(event) => void prepareCreate(event.currentTarget)}
+              className="nk-focus inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              {isPreparingCreate ? "Preparando confirmação..." : "Criar Pedido"}
+            </button>
+            {!createProposal && createError ? (
+              <p role="alert" className="mt-2 text-xs font-bold text-red-800">{createError}</p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {dialog ? (
         <div className="fixed inset-0 z-[180] flex items-end justify-center bg-black/60 sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => {
@@ -320,6 +471,116 @@ function SupplierOrderPhotoPreview({
           </section>
         </div>
       ) : null}
+      {createProposal ? (
+        <div
+          className="fixed inset-0 z-[190] flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) closeCreateDialog();
+          }}
+        >
+          <section
+            ref={createDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={createDialogTitleId}
+            className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-border-neutral bg-surface p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-lg sm:rounded-2xl sm:p-6"
+          >
+            <h3 id={createDialogTitleId} className="text-lg font-black text-text-primary">
+              Confirmar criação do Pedido
+            </h3>
+            <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-app-background p-3 text-sm">
+              <div>
+                <span className="block text-[0.62rem] font-black tracking-wide text-text-muted uppercase">Pedido</span>
+                <strong>{createProposal.negotiationNumber}</strong>
+              </div>
+              <div>
+                <span className="block text-[0.62rem] font-black tracking-wide text-text-muted uppercase">Data</span>
+                <strong>{orderDateFormatter.format(new Date(`${createProposal.orderDate}T00:00:00Z`))}</strong>
+              </div>
+            </div>
+            <div className="mt-3 divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral">
+              {createProposal.lines.map((line) => (
+                <div key={`${line.kind}-${line.targetId}-${line.commercialConfigurationCodeId ?? "none"}`} className="px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-violet-800">Cód. {line.code}</p>
+                      <p className="break-words text-sm font-bold text-text-primary">{line.description}</p>
+                    </div>
+                    <strong className="shrink-0 text-sm text-text-primary">{quantityFormatter.format(line.quantity)}</strong>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-right text-sm font-black text-text-primary">
+              Total: {quantityFormatter.format(createProposal.totalQuantity)} unidades
+            </p>
+            <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 font-bold text-amber-950">
+              Isso cria o Pedido. Nenhuma entrada ou retirada de estoque será realizada.
+            </p>
+            {createError ? <p role="alert" className="mt-3 text-sm font-bold text-red-800">{createError}</p> : null}
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                ref={createCancelRef}
+                type="button"
+                disabled={isConfirmingCreate}
+                onClick={closeCreateDialog}
+                className="nk-focus min-h-11 rounded-xl border border-border-neutral px-4 text-sm font-black text-text-primary disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isConfirmingCreate}
+                onClick={() => void confirmCreate()}
+                className="nk-focus min-h-11 rounded-xl bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isConfirmingCreate ? "Criando Pedido..." : "Confirmar criação"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SupplierOrderPhotoCreateResult({
+  block,
+}: {
+  block: AssistantSupplierOrderPhotoCreateResultBlock;
+}) {
+  return (
+    <section className={`overflow-hidden rounded-2xl border shadow-sm ${
+      block.outcome === "success"
+        ? "border-emerald-200 bg-emerald-50/40"
+        : "border-amber-200 bg-amber-50/40"
+    }`}>
+      <div className="p-4">
+        <p className="text-[0.65rem] font-black tracking-[0.12em] text-brand-gold-dark uppercase">
+          Resultado da ação
+        </p>
+        <h3 className="mt-1 text-lg font-black text-text-primary">{block.title}</h3>
+        <p className="mt-1 text-sm font-semibold text-text-muted">{block.message}</p>
+        {block.outcome === "success" ? (
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-surface p-3 text-center">
+            <div>
+              <span className="block text-[0.62rem] font-black text-text-muted uppercase">Linhas</span>
+              <strong>{quantityFormatter.format(block.lineCount)}</strong>
+            </div>
+            <div>
+              <span className="block text-[0.62rem] font-black text-text-muted uppercase">Unidades</span>
+              <strong>{quantityFormatter.format(block.totalQuantity)}</strong>
+            </div>
+          </div>
+        ) : null}
+        <Link
+          href={block.order.href}
+          className="nk-focus mt-3 inline-flex min-h-11 items-center rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
+        >
+          Abrir Pedido
+        </Link>
+      </div>
     </section>
   );
 }
@@ -2610,11 +2871,15 @@ export function AssistantStructuredBlockView({
   onSupplierOrderFinalizationConfirm?: (block: AssistantSupplierOrderFinalizationPreviewBlock) => void;
   onSupplierOrderFinalizationCancel?: (block: AssistantSupplierOrderFinalizationPreviewBlock) => void;
   confirmingSupplierOrderFinalization?: boolean;
-  onSupplierOrderPhotoUpdate?: (block: AssistantSupplierOrderPhotoPreviewBlock) => void;
+  onSupplierOrderPhotoUpdate?: (
+    block: AssistantSupplierOrderPhotoPreviewBlock | AssistantSupplierOrderPhotoCreateResultBlock,
+  ) => void;
 }) {
   switch (block.kind) {
     case "supplier_order_photo_preview":
       return <SupplierOrderPhotoPreview block={block} disabled={disabled} onUpdate={onSupplierOrderPhotoUpdate} />;
+    case "supplier_order_photo_create_result":
+      return <SupplierOrderPhotoCreateResult block={block} />;
     case "supplier_order_stock_entry_preview":
     case "manual_stock_entry_preview":
       return <StockEntryPreview block={block} disabled={disabled} confirming={confirmingStockEntry}

@@ -1,16 +1,44 @@
 # Objetivo atual
 
-- **ID:** NK-ORD-008C3B
-- **Título:** Modal de cadastro de Peça avulsa na prévia do Pedido por foto
+- **ID:** NK-ORD-008D
+- **Título:** Criação segura de Pedido a partir da prévia da foto
 - **Prioridade:** alta
-- **Fase:** aplicação / validação humana
-- **Estado:** `IMPLEMENTED / WAITING_HUMAN_TEST`
+- **Fase:** aplicação operacional / validação humana controlada
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_CREATE_TEST`
 - **Classificação:** **B — ajustes somente de aplicação**
-- **Dependências:** MIG-ORD-008C3A `DONE / APPLIED_REMOTE / VERIFIED`; NK-ORD-008B
-  mesclada pelo PR #24; política de revisão da foto aprovada
-- **Base:** `351962c18e1c1d091d371e27f2c773e4a30eae71`
-- **Branch:** `agent/assistant-photo-loose-part-registration`
-- **PR:** [#27](https://github.com/henriqueskm/projeto-estoque/pull/27) (draft)
+- **Dependências:** NK-ORD-008C3B `DONE / HUMAN_TEST_APPROVED / MERGED` pelo
+  PR #27; MIG-ORD-008A e MIG-ORD-008C3A aplicadas e verificadas
+- **Base:** `cb1f82c2e8402eab6a794f210efb7207097d8b61`
+- **Branch:** `agent/assistant-photo-order-create`
+- **PR:** draft pendente de abertura
+
+## Implementação NK-ORD-008D
+
+- `POST /api/assistant/order-photo/prepare-create` aceita somente negociação,
+  data e linhas com código/quantidade; não cria Pedido e re-resolve o catálogo
+  exato no servidor;
+- o servidor rejeita negociação/data/quantidade inválidas, código ausente ou
+  ambíguo, target inativo, duplicidade e mais de 100 linhas na criação por foto;
+- a preparação gera `idempotencyKey` server-side e `proposalToken` HMAC-SHA256
+  específico, vinculado ao usuário, com validade de 10 minutos e payload
+  canônico;
+- o modal central no desktop e bottom sheet no celular renderizam somente o
+  resumo canônico devolvido pelo servidor, com foco, Tab trap, Escape, backdrop
+  e aviso explícito de que não haverá entrada ou retirada;
+- `POST /api/assistant/order-photo/confirm-create` aceita exatamente
+  `{ proposalToken }`, revalida sessão, profile ativo com nome, assinatura,
+  usuário e catálogo e então reutiliza `createSupplierOrder`;
+- texto no chat nunca consome a proposta; somente o botão “Confirmar criação”
+  executa, e replay mantém a mesma chave idempotente;
+- resultado concluído substitui o bloco na conversa, persiste sem token e abre
+  o Pedido por link interno validado;
+- nenhuma foto, base64, warning OCR ou observação visual é persistida no Pedido;
+  `notes` de cabeçalho e linhas permanecem `null`;
+- o fluxo não movimenta Estoque, não executa Safisa e não usa Gemini na
+  preparação ou confirmação.
+
+Próxima etapa: **teste humano controlado de criação**, sem retry com nova chave
+e somente após revisão visual do PR draft.
 
 ## Implementação NK-ORD-008C3B
 
@@ -33,8 +61,8 @@
   não-estoque são excluídos depois de dar prioridade a qualquer match exato do
   catálogo; geram apenas warning informativo e não recebem ações de cadastro.
 
-Próxima etapa: **NK-ORD-008D**, criação segura do Pedido somente depois da
-validação humana desta prévia totalmente resolvida.
+Estado final: **DONE / HUMAN_TEST_APPROVED / MERGED** no PR #27. O filtro de
+frete/encargos e a correção/cadastro de Peça avulsa foram preservados no 008D.
 
 ## Rollout remoto MIG-ORD-008C3A
 
