@@ -31,6 +31,10 @@ import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { SafisaPickupAlertHomeSummary } from "@/components/safisa-pickup-alerts";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
 import {
+  AssistantPhotoPreparationError,
+  prepareSupplierOrderPhoto,
+} from "@/lib/assistant-photo-upload";
+import {
   assistantMessageMaxLength,
   parseAssistantStructuredBlock,
   type AssistantChatRequest,
@@ -69,6 +73,7 @@ type LocalAttachment = {
   file: File;
   previewUrl: string;
   source: "camera" | "gallery";
+  status: "preparing" | "ready";
 };
 
 type SupplierOrderPickupProgressStage =
@@ -171,6 +176,7 @@ export function AssistantHome({
     useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [isAnalyzingPhoto, setIsAnalyzingPhoto] = useState(false);
   const [isRefreshingStock, startStockRefresh] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationRef = useRef<HTMLElement>(null);
@@ -212,7 +218,9 @@ export function AssistantHome({
   const isComposerLocked = !isHydrated || isInteractionLocked;
   const canSubmit =
     !isComposerLocked &&
-    Boolean(draft.trim() || attachment);
+    Boolean(
+      attachment ? attachment.status === "ready" : draft.trim(),
+    );
   const stockItems = [
     ["Servos com kit", summary?.completeBoxesTotal],
     ["Servos", summary?.looseServoTotal],
@@ -449,7 +457,7 @@ export function AssistantHome({
     });
   }
 
-  function handleImageSelection(
+  async function handleImageSelection(
     event: ChangeEvent<HTMLInputElement>,
     source: LocalAttachment["source"],
   ) {
@@ -460,20 +468,34 @@ export function AssistantHome({
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      setFeedback("Escolha um arquivo de imagem válido.");
-      return;
-    }
+    const initialPreviewUrl = URL.createObjectURL(file);
+    setAttachment({ file, previewUrl: initialPreviewUrl, source, status: "preparing" });
+    setFeedback("Preparando imagem...");
 
-    setAttachment({
-      file,
-      previewUrl: URL.createObjectURL(file),
-      source,
-    });
-    setFeedback(
-      "Imagem anexada somente neste dispositivo. Nada foi enviado ainda.",
-    );
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
+    try {
+      const prepared = await prepareSupplierOrderPhoto(file);
+      setAttachment((current) => {
+        if (!current || current.previewUrl !== initialPreviewUrl) return current;
+        return {
+          file: prepared,
+          previewUrl: URL.createObjectURL(prepared),
+          source,
+          status: "ready",
+        };
+      });
+      setFeedback("Imagem pronta para análise.");
+    } catch (error) {
+      setAttachment((current) =>
+        current?.previewUrl === initialPreviewUrl ? null : current,
+      );
+      setFeedback(
+        error instanceof AssistantPhotoPreparationError
+          ? error.message
+          : "Não foi possível preparar esta imagem.",
+      );
+    } finally {
+      window.requestAnimationFrame(() => textareaRef.current?.focus());
+    }
   }
 
   function removeAttachment() {
@@ -657,6 +679,98 @@ export function AssistantHome({
       startStockRefresh(() => {
         router.refresh();
       });
+    }
+  }
+
+  async function sendSupplierOrderPhoto() {
+    if (
+      isInteractionLocked ||
+      requestInFlightRef.current ||
+      !attachment ||
+      attachment.status !== "ready"
+    ) {
+      return;
+    }
+
+    requestInFlightRef.current = true;
+    const userText = draft.trim();
+    setMessages((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: userText
+          ? `${userText}\n\nFoto de Pedido enviada`
+          : "Foto de Pedido enviada",
+      },
+    ]);
+    setDraft("");
+    setFeedback(null);
+    setIsAnalyzingPhoto(true);
+    setIsPending(true);
+    const abortController = new AbortController();
+    const timeout = window.setTimeout(() => abortController.abort(), 60_000);
+
+    try {
+      const formData = new FormData();
+      formData.append("image", attachment.file);
+      const response = await fetch("/api/assistant/order-photo/interpret", {
+        method: "POST",
+        body: formData,
+        signal: abortController.signal,
+      });
+      const result: unknown = await response.json().catch(() => null);
+      const record =
+        result && typeof result === "object" && !Array.isArray(result)
+          ? (result as Record<string, unknown>)
+          : null;
+      const structuredBlock = response.ok
+        ? parseAssistantStructuredBlock(record?.structuredBlock)
+        : null;
+
+      if (
+        !response.ok ||
+        !structuredBlock ||
+        structuredBlock.kind !== "supplier_order_photo_preview"
+      ) {
+        throw new AssistantPhotoPreparationError(
+          typeof record?.error === "string"
+            ? record.error
+            : "Não foi possível analisar este Pedido agora. Tente novamente.",
+        );
+      }
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            typeof record?.message === "string" && record.message.trim()
+              ? record.message.trim()
+              : structuredBlock.fallbackText,
+          structuredBlock,
+        },
+      ]);
+      setAttachment(null);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            error instanceof AssistantPhotoPreparationError
+              ? error.message
+              : "Não foi possível analisar este Pedido agora. Tente novamente.",
+        },
+      ]);
+    } finally {
+      window.clearTimeout(timeout);
+      requestInFlightRef.current = false;
+      setIsAnalyzingPhoto(false);
+      setIsPending(false);
+      shouldRestoreFocusRef.current = true;
     }
   }
 
@@ -1167,14 +1281,12 @@ export function AssistantHome({
 
     const submittedMessage = draft.trim();
 
-    if (!submittedMessage) {
-      setFeedback(
-        "Análise de imagens será habilitada em uma próxima etapa.",
-      );
+    if (attachment) {
+      void sendSupplierOrderPhoto();
       return;
     }
 
-    void sendAssistantMessage(submittedMessage);
+    if (submittedMessage) void sendAssistantMessage(submittedMessage);
   }
 
   function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1552,7 +1664,9 @@ export function AssistantHome({
                   </div>
                   <div className="rounded-2xl rounded-bl-md border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-900 shadow-sm">
                     {isPending
-                      ? "Consultando..."
+                      ? isAnalyzingPhoto
+                        ? "Analisando Pedido..."
+                        : "Consultando..."
                       : "Atualizando os dados..."}
                   </div>
                 </section>
@@ -1588,7 +1702,10 @@ export function AssistantHome({
                     {attachment.source === "camera"
                       ? "Foto da câmera"
                       : "Imagem da galeria"}
-                    {" · "}somente local
+                    {" · "}
+                    {attachment.status === "preparing"
+                      ? "preparando"
+                      : "pronta para análise"}
                   </p>
                 </div>
                 <button
@@ -1608,6 +1725,7 @@ export function AssistantHome({
                 <button
                   ref={menuButtonRef}
                   type="button"
+                  disabled={isComposerLocked}
                   aria-label="Adicionar imagem"
                   aria-haspopup="menu"
                   aria-expanded={isAttachmentMenuOpen}
@@ -1712,20 +1830,20 @@ export function AssistantHome({
               accept="image/*"
               capture="environment"
               hidden
-              onChange={(event) => handleImageSelection(event, "camera")}
+              onChange={(event) => void handleImageSelection(event, "camera")}
             />
             <input
               ref={galleryInputRef}
               type="file"
               accept="image/*"
               hidden
-              onChange={(event) => handleImageSelection(event, "gallery")}
+              onChange={(event) => void handleImageSelection(event, "gallery")}
             />
           </form>
           <p className="mx-auto mt-1 max-w-3xl text-center text-[0.6rem] leading-4 font-semibold text-text-muted sm:mt-1.5 sm:text-[0.68rem]">
-            Consultas são somente leitura. Retiradas de Pedidos só
-            acontecem após confirmação; imagens, áudio e demais
-            operações ainda não estão habilitados.
+            Consultas e fotos de Pedido geram somente prévias. Retiradas de
+            Pedidos só acontecem após confirmação; áudio e demais operações
+            ainda não estão habilitados.
           </p>
       </div>
 

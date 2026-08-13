@@ -4,13 +4,46 @@
 - **Título:** Foto → Gemini → validação → preview
 - **Prioridade:** alta
 - **Fase:** aplicação sem criação real de Pedido
-- **Estado:** `READY`
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_PHOTO_REVIEW`
 - **Classificação:** **B — ajustes de aplicação sobre contratos aprovados**
 - **Dependências:** NK-ORD-008 `ARCHITECTURE_APPROVED`; MIG-ORD-008A
   `DONE / APPLIED_REMOTE / VERIFIED`
-- **Base:** `88378d524ef70dab51de565ba3bb0ada0c139b8d`
-- **Branch:** a definir
-- **PR:** pendente
+- **Base:** `56cf09f9a0e7bcb7503ef58512112969aa19af7b`
+- **Branch:** `agent/assistant-photo-order-preview`
+- **PR:** [#24](https://github.com/henriqueskm/projeto-estoque/pull/24) (draft)
+
+## Implementação NK-ORD-008B
+
+O gap entre o `File` local e o provider multimodal foi fechado sem habilitar
+qualquer escrita operacional:
+
+- câmera, galeria e arquivo desktop preparam uma única imagem no browser;
+- JPEG/PNG/WebP são decodificados com orientação, limitados a 2.800 px e
+  convertidos em JPEG progressivamente até o alvo de 3,5 MB;
+- HEIC/HEIF seguem diretamente apenas dentro do limite seguro do servidor;
+- `POST /api/assistant/order-photo/interpret` aceita multipart estrito com um
+  único campo `image`, exige same-origin, sessão e profile interno ativo;
+- MIME declarado e magic bytes são comparados antes do provider;
+- Gemini recebe a imagem somente em memória, com `store: false`, nenhuma
+  ferramenta e schema JSON fechado;
+- o texto visual é explicitamente tratado como dado não confiável;
+- negociação, data, códigos e quantidades são revalidados no servidor;
+- o catálogo oficial resolve códigos exatos, preserva aliases identificados e
+  não usa fuzzy matching;
+- duplicidade global é consultada em modo read-only;
+- o block `supplier_order_photo_preview` persiste apenas dados visuais seguros;
+- blob, base64, URL local, chave, IDs internos e conteúdo integral da imagem
+  não entram na conversa ou em logs;
+- a UI tradicional e a Server Action passaram a antecipar o contrato
+  digits-only da negociação sem converter o texto nem remover zeros à esquerda.
+
+Todas as prévias mostram “Somente prévia — nenhum Pedido foi criado.”. Não
+existe botão Criar Pedido, proposal token operacional, rota de confirmação,
+RPC mutável ou import do contrato de criação neste fluxo.
+
+Próxima etapa: NK-ORD-008C, validação humana controlada com fotos reais no
+Preview. NK-ORD-008D permanece bloqueada até essa aprovação e exigirá objetivo
+separado para confirmação segura e criação.
 
 ## Rollout remoto concluído — MIG-ORD-008A
 

@@ -285,6 +285,8 @@ function sanitizeStructuredBlock(
       return { block, mediaReferences: [] };
     case "assistant_action_result":
       return { block, mediaReferences: [] };
+    case "supplier_order_photo_preview":
+      return { block, mediaReferences: [] };
     case "assistant_clarification":
       return { block, mediaReferences: [] };
     case "purchase_recommendation_list":

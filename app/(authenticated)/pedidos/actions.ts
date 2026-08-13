@@ -310,6 +310,10 @@ function normalizeOrderInput(
     );
   }
 
+  if (!/^[0-9]+$/.test(negotiationNumber)) {
+    return actionError("Informe somente números no Nº do Pedido.");
+  }
+
   if (!isValidOrderDate(request.order_date)) {
     return actionError("Informe uma data válida para o pedido.");
   }

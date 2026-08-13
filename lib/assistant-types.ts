@@ -3,6 +3,12 @@ import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { normalizeServoModel } from "@/lib/servo-model-search";
+import {
+  parseAssistantSupplierOrderPhotoPreviewBlock,
+  type AssistantSupplierOrderPhotoPreviewBlock,
+} from "@/lib/assistant-supplier-order-photo-contract";
+
+export type { AssistantSupplierOrderPhotoPreviewBlock } from "@/lib/assistant-supplier-order-photo-contract";
 
 export const assistantMessageMaxLength = 2000;
 export const assistantQueryMaxLength = 120;
@@ -936,6 +942,7 @@ export type AssistantPurchaseRecommendationBlock = {
 };
 
 export type AssistantStructuredBlock =
+  | AssistantSupplierOrderPhotoPreviewBlock
   | AssistantInventoryAlertsBlock
   | AssistantCatalogMediaBlock
   | AssistantInventoryItemSummaryBlock
@@ -2048,6 +2055,10 @@ export function parseAssistantStructuredBlock(
 ): AssistantStructuredBlock | null {
   if (!isRecord(value)) {
     return null;
+  }
+
+  if (value.kind === "supplier_order_photo_preview") {
+    return parseAssistantSupplierOrderPhotoPreviewBlock(value);
   }
 
   if (value.kind === "supplier_order_stock_entry_preview") {

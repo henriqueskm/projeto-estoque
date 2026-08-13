@@ -38,6 +38,7 @@ import type {
   AssistantConfigurationDisassemblySelection,
   AssistantSupplierOrderFinalizationPreviewBlock,
   AssistantSupplierOrderFinalizationResultBlock,
+  AssistantSupplierOrderPhotoPreviewBlock,
   AssistantStockEntryTarget,
   AssistantServoModelInventoryAction,
   AssistantServoModelInventoryBreakdownBlock,
@@ -61,6 +62,112 @@ const orderStatusLabels = {
   COMPLETED: "Concluído",
   CANCELLED: "Cancelado",
 } as const;
+
+function SupplierOrderPhotoPreview({
+  block,
+}: {
+  block: AssistantSupplierOrderPhotoPreviewBlock;
+}) {
+  const stateLabels = {
+    READY_FOR_REVIEW: "Pronta para revisão",
+    NEEDS_REVIEW: "Precisa de revisão",
+    DUPLICATE_NEGOTIATION: "Pedido existente",
+    NOT_A_SUPPLIER_ORDER: "Documento não identificado",
+    UNREADABLE: "Foto ilegível",
+    ERROR: "Análise indisponível",
+  } as const;
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border-neutral bg-surface shadow-sm">
+      <div className="border-b border-border-neutral bg-violet-50 px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-[0.65rem] font-black tracking-[0.12em] text-violet-800 uppercase">
+              Foto do Pedido
+            </p>
+            <h3 className="mt-0.5 text-base font-black text-text-primary">{block.title}</h3>
+          </div>
+          <span className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[0.65rem] font-black text-violet-800">
+            {stateLabels[block.state]}
+          </span>
+        </div>
+        <p className="mt-1 text-xs leading-5 font-semibold text-text-muted">{block.message}</p>
+      </div>
+
+      <div className="space-y-3 p-3 sm:p-4">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-950">
+          {block.banner}
+        </div>
+
+        {(block.negotiationNumber || block.orderDate) ? (
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-app-background p-3 text-sm">
+            <div>
+              <span className="block text-[0.62rem] font-black tracking-wide text-text-muted uppercase">Pedido</span>
+              <strong className="text-text-primary">{block.negotiationNumber ?? "Não identificado"}</strong>
+            </div>
+            <div>
+              <span className="block text-[0.62rem] font-black tracking-wide text-text-muted uppercase">Data</span>
+              <strong className="text-text-primary">
+                {block.orderDate ? orderDateFormatter.format(new Date(`${block.orderDate}T00:00:00Z`)) : "Não identificada"}
+              </strong>
+            </div>
+          </div>
+        ) : null}
+
+        {block.lines.length ? (
+          <div className="divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral">
+            {block.lines.map((line, index) => (
+              <article key={`${line.rawCode ?? "unknown"}-${index}`} className="p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-violet-800">
+                      {line.displayCode ? `Cód. ${line.displayCode}` : "Código não identificado"}
+                    </p>
+                    <p className="mt-0.5 break-words text-sm font-black text-text-primary">
+                      {line.description ?? line.rawDescription ?? "Descrição não identificada"}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-[0.62rem] font-black ${line.resolution === "IDENTIFIED" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-950"}`}>
+                    {line.resolution === "IDENTIFIED" ? "Identificado" : "Revisar"}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-text-muted">
+                    Quantidade: <strong className="text-text-primary">{line.quantity ?? "ilegível"}</strong>
+                  </span>
+                  {line.consolidatedLineCount > 1 ? (
+                    <span className="font-semibold text-text-muted">{line.consolidatedLineCount} linhas consolidadas</span>
+                  ) : null}
+                </div>
+                {line.warning ? (
+                  <p className={`mt-2 text-xs leading-5 font-semibold ${line.resolution === "IDENTIFIED" ? "text-sky-800" : "text-amber-900"}`}>
+                    {line.resolution === "IDENTIFIED" ? "ℹ" : "⚠"} {line.warning}
+                  </p>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        {block.warnings.length ? (
+          <ul className="space-y-1 text-xs leading-5 font-semibold text-amber-900">
+            {block.warnings.map((warning, index) => <li key={`${warning}-${index}`}>⚠ {warning}</li>)}
+          </ul>
+        ) : null}
+
+        {block.lines.length ? (
+          <p className="text-right text-sm font-black text-text-primary">Total: {quantityFormatter.format(block.totalQuantity)} unidades</p>
+        ) : null}
+
+        {block.existingOrder ? (
+          <Link href={block.existingOrder.href} className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-border-neutral px-3 text-sm font-black text-text-primary hover:bg-app-background">
+            Abrir Pedido {block.existingOrder.negotiationNumber}
+          </Link>
+        ) : null}
+      </div>
+    </section>
+  );
+}
 
 function getPurchaseOrderSituationLabel(
   order: PurchaseRecommendationItem["relatedOrders"][number],
@@ -2349,6 +2456,8 @@ export function AssistantStructuredBlockView({
   confirmingSupplierOrderFinalization?: boolean;
 }) {
   switch (block.kind) {
+    case "supplier_order_photo_preview":
+      return <SupplierOrderPhotoPreview block={block} />;
     case "supplier_order_stock_entry_preview":
     case "manual_stock_entry_preview":
       return <StockEntryPreview block={block} disabled={disabled} confirming={confirmingStockEntry}
