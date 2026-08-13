@@ -1,16 +1,34 @@
 # Objetivo atual
 
-- **ID:** NK-ORD-008D
-- **Título:** Criação segura de Pedido a partir da prévia da foto
+- **ID:** NK-ORD-009
+- **Título:** Redesign responsivo do detalhe do Pedido
 - **Prioridade:** alta
-- **Fase:** aplicação operacional / validação humana controlada
-- **Estado:** `HUMAN_CREATE_TEST_PASSED / REMOTE_VERIFIED`
-- **Classificação:** **B — ajustes somente de aplicação**
-- **Dependências:** NK-ORD-008C3B `DONE / HUMAN_TEST_APPROVED / MERGED` pelo
-  PR #27; MIG-ORD-008A e MIG-ORD-008C3A aplicadas e verificadas
-- **Base:** `cb1f82c2e8402eab6a794f210efb7207097d8b61`
-- **Branch:** `agent/assistant-photo-order-create`
-- **PR:** [#28](https://github.com/henriqueskm/projeto-estoque/pull/28) (draft)
+- **Fase:** `DETAIL_RESPONSIVE_REDESIGN`
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_UI_TEST`
+- **Classificação:** **A — alteração visual de aplicação**
+- **Dependências:** NK-ORD-008D concluído e PR #28 mesclado
+- **Base:** `a3212135e521b58a3733ac6920972f93b1413d98`
+- **Branch:** `agent/supplier-order-detail-responsive-redesign`
+- **PR:** pendente
+
+## Implementação NK-ORD-009
+
+- desktop e tablets largos usam tabela semântica de largura total com as
+  colunas Item, Solicitado, Retirado, Falta, Pronto Safisa, Disponível agora e
+  Retirada;
+- celulares usam blocos compactos sem rolagem horizontal, com três métricas na
+  primeira linha, duas na segunda e controle operacional abaixo;
+- “Disponível agora” é a prioridade operacional e “Pronto Safisa” permanece
+  visível como contexto secundário, sem mudar nenhum cálculo;
+- a ação por item foi reduzida para “Retirar”, com ícone, stepper acessível e
+  rótulo completo para tecnologia assistiva;
+- a semântica de entrada automática no estoque aparece uma única vez junto ao
+  título dos itens;
+- nenhuma regra, Server Action, RPC, migration ou contrato de concorrência foi
+  alterado.
+
+Próxima etapa: validação visual humana nos breakpoints de 320 a 1024 px e
+desktop, sem executar retirada real.
 
 ## Implementação NK-ORD-008D
 

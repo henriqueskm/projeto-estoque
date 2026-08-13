@@ -29,6 +29,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   CloseIcon,
+  InboundIcon,
   OrdersIcon,
   PlusIcon,
   SearchIcon,
@@ -221,74 +222,6 @@ function OrderItemImageCode({
     <span className="pt-0.5 font-mono text-xs font-black text-text-primary sm:text-sm">
       Cód. {code}
     </span>
-  );
-}
-
-function ItemQuantityIndicators({
-  cancelledQuantity,
-  orderedQuantity,
-  pickedQuantity,
-  waitingPickupQuantity,
-}: {
-  cancelledQuantity: number;
-  orderedQuantity: number;
-  pickedQuantity: number;
-  waitingPickupQuantity: number;
-}) {
-  const indicators = [
-    {
-      label: "Solicitado",
-      value: orderedQuantity,
-      className: "text-text-primary",
-    },
-    {
-      label: "Retirado",
-      value: pickedQuantity,
-      className: "text-emerald-700",
-    },
-    ...(cancelledQuantity > 0
-      ? [
-          {
-            label: "Cancelado",
-            value: cancelledQuantity,
-            className: "text-red-700",
-          },
-        ]
-      : []),
-    ...(waitingPickupQuantity > 0 || cancelledQuantity === 0
-      ? [
-          {
-            label: "Falta",
-            value: waitingPickupQuantity,
-            className: "text-amber-800",
-          },
-        ]
-      : []),
-  ];
-
-  return (
-    <dl
-      className="flex min-w-0 flex-wrap items-baseline gap-y-0.5 text-xs leading-5 sm:text-sm"
-      aria-label="Resumo das quantidades do item"
-    >
-      {indicators.map((indicator, index) => (
-        <div
-          key={indicator.label}
-          className={`inline-flex items-baseline gap-1 whitespace-nowrap ${
-            index > 0
-              ? "ml-2 border-l border-border-neutral pl-2"
-              : ""
-          }`}
-        >
-          <dt className="font-semibold text-text-muted">
-            {indicator.label}:
-          </dt>
-          <dd className={`font-mono font-black ${indicator.className}`}>
-            {quantityFormatter.format(indicator.value)}
-          </dd>
-        </div>
-      ))}
-    </dl>
   );
 }
 
@@ -765,6 +698,7 @@ function CompactQuantityControl({
   maximum,
   minimum,
   onChange,
+  touchFriendly = false,
   value,
 }: {
   disabled?: boolean;
@@ -772,6 +706,7 @@ function CompactQuantityControl({
   maximum: number;
   minimum: number;
   onChange: (value: number) => void;
+  touchFriendly?: boolean;
   value: number;
 }) {
   function update(rawValue: number) {
@@ -785,7 +720,9 @@ function CompactQuantityControl({
         aria-label={`Diminuir ${label}`}
         disabled={disabled || value <= minimum}
         onClick={() => update(value - 1)}
-        className="nk-focus inline-flex size-8 items-center justify-center rounded-l-lg text-base font-black text-text-primary disabled:cursor-not-allowed disabled:opacity-35"
+        className={`nk-focus inline-flex items-center justify-center rounded-l-lg text-base font-black text-text-primary disabled:cursor-not-allowed disabled:opacity-35 ${
+          touchFriendly ? "size-10 lg:size-8" : "size-8"
+        }`}
       >
         −
       </button>
@@ -803,17 +740,129 @@ function CompactQuantityControl({
             update(parsed);
           }
         }}
-        className="nk-focus h-8 w-8 border-x border-border-neutral bg-white text-center font-mono text-xs font-black text-text-primary disabled:bg-slate-100"
+        className={`nk-focus border-x border-border-neutral bg-white text-center font-mono text-xs font-black text-text-primary disabled:bg-slate-100 ${
+          touchFriendly ? "h-10 w-10 lg:h-8 lg:w-8" : "h-8 w-8"
+        }`}
       />
       <button
         type="button"
         aria-label={`Aumentar ${label}`}
         disabled={disabled || value >= maximum}
         onClick={() => update(value + 1)}
-        className="nk-focus inline-flex size-8 items-center justify-center rounded-r-lg text-base font-black text-text-primary disabled:cursor-not-allowed disabled:opacity-35"
+        className={`nk-focus inline-flex items-center justify-center rounded-r-lg text-base font-black text-text-primary disabled:cursor-not-allowed disabled:opacity-35 ${
+          touchFriendly ? "size-10 lg:size-8" : "size-8"
+        }`}
       >
         +
       </button>
+    </div>
+  );
+}
+
+function OrderItemIdentity({
+  code,
+  item,
+}: {
+  code: string;
+  item: SupplierOrderItem;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="rounded-full bg-app-background px-1.5 py-0.5 text-[0.58rem] font-black text-text-muted uppercase sm:text-[0.62rem]">
+          {compactItemTypeLabel(item.itemTypeSnapshot)}
+        </span>
+        <OrderItemImageCode
+          code={code}
+          imageUrl={item.imageUrl}
+          compatibleKitImages={item.compatibleKitImages}
+        />
+      </div>
+      <p className="mt-1 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
+        {item.descriptionSnapshot}
+        {item.modelSnapshot &&
+        !normalizeSearch(item.descriptionSnapshot).includes(
+          normalizeSearch(item.modelSnapshot),
+        )
+          ? ` · ${item.modelSnapshot}`
+          : ""}
+      </p>
+      {item.notes ? (
+        <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-text-muted">
+          Obs.: {item.notes}
+        </p>
+      ) : null}
+      {item.cancelledQuantity > 0 ? (
+        <p className="mt-0.5 text-[0.68rem] font-bold text-red-700">
+          Cancelado: {quantityFormatter.format(item.cancelledQuantity)}
+        </p>
+      ) : null}
+      {item.waitingStockQuantity > 0 ? (
+        <p className="mt-0.5 text-[0.68rem] font-bold text-amber-900">
+          Pendente antigo de entrada: {quantityFormatter.format(item.waitingStockQuantity)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function OrderItemPickupAction({
+  changed,
+  code,
+  disabled,
+  maximum,
+  minimum,
+  onChange,
+  onSave,
+  pending,
+  pickupDelta,
+  value,
+}: {
+  changed: boolean;
+  code: string;
+  disabled: boolean;
+  maximum: number;
+  minimum: number;
+  onChange: (value: number) => void;
+  onSave: () => void;
+  pending: boolean;
+  pickupDelta: number;
+  value: number;
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-end gap-1.5 lg:justify-end">
+      <div>
+        <span className="mb-0.5 block whitespace-nowrap text-[0.58rem] font-black text-text-muted uppercase">
+          Qtd. retirada
+        </span>
+        <CompactQuantityControl
+          label={`Quantidade retirada de ${code}`}
+          minimum={minimum}
+          maximum={maximum}
+          value={value}
+          disabled={disabled}
+          touchFriendly
+          onChange={onChange}
+        />
+      </div>
+      <button
+        type="button"
+        aria-label="Confirmar retirada e entrada automática no estoque"
+        title="Confirmar retirada e entrada automática no estoque"
+        disabled={!changed || disabled}
+        onClick={onSave}
+        className="nk-focus inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-2.5 text-[0.68rem] font-black text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none max-[350px]:size-10 max-[350px]:px-0 lg:min-h-8"
+      >
+        <CheckIcon aria-hidden="true" className="size-3.5" />
+        <span className="max-[350px]:sr-only">
+          {pending ? "Retirando..." : "Retirar"}
+        </span>
+      </button>
+      {pickupDelta > 0 ? (
+        <p className="basis-full text-[0.68rem] font-black text-emerald-800 lg:text-right">
+          Nesta retirada: {quantityFormatter.format(pickupDelta)}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -3432,13 +3481,108 @@ function OrderDetailsDialog({
           className="px-3 py-2 sm:px-4 sm:py-2.5"
           aria-labelledby={`${titleId}-items`}
         >
-          <h3
-            id={`${titleId}-items`}
-            className="text-base font-black text-text-primary sm:text-lg"
-          >
-            Itens do pedido
-          </h3>
-          <div className="mt-1.5 divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral bg-white">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <h3
+              id={`${titleId}-items`}
+              className="text-base font-black text-text-primary sm:text-lg"
+            >
+              Itens do pedido
+            </h3>
+            {!readOnly ? (
+              <p className="inline-flex items-center gap-1.5 text-[0.68rem] font-semibold text-text-muted sm:text-xs">
+                <InboundIcon aria-hidden="true" className="size-3.5 shrink-0 text-emerald-700" />
+                A retirada registra a entrada no estoque automaticamente.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="mt-2 hidden overflow-hidden rounded-xl border border-border-neutral bg-white lg:block">
+            <table className="w-full table-fixed text-xs" aria-label="Itens e quantidades do pedido">
+              <colgroup>
+                <col className="w-[35%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[10%]" />
+                <col className="w-[12%]" />
+                <col className="w-[22%]" />
+              </colgroup>
+              <thead className="border-b border-border-neutral bg-app-background/80 text-[0.62rem] font-black tracking-wide text-text-muted uppercase">
+                <tr>
+                  <th scope="col" className="px-3 py-2 text-left">Item</th>
+                  <th scope="col" className="px-1 py-2 text-center">Solicitado</th>
+                  <th scope="col" className="px-1 py-2 text-center">Retirado</th>
+                  <th scope="col" className="px-1 py-2 text-center">Falta</th>
+                  <th scope="col" className="px-1 py-2 text-center">Pronto Safisa</th>
+                  <th scope="col" className="px-1 py-2 text-center">Disponível agora</th>
+                  <th scope="col" className="px-3 py-2 text-right">Retirada</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-neutral">
+                {items.map((item) => {
+                  const minimum = item.pickedQuantity;
+                  const maximum = maximumSafisaPickupQuantity(
+                    item.orderedQuantity,
+                    item.cancelledQuantity,
+                    item.readyQuantity,
+                  );
+                  const pickedValue = pickedDrafts[item.id] ?? item.pickedQuantity;
+                  const changed = pickedValue !== item.pickedQuantity;
+                  const pickupDelta = Math.max(pickedValue - item.pickedQuantity, 0);
+                  const code = item.commercialCodeSnapshot ?? item.codeSnapshot;
+
+                  return (
+                    <tr key={item.id} className="align-middle even:bg-app-background/25">
+                      <td className="px-3 py-2.5 align-top">
+                        <OrderItemIdentity code={code} item={item} />
+                      </td>
+                      <td className="px-1 py-2 text-center font-mono font-black text-text-primary">
+                        {quantityFormatter.format(item.orderedQuantity)}
+                      </td>
+                      <td className="px-1 py-2 text-center font-mono font-black text-emerald-700">
+                        {quantityFormatter.format(item.pickedQuantity)}
+                      </td>
+                      <td className="px-1 py-2 text-center font-mono font-black text-amber-800">
+                        {quantityFormatter.format(item.waitingPickupQuantity)}
+                      </td>
+                      <td className="px-1 py-2 text-center font-mono font-bold text-text-muted">
+                        {quantityFormatter.format(item.readyQuantity)}
+                      </td>
+                      <td className="px-1 py-2 text-center">
+                        <strong className={`font-mono text-sm font-black ${
+                          item.readyWaitingPickupQuantity > 0
+                            ? "text-emerald-800"
+                            : "text-text-muted"
+                        }`}>
+                          {quantityFormatter.format(item.readyWaitingPickupQuantity)}
+                        </strong>
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        {canChangePickup ? (
+                          <OrderItemPickupAction
+                            changed={changed}
+                            code={code}
+                            disabled={isPending}
+                            maximum={maximum}
+                            minimum={minimum}
+                            onChange={(value) => updatePicked(item, value)}
+                            onSave={() => savePicked(item)}
+                            pending={isPending && pendingItemId === item.id}
+                            pickupDelta={pickupDelta}
+                            value={pickedValue}
+                          />
+                        ) : (
+                          <span className="block text-right font-semibold text-text-muted">Somente leitura</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-2 divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral bg-white lg:hidden">
             {items.map((item) => {
               const minimum = item.pickedQuantity;
               const maximum = maximumSafisaPickupQuantity(
@@ -3446,131 +3590,68 @@ function OrderDetailsDialog({
                 item.cancelledQuantity,
                 item.readyQuantity,
               );
-              const pickedValue =
-                pickedDrafts[item.id] ?? item.pickedQuantity;
+              const pickedValue = pickedDrafts[item.id] ?? item.pickedQuantity;
               const changed = pickedValue !== item.pickedQuantity;
-              const pickupDelta = Math.max(
-                pickedValue - item.pickedQuantity,
-                0,
-              );
-              const code =
-                item.commercialCodeSnapshot ?? item.codeSnapshot;
+              const pickupDelta = Math.max(pickedValue - item.pickedQuantity, 0);
+              const code = item.commercialCodeSnapshot ?? item.codeSnapshot;
 
               return (
-                <article key={item.id} className="px-2.5 py-2 sm:px-3 sm:py-2.5">
-                  <div className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-x-1.5">
-                    <span className="rounded-full bg-app-background px-1.5 py-0.5 text-[0.58rem] font-black text-text-muted uppercase sm:text-[0.62rem]">
-                      {compactItemTypeLabel(item.itemTypeSnapshot)}
-                    </span>
-                    <OrderItemImageCode
-                      code={code}
-                      imageUrl={item.imageUrl}
-                      compatibleKitImages={item.compatibleKitImages}
-                    />
-                    <p className="min-w-0 break-words text-xs leading-4 font-semibold text-text-primary sm:text-sm sm:leading-5">
-                      {item.descriptionSnapshot}
-                      {item.modelSnapshot &&
-                      !normalizeSearch(item.descriptionSnapshot).includes(
-                        normalizeSearch(item.modelSnapshot),
-                      )
-                        ? ` · ${item.modelSnapshot}`
-                        : ""}
-                      {item.notes ? (
-                        <span className="font-medium text-text-muted">
-                          {" "}
-                          · Obs.: {item.notes}
-                        </span>
-                      ) : null}
-                    </p>
-                  </div>
-
-                  <div
-                    className={`mt-1.5 grid min-w-0 items-end gap-x-3 gap-y-1.5 ${
-                      canChangePickup
-                        ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto]"
-                        : "grid-cols-1"
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <ItemQuantityIndicators
-                        cancelledQuantity={item.cancelledQuantity}
-                        orderedQuantity={item.orderedQuantity}
-                        pickedQuantity={item.pickedQuantity}
-                        waitingPickupQuantity={
-                          item.waitingPickupQuantity
-                        }
-                      />
-                      {item.readyWaitingPickupQuantity > 0 ? (
-                        <p className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[0.68rem] leading-4 font-bold text-emerald-900 sm:text-xs">
-                          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-emerald-600" />
-                          Pronto: {" "}
-                          <strong className="font-mono font-black">
-                            {quantityFormatter.format(
-                              item.readyWaitingPickupQuantity,
-                            )}
-                          </strong>
-                        </p>
-                      ) : null}
-                      <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                        Pronto pela Safisa:{" "}
-                        <strong className="font-mono font-black text-text-primary">
-                          {quantityFormatter.format(item.readyQuantity)}
-                        </strong>{" "}
-                        · Disponível para retirar:{" "}
-                        <strong className="font-mono font-black text-emerald-800">
-                          {quantityFormatter.format(
-                            item.readyWaitingPickupQuantity,
-                          )}
-                        </strong>
-                      </p>
-                      {item.waitingStockQuantity > 0 ? (
-                        <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-amber-900 sm:text-xs">
-                          Pendente antigo de entrada:{" "}
-                          <strong className="font-mono font-black">
-                            {quantityFormatter.format(
-                              item.waitingStockQuantity,
-                            )}
-                          </strong>
-                        </p>
-                      ) : null}
+                <article key={item.id} className="px-2.5 py-2.5 sm:px-3">
+                  <OrderItemIdentity code={code} item={item} />
+                  <dl className="mt-2 grid grid-cols-3 border-t border-border-neutral pt-2 text-center">
+                    <div>
+                      <dt className="text-[0.58rem] font-black text-text-muted uppercase">Solicitado</dt>
+                      <dd className="font-mono text-sm font-black text-text-primary">
+                        {quantityFormatter.format(item.orderedQuantity)}
+                      </dd>
                     </div>
-
-                    {canChangePickup ? (
-                      <div className="flex flex-wrap items-end justify-start gap-1.5 sm:justify-end">
-                        <div>
-                          <span className="mb-0.5 block text-[0.58rem] font-black text-text-muted uppercase">
-                            Nova retirada
-                          </span>
-                          <CompactQuantityControl
-                            label={`Quantidade retirada de ${code}`}
-                            minimum={minimum}
-                            maximum={maximum}
-                            value={pickedValue}
-                            disabled={isPending}
-                            onChange={(value) =>
-                              updatePicked(item, value)
-                            }
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          disabled={!changed || isPending}
-                          onClick={() => savePicked(item)}
-                          className="nk-focus inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-sky-800/20 bg-gradient-to-b from-sky-600 to-sky-700 px-3 text-[0.68rem] font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:from-sky-700 hover:to-sky-800 hover:shadow disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-none disabled:bg-slate-300 disabled:text-slate-600 disabled:shadow-none"
-                        >
-                          <CheckIcon aria-hidden="true" className="size-3" />
-                          {isPending && pendingItemId === item.id
-                            ? "Confirmando..."
-                            : "Confirmar retirada + entrada"}
-                        </button>
-                        {pickupDelta > 0 ? (
-                          <p className="basis-full text-left text-[0.68rem] font-black text-emerald-800 sm:text-right">
-                            Retirar agora: {quantityFormatter.format(pickupDelta)} · Entrada automática no estoque: +{quantityFormatter.format(pickupDelta)}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
+                    <div className="border-x border-border-neutral">
+                      <dt className="text-[0.58rem] font-black text-text-muted uppercase">Retirado</dt>
+                      <dd className="font-mono text-sm font-black text-emerald-700">
+                        {quantityFormatter.format(item.pickedQuantity)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.58rem] font-black text-text-muted uppercase">Falta</dt>
+                      <dd className="font-mono text-sm font-black text-amber-800">
+                        {quantityFormatter.format(item.waitingPickupQuantity)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <dl className="mt-1.5 grid grid-cols-2 border-t border-border-neutral pt-1.5 text-center">
+                    <div>
+                      <dt className="text-[0.58rem] font-black text-text-muted uppercase">Pronto Safisa</dt>
+                      <dd className="font-mono text-sm font-bold text-text-muted">
+                        {quantityFormatter.format(item.readyQuantity)}
+                      </dd>
+                    </div>
+                    <div className="border-l border-border-neutral">
+                      <dt className="text-[0.58rem] font-black text-text-muted uppercase">Disponível agora</dt>
+                      <dd className={`font-mono text-base font-black ${
+                        item.readyWaitingPickupQuantity > 0
+                          ? "text-emerald-800"
+                          : "text-text-muted"
+                      }`}>
+                        {quantityFormatter.format(item.readyWaitingPickupQuantity)}
+                      </dd>
+                    </div>
+                  </dl>
+                  {canChangePickup ? (
+                    <div className="mt-2 border-t border-border-neutral pt-2">
+                      <OrderItemPickupAction
+                        changed={changed}
+                        code={code}
+                        disabled={isPending}
+                        maximum={maximum}
+                        minimum={minimum}
+                        onChange={(value) => updatePicked(item, value)}
+                        onSave={() => savePicked(item)}
+                        pending={isPending && pendingItemId === item.id}
+                        pickupDelta={pickupDelta}
+                        value={pickedValue}
+                      />
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
