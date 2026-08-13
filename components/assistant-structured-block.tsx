@@ -139,7 +139,11 @@ function SupplierOrderPhotoPreview({
                     <span className="font-semibold text-text-muted">{line.consolidatedLineCount} linhas consolidadas</span>
                   ) : null}
                 </div>
-                {line.warning ? <p className="mt-2 text-xs leading-5 font-semibold text-amber-900">⚠ {line.warning}</p> : null}
+                {line.warning ? (
+                  <p className={`mt-2 text-xs leading-5 font-semibold ${line.resolution === "IDENTIFIED" ? "text-sky-800" : "text-amber-900"}`}>
+                    {line.resolution === "IDENTIFIED" ? "ℹ" : "⚠"} {line.warning}
+                  </p>
+                ) : null}
               </article>
             ))}
           </div>

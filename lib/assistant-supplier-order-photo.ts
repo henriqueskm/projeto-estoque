@@ -35,6 +35,23 @@ function normalizeDescription(value: string) {
     .trim();
 }
 
+function servoModel(value: string) {
+  const match = normalizeDescription(value).match(/\bSERVO\s+([A-Z]{2,4})\s+(\d{2,3})\b/);
+  return match ? `${match[1]}-${match[2]}` : null;
+}
+
+function repairNumber(value: string) {
+  const match = normalizeDescription(value).match(/\b(?:JG\s+|JOGO\s+)?(?:DE\s+)?REPARO\s+0*(\d+)\b/);
+  return match?.[1] ?? null;
+}
+
+function isInformationalAnnotationWarning(warning: string | null) {
+  if (!warning) return false;
+  const normalized = normalizeDescription(warning);
+  if (!/\b(?:ANOTACAO|MANUSCRIT)/.test(normalized)) return false;
+  return !/\b(?:COBRE|COBRINDO|SOBREPOE|ALTERA|ALTERANDO|CONTRADIZ|SUBSTITUI|ILEGIVEL|INCERTO|INCERTA|DUVIDA)\b/.test(normalized);
+}
+
 function descriptionMatch(
   rawDescription: string | null,
   officialDescription: string,
@@ -43,12 +60,15 @@ function descriptionMatch(
   const raw = normalizeDescription(rawDescription);
   const official = normalizeDescription(officialDescription);
   if (raw === official || raw.includes(official) || official.includes(raw)) return "MATCH";
-  const informative = (value: string) =>
-    value.split(" ").filter((token) => /\d/.test(token) && token.length >= 2);
-  const rawTokens = informative(raw);
-  const officialTokens = new Set(informative(official));
-  if (rawTokens.length && officialTokens.size && !rawTokens.some((token) => officialTokens.has(token))) {
-    return "CONFLICT";
+  const rawServoModel = servoModel(raw);
+  const officialServoModel = servoModel(official);
+  if (rawServoModel && officialServoModel) {
+    return rawServoModel === officialServoModel ? "MATCH" : "CONFLICT";
+  }
+  const rawRepairNumber = repairNumber(raw);
+  const officialRepairNumber = repairNumber(official);
+  if (rawRepairNumber && officialRepairNumber) {
+    return rawRepairNumber === officialRepairNumber ? "MATCH" : "CONFLICT";
   }
   return "UNCERTAIN";
 }
@@ -106,8 +126,9 @@ export async function interpretSupplierOrderPhoto(
     const candidates = line.rawCode ? (targetsByCode.get(normalizeCode(line.rawCode)) ?? []) : [];
     const target = candidates.length === 1 ? candidates[0] : null;
     const match = target ? descriptionMatch(line.rawDescription, target.description) : "UNCERTAIN";
+    const modelNeedsReview = line.needsReview && !isInformationalAnnotationWarning(line.warning);
     const needsReview =
-      line.needsReview || !line.rawCode || !line.quantity || !target || match === "CONFLICT" || match === "UNCERTAIN";
+      modelNeedsReview || !line.rawCode || !line.quantity || !target || match === "CONFLICT";
     const warning =
       line.warning ??
       (!line.rawCode
@@ -121,7 +142,7 @@ export async function interpretSupplierOrderPhoto(
               : match === "CONFLICT"
                 ? "A descrição da foto diverge do catálogo oficial."
                 : match === "UNCERTAIN"
-                  ? "A descrição precisa de revisão humana."
+                  ? "A descrição comercial é parcial ou abreviada; a identidade foi confirmada pelo código oficial."
                   : null);
     return {
       identity: target ? `${target.identity}:${target.codeIdentity}` : null,

@@ -25,6 +25,12 @@ const validExtraction = {
 const catalog = [
   { identity: "CONFIGURATION:a", codeIdentity: "code-a", code: "2E", description: "SERVO MBF-025 + KT-22" },
   { identity: "ITEM:b", codeIdentity: "item-b", code: "11", description: "SERVO AL-10 SEM KIT" },
+  { identity: "ITEM:r066", codeIdentity: "item-r066", code: "R066", description: "JOGO DE REPARO 066" },
+  { identity: "CONFIGURATION:10a", codeIdentity: "code-10a", code: "10A", description: "SERVO MC-040 + KT-48" },
+  { identity: "CONFIGURATION:2a", codeIdentity: "code-2a", code: "2A", description: "SERVO MBF-025 + KT-18" },
+  { identity: "CONFIGURATION:1b", codeIdentity: "code-1b", code: "1B", description: "SERVO MBF-015 + KT-20" },
+  { identity: "CONFIGURATION:6c", codeIdentity: "code-6c", code: "6C", description: "SERVO VF-040 + KT-50" },
+  { identity: "CONFIGURATION:6f", codeIdentity: "code-6f", code: "6F", description: "SERVO VF-040 + KT-51" },
 ];
 
 function dependencies(extraction = validExtraction, existingOrder = null) {
@@ -113,6 +119,60 @@ test("descrição conflitante não troca silenciosamente o código", async () =>
   assert.equal(block.lines[0].displayCode, "2E");
 });
 
+test("código exato aceita descrições comerciais reais com o mesmo produto base", async () => {
+  const cases = [
+    ["R066", "JG REPARO 066 - VF-040", "JOGO DE REPARO 066"],
+    ["10A", "SERVO MC-040 - 10A", "SERVO MC-040 + KT-48"],
+    ["2A", "SERVO MBF-025 - 2A", "SERVO MBF-025 + KT-18"],
+    ["1B", "SERVO MBF-015 - 1B", "SERVO MBF-015 + KT-20"],
+    ["6C", "SERVO VF-040 - 6C", "SERVO VF-040 + KT-50"],
+    ["6F", "SERVO VF-040 - 6F (INV)", "SERVO VF-040 + KT-51"],
+  ];
+  for (const [rawCode, rawDescription, officialDescription] of cases) {
+    const extraction = structuredClone(validExtraction);
+    extraction.lines[0] = { rawCode, rawDescription, quantity: 2, needsReview: false, warning: null };
+    const block = await interpretSupplierOrderPhoto(dependencies(extraction).value);
+    assert.equal(block.state, "READY_FOR_REVIEW", rawCode);
+    assert.equal(block.lines[0].resolution, "IDENTIFIED", rawCode);
+    assert.equal(block.lines[0].description, officialDescription, rawCode);
+    assert.equal(block.lines[0].descriptionMatch, "MATCH", rawCode);
+  }
+});
+
+test("modelo de Servo objetivamente diferente continua sendo conflito bloqueante", async () => {
+  const extraction = structuredClone(validExtraction);
+  extraction.lines[0] = {
+    rawCode: "10A", rawDescription: "SERVO VF-040", quantity: 1, needsReview: false, warning: null,
+  };
+  const block = await interpretSupplierOrderPhoto(dependencies(extraction).value);
+  assert.equal(block.state, "NEEDS_REVIEW");
+  assert.equal(block.lines[0].resolution, "NEEDS_REVIEW");
+  assert.equal(block.lines[0].descriptionMatch, "CONFLICT");
+  assert.equal(block.lines[0].displayCode, "10A");
+});
+
+test("manuscrito não interferente é informativo; manuscrito sobre quantidade bloqueia", async () => {
+  const informational = structuredClone(validExtraction);
+  informational.lines[0] = {
+    rawCode: "2A",
+    rawDescription: "SERVO MBF-025 - 2A",
+    quantity: 2,
+    needsReview: true,
+    warning: "Há anotação manuscrita nesta linha.",
+  };
+  const identified = await interpretSupplierOrderPhoto(dependencies(informational).value);
+  assert.equal(identified.state, "READY_FOR_REVIEW");
+  assert.equal(identified.lines[0].resolution, "IDENTIFIED");
+  assert.match(identified.lines[0].warning, /anotação manuscrita/);
+
+  const blocking = structuredClone(informational);
+  blocking.lines[0].needsReview = true;
+  blocking.lines[0].warning = "A anotação manuscrita cobre a quantidade impressa.";
+  const review = await interpretSupplierOrderPhoto(dependencies(blocking).value);
+  assert.equal(review.state, "NEEDS_REVIEW");
+  assert.equal(review.lines[0].resolution, "NEEDS_REVIEW");
+});
+
 test("negociação inválida e data ausente nunca ficam prontas", async () => {
   for (const negotiationNumber of ["Pedido 1212", "12-12", "12 12", "ABC123", null]) {
     const extraction = structuredClone(validExtraction);
@@ -199,6 +259,7 @@ test("composer envia somente o arquivo, não persiste blob/base64 e não oferece
   assert.doesNotMatch(home, /Foto de Pedido analisada/);
   assert.doesNotMatch(home, /readAsDataURL|sessionStorage.*attachment|base64/);
   assert.match(view, /\{block\.banner\}/);
+  assert.match(view, /line\.resolution === "IDENTIFIED" \? "ℹ" : "⚠"/);
   assert.doesNotMatch(view, />Criar Pedido</);
 });
 

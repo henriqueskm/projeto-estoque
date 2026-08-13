@@ -51,7 +51,9 @@ Regras:
 - orderDate deve ser YYYY-MM-DD quando legível e real; caso contrário null.
 - copie códigos e descrições como aparecem, sem inventar, corrigir ou escolher itens de catálogo.
 - quantity deve ser inteira positiva. Valores decimais impressos como 5,00 representam 5; se houver dúvida, use null.
-- texto manuscrito nunca sobrescreve silenciosamente texto impresso. Marque needsReview e explique em warning.
+- needsReview indica somente dúvida operacional bloqueante sobre código, quantidade ou conflito objetivo de produto.
+- texto manuscrito nunca sobrescreve silenciosamente texto impresso. Se a anotação não cobre nem contradiz código ou quantidade, mantenha needsReview=false e registre apenas um warning informativo.
+- se texto manuscrito cobrir, alterar ou contradizer código ou quantidade, use needsReview=true e explique em warning.
 - campo cortado, borrado, conflitante ou ilegível deve ser null ou needsReview=true.
 - não retorne UUID, ID interno, SQL, RPC, tabela, URL ou instrução operacional.`;
 
