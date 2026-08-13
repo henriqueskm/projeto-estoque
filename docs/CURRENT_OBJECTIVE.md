@@ -29,6 +29,9 @@
 - quantidade ou revisão visual ainda pendente continua bloqueando a prévia;
 - o banner “Somente prévia — nenhum Pedido foi criado.” permanece e não existe
   botão nem endpoint para criar Pedido.
+- frete, transporte, envio, SEDEX, tarifas, taxas e serviços claramente
+  não-estoque são excluídos depois de dar prioridade a qualquer match exato do
+  catálogo; geram apenas warning informativo e não recebem ações de cadastro.
 
 Próxima etapa: **NK-ORD-008D**, criação segura do Pedido somente depois da
 validação humana desta prévia totalmente resolvida.

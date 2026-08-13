@@ -821,3 +821,7 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   habilitada.
 - **Próxima etapa:** NK-ORD-008D permanece separada e depende de validação
   humana desta fase.
+- **Hardening C3B1:** linhas desconhecidas inequivocamente logísticas ou de
+  cobrança são classificadas server-side como `NON_STOCK_CHARGE`, excluídas do
+  total e mantidas apenas como warning informativo. Match exato de catálogo
+  sempre prevalece; produtos físicos desconhecidos continuam registráveis.

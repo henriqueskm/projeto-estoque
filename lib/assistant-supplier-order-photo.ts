@@ -52,6 +52,23 @@ function isInformationalAnnotationWarning(warning: string | null) {
   return !/\b(?:COBRE|COBRINDO|SOBREPOE|ALTERA|ALTERANDO|CONTRADIZ|SUBSTITUI|ILEGIVEL|INCERTO|INCERTA|DUVIDA)\b/.test(normalized);
 }
 
+export type SupplierOrderPhotoLineRole = "PRODUCT" | "NON_STOCK_CHARGE";
+
+export function classifySupplierOrderPhotoLineRole(options: {
+  rawDescription: string | null;
+  hasExactCatalogMatch: boolean;
+}): SupplierOrderPhotoLineRole {
+  if (options.hasExactCatalogMatch) return "PRODUCT";
+  const description = normalizeDescription(options.rawDescription ?? "");
+  const isClearlyNonStock =
+    /\b(?:FRETE|SEDEX|TRANSPORTE|ENVIO)\b/.test(description) ||
+    /\bLOGISTIC[AO]\b/.test(description) ||
+    /^(?:TAXA|TARIFA|ENCARGO|SERVICO)(?:\s+.*)?$/.test(description) ||
+    /\b(?:TAXA|TARIFA|ENCARGO)\s+(?:DE\s+)?(?:FRETE|LOGISTIC[AO]|TRANSPORTE|ENVIO|SERVICO)\b/.test(description) ||
+    /\bSERVICO\s+(?:DE\s+)?(?:FRETE|LOGISTIC[AO]|TRANSPORTE|ENVIO)\b/.test(description);
+  return isClearlyNonStock ? "NON_STOCK_CHARGE" : "PRODUCT";
+}
+
 function isCodeUncertainWarning(warning: string | null) {
   if (!warning) return true;
   const normalized = normalizeDescription(warning);
@@ -129,7 +146,20 @@ export async function interpretSupplierOrderPhoto(
     targetsByCode.set(code, matches);
   }
 
-  const resolved = extraction.lines.map((line) => {
+  const nonStockWarnings: string[] = [];
+  const productLines = extraction.lines.filter((line) => {
+    const candidates = line.rawCode ? (targetsByCode.get(normalizeCode(line.rawCode)) ?? []) : [];
+    const role = classifySupplierOrderPhotoLineRole({
+      rawDescription: line.rawDescription,
+      hasExactCatalogMatch: candidates.length > 0,
+    });
+    if (role === "PRODUCT") return true;
+    const label = [line.rawCode, line.rawDescription].filter(Boolean).join(" — ");
+    nonStockWarnings.push(`Frete/encargo não incluído nos itens${label ? `: ${label}` : ""}.`);
+    return false;
+  });
+
+  const resolved = productLines.map((line) => {
     const candidates = line.rawCode ? (targetsByCode.get(normalizeCode(line.rawCode)) ?? []) : [];
     const target = candidates.length === 1 ? candidates[0] : null;
     const match = target ? descriptionMatch(line.rawDescription, target.description) : "UNCERTAIN";
@@ -206,7 +236,7 @@ export async function interpretSupplierOrderPhoto(
 
   const lines = consolidated.map((entry) => entry.line);
   const totalQuantity = lines.reduce((sum, line) => sum + (line.quantity ?? 0), 0);
-  const warnings = [...extraction.documentWarnings];
+  const warnings = [...extraction.documentWarnings, ...nonStockWarnings];
   if (!negotiationIsValid) warnings.push("A negociação deve conter somente dígitos, preservando zeros à esquerda.");
   if (!extraction.orderDate) warnings.push("A data do Pedido não pôde ser confirmada.");
   if (lines.length === 0) warnings.push("Nenhuma linha de item pôde ser lida.");
