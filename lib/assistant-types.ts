@@ -657,6 +657,9 @@ export type AssistantServoModelInventoryBreakdownBlock = {
     targetKind: "item";
     itemType: "SERVO";
   }) | null;
+  looseQuantity: number;
+  mountedQuantity: number;
+  totalQuantity: number;
   configurations: AssistantServoModelConfigurationTarget[];
   totalConfigurations: number;
   remainingConfigurations: number;
@@ -1672,6 +1675,9 @@ function parseServoModelInventoryBreakdown(
     isRecord(model) && typeof model.normalized === "string"
       ? model.normalized.trim()
       : "";
+  const looseQuantity = value.looseQuantity;
+  const mountedQuantity = value.mountedQuantity;
+  const totalQuantity = value.totalQuantity;
 
   if (
     !officialModel ||
@@ -1682,6 +1688,11 @@ function parseServoModelInventoryBreakdown(
     (bareServo !== null &&
       (bareServo.targetKind !== "item" ||
         bareServo.itemType !== "SERVO")) ||
+    !isNonnegativeInteger(looseQuantity) ||
+    !isNonnegativeInteger(mountedQuantity) ||
+    !isNonnegativeInteger(totalQuantity) ||
+    totalQuantity !== looseQuantity + mountedQuantity ||
+    (bareServo !== null && bareServo.currentStock !== looseQuantity) ||
     !Array.isArray(value.configurations) ||
     configurationEntries.length > 6 ||
     configurationEntries.some((entry) => entry === null) ||
@@ -1707,6 +1718,9 @@ function parseServoModelInventoryBreakdown(
       normalized: normalizedModel,
     },
     bareServo: bareServo as AssistantServoModelInventoryBreakdownBlock["bareServo"],
+    looseQuantity,
+    mountedQuantity,
+    totalQuantity,
     configurations:
       configurationEntries as AssistantServoModelConfigurationTarget[],
     totalConfigurations: value.totalConfigurations,

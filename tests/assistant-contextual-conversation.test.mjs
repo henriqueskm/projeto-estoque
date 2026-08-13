@@ -285,6 +285,100 @@ test("direct inventory routing runs before generic catalog clarification", async
   assert.match(source, /itemReferenceKind === "CATALOG_CODE"/);
 });
 
+test("progressive servo-model questions distinguish totals, kit state, breakdown and physical boxes", async () => {
+  const routing = await routingModule;
+
+  for (const phrase of [
+    "Quanto tem do MBF-025?",
+    "Quanto tem do MBF025?",
+    "Qual o estoque do MBF 025?",
+    "Quanto tem do MBF-025 no total?",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "TOTAL", phrase);
+  }
+
+  for (const phrase of [
+    "Quanto tem do MBF-025 com kit?",
+    "E com kit?",
+    "Quantos com kit?",
+    "Quantos estão montados com kit?",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "MOUNTED", phrase);
+  }
+
+  for (const phrase of [
+    "Quanto tem do MBF-025 sem kit?",
+    "E sem kit?",
+    "Quantos sem kit?",
+    "Quantos estão separados?",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "LOOSE", phrase);
+  }
+
+  for (const phrase of [
+    "Quais configurações?",
+    "Quais códigos com kit?",
+    "Em quais configurações ele está?",
+    "Mostre as configurações com esse servo",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "BREAKDOWN", phrase);
+  }
+
+  for (const phrase of [
+    "E dentro de caixas?",
+    "Quanto tem do MBF-025 dentro de caixas?",
+    "Quais caixas?",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "BOX_AMBIGUOUS", phrase);
+  }
+
+  for (const phrase of [
+    "E com kit?",
+    "Quantos com kit?",
+    "E sem kit?",
+    "Quantos estão separados?",
+    "Quais configurações?",
+    "E nas caixas?",
+  ]) {
+    assert.equal(routing.isItemFollowUpMessage(phrase), true, phrase);
+    assert.equal(routing.isServoModelInventoryFollowUp(phrase), true, phrase);
+  }
+
+  assert.equal(routing.isServoModelInventoryFollowUp("E qual é o mínimo?"), false);
+});
+
+test("progressive model answers retain SERVO_MODEL context and use official physical totals", async () => {
+  const assistant = await read("lib/ai/assistant.ts");
+  const data = await read("lib/assistant-data.ts");
+
+  assert.match(assistant, /block\.mountedQuantity/);
+  assert.match(assistant, /block\.looseQuantity/);
+  assert.match(assistant, /block\.totalQuantity/);
+  assert.match(assistant, /contextItemReferenceKind:\s*"SERVO_MODEL"/);
+  assert.match(assistant, /embalagens físicas/);
+  assert.match(data, /mountedQuantity = matchingServos\[0\]\.mounted_quantity/);
+  assert.match(data, /totalQuantity = matchingServos\[0\]\.total_quantity/);
+  assert.match(data, /totalQuantity !== looseQuantity \+ mountedQuantity/);
+});
+
+test("a catalog-code context is not reinterpreted as a servo-model kit state", async () => {
+  const routing = await routingModule;
+  const codeContext = parseAssistantConversationContext({
+    topic: "INVENTORY",
+    itemQuery: "2A",
+    itemReferenceKind: "CATALOG_CODE",
+    supplierOrderId: null,
+    supplierOrderCatalogCode: null,
+    lastIntent: "inventory_item_summary",
+  });
+
+  assert.ok(codeContext);
+  assert.equal(codeContext.itemReferenceKind, "CATALOG_CODE");
+  assert.equal(routing.routeInventoryItemSummaryQuestion("E sem kit?", "2A"), null);
+  const assistant = await read("lib/ai/assistant.ts");
+  assert.match(assistant, /Esse contexto é de um código específico/);
+});
+
 test("wraps read cards with short copy and at most one suggestion", () => {
   const answer = addAssistantConversationalCopy({
     message: "fallback seguro",

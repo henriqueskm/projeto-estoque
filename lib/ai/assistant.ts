@@ -27,8 +27,10 @@ import {
   getStandaloneGreeting,
   hasClearInventoryQueryIntent,
   isItemFollowUpMessage,
+  isServoModelInventoryFollowUp,
   isItemToSupplierOrdersFollowUp,
   normalizeAssistantText,
+  routeServoModelInventoryView,
   routeAssistantClarification,
   routeInventoryItemSummaryQuestion,
 } from "@/lib/ai/assistant-routing";
@@ -928,6 +930,59 @@ function answerServoModelInventoryAction(
   };
 }
 
+function answerServoModelInventoryQuantity(
+  block: AssistantServoModelInventoryBreakdownBlock | null,
+  view: "TOTAL" | "MOUNTED" | "LOOSE",
+): AssistantChatSuccess {
+  if (!block) {
+    return {
+      message: "Não encontrei esse modelo de servo no catálogo atual.",
+      contextItemQuery: null,
+      contextItemReferenceKind: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  const quantity =
+    view === "MOUNTED"
+      ? block.mountedQuantity
+      : view === "LOOSE"
+        ? block.looseQuantity
+        : block.totalQuantity;
+  const message =
+    view === "MOUNTED"
+      ? `Você tem ${quantity} ${block.model.official} montado${quantity === 1 ? "" : "s"} com kit.`
+      : view === "LOOSE"
+        ? `Você tem ${quantity} ${block.model.official} sem kit montado.`
+        : `Você tem ${quantity} ${block.model.official} no total.`;
+
+  return {
+    message,
+    followUpText:
+      view === "TOTAL"
+        ? "Posso separar quantos estão com kit e quantos estão sem kit."
+        : view === "MOUNTED"
+          ? "Também posso mostrar em quais configurações eles estão."
+          : null,
+    contextItemQuery: block.model.official,
+    contextItemReferenceKind: "SERVO_MODEL",
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+  };
+}
+
+function answerAmbiguousServoModelBoxes(model: string): AssistantChatSuccess {
+  return {
+    message:
+      "Você quer dizer quantos estão montados com kit ou está falando das embalagens físicas?",
+    contextItemQuery: model,
+    contextItemReferenceKind: "SERVO_MODEL",
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+  };
+}
+
 function resolveItemQuery(message: string, lastItemQuery: string | null) {
   const explicitQuery = extractExplicitItemQuery(message);
 
@@ -981,27 +1036,29 @@ export async function answerAssistantQuestion(
     };
   }
 
-  const normalizedCurrentMessage = normalizeAssistantText(message);
   const contextualModel =
     lastItemQuery &&
     conversationContext.itemReferenceKind === "SERVO_MODEL"
       ? normalizeServoModel(lastItemQuery)
       : null;
 
-  if (
-    contextualModel &&
-    /^(?:e\s+)?(?:dentro\s+de\s+caixas|quais\s+caixas|qual\s+(?:kit|servo)(?:\s+(?:ele\s+usa|dele))?|(?:a\s+)?composicao|do\s+que\s+(?:ele\s+)?e\s+formado)\s*[?!.]*$/.test(
-      normalizedCurrentMessage,
-    )
-  ) {
+  if (contextualModel && isServoModelInventoryFollowUp(message)) {
+    const view = routeServoModelInventoryView(message);
+
+    if (view === "BOX_AMBIGUOUS") {
+      return answerAmbiguousServoModelBoxes(lastItemQuery ?? contextualModel);
+    }
+
     const block = await executeStockQuery(() =>
       consultAssistantServoModelInventory(contextualModel),
     );
 
-    return answerServoModelInventoryAction(block, {
-      action: "show_servo_model_inventory_breakdown",
-      normalizedModel: contextualModel,
-    });
+    return view === "BREAKDOWN"
+      ? answerServoModelInventoryAction(block, {
+          action: "show_servo_model_inventory_breakdown",
+          normalizedModel: contextualModel,
+        })
+      : answerServoModelInventoryQuantity(block, view);
   }
 
   if (
@@ -1031,6 +1088,22 @@ export async function answerAssistantQuestion(
             : null,
         contextItemReferenceKind:
           summaryBlock.status === "FOUND" ? "CATALOG_CODE" : null,
+        contextSupplierOrderId: null,
+        contextSupplierOrderCatalogCode: null,
+      };
+    }
+
+    const incompatibleModelView = routeServoModelInventoryView(message);
+    if (
+      incompatibleModelView === "MOUNTED" ||
+      incompatibleModelView === "LOOSE" ||
+      incompatibleModelView === "BOX_AMBIGUOUS"
+    ) {
+      return {
+        message:
+          "Esse contexto é de um código específico. Você quer consultar o saldo desse código ou o modelo de Servo relacionado a ele?",
+        contextItemQuery: lastItemQuery,
+        contextItemReferenceKind: "CATALOG_CODE",
         contextSupplierOrderId: null,
         contextSupplierOrderCatalogCode: null,
       };
@@ -1320,14 +1393,22 @@ export async function answerAssistantQuestion(
     const explicitInventoryModel = extractServoModelCandidate(message);
 
     if (explicitInventoryModel) {
+      const view = routeServoModelInventoryView(message);
+
+      if (view === "BOX_AMBIGUOUS") {
+        return answerAmbiguousServoModelBoxes(explicitInventoryModel);
+      }
+
       const block = await executeStockQuery(() =>
         consultAssistantServoModelInventory(explicitInventoryModel),
       );
 
-      return answerServoModelInventoryAction(block, {
-        action: "show_servo_model_inventory_breakdown",
-        normalizedModel: explicitInventoryModel,
-      });
+      return view === "BREAKDOWN"
+        ? answerServoModelInventoryAction(block, {
+            action: "show_servo_model_inventory_breakdown",
+            normalizedModel: explicitInventoryModel,
+          })
+        : answerServoModelInventoryQuantity(block, view);
     }
 
     const directInventoryRoute = routeInventoryItemSummaryQuestion(
