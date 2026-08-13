@@ -17,6 +17,7 @@ const docker = existsSync(windowsDocker) ? windowsDocker : "docker";
 const activeUser = "30000000-0000-4000-8000-000000000001";
 const secondActiveUser = "30000000-0000-4000-8000-000000000002";
 const inactiveUser = "30000000-0000-4000-8000-000000000003";
+const deletedProfileUser = "30000000-0000-4000-8000-000000000004";
 const key = (n) => `30000000-0000-4000-8001-${String(n).padStart(12, "0")}`;
 
 function psql(sql, { allowFailure = false } = {}) {
@@ -116,6 +117,39 @@ function concurrent(userId, statement) {
   });
 }
 
+function concurrentSql(statement) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(
+      docker,
+      [
+        "exec",
+        container,
+        "psql",
+        "-U",
+        "postgres",
+        "-d",
+        "postgres",
+        "-X",
+        "-qAt",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-c",
+        statement,
+      ],
+      { windowsHide: true },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("error", rejectPromise);
+    child.on("close", (code) => {
+      if (code === 0) resolvePromise(stdout.trim());
+      else rejectPromise(new Error(`${stdout}\n${stderr}`.trim()));
+    });
+  });
+}
+
 function operationalCounts() {
   return scalar(`
     select concat_ws('|',
@@ -124,7 +158,8 @@ function operationalCounts() {
       (select count(*) from public.configuration_stock_movements),
       (select coalesce(sum(quantity), 0) from public.stock_balances),
       (select coalesce(sum(quantity), 0) from public.configuration_stock_balances),
-      (select count(*) from public.supplier_orders)
+      (select count(*) from public.supplier_orders),
+      (select count(*) from public.supplier_order_stock_entries)
     )
   `);
 }
@@ -155,17 +190,20 @@ psql(`
   delete from public.loose_parts
   where item_id in (select id from public.items where code like 'C3A-%');
   delete from public.items where code like 'C3A-%';
-  delete from public.profiles where id in ('${activeUser}', '${secondActiveUser}', '${inactiveUser}');
-  delete from auth.users where id in ('${activeUser}', '${secondActiveUser}', '${inactiveUser}');
+  delete from public.commercial_configuration_codes where code like 'C3A-%';
+  delete from public.profiles where id in ('${activeUser}', '${secondActiveUser}', '${inactiveUser}', '${deletedProfileUser}');
+  delete from auth.users where id in ('${activeUser}', '${secondActiveUser}', '${inactiveUser}', '${deletedProfileUser}');
 
   insert into auth.users (id, aud, role, created_at, updated_at) values
     ('${activeUser}', 'authenticated', 'authenticated', now(), now()),
     ('${secondActiveUser}', 'authenticated', 'authenticated', now(), now()),
-    ('${inactiveUser}', 'authenticated', 'authenticated', now(), now());
+    ('${inactiveUser}', 'authenticated', 'authenticated', now(), now()),
+    ('${deletedProfileUser}', 'authenticated', 'authenticated', now(), now());
   insert into public.profiles (id, name, is_active) values
     ('${activeUser}', 'Catalog Local', true),
     ('${secondActiveUser}', 'Second Catalog Local', true),
-    ('${inactiveUser}', 'Inactive Local', false);
+    ('${inactiveUser}', 'Inactive Local', false),
+    ('${deletedProfileUser}', 'Deleted Profile Snapshot', true);
 `);
 
 const baselineEffects = operationalCounts();
@@ -205,6 +243,7 @@ const servoCode = scalar("select code from public.items where item_type = 'SERVO
 const kitCode = scalar("select code from public.items where item_type = 'INSTALLATION_KIT' order by code limit 1");
 const repairCode = scalar("select code from public.items where item_type = 'REPAIR_KIT' order by code limit 1");
 const commercialCode = scalar("select code from public.commercial_configuration_codes order by code limit 1");
+const configurationId = scalar("select id from public.commercial_configurations order by id limit 1");
 
 // 10-13: every cross-domain collision is rejected.
 for (const [code, expected] of [
@@ -242,6 +281,53 @@ assert.deepEqual(parsedRace.map((entry) => entry.created).sort(), [false, true])
 assert.equal(number("select count(*) from public.items where code = 'C3A-RACE'"), 1);
 assert.equal(number("select count(*) from public.loose_parts where item_id = (select id from public.items where code = 'C3A-RACE')"), 1);
 
+// Shared namespace: simultaneous inserts serialize and exactly one domain wins.
+const crossDomainRace = await Promise.allSettled([
+  concurrent(activeUser, createCall("C3A-XRACE", "ITEM CONCORRENTE ENTRE DOMINIOS")),
+  concurrentSql(`insert into public.commercial_configuration_codes (configuration_id, code) values ('${configurationId}', 'C3A-XRACE') returning id`),
+]);
+assert.equal(crossDomainRace.filter((entry) => entry.status === "fulfilled").length, 1);
+assert.equal(crossDomainRace.filter((entry) => entry.status === "rejected").length, 1);
+assert.equal(
+  number(`
+    select
+      (select count(*) from public.items where code = 'C3A-XRACE')
+      + (select count(*) from public.commercial_configuration_codes where code = 'C3A-XRACE')
+  `),
+  1,
+);
+psql(`
+  delete from public.loose_parts where item_id in (select id from public.items where code = 'C3A-XRACE');
+  delete from public.items where code = 'C3A-XRACE';
+  delete from public.commercial_configuration_codes where code = 'C3A-XRACE';
+`);
+
+// Commercial-first and item-first inserts reject the second domain deterministically.
+psql(`insert into public.commercial_configuration_codes (configuration_id, code) values ('${configurationId}', 'C3A-COMM-FIRST')`);
+failure = asActive(createCall("C3A-COMM-FIRST", "ITEM DEVE FALHAR"), { allowFailure: true });
+assert.match(failure, /commercial configuration code/i);
+assert.equal(number("select count(*) from public.items where code = 'C3A-COMM-FIRST'"), 0);
+
+const itemFirst = jsonFrom(asActive(createCall("C3A-ITEM-FIRST", "ITEM PRIMEIRO")));
+failure = psql(
+  `insert into public.commercial_configuration_codes (configuration_id, code) values ('${configurationId}', 'C3A-ITEM-FIRST')`,
+  { allowFailure: true },
+);
+assert.match(failure, /physical catalog item/i);
+assert.equal(number("select count(*) from public.commercial_configuration_codes where code = 'C3A-ITEM-FIRST'"), 0);
+
+// UPDATE is protected in both directions, not only INSERT.
+psql(`insert into public.commercial_configuration_codes (configuration_id, code) values ('${configurationId}', 'C3A-COMM-UPDATE')`);
+failure = psql(`update public.items set code = 'C3A-COMM-UPDATE' where id = '${itemFirst.item_id}'`, { allowFailure: true });
+assert.match(failure, /commercial configuration code/i);
+assert.equal(scalar(`select code from public.items where id = '${itemFirst.item_id}'`), "C3A-ITEM-FIRST");
+failure = psql(
+  `update public.commercial_configuration_codes set code = 'C3A-ITEM-FIRST' where code = 'C3A-COMM-UPDATE'`,
+  { allowFailure: true },
+);
+assert.match(failure, /physical catalog item/i);
+assert.equal(number("select count(*) from public.commercial_configuration_codes where code = 'C3A-COMM-UPDATE'"), 1);
+
 // 18: any subtype failure rolls the parent item insert back atomically.
 psql(`
   create function public.c3a_reject_test_subtype()
@@ -265,6 +351,42 @@ psql(`
   drop function public.c3a_reject_test_subtype();
 `);
 
+// Authorship supports exactly the four reviewed lifecycle states.
+assert.ok(
+  number("select count(*) from public.items where code not like 'C3A-%' and created_by is null and created_by_name_snapshot is null") > 0,
+  "legacy catalog rows must remain null/null",
+);
+assert.equal(
+  scalar(`select concat_ws('|', created_by, created_by_name_snapshot) from public.items where id = '${itemId}'`),
+  `${activeUser}|Catalog Local`,
+);
+const deletedProfileItem = jsonFrom(
+  asUser(deletedProfileUser, createCall("C3A-DELETED-PROFILE", "SNAPSHOT PRESERVADO")),
+);
+psql(`delete from public.profiles where id = '${deletedProfileUser}'`);
+assert.equal(
+  scalar(`select concat_ws('|', coalesce(created_by::text, 'NULL'), created_by_name_snapshot) from public.items where id = '${deletedProfileItem.item_id}'`),
+  "NULL|Deleted Profile Snapshot",
+);
+failure = psql(
+  `update public.items set created_by = '${activeUser}', created_by_name_snapshot = null where id = '${itemId}'`,
+  { allowFailure: true },
+);
+assert.match(failure, /items_created_by_name_snapshot_check/i);
+failure = psql(
+  `update public.items set created_by_name_snapshot = '   ' where id = '${itemId}'`,
+  { allowFailure: true },
+);
+assert.match(failure, /items_created_by_name_snapshot_check/i);
+assert.equal(
+  scalar(`select concat_ws('|', created_by, created_by_name_snapshot) from public.items where id = '${itemId}'`),
+  `${activeUser}|Catalog Local`,
+);
+assert.equal(
+  number("select count(*) from pg_indexes where schemaname = 'public' and indexname = 'items_created_by_idx'"),
+  1,
+);
+
 // 19-20: traditional NEW_LOOSE_PART still creates one inbound and one balance delta.
 const beforeInbound = operationalCounts();
 const inboundCall = `select public.stock_inbound_lines(
@@ -287,6 +409,18 @@ assert.equal(replay.movement_batch_id, inboundResult.movement_batch_id);
 assert.equal(number(`select quantity from public.stock_balances where item_id = '${inboundItemId}'`), 2);
 assert.equal(number(`select count(*) from public.stock_movements where item_id = '${inboundItemId}'`), 1);
 
+// Reusing an idempotency key with a different payload rejects and rolls back the attempted catalog item.
+const effectsBeforeConflictingReplay = operationalCounts();
+const conflictingInbound = `select public.stock_inbound_lines(
+  '[{"kind":"NEW_LOOSE_PART","code":"C3A-INBOUND-CONFLICT","description":"NAO DEVE EXISTIR","quantity":3}]'::jsonb,
+  '${key(1)}'::uuid,
+  'Payload conflitante local'
+)`;
+failure = asActive(conflictingInbound, { allowFailure: true });
+assert.match(failure, /idempotency|different payload|already used/i);
+assert.equal(number("select count(*) from public.items where code = 'C3A-INBOUND-CONFLICT'"), 0);
+assert.equal(operationalCounts(), effectsBeforeConflictingReplay);
+
 // 21: another catalog-only create after inbound still has zero operational effect.
 const effectsBeforeFinalCatalogCreate = operationalCounts();
 result = jsonFrom(asActive(createCall("C3A-FINAL", "SOMENTE CATALOGO")));
@@ -305,7 +439,21 @@ assert.equal(
   scalar("select has_function_privilege('authenticated', 'private.resolve_or_create_loose_part(text,text,uuid,text)', 'execute')"),
   "f",
 );
+assert.equal(
+  number(`
+    select count(*)
+    from pg_trigger
+    where not tgisinternal
+      and tgname in (
+        'items_enforce_catalog_code_namespace',
+        'commercial_configuration_codes_enforce_catalog_code_namespace'
+      )
+  `),
+  2,
+);
 
-console.log("CATALOG_ONLY_LOOSE_PART_TESTS_PASSED: 21/21");
+console.log("CATALOG_ONLY_LOOSE_PART_TESTS_PASSED");
+console.log("CATALOG_CODE_NAMESPACE_CONCURRENCY_VERIFIED");
+console.log("CATALOG_AUTHORSHIP_FK_INDEX_VERIFIED");
 console.log("LOOSE_PART_CREATION_DOES_NOT_MOVE_STOCK");
 console.log("EXISTING_INBOUND_LOOSE_PART_FLOW_PRESERVED");

@@ -1,3 +1,18 @@
+do $catalog_code_namespace_preflight$
+begin
+  if exists (
+    select 1
+    from public.items as item
+    join public.commercial_configuration_codes as commercial_code
+      on commercial_code.code = item.code
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'An exact code already exists in both physical-item and commercial-code catalogs.';
+  end if;
+end;
+$catalog_code_namespace_preflight$;
+
 alter table public.items
 add column created_by uuid
   references public.profiles(id)
@@ -16,6 +31,76 @@ comment on column public.items.created_by is
 
 comment on column public.items.created_by_name_snapshot is
   'Immutable display-name snapshot for catalog creation audit. Legacy rows remain null.';
+
+create index items_created_by_idx
+on public.items (created_by);
+
+create or replace function private.enforce_catalog_code_namespace()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if tg_op = 'UPDATE' and new.code is not distinct from old.code then
+    return new;
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(new.code, 0)
+  );
+
+  if tg_table_schema = 'public' and tg_table_name = 'items' then
+    if exists (
+      select 1
+      from public.commercial_configuration_codes as commercial_code
+      where commercial_code.code = new.code
+    ) then
+      raise exception using
+        errcode = '23514',
+        message = format(
+          'Code %s already belongs to a commercial configuration code.',
+          new.code
+        );
+    end if;
+  elsif tg_table_schema = 'public'
+    and tg_table_name = 'commercial_configuration_codes' then
+    if exists (
+      select 1
+      from public.items as item
+      where item.code = new.code
+    ) then
+      raise exception using
+        errcode = '23514',
+        message = format(
+          'Code %s already belongs to a physical catalog item.',
+          new.code
+        );
+    end if;
+  else
+    raise exception using
+      errcode = '55000',
+      message = 'Catalog-code namespace trigger is attached to an unsupported table.';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function private.enforce_catalog_code_namespace()
+from public, anon, authenticated;
+
+create trigger items_enforce_catalog_code_namespace
+before insert or update of code
+on public.items
+for each row
+execute function private.enforce_catalog_code_namespace();
+
+create trigger commercial_configuration_codes_enforce_catalog_code_namespace
+before insert or update of code
+on public.commercial_configuration_codes
+for each row
+execute function private.enforce_catalog_code_namespace();
 
 create or replace function private.resolve_or_create_loose_part(
   p_code text,

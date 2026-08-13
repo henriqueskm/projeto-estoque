@@ -97,3 +97,37 @@ test("item authorship is nullable for legacy rows and populated by new creation"
   assert.match(body, /created_by,[\s\S]*created_by_name_snapshot/i);
   assert.match(body, /p_user_id,[\s\S]*v_user_name/i);
 });
+
+test("migration preflights the shared code namespace and indexes the authorship FK", () => {
+  assert.match(
+    migration,
+    /from public\.items as item[\s\S]*join public\.commercial_configuration_codes as commercial_code[\s\S]*commercial_code\.code\s*=\s*item\.code[\s\S]*exact code already exists in both/i,
+  );
+  assert.match(
+    migration,
+    /create index items_created_by_idx\s+on public\.items \(created_by\)/i,
+  );
+});
+
+test("one shared trigger serializes INSERT and UPDATE across both catalog code domains", () => {
+  const body = functionBody("private.enforce_catalog_code_namespace");
+  assert.match(body, /set search_path = ''/i);
+  assert.match(body, /pg_advisory_xact_lock\([\s\S]*hashtextextended\(new\.code, 0\)[\s\S]*\)/i);
+  assert.match(body, /tg_table_name = 'items'/i);
+  assert.match(body, /public\.commercial_configuration_codes[\s\S]*new\.code/i);
+  assert.match(body, /tg_table_name = 'commercial_configuration_codes'/i);
+  assert.match(body, /public\.items[\s\S]*new\.code/i);
+  assert.doesNotMatch(body, /\binsert\s+into\b|\bupdate\s+public\b|\bdelete\s+from\b/i);
+  assert.match(
+    migration,
+    /create trigger items_enforce_catalog_code_namespace\s+before insert or update of code\s+on public\.items/i,
+  );
+  assert.match(
+    migration,
+    /create trigger commercial_configuration_codes_enforce_catalog_code_namespace\s+before insert or update of code\s+on public\.commercial_configuration_codes/i,
+  );
+  assert.match(
+    migration,
+    /revoke all on function private\.enforce_catalog_code_namespace\(\)\s+from public, anon, authenticated/i,
+  );
+});

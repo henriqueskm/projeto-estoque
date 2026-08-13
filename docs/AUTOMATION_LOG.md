@@ -747,3 +747,28 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Próxima etapa:** NK-ORD-008C3B — modal “Cadastrar peça avulsa” na prévia da
   foto, bloqueado até DB review e rollout separado. Criação real de Pedido
   continua bloqueada.
+
+## 2026-08-12 — MIG-ORD-008C3A / DB review final
+
+- **Estado:** `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`.
+- **Preflight remoto somente leitura:** 3 profiles totais, 2 ativos, zero
+  profile ativo sem nome e zero colisões exatas entre `items.code` e
+  `commercial_configuration_codes.code`; nenhuma mutação remota foi executada.
+- **Autoria:** `items_created_by_idx` cobre a FK; os quatro estados permitidos
+  foram testados e `ON DELETE SET NULL` preservou o snapshot nominal após a
+  exclusão local do profile.
+- **Namespace compartilhado:** preflight rejeita colisão existente; uma única
+  função-trigger privada nos dois catálogos usa o mesmo advisory lock por
+  código para proteger `INSERT` e `UPDATE` nos dois sentidos. A auditoria
+  encontrou apenas writers históricos/de referência para códigos comerciais e
+  nenhum writer mutável da aplicação.
+- **Validação local:** corrida cruzada em duas conexões, ordem commercial-first
+  e item-first, UPDATE nos dois sentidos e replay inbound com payload divergente
+  passaram. Supabase CLI 2.112.0 aplicou a migration exatamente uma vez e
+  retornou dry-run vazio; o cenário incompatível falhou com rollback integral
+  de história e objetos.
+- **Separação física:** cadastro catalog-only permaneceu com zero lote,
+  movimento, entrada de Pedido ou saldo; `NEW_LOOSE_PART` tradicional continuou
+  criando exatamente um inbound e seu replay não duplicou efeito.
+- **Próxima etapa:** rollout remoto controlado separado; depois,
+  NK-ORD-008C3B — modal/bottom sheet “Cadastrar peça avulsa”.

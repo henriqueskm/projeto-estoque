@@ -3,8 +3,8 @@
 - **ID:** MIG-ORD-008C3A
 - **Título:** Cadastro de Peça avulsa sem movimentar Estoque
 - **Prioridade:** alta
-- **Fase:** contrato de banco / implementação somente local
-- **Estado:** `IMPLEMENTED_LOCAL / WAITING_DB_REVIEW`
+- **Fase:** DB review final concluído / rollout remoto separado
+- **Estado:** `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`
 - **Classificação:** **C — migration incremental necessária**
 - **Dependências:** NK-ORD-008B mesclada pelo PR #24; política de revisão da
   foto aprovada
@@ -25,14 +25,21 @@ catálogo da movimentação física:
 - novas peças são sempre `LOOSE_PART`, ativas e com estoque mínimo zero;
 - `items.created_by` e `created_by_name_snapshot` registram autoria real das
   novas criações, mantendo registros legados nulos;
+- `items_created_by_idx` cobre a FK de autoria e `ON DELETE SET NULL` preserva
+  o snapshot nominal após a exclusão de um profile;
+- uma função-trigger privada compartilhada serializa `INSERT` e alteração de
+  código em `items` e `commercial_configuration_codes` pelo mesmo advisory
+  lock, impedindo colisões cruzadas inclusive sob concorrência;
 - o fluxo tradicional `NEW_LOOSE_PART` reutiliza a mesma primitiva e continua
   delegando a `private.stock_inbound_lines` para executar a entrada;
 - o contrato catalog-only não cria saldo, lote, movimento ou Pedido.
 
-As duas reconstruções do baseline local produziram assinaturas idênticas. Os
-testes dinâmicos cobriram os 21 cenários obrigatórios, incluindo colisões,
-profile, concorrência em duas conexões, rollback entre `items` e `loose_parts`,
-replay e regressão do inbound tradicional. O `db lint` local terminou sem erro.
+O DB review confirmou por SELECT remoto zero colisões atuais e dois profiles
+ativos, ambos com nome válido. A migration passou no runner real Supabase CLI
+2.112.0: aplicação única, histórico único, dry-run vazio e rollback integral
+do cenário incompatível. Os testes dinâmicos cobriram corrida cruzada entre os
+dois domínios, UPDATE nos dois sentidos, os quatro estados de autoria, replay
+inbound com payload divergente e ausência total de efeito físico no cadastro.
 
 Próxima etapa: **NK-ORD-008C3B**, modal “Cadastrar peça avulsa” dentro da prévia
 da foto, somente depois da revisão e implantação separada desta migration. A
