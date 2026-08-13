@@ -858,3 +858,23 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   catálogo, replay, corrida de negociação e transport uncertainty cobertos por
   mocks locais. Nenhum Pedido remoto foi criado.
 - **Próxima etapa:** revisão do PR draft e um teste humano controlado separado.
+
+## 2026-08-13 — NK-ORD-008D / teste humano e verificação remota
+
+- **PR:** [#28](https://github.com/henriqueskm/projeto-estoque/pull/28) (draft).
+- **Estado:** `HUMAN_CREATE_TEST_PASSED / REMOTE_VERIFIED`.
+- **Pedido:** negociação `40959`, data `2026-07-22`, status `PENDING`, quatro
+  linhas e cinco unidades.
+- **Linhas:** `6F × 1`, `10A × 1`, `091 × 1` e `091/VF × 2`; zero linha
+  `FR-01` ou descrição de frete/SEDEX.
+- **Catálogo:** snapshots das quatro linhas coincidem com o catálogo oficial;
+  `091` e `091/VF` são Peças avulsas ativas, catalog-only e saldo efetivo zero.
+- **Auditoria:** exatamente um `ORDER_CREATED`, com usuário real, snapshot de
+  nome e idempotency key UUID válida; request/result registram quatro linhas e
+  cinco unidades.
+- **Sem efeitos laterais:** `picked = 0`, `stocked = 0`, `ready = 0`; zero stock
+  entry, linha de entrada, batch ou movimento vinculado; zero authorization ou
+  evento Safisa.
+- **Método:** somente consultas `SELECT` no projeto remoto vinculado; nenhuma
+  RPC mutável, edição, retirada, entrada, migration, repair ou seed.
+- **Próxima etapa:** revisão humana para merge; o PR permanece draft.

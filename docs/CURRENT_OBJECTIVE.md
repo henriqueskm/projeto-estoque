@@ -4,7 +4,7 @@
 - **Título:** Criação segura de Pedido a partir da prévia da foto
 - **Prioridade:** alta
 - **Fase:** aplicação operacional / validação humana controlada
-- **Estado:** `IMPLEMENTED / WAITING_HUMAN_CREATE_TEST`
+- **Estado:** `HUMAN_CREATE_TEST_PASSED / REMOTE_VERIFIED`
 - **Classificação:** **B — ajustes somente de aplicação**
 - **Dependências:** NK-ORD-008C3B `DONE / HUMAN_TEST_APPROVED / MERGED` pelo
   PR #27; MIG-ORD-008A e MIG-ORD-008C3A aplicadas e verificadas
@@ -37,8 +37,20 @@
 - o fluxo não movimenta Estoque, não executa Safisa e não usa Gemini na
   preparação ou confirmação.
 
-Próxima etapa: **teste humano controlado de criação**, sem retry com nova chave
-e somente após revisão visual do PR draft.
+## Verificação humana e remota NK-ORD-008D
+
+- Pedido `40959` criado uma única vez pelo usuário no Preview do PR #28;
+- data `2026-07-22`, estado `PENDING`, quatro linhas e cinco unidades;
+- linhas oficiais: `6F × 1`, `10A × 1`, `091 × 1` e `091/VF × 2`;
+- `FR-01`/frete não foi incluído;
+- exatamente um evento `ORDER_CREATED`, com usuário real, snapshot de nome e
+  idempotency key válida;
+- totais remotos: `picked = 0`, `stocked = 0`, `ready = 0`;
+- zero stock entry, batch ou movimento vinculado ao Pedido;
+- zero authorization, readiness ou evento Safisa.
+
+Próxima etapa: **revisão humana para merge do PR #28**. O PR permanece draft e
+nenhuma nova operação remota está autorizada por este registro.
 
 ## Implementação NK-ORD-008C3B
 
