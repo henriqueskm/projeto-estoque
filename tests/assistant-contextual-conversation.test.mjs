@@ -394,6 +394,88 @@ test("wraps read cards with short copy and at most one suggestion", () => {
   assert.doesNotMatch(answer.followUpText, /Posso ajudar em mais alguma coisa/i);
 });
 
+function supplierOrderCard(waitingPickupQuantity, waitingStockQuantity) {
+  return {
+    waitingPickupQuantity,
+    waitingStockQuantity,
+  };
+}
+
+test("supplier-order copy mentions only the official pending state", () => {
+  const cases = [
+    {
+      pickup: 5,
+      stock: 0,
+      expected: "Ainda há itens para retirar. Posso detalhar quais são.",
+      forbidden: /entrada/i,
+    },
+    {
+      pickup: 0,
+      stock: 3,
+      expected: "Há itens aguardando entrada no estoque. Posso detalhar quais são.",
+      forbidden: /retirar/i,
+    },
+    {
+      pickup: 2,
+      stock: 3,
+      expected: "Ainda há itens para retirar e itens aguardando entrada no estoque.",
+      forbidden: null,
+    },
+    {
+      pickup: 0,
+      stock: 0,
+      expected: null,
+      forbidden: /pendente|aguardando|retirar/i,
+    },
+  ];
+
+  for (const { pickup, stock, expected, forbidden } of cases) {
+    const detail = addAssistantConversationalCopy({
+      message: "Pedido atual.",
+      structuredBlock: {
+        kind: "supplier_order_detail",
+        catalogCode: null,
+        order: supplierOrderCard(pickup, stock),
+      },
+    });
+
+    assert.equal(detail.followUpText, expected);
+    if (forbidden && detail.followUpText) {
+      assert.doesNotMatch(detail.followUpText, forbidden);
+    }
+  }
+});
+
+test("supplier-order lists derive suggestions from official visible line totals", () => {
+  const unfiltered = addAssistantConversationalCopy({
+    message: "Pedidos atuais.",
+    structuredBlock: {
+      kind: "supplier_order_list",
+      catalogCode: null,
+      orders: [supplierOrderCard(2, 0), supplierOrderCard(0, 4)],
+      catalogLines: [],
+    },
+  });
+  assert.equal(
+    unfiltered.followUpText,
+    "Ainda há itens para retirar e itens aguardando entrada no estoque.",
+  );
+
+  const filtered = addAssistantConversationalCopy({
+    message: "Código nos Pedidos.",
+    structuredBlock: {
+      kind: "supplier_order_list",
+      catalogCode: "1H",
+      orders: [supplierOrderCard(9, 9)],
+      catalogLines: [supplierOrderCard(0, 2)],
+    },
+  });
+  assert.equal(
+    filtered.followUpText,
+    "Há itens aguardando entrada no estoque. Posso detalhar quais são.",
+  );
+});
+
 test("session v2 persists conversational copy and structured context", async () => {
   const source = await read("lib/assistant-session.ts");
   assert.match(source, /assistantSessionVersion = 2/);

@@ -279,6 +279,44 @@ function topicForBlock(block: AssistantStructuredBlock | undefined) {
   return null;
 }
 
+function getSupplierOrderPendingSuggestion(
+  block: Extract<
+    AssistantStructuredBlock,
+    { kind: "supplier_order_list" | "supplier_order_detail" }
+  >,
+) {
+  const quantities =
+    block.kind === "supplier_order_list"
+      ? block.catalogCode
+        ? block.catalogLines
+        : block.orders
+      : block.catalogCode
+        ? block.items
+        : [block.order];
+  const totals = quantities.reduce(
+    (current, row) => ({
+      waitingPickupQuantity:
+        current.waitingPickupQuantity + row.waitingPickupQuantity,
+      waitingStockQuantity:
+        current.waitingStockQuantity + row.waitingStockQuantity,
+    }),
+    { waitingPickupQuantity: 0, waitingStockQuantity: 0 },
+  );
+  const hasPickup = totals.waitingPickupQuantity > 0;
+  const hasStockEntry = totals.waitingStockQuantity > 0;
+
+  if (hasPickup && hasStockEntry) {
+    return "Ainda há itens para retirar e itens aguardando entrada no estoque.";
+  }
+  if (hasPickup) {
+    return "Ainda há itens para retirar. Posso detalhar quais são.";
+  }
+  if (hasStockEntry) {
+    return "Há itens aguardando entrada no estoque. Posso detalhar quais são.";
+  }
+  return null;
+}
+
 export function deriveAssistantConversationContext(
   previous: AssistantConversationContext,
   answer: AssistantChatSuccess,
@@ -388,7 +426,7 @@ export function addAssistantConversationalCopy(
     return {
       ...answer,
       leadText: "Encontrei os dados atuais do Pedido.",
-      followUpText: "Posso mostrar a retirada ou a entrada que ainda está pendente.",
+      followUpText: getSupplierOrderPendingSuggestion(block),
     };
   }
 
