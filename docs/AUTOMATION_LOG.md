@@ -878,3 +878,22 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Método:** somente consultas `SELECT` no projeto remoto vinculado; nenhuma
   RPC mutável, edição, retirada, entrada, migration, repair ou seed.
 - **Próxima etapa:** revisão humana para merge; o PR permanece draft.
+
+## 2026-08-13 — NK-ORD-009 / redesign responsivo do detalhe do Pedido
+
+- **Base:** `origin/main` em `a3212135e521b58a3733ac6920972f93b1413d98`,
+  merge do PR #28.
+- **Branch:** `agent/supplier-order-detail-responsive-redesign`.
+- **Estado:** `DETAIL_RESPONSIVE_REDESIGN / WAITING_HUMAN_UI_TEST`.
+- **Desktop/tablet largo:** tabela semântica full-width com identidade do item,
+  cinco métricas e retirada na mesma linha.
+- **Mobile:** blocos compactos sem overflow horizontal, métricas em grades 3+2
+  e controle de retirada com alvo de toque preservado.
+- **Hierarquia:** “Disponível agora” tem prioridade operacional; “Pronto
+  Safisa” continua visível como informação secundária.
+- **Ação:** botão curto “Retirar” com ícone e nome acessível completo; a entrada
+  automática no estoque é explicada uma única vez no cabeçalho dos itens.
+- **Escopo:** somente apresentação e testes estruturais; cálculos, ações, RPCs,
+  migrations, idempotência e concorrência permaneceram inalterados.
+- **Próxima etapa:** validação visual humana read-only nos breakpoints móveis,
+  tablet e desktop.

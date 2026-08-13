@@ -236,7 +236,7 @@ test("keeps the normal empty state only for confirmed zero alerts", () => {
   assert.equal(state.data.alertCount, 0);
 });
 
-test("shows ready pickup quantities per item without inventing a zero badge", () => {
+test("shows ready pickup quantities per item with availability as the operational priority", () => {
   const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
   const readyWaitingPickupByItem = [1, 0, 2];
 
@@ -245,7 +245,8 @@ test("shows ready pickup quantities per item without inventing a zero badge", ()
     3,
   );
   assert.match(orders, /item\.readyWaitingPickupQuantity > 0/);
-  assert.match(orders, /Pronto:/);
+  assert.match(orders, /Pronto Safisa/);
+  assert.match(orders, /Disponível agora/);
   assert.match(orders, /item\.readyWaitingPickupQuantity/);
 });
 
