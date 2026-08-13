@@ -162,9 +162,24 @@ export function isItemFollowUpMessage(message: string) {
     /^(e\s+)?(?:tem|esta)\s+pouco\s+(?:dele|desse|deste)?\b/.test(
       normalizedMessage,
     ) ||
+    /^(e\s+)?(?:qual\s+(?:kit|servo)\s+dele|do\s+que\s+(?:ele\s+)?e\s+formado)\b/.test(
+      normalizedMessage,
+    ) ||
     /^(e\s+)?(mostre|mostrar|ver|abra|abrir)\b.{0,20}\b(foto|imagem)\b/.test(
       normalizedMessage,
     )
+  );
+}
+
+export function hasClearInventoryQueryIntent(message: string) {
+  const normalizedMessage = normalizeAssistantText(message);
+
+  if (/\b(pedido|pedidos|negociacao|fornecedor)\b/.test(normalizedMessage)) {
+    return false;
+  }
+
+  return /\b(quanto|quantos|quanta|quantas|tenho|temos|tem|estoque|saldo|quantidade|disponivel|situacao|baixo|baixa|pouco|minimo|composicao|qual\s+kit|qual\s+servo)\b/.test(
+    normalizedMessage,
   );
 }
 
@@ -448,7 +463,7 @@ export function routeAssistantClarification(
       ? true
       : /\bquanto\s+tem\b/.test(normalizedMessage) ||
         /\bsituacao\b/.test(normalizedMessage) ||
-        /\b(?:quero\s+)?(?:consultar|ver|veja|mostrar|mostre)\b/.test(
+        /\b(?:quero\s+)?(?:consultar|ver|veja|mostrar|mostre|falar|fale|contar|conte|dizer|diga|explicar|explique|informar|informe)\b/.test(
           normalizedMessage,
         ) ||
         normalizeCatalogCode(

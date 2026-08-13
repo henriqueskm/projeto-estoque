@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
 import {
   addAssistantConversationalCopy,
   buildAssistantRecentConversation,
@@ -9,8 +10,42 @@ import {
   parseAssistantConversationContext,
   parseAssistantRecentConversation,
 } from "../lib/assistant-conversation.ts";
+import {
+  extractServoModelCandidate,
+  normalizeServoModel,
+} from "../lib/servo-model-search.ts";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+
+async function importProjectTypescript(path, aliases = {}) {
+  const source = await read(path);
+  let output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  output = output.replace(
+    /import \{\s*assistantQueryMaxLength,?\s*\} from ["']@\/lib\/assistant-types["'];/,
+    "const assistantQueryMaxLength = 120;",
+  );
+
+  for (const [specifier, target] of Object.entries(aliases)) {
+    output = output.replaceAll(
+      JSON.stringify(specifier),
+      JSON.stringify(new URL(`../${target}`, import.meta.url).href),
+    );
+  }
+
+  return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+}
+
+const routingModule = importProjectTypescript("lib/ai/assistant-routing.ts", {
+  "@/lib/servo-model-search": "lib/servo-model-search.ts",
+});
+const supplierOrderRoutingModule = importProjectTypescript(
+  "lib/ai/supplier-order-routing.ts",
+);
 
 test("accepts at most three recent exchanges with a strict textual schema", () => {
   const valid = Array.from({ length: 3 }, (_, index) => [
@@ -83,11 +118,13 @@ test("keeps inventory and supplier order contexts mutually exclusive", () => {
   const inventory = parseAssistantConversationContext({
     topic: "INVENTORY",
     itemQuery: "MBF-025",
+    itemReferenceKind: "SERVO_MODEL",
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
     lastIntent: "inventory_item_summary",
   });
   assert.equal(inventory?.itemQuery, "MBF-025");
+  assert.equal(inventory?.itemReferenceKind, "SERVO_MODEL");
 
   const order = deriveAssistantConversationContext(inventory, {
     message: "Pedido encontrado",
@@ -98,6 +135,7 @@ test("keeps inventory and supplier order contexts mutually exclusive", () => {
   });
   assert.equal(order.topic, "SUPPLIER_ORDER");
   assert.equal(order.itemQuery, null);
+  assert.equal(order.itemReferenceKind, null);
   assert.equal(order.supplierOrderId, "123e4567-e89b-42d3-a456-426614174000");
 
   assert.equal(
@@ -107,6 +145,144 @@ test("keeps inventory and supplier order contexts mutually exclusive", () => {
     }),
     null,
   );
+});
+
+test("strictly validates the item reference discriminator", () => {
+  const base = {
+    topic: "INVENTORY",
+    itemQuery: "2A",
+    itemReferenceKind: "CATALOG_CODE",
+    supplierOrderId: null,
+    supplierOrderCatalogCode: null,
+    lastIntent: "inventory_item_summary",
+  };
+
+  assert.equal(parseAssistantConversationContext(base)?.itemReferenceKind, "CATALOG_CODE");
+  assert.equal(
+    parseAssistantConversationContext({ ...base, itemReferenceKind: "UUID" }),
+    null,
+  );
+  assert.equal(
+    parseAssistantConversationContext({ ...base, itemReferenceKind: null }),
+    null,
+  );
+  assert.equal(
+    parseAssistantConversationContext({ ...base, itemQuery: null }),
+    null,
+  );
+});
+
+test("A-B: explicit MBF quantity queries route directly as servo models", async () => {
+  const routing = await routingModule;
+
+  for (const phrase of [
+    "Quanto tem do MBF-025?",
+    "Quanto tem do MBF025?",
+    "Quanto tem do MBF 025?",
+  ]) {
+    assert.equal(routing.hasClearInventoryQueryIntent(phrase), true, phrase);
+    assert.equal(
+      normalizeServoModel(extractServoModelCandidate(phrase) ?? ""),
+      "MBF025",
+      phrase,
+    );
+  }
+});
+
+test("C-E: explicit code quantities bypass clarification while a bare code remains ambiguous", async () => {
+  const routing = await routingModule;
+
+  for (const [phrase, code] of [
+    ["Quanto tem do 2A?", "2A"],
+    ["Quanto tem do 6F?", "6F"],
+    ["Quanto tem do 091?", "091"],
+  ]) {
+    assert.equal(routing.hasClearInventoryQueryIntent(phrase), true, phrase);
+    assert.deepEqual(routing.routeInventoryItemSummaryQuestion(phrase, null), {
+      queryCode: code,
+      metric: "STOCK",
+    });
+  }
+
+  assert.equal(routing.hasClearInventoryQueryIntent("2A"), false);
+  assert.deepEqual(routing.routeAssistantClarification("2A", false), {
+    kind: "CATALOG_CODE",
+    code: "2A",
+  });
+  assert.deepEqual(routing.routeAssistantClarification("Me fale sobre 2A", false), {
+    kind: "CATALOG_CODE",
+    code: "2A",
+  });
+});
+
+test("F-G: code follow-ups preserve 2A and select current status or composition", async () => {
+  const routing = await routingModule;
+
+  assert.deepEqual(
+    routing.routeInventoryItemSummaryQuestion("tem pouco dele?", "2A"),
+    { queryCode: "2A", metric: "STATUS" },
+  );
+  assert.deepEqual(
+    routing.routeInventoryItemSummaryQuestion("E qual kit ele usa?", "2A"),
+    { queryCode: "2A", metric: "COMPOSITION" },
+  );
+
+  const assistantData = await read("lib/assistant-data.ts");
+  assert.match(assistantData, /installationKitCode:\s*configuration\.installation_kit\.code/);
+  assert.match(assistantData, /minimum_stock > 0\s*\? item\.minimum_stock\s*:\s*null/);
+});
+
+test("H-I: model and catalog-code contexts remain distinct and the latest reference wins", async () => {
+  const routing = await routingModule;
+  const modelContext = parseAssistantConversationContext({
+    topic: "INVENTORY",
+    itemQuery: "MBF-025",
+    itemReferenceKind: "SERVO_MODEL",
+    supplierOrderId: null,
+    supplierOrderCatalogCode: null,
+    lastIntent: "servo_model_inventory_breakdown",
+  });
+  assert.ok(modelContext);
+  assert.equal(routing.isItemFollowUpMessage("Quais caixas?"), true);
+
+  const codeContext = deriveAssistantConversationContext(modelContext, {
+    message: "Saldo consultado.",
+    contextItemQuery: "2A",
+    contextItemReferenceKind: "CATALOG_CODE",
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+    structuredBlock: { kind: "inventory_item_summary" },
+  });
+  assert.equal(codeContext.itemQuery, "2A");
+  assert.equal(codeContext.itemReferenceKind, "CATALOG_CODE");
+  assert.deepEqual(
+    routing.routeInventoryItemSummaryQuestion("E qual kit ele usa?", codeContext.itemQuery),
+    { queryCode: "2A", metric: "COMPOSITION" },
+  );
+});
+
+test("J-K: explicit supplier-order phrases are never claimed by direct inventory routing", async () => {
+  const routing = await routingModule;
+  const supplierRouting = await supplierOrderRoutingModule;
+
+  for (const phrase of [
+    "Tenho 2A nos Pedidos?",
+    "Tenho MBF-025 nos Pedidos?",
+    "Mostre os Pedidos com 6F",
+  ]) {
+    assert.equal(routing.hasClearInventoryQueryIntent(phrase), false, phrase);
+    assert.equal(supplierRouting.routeSupplierOrderQuestion(phrase, null).kind, "ORDER_QUERY", phrase);
+  }
+});
+
+test("direct inventory routing runs before generic catalog clarification", async () => {
+  const source = await read("lib/ai/assistant.ts");
+  assert.ok(
+    source.indexOf("if (hasClearInventoryQueryIntent(message))") <
+      source.indexOf("const clarificationRoute = routeAssistantClarification"),
+  );
+  assert.match(source, /itemReferenceKind === "SERVO_MODEL"/);
+  assert.match(source, /itemReferenceKind === "CATALOG_CODE"/);
 });
 
 test("wraps read cards with short copy and at most one suggestion", () => {
@@ -165,6 +341,7 @@ test("empty context is deterministic", () => {
   assert.deepEqual(emptyAssistantConversationContext(), {
     topic: "GENERAL",
     itemQuery: null,
+    itemReferenceKind: null,
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
     lastIntent: null,

@@ -29,6 +29,7 @@ export type AssistantConversationTopic =
 export type AssistantConversationContext = {
   topic: AssistantConversationTopic;
   itemQuery: string | null;
+  itemReferenceKind: "SERVO_MODEL" | "CATALOG_CODE" | null;
   supplierOrderId: string | null;
   supplierOrderCatalogCode: string | null;
   lastIntent: string | null;
@@ -451,6 +452,7 @@ export type AssistantChatSuccess = {
   followUpText?: string | null;
   conversationContext?: AssistantConversationContext;
   contextItemQuery?: string | null;
+  contextItemReferenceKind?: "SERVO_MODEL" | "CATALOG_CODE" | null;
   contextSupplierOrderId?: string | null;
   contextSupplierOrderCatalogCode?: string | null;
   structuredBlock?: AssistantStructuredBlock;

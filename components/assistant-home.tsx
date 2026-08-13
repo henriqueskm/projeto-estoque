@@ -553,6 +553,7 @@ export function AssistantHome({
             ...conversationContext,
             topic: "SUPPLIER_ORDER" as const,
             itemQuery: null,
+            itemReferenceKind: null,
             supplierOrderId: context.supplierOrderId,
           }
         : conversationContext;
@@ -863,6 +864,7 @@ export function AssistantHome({
         ...current,
         topic: result.contextSupplierOrderId ? "SUPPLIER_ORDER" : "GENERAL",
         itemQuery: null,
+        itemReferenceKind: null,
         supplierOrderId: result.contextSupplierOrderId,
         supplierOrderCatalogCode:
           result.contextSupplierOrderCatalogCode,
@@ -976,6 +978,7 @@ export function AssistantHome({
           ...current,
           topic: typeof contextId === "string" ? "SUPPLIER_ORDER" : "GENERAL",
           itemQuery: null,
+          itemReferenceKind: null,
           supplierOrderId: typeof contextId === "string" ? contextId : null,
           supplierOrderCatalogCode: null,
           lastIntent: "supplier_order_stock_entry_result",

@@ -126,6 +126,7 @@ export function emptyAssistantConversationContext(): AssistantConversationContex
   return {
     topic: "GENERAL",
     itemQuery: null,
+    itemReferenceKind: null,
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
     lastIntent: null,
@@ -140,6 +141,7 @@ export function parseAssistantConversationContext(
     !hasOnlyKeys(value, [
       "topic",
       "itemQuery",
+      "itemReferenceKind",
       "supplierOrderId",
       "supplierOrderCatalogCode",
       "lastIntent",
@@ -151,6 +153,12 @@ export function parseAssistantConversationContext(
   }
 
   const itemQuery = parseNullableText(value.itemQuery, 120);
+  const itemReferenceKind =
+    value.itemReferenceKind === null ||
+    value.itemReferenceKind === "SERVO_MODEL" ||
+    value.itemReferenceKind === "CATALOG_CODE"
+      ? value.itemReferenceKind
+      : undefined;
   const supplierOrderId = parseNullableText(value.supplierOrderId, 36);
   const supplierOrderCatalogCode = parseNullableText(
     value.supplierOrderCatalogCode,
@@ -160,6 +168,7 @@ export function parseAssistantConversationContext(
 
   if (
     itemQuery === undefined ||
+    itemReferenceKind === undefined ||
     supplierOrderId === undefined ||
     supplierOrderCatalogCode === undefined ||
     lastIntent === undefined ||
@@ -186,11 +195,18 @@ export function parseAssistantConversationContext(
         supplierOrderId !== null ||
         supplierOrderCatalogCode !== null));
 
-  if (hasInventoryAndOrderContext || topicMismatch) return null;
+  const itemReferenceMismatch =
+    (itemQuery === null) !== (itemReferenceKind === null) ||
+    (value.topic !== "INVENTORY" && itemReferenceKind !== null);
+
+  if (hasInventoryAndOrderContext || topicMismatch || itemReferenceMismatch) {
+    return null;
+  }
 
   return {
     topic: value.topic as AssistantConversationTopic,
     itemQuery,
+    itemReferenceKind,
     supplierOrderId,
     supplierOrderCatalogCode:
       supplierOrderCatalogCode?.toLocaleUpperCase("pt-BR") ?? null,
@@ -239,6 +255,10 @@ export function deriveAssistantConversationContext(
   answer: AssistantChatSuccess,
 ): AssistantConversationContext {
   const hasItem = Object.prototype.hasOwnProperty.call(answer, "contextItemQuery");
+  const hasItemReferenceKind = Object.prototype.hasOwnProperty.call(
+    answer,
+    "contextItemReferenceKind",
+  );
   const hasOrder = Object.prototype.hasOwnProperty.call(answer, "contextSupplierOrderId");
   const hasOrderCode = Object.prototype.hasOwnProperty.call(
     answer,
@@ -246,6 +266,11 @@ export function deriveAssistantConversationContext(
   );
   const blockTopic = topicForBlock(answer.structuredBlock);
   const itemQuery = hasItem ? (answer.contextItemQuery ?? null) : previous.itemQuery;
+  const itemReferenceKind = hasItemReferenceKind
+    ? (answer.contextItemReferenceKind ?? null)
+    : hasItem
+      ? null
+      : previous.itemReferenceKind;
   const supplierOrderId = hasOrder
     ? (answer.contextSupplierOrderId ?? null)
     : previous.supplierOrderId;
@@ -261,6 +286,8 @@ export function deriveAssistantConversationContext(
   return {
     topic,
     itemQuery: topic === "INVENTORY" ? itemQuery : null,
+    itemReferenceKind:
+      topic === "INVENTORY" ? itemReferenceKind : null,
     supplierOrderId: topic === "SUPPLIER_ORDER" ? supplierOrderId : null,
     supplierOrderCatalogCode:
       topic === "SUPPLIER_ORDER" ? supplierOrderCatalogCode : null,

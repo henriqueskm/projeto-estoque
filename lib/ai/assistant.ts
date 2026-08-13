@@ -25,6 +25,7 @@ import {
   extractExplicitItemQuery,
   getExplicitGreeting,
   getStandaloneGreeting,
+  hasClearInventoryQueryIntent,
   isItemFollowUpMessage,
   isItemToSupplierOrdersFollowUp,
   normalizeAssistantText,
@@ -890,6 +891,7 @@ function answerServoModelInventoryAction(
       message: block.fallbackText,
       structuredBlock: block,
       contextItemQuery: block.model.official,
+      contextItemReferenceKind: "SERVO_MODEL",
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
@@ -920,6 +922,7 @@ function answerServoModelInventoryAction(
     message: summary.fallbackText,
     structuredBlock: summary,
     contextItemQuery: target.displayCode,
+    contextItemReferenceKind: "CATALOG_CODE",
     contextSupplierOrderId: null,
     contextSupplierOrderCatalogCode: null,
   };
@@ -979,13 +982,15 @@ export async function answerAssistantQuestion(
   }
 
   const normalizedCurrentMessage = normalizeAssistantText(message);
-  const contextualModel = lastItemQuery
-    ? normalizeServoModel(lastItemQuery)
-    : null;
+  const contextualModel =
+    lastItemQuery &&
+    conversationContext.itemReferenceKind === "SERVO_MODEL"
+      ? normalizeServoModel(lastItemQuery)
+      : null;
 
   if (
     contextualModel &&
-    /^(?:e\s+)?(?:dentro\s+de\s+caixas|quais\s+caixas|qual\s+kit\s+(?:ele\s+)?usa)\s*[?!.]*$/.test(
+    /^(?:e\s+)?(?:dentro\s+de\s+caixas|quais\s+caixas|qual\s+(?:kit|servo)(?:\s+(?:ele\s+usa|dele))?|(?:a\s+)?composicao|do\s+que\s+(?:ele\s+)?e\s+formado)\s*[?!.]*$/.test(
       normalizedCurrentMessage,
     )
   ) {
@@ -997,6 +1002,39 @@ export async function answerAssistantQuestion(
       action: "show_servo_model_inventory_breakdown",
       normalizedModel: contextualModel,
     });
+  }
+
+  if (
+    lastItemQuery &&
+    conversationContext.itemReferenceKind === "CATALOG_CODE" &&
+    isItemFollowUpMessage(message)
+  ) {
+    const contextualItemRoute = routeInventoryItemSummaryQuestion(
+      message,
+      lastItemQuery,
+    );
+
+    if (contextualItemRoute) {
+      const summaryBlock = await executeStockQuery(() =>
+        consultAssistantInventoryItemSummary(
+          contextualItemRoute.queryCode,
+          contextualItemRoute.metric,
+        ),
+      );
+
+      return {
+        message: summaryBlock.fallbackText,
+        structuredBlock: summaryBlock,
+        contextItemQuery:
+          summaryBlock.status === "FOUND"
+            ? (summaryBlock.results[0]?.displayCode ?? null)
+            : null,
+        contextItemReferenceKind:
+          summaryBlock.status === "FOUND" ? "CATALOG_CODE" : null,
+        contextSupplierOrderId: null,
+        contextSupplierOrderCatalogCode: null,
+      };
+    }
   }
 
   if (inventoryAction) {
@@ -1262,6 +1300,8 @@ export async function answerAssistantQuestion(
         block.queryStatus === "FOUND"
           ? (block.items[0]?.primaryCode ?? null)
           : null,
+      contextItemReferenceKind:
+        block.queryStatus === "FOUND" ? "CATALOG_CODE" : null,
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
@@ -1275,6 +1315,47 @@ export async function answerAssistantQuestion(
         firstName,
       ),
     };
+  }
+  if (hasClearInventoryQueryIntent(message)) {
+    const explicitInventoryModel = extractServoModelCandidate(message);
+
+    if (explicitInventoryModel) {
+      const block = await executeStockQuery(() =>
+        consultAssistantServoModelInventory(explicitInventoryModel),
+      );
+
+      return answerServoModelInventoryAction(block, {
+        action: "show_servo_model_inventory_breakdown",
+        normalizedModel: explicitInventoryModel,
+      });
+    }
+
+    const directInventoryRoute = routeInventoryItemSummaryQuestion(
+      message,
+      null,
+    );
+
+    if (directInventoryRoute) {
+      const summaryBlock = await executeStockQuery(() =>
+        consultAssistantInventoryItemSummary(
+          directInventoryRoute.queryCode,
+          directInventoryRoute.metric,
+        ),
+      );
+
+      return {
+        message: summaryBlock.fallbackText,
+        structuredBlock: summaryBlock,
+        contextItemQuery:
+          summaryBlock.status === "FOUND"
+            ? (summaryBlock.results[0]?.displayCode ?? null)
+            : null,
+        contextItemReferenceKind:
+          summaryBlock.status === "FOUND" ? "CATALOG_CODE" : null,
+        contextSupplierOrderId: null,
+        contextSupplierOrderCatalogCode: null,
+      };
+    }
   }
 
   const clarificationRoute = routeAssistantClarification(
@@ -1364,26 +1445,6 @@ export async function answerAssistantQuestion(
     };
   }
 
-  const explicitInventoryModel = extractServoModelCandidate(message);
-  if (
-    explicitInventoryModel &&
-    /\b(quanto|quantos|quanta|quantas|tenho|temos|tem|estoque|saldo|disponivel)\b/.test(
-      normalizeAssistantText(message),
-    ) &&
-    !/\b(com\s+kit|sem\s+kit|pedido|pedidos)\b/.test(
-      normalizeAssistantText(message),
-    )
-  ) {
-    const block = await executeStockQuery(() =>
-      consultAssistantServoModelInventory(explicitInventoryModel),
-    );
-
-    return answerServoModelInventoryAction(block, {
-      action: "show_servo_model_inventory_breakdown",
-      normalizedModel: explicitInventoryModel,
-    });
-  }
-
   const inventoryItemRoute = routeInventoryItemSummaryQuestion(
     message,
     lastItemQuery,
@@ -1404,6 +1465,8 @@ export async function answerAssistantQuestion(
         summaryBlock.status === "FOUND"
           ? (summaryBlock.results[0]?.displayCode ?? null)
           : null,
+      contextItemReferenceKind:
+        summaryBlock.status === "FOUND" ? "CATALOG_CODE" : null,
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
@@ -1468,6 +1531,8 @@ export async function answerAssistantQuestion(
         mediaBlock.status === "FOUND"
           ? (mediaBlock.results[0]?.displayCode ?? null)
           : null,
+      contextItemReferenceKind:
+        mediaBlock.status === "FOUND" ? "CATALOG_CODE" : null,
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
@@ -1591,6 +1656,7 @@ export async function answerAssistantQuestion(
         ),
         structuredBlock: summary,
         contextItemQuery: target.displayCode,
+        contextItemReferenceKind: "CATALOG_CODE",
         contextSupplierOrderId: null,
         contextSupplierOrderCatalogCode: null,
       };
@@ -1603,6 +1669,7 @@ export async function answerAssistantQuestion(
     return {
       message: ensureExplicitGreeting(directAnswer, message, firstName),
       contextItemQuery,
+      contextItemReferenceKind: "CATALOG_CODE",
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
@@ -1617,6 +1684,7 @@ export async function answerAssistantQuestion(
       recentConversation,
     }),
     contextItemQuery,
+    contextItemReferenceKind: "CATALOG_CODE",
     contextSupplierOrderId: null,
     contextSupplierOrderCatalogCode: null,
   };
