@@ -25,7 +25,9 @@
     "test:supplier-order-negotiation-identity:local": "node tests/supplier-order-negotiation-identity.local.mjs",
     "test:supplier-order-negotiation-identity:cli-local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/supplier-order-negotiation-identity.cli.local.ps1",
     "test:atomic-pickup-stock-entry": "node --test tests/atomic-pickup-stock-entry.test.mjs",
-    "test:atomic-pickup-stock-entry:local": "node tests/atomic-pickup-stock-entry.local.mjs"
+    "test:atomic-pickup-stock-entry:local": "node tests/atomic-pickup-stock-entry.local.mjs",
+    "test:catalog-only-loose-part-creation": "node --test tests/catalog-only-loose-part-creation.test.mjs",
+    "test:catalog-only-loose-part-creation:local": "node tests/catalog-only-loose-part-creation.local.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",

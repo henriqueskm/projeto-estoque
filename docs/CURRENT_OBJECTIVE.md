@@ -1,16 +1,42 @@
 # Objetivo atual
 
-- **ID:** NK-ORD-008B
-- **Título:** Foto → Gemini → validação → preview
+- **ID:** MIG-ORD-008C3A
+- **Título:** Cadastro de Peça avulsa sem movimentar Estoque
 - **Prioridade:** alta
-- **Fase:** aplicação sem criação real de Pedido
-- **Estado:** `IMPLEMENTED / WAITING_HUMAN_PHOTO_REVIEW`
-- **Classificação:** **B — ajustes de aplicação sobre contratos aprovados**
-- **Dependências:** NK-ORD-008 `ARCHITECTURE_APPROVED`; MIG-ORD-008A
-  `DONE / APPLIED_REMOTE / VERIFIED`
-- **Base:** `56cf09f9a0e7bcb7503ef58512112969aa19af7b`
-- **Branch:** `agent/assistant-photo-order-preview`
-- **PR:** [#24](https://github.com/henriqueskm/projeto-estoque/pull/24) (draft)
+- **Fase:** contrato de banco / implementação somente local
+- **Estado:** `IMPLEMENTED_LOCAL / WAITING_DB_REVIEW`
+- **Classificação:** **C — migration incremental necessária**
+- **Dependências:** NK-ORD-008B mesclada pelo PR #24; política de revisão da
+  foto aprovada
+- **Base:** `03a4e7840c92a96ca2b0872ddf3ccf291134aa26`
+- **Branch:** `agent/catalog-only-loose-part-creation`
+- **PR:** draft a abrir
+
+## Implementação local MIG-ORD-008C3A
+
+A migration incremental
+`20260812223114_add_catalog_only_loose_part_creation.sql` separa o cadastro de
+catálogo da movimentação física:
+
+- `private.resolve_or_create_loose_part` concentra validação, lock por código,
+  colisões entre domínios, criação de `items`/`loose_parts` e replay natural;
+- `public.create_loose_part(text, text)` aceita somente código e descrição,
+  deriva `auth.uid()` no servidor e exige profile interno ativo com nome;
+- novas peças são sempre `LOOSE_PART`, ativas e com estoque mínimo zero;
+- `items.created_by` e `created_by_name_snapshot` registram autoria real das
+  novas criações, mantendo registros legados nulos;
+- o fluxo tradicional `NEW_LOOSE_PART` reutiliza a mesma primitiva e continua
+  delegando a `private.stock_inbound_lines` para executar a entrada;
+- o contrato catalog-only não cria saldo, lote, movimento ou Pedido.
+
+As duas reconstruções do baseline local produziram assinaturas idênticas. Os
+testes dinâmicos cobriram os 21 cenários obrigatórios, incluindo colisões,
+profile, concorrência em duas conexões, rollback entre `items` e `loose_parts`,
+replay e regressão do inbound tradicional. O `db lint` local terminou sem erro.
+
+Próxima etapa: **NK-ORD-008C3B**, modal “Cadastrar peça avulsa” dentro da prévia
+da foto, somente depois da revisão e implantação separada desta migration. A
+criação real de Pedido permanece bloqueada.
 
 ## Implementação NK-ORD-008B
 

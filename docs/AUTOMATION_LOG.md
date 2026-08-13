@@ -712,3 +712,37 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Estado:** `IMPLEMENTED / WAITING_HUMAN_PHOTO_REVIEW`.
 - **Próxima etapa:** NK-ORD-008C, validação visual com fotos reais controladas.
   NK-ORD-008D só poderá habilitar confirmação/criação após nova autorização.
+
+## 2026-08-12 — MIG-ORD-008C3A / contrato catalog-only de Peça avulsa
+
+- **Base:** `origin/main` em
+  `03a4e7840c92a96ca2b0872ddf3ccf291134aa26`, merge do PR #24; commit
+  `b6cfcad6feed1b718150e4ac44345639bea42089` alcançável.
+- **Branch:** `agent/catalog-only-loose-part-creation`.
+- **Estado:** `IMPLEMENTED_LOCAL / WAITING_DB_REVIEW`.
+- **Migration:**
+  `20260812223114_add_catalog_only_loose_part_creation.sql`, incremental e sem
+  alteração de migrations históricas.
+- **Contrato:** `public.create_loose_part(text, text)` exige autenticação e
+  profile interno ativo com nome; `private.resolve_or_create_loose_part`
+  centraliza trim, limites, lock, colisões, subtipo, estado ativo e descrição.
+- **Autoria:** `items.created_by` e `created_by_name_snapshot` são nulos para o
+  legado e obrigatoriamente preenchidos pelas novas criações catalog-only e
+  `NEW_LOOSE_PART`.
+- **Separação física:** cadastro catalog-only cria somente `items` e
+  `loose_parts`; não cria `stock_balances`, lotes, movimentos ou Pedidos. Saldo
+  é lido como zero pelos loaders oficiais, que tratam a ausência de balance
+  como quantidade zero.
+- **Compatibilidade:** `private.stock_inbound_lines_with_loose_parts` passou a
+  reutilizar a primitiva e continua chamando o worker oficial de inbound uma
+  única vez, com replay idempotente e saldo correto.
+- **Validação local:** duas reconstruções independentes tiveram assinaturas de
+  schema e catálogo idênticas; 7 testes estáticos e 21 cenários dinâmicos
+  passaram, incluindo duas conexões concorrentes e rollback forçado do subtipo.
+  Regressões de Entrada, Saída, montagem, desmontagem, foto e Pedidos passaram;
+  `db lint` local retornou zero erro.
+- **Remoto:** nenhuma migration aplicada, item/Pedido criado, saldo alterado ou
+  RPC mutável chamada.
+- **Próxima etapa:** NK-ORD-008C3B — modal “Cadastrar peça avulsa” na prévia da
+  foto, bloqueado até DB review e rollout separado. Criação real de Pedido
+  continua bloqueada.
