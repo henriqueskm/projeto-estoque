@@ -1,0 +1,758 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import ts from "typescript";
+import {
+  addAssistantConversationalCopy,
+  buildAssistantRecentConversation,
+  deriveAssistantConversationContext,
+  emptyAssistantConversationContext,
+  parseAssistantConversationContext,
+  parseAssistantRecentConversation,
+} from "../lib/assistant-conversation.ts";
+import {
+  extractServoModelCandidate,
+  normalizeServoModel,
+} from "../lib/servo-model-search.ts";
+import {
+  getOperationalConfirmationGuard,
+  hasOperationalConfirmationText,
+} from "../lib/ai/assistant-confirmation-guard.ts";
+
+const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+
+async function importProjectTypescript(path, aliases = {}) {
+  const source = await read(path);
+  let output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  output = output.replace(
+    /import \{\s*assistantQueryMaxLength,?\s*\} from ["']@\/lib\/assistant-types["'];/,
+    "const assistantQueryMaxLength = 120;",
+  );
+
+  for (const [specifier, target] of Object.entries(aliases)) {
+    output = output.replaceAll(
+      JSON.stringify(specifier),
+      JSON.stringify(new URL(`../${target}`, import.meta.url).href),
+    );
+  }
+
+  return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+}
+
+const routingModule = importProjectTypescript("lib/ai/assistant-routing.ts", {
+  "@/lib/servo-model-search": "lib/servo-model-search.ts",
+});
+const supplierOrderRoutingModule = importProjectTypescript(
+  "lib/ai/supplier-order-routing.ts",
+);
+
+test("accepts at most three recent exchanges with a strict textual schema", () => {
+  const valid = Array.from({ length: 3 }, (_, index) => [
+    { role: "user", content: `Pergunta ${index + 1}` },
+    { role: "assistant", content: `Resposta ${index + 1}` },
+  ]).flat();
+
+  assert.deepEqual(parseAssistantRecentConversation(valid), valid);
+  assert.equal(
+    parseAssistantRecentConversation([
+      ...valid,
+      { role: "user", content: "Quarta pergunta" },
+    ]),
+    null,
+  );
+  assert.equal(
+    parseAssistantRecentConversation([
+      { role: "user", content: "A" },
+      { role: "user", content: "B" },
+    ]),
+    null,
+  );
+  assert.equal(
+    parseAssistantRecentConversation([
+      { role: "user", content: "A", structuredBlock: {} },
+    ]),
+    null,
+  );
+});
+
+test("enforces the 6000 character budget and rejects tokens or UUIDs", () => {
+  const oversized = Array.from({ length: 6 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: "x".repeat(1001),
+  }));
+
+  assert.equal(parseAssistantRecentConversation(oversized), null);
+  assert.equal(
+    parseAssistantRecentConversation([
+      {
+        role: "user",
+        content: "Use 123e4567-e89b-42d3-a456-426614174000 como autoridade",
+      },
+    ]),
+    null,
+  );
+  assert.equal(
+    parseAssistantRecentConversation([
+      { role: "assistant", content: `eyJ${"a".repeat(90)}` },
+    ]),
+    null,
+  );
+});
+
+test("builds memory from safe fallback text only", () => {
+  const recent = buildAssistantRecentConversation([
+    { role: "user", content: "Quanto tem do 2A?", structuredBlock: { secret: true } },
+    { role: "assistant", content: "Saldo consultado.", proposalToken: "secret" },
+  ]);
+
+  assert.deepEqual(recent, [
+    { role: "user", content: "Quanto tem do 2A?" },
+    { role: "assistant", content: "Saldo consultado." },
+  ]);
+  assert.equal(JSON.stringify(recent).includes("structuredBlock"), false);
+  assert.equal(JSON.stringify(recent).includes("proposalToken"), false);
+});
+
+test("keeps inventory and supplier order contexts mutually exclusive", () => {
+  const inventory = parseAssistantConversationContext({
+    topic: "INVENTORY",
+    itemQuery: "MBF-025",
+    itemReferenceKind: "SERVO_MODEL",
+    supplierOrderId: null,
+    supplierOrderCatalogCode: null,
+    lastIntent: "inventory_item_summary",
+  });
+  assert.equal(inventory?.itemQuery, "MBF-025");
+  assert.equal(inventory?.itemReferenceKind, "SERVO_MODEL");
+
+  const order = deriveAssistantConversationContext(inventory, {
+    message: "Pedido encontrado",
+    contextItemQuery: null,
+    contextSupplierOrderId: "123e4567-e89b-42d3-a456-426614174000",
+    contextSupplierOrderCatalogCode: null,
+    structuredBlock: { kind: "supplier_order_detail" },
+  });
+  assert.equal(order.topic, "SUPPLIER_ORDER");
+  assert.equal(order.itemQuery, null);
+  assert.equal(order.itemReferenceKind, null);
+  assert.equal(order.supplierOrderId, "123e4567-e89b-42d3-a456-426614174000");
+
+  assert.equal(
+    parseAssistantConversationContext({
+      ...inventory,
+      supplierOrderId: "123e4567-e89b-42d3-a456-426614174000",
+    }),
+    null,
+  );
+});
+
+test("strictly validates the item reference discriminator", () => {
+  const base = {
+    topic: "INVENTORY",
+    itemQuery: "2A",
+    itemReferenceKind: "CATALOG_CODE",
+    supplierOrderId: null,
+    supplierOrderCatalogCode: null,
+    lastIntent: "inventory_item_summary",
+  };
+
+  assert.equal(parseAssistantConversationContext(base)?.itemReferenceKind, "CATALOG_CODE");
+  assert.equal(
+    parseAssistantConversationContext({ ...base, itemReferenceKind: "UUID" }),
+    null,
+  );
+  assert.equal(
+    parseAssistantConversationContext({ ...base, itemReferenceKind: null }),
+    null,
+  );
+  assert.equal(
+    parseAssistantConversationContext({ ...base, itemQuery: null }),
+    null,
+  );
+});
+
+test("A-B: explicit MBF quantity queries route directly as servo models", async () => {
+  const routing = await routingModule;
+
+  for (const phrase of [
+    "Quanto tem do MBF-025?",
+    "Quanto tem do MBF025?",
+    "Quanto tem do MBF 025?",
+  ]) {
+    assert.equal(routing.hasClearInventoryQueryIntent(phrase), true, phrase);
+    assert.equal(
+      normalizeServoModel(extractServoModelCandidate(phrase) ?? ""),
+      "MBF025",
+      phrase,
+    );
+  }
+});
+
+test("C-E: explicit code quantities bypass clarification while a bare code remains ambiguous", async () => {
+  const routing = await routingModule;
+
+  for (const [phrase, code] of [
+    ["Quanto tem do 2A?", "2A"],
+    ["Quanto tem do 6F?", "6F"],
+    ["Quanto tem do 091?", "091"],
+  ]) {
+    assert.equal(routing.hasClearInventoryQueryIntent(phrase), true, phrase);
+    assert.deepEqual(routing.routeInventoryItemSummaryQuestion(phrase, null), {
+      queryCode: code,
+      metric: "STOCK",
+    });
+  }
+
+  assert.equal(routing.hasClearInventoryQueryIntent("2A"), false);
+  assert.deepEqual(routing.routeAssistantClarification("2A", false), {
+    kind: "CATALOG_CODE",
+    code: "2A",
+  });
+  assert.deepEqual(routing.routeAssistantClarification("Me fale sobre 2A", false), {
+    kind: "CATALOG_CODE",
+    code: "2A",
+  });
+});
+
+test("F-G: code follow-ups preserve 2A and select current status or composition", async () => {
+  const routing = await routingModule;
+
+  assert.deepEqual(
+    routing.routeInventoryItemSummaryQuestion("tem pouco dele?", "2A"),
+    { queryCode: "2A", metric: "STATUS" },
+  );
+  assert.deepEqual(
+    routing.routeInventoryItemSummaryQuestion("E qual kit ele usa?", "2A"),
+    { queryCode: "2A", metric: "COMPOSITION" },
+  );
+
+  const assistantData = await read("lib/assistant-data.ts");
+  assert.match(assistantData, /installationKitCode:\s*configuration\.installation_kit\.code/);
+  assert.match(assistantData, /minimum_stock > 0\s*\? item\.minimum_stock\s*:\s*null/);
+});
+
+test("H-I: model and catalog-code contexts remain distinct and the latest reference wins", async () => {
+  const routing = await routingModule;
+  const modelContext = parseAssistantConversationContext({
+    topic: "INVENTORY",
+    itemQuery: "MBF-025",
+    itemReferenceKind: "SERVO_MODEL",
+    supplierOrderId: null,
+    supplierOrderCatalogCode: null,
+    lastIntent: "servo_model_inventory_breakdown",
+  });
+  assert.ok(modelContext);
+  assert.equal(routing.isItemFollowUpMessage("Quais caixas?"), true);
+
+  const codeContext = deriveAssistantConversationContext(modelContext, {
+    message: "Saldo consultado.",
+    contextItemQuery: "2A",
+    contextItemReferenceKind: "CATALOG_CODE",
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+    structuredBlock: { kind: "inventory_item_summary" },
+  });
+  assert.equal(codeContext.itemQuery, "2A");
+  assert.equal(codeContext.itemReferenceKind, "CATALOG_CODE");
+  assert.deepEqual(
+    routing.routeInventoryItemSummaryQuestion("E qual kit ele usa?", codeContext.itemQuery),
+    { queryCode: "2A", metric: "COMPOSITION" },
+  );
+});
+
+test("J-K: explicit supplier-order phrases are never claimed by direct inventory routing", async () => {
+  const routing = await routingModule;
+  const supplierRouting = await supplierOrderRoutingModule;
+
+  for (const phrase of [
+    "Tenho 2A nos Pedidos?",
+    "Tenho MBF-025 nos Pedidos?",
+    "Mostre os Pedidos com 6F",
+  ]) {
+    assert.equal(routing.hasClearInventoryQueryIntent(phrase), false, phrase);
+    assert.equal(supplierRouting.routeSupplierOrderQuestion(phrase, null).kind, "ORDER_QUERY", phrase);
+  }
+});
+
+test("direct inventory routing runs before generic catalog clarification", async () => {
+  const source = await read("lib/ai/assistant.ts");
+  assert.ok(
+    source.indexOf("if (hasClearInventoryQueryIntent(message))") <
+      source.indexOf("const clarificationRoute = routeAssistantClarification"),
+  );
+  assert.match(source, /itemReferenceKind === "SERVO_MODEL"/);
+  assert.match(source, /itemReferenceKind === "CATALOG_CODE"/);
+});
+
+test("progressive servo-model questions distinguish totals, kit state, breakdown and physical boxes", async () => {
+  const routing = await routingModule;
+
+  for (const phrase of [
+    "Quanto tem do MBF-025?",
+    "Quanto tem do MBF025?",
+    "Qual o estoque do MBF 025?",
+    "Quanto tem do MBF-025 no total?",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "TOTAL", phrase);
+  }
+
+  for (const phrase of [
+    "Quanto tem do MBF-025 com kit?",
+    "E com kit?",
+    "Quantos com kit?",
+    "Quantos estão montados com kit?",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "MOUNTED", phrase);
+  }
+
+  for (const phrase of [
+    "Quanto tem do MBF-025 sem kit?",
+    "E sem kit?",
+    "Quantos sem kit?",
+    "Quantos estão separados?",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "LOOSE", phrase);
+  }
+
+  for (const phrase of [
+    "Quais configurações?",
+    "Quais códigos com kit?",
+    "Em quais configurações ele está?",
+    "Mostre as configurações com esse servo",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "BREAKDOWN", phrase);
+  }
+
+  for (const phrase of [
+    "E dentro de caixas?",
+    "Quanto tem do MBF-025 dentro de caixas?",
+    "Quais caixas?",
+  ]) {
+    assert.equal(routing.routeServoModelInventoryView(phrase), "BOX_AMBIGUOUS", phrase);
+  }
+
+  for (const phrase of [
+    "E com kit?",
+    "Quantos com kit?",
+    "E sem kit?",
+    "Quantos estão separados?",
+    "Quais configurações?",
+    "E nas caixas?",
+  ]) {
+    assert.equal(routing.isItemFollowUpMessage(phrase), true, phrase);
+    assert.equal(routing.isServoModelInventoryFollowUp(phrase), true, phrase);
+  }
+
+  assert.equal(routing.isServoModelInventoryFollowUp("E qual é o mínimo?"), false);
+});
+
+test("progressive model answers retain SERVO_MODEL context and use official physical totals", async () => {
+  const assistant = await read("lib/ai/assistant.ts");
+  const data = await read("lib/assistant-data.ts");
+
+  assert.match(assistant, /block\.mountedQuantity/);
+  assert.match(assistant, /block\.looseQuantity/);
+  assert.match(assistant, /block\.totalQuantity/);
+  assert.match(assistant, /contextItemReferenceKind:\s*"SERVO_MODEL"/);
+  assert.match(assistant, /embalagens físicas/);
+  assert.match(data, /mountedQuantity = matchingServos\[0\]\.mounted_quantity/);
+  assert.match(data, /totalQuantity = matchingServos\[0\]\.total_quantity/);
+  assert.match(data, /totalQuantity !== looseQuantity \+ mountedQuantity/);
+});
+
+test("a catalog-code context is not reinterpreted as a servo-model kit state", async () => {
+  const routing = await routingModule;
+  const codeContext = parseAssistantConversationContext({
+    topic: "INVENTORY",
+    itemQuery: "2A",
+    itemReferenceKind: "CATALOG_CODE",
+    supplierOrderId: null,
+    supplierOrderCatalogCode: null,
+    lastIntent: "inventory_item_summary",
+  });
+
+  assert.ok(codeContext);
+  assert.equal(codeContext.itemReferenceKind, "CATALOG_CODE");
+  assert.equal(routing.routeInventoryItemSummaryQuestion("E sem kit?", "2A"), null);
+  const assistant = await read("lib/ai/assistant.ts");
+  assert.match(assistant, /Esse contexto é de um código específico/);
+});
+
+test("wraps read cards with short copy and at most one suggestion", () => {
+  const answer = addAssistantConversationalCopy({
+    message: "fallback seguro",
+    structuredBlock: {
+      kind: "inventory_item_summary",
+      metric: "STOCK",
+    },
+  });
+
+  assert.equal(typeof answer.leadText, "string");
+  assert.equal(typeof answer.followUpText, "string");
+  assert.equal((answer.followUpText.match(/Se quiser/g) ?? []).length, 1);
+  assert.doesNotMatch(answer.followUpText, /Posso ajudar em mais alguma coisa/i);
+});
+
+function supplierOrderCard(waitingPickupQuantity, waitingStockQuantity) {
+  return {
+    waitingPickupQuantity,
+    waitingStockQuantity,
+  };
+}
+
+test("supplier-order copy mentions only the official pending state", () => {
+  const cases = [
+    {
+      pickup: 5,
+      stock: 0,
+      expected: "Ainda há itens para retirar. Posso detalhar quais são.",
+      forbidden: /entrada/i,
+    },
+    {
+      pickup: 0,
+      stock: 3,
+      expected: "Há itens aguardando entrada no estoque. Posso detalhar quais são.",
+      forbidden: /retirar/i,
+    },
+    {
+      pickup: 2,
+      stock: 3,
+      expected: "Ainda há itens para retirar e itens aguardando entrada no estoque.",
+      forbidden: null,
+    },
+    {
+      pickup: 0,
+      stock: 0,
+      expected: null,
+      forbidden: /pendente|aguardando|retirar/i,
+    },
+  ];
+
+  for (const { pickup, stock, expected, forbidden } of cases) {
+    const detail = addAssistantConversationalCopy({
+      message: "Pedido atual.",
+      structuredBlock: {
+        kind: "supplier_order_detail",
+        catalogCode: null,
+        order: supplierOrderCard(pickup, stock),
+      },
+    });
+
+    assert.equal(detail.followUpText, expected);
+    if (forbidden && detail.followUpText) {
+      assert.doesNotMatch(detail.followUpText, forbidden);
+    }
+  }
+});
+
+test("supplier-order lists derive suggestions from official visible line totals", () => {
+  const unfiltered = addAssistantConversationalCopy({
+    message: "Pedidos atuais.",
+    structuredBlock: {
+      kind: "supplier_order_list",
+      catalogCode: null,
+      orders: [supplierOrderCard(2, 0), supplierOrderCard(0, 4)],
+      catalogLines: [],
+    },
+  });
+  assert.equal(
+    unfiltered.followUpText,
+    "Ainda há itens para retirar e itens aguardando entrada no estoque.",
+  );
+
+  const filtered = addAssistantConversationalCopy({
+    message: "Código nos Pedidos.",
+    structuredBlock: {
+      kind: "supplier_order_list",
+      catalogCode: "1H",
+      orders: [supplierOrderCard(9, 9)],
+      catalogLines: [supplierOrderCard(0, 2)],
+    },
+  });
+  assert.equal(
+    filtered.followUpText,
+    "Há itens aguardando entrada no estoque. Posso detalhar quais são.",
+  );
+});
+
+test("session v2 persists conversational copy and structured context", async () => {
+  const source = await read("lib/assistant-session.ts");
+  assert.match(source, /assistantSessionVersion = 2/);
+  assert.match(source, /leadText/);
+  assert.match(source, /followUpText/);
+  assert.match(source, /conversationContext/);
+  assert.match(source, /parseAssistantConversationContext/);
+  assert.doesNotMatch(source, /lastItemQuery:/);
+});
+
+test("renders one assistant response in text, card, text order", async () => {
+  const source = await read("components/assistant-home.tsx");
+  const lead = source.indexOf("chatMessage.leadText");
+  const card = source.indexOf("<AssistantStructuredBlockView", lead);
+  const follow = source.indexOf("chatMessage.followUpText", card);
+  assert.ok(lead >= 0 && card > lead && follow > card);
+});
+
+test("plain assistant responses render content and an optional follow-up in the same bubble", async () => {
+  const source = await read("components/assistant-home.tsx");
+  const plainBranch = source.indexOf('className="space-y-2"');
+  const content = source.indexOf("content={chatMessage.content}", plainBranch);
+  const followCondition = source.indexOf("chatMessage.followUpText ?", content);
+  const followContent = source.indexOf("content={chatMessage.followUpText}", followCondition);
+  const articleEnd = source.indexOf("</article>", followContent);
+
+  assert.ok(plainBranch >= 0 && content > plainBranch);
+  assert.ok(followCondition > content && followContent > followCondition);
+  assert.ok(articleEnd > followContent);
+  assert.match(source.slice(plainBranch, articleEnd), /chatMessage\.followUpText \? \(/);
+});
+
+test("typed read-only suggestions are strict, restorable and cleared by unrelated answers", () => {
+  const total = deriveAssistantConversationContext(
+    emptyAssistantConversationContext(),
+    {
+      message: "Você tem 11 MBF-025 no total.",
+      contextItemQuery: "MBF-025",
+      contextItemReferenceKind: "SERVO_MODEL",
+      contextLastIntent: "SERVO_MODEL_TOTAL",
+      contextSuggestedFollowUp: "SHOW_SERVO_MODEL_KIT_SPLIT",
+    },
+  );
+
+  assert.equal(total.lastIntent, "SERVO_MODEL_TOTAL");
+  assert.equal(total.suggestedFollowUp, "SHOW_SERVO_MODEL_KIT_SPLIT");
+  assert.deepEqual(parseAssistantConversationContext(total), total);
+  assert.equal(
+    parseAssistantConversationContext({
+      ...total,
+      suggestedFollowUp: "EXECUTE_LAST_ACTION",
+    }),
+    null,
+  );
+  assert.equal(
+    parseAssistantConversationContext({
+      ...total,
+      itemReferenceKind: "CATALOG_CODE",
+    }),
+    null,
+  );
+
+  const cleared = deriveAssistantConversationContext(total, {
+    message: "Resposta sem sugestão.",
+  });
+  assert.equal(cleared.suggestedFollowUp, null);
+});
+
+test("short natural replies can continue only a typed read-only suggestion", async () => {
+  const routing = await routingModule;
+
+  for (const phrase of [
+    "sim",
+    "pode",
+    "quero",
+    "mostra",
+    "me mostra",
+    "pode mostrar",
+    "quais?",
+    "quais são?",
+    "quais deles?",
+  ]) {
+    assert.equal(routing.isAssistantSuggestedFollowUpReply(phrase), true, phrase);
+  }
+
+  assert.equal(
+    routing.isAssistantSuggestedFollowUpReply("confirme a retirada"),
+    false,
+  );
+  assert.equal(
+    routing.isAssistantSuggestedFollowUpReply("faça a entrada"),
+    false,
+  );
+});
+
+test("operational preview context selects the matching non-executing confirmation guard", () => {
+  const allRecognized = {
+    supplierOrderFinalization: true,
+    configurationDisassembly: true,
+    configurationAssembly: true,
+    stockEntry: true,
+    manualStockOutput: true,
+    supplierOrderPickup: true,
+  };
+  const cases = [
+    ["manual_stock_entry_preview", "Confirmar entrada", "Nenhuma entrada foi executada"],
+    ["supplier_order_stock_entry_preview", "Confirmar entrada", "Nenhuma entrada foi executada"],
+    ["manual_stock_output_preview", "Confirmar saída", "Nenhuma saída foi executada"],
+    ["configuration_assembly_preview", "botão de confirmação", "Nenhuma operação foi executada"],
+    ["configuration_disassembly_preview", "botão de confirmação", "Nenhuma operação foi executada"],
+    ["assistant_action_preview", "Confirmar retirada", "Nenhuma retirada foi executada"],
+    ["supplier_order_finalization_preview", "Confirmar finalização", "Nenhum Pedido foi finalizado"],
+  ];
+
+  for (const [lastIntent, requiredButton, nonExecution] of cases) {
+    const message = getOperationalConfirmationGuard(lastIntent, allRecognized);
+    assert.match(message, new RegExp(requiredButton), lastIntent);
+    assert.match(message, new RegExp(nonExecution), lastIntent);
+  }
+  assert.equal(hasOperationalConfirmationText(allRecognized), true);
+  assert.equal(getOperationalConfirmationGuard(null, allRecognized), null);
+  assert.equal(getOperationalConfirmationGuard("SERVO_MODEL_TOTAL", allRecognized), null);
+});
+
+test("confirmation guard requires both matching preview context and router recognition", () => {
+  const noneRecognized = {
+    supplierOrderFinalization: false,
+    configurationDisassembly: false,
+    configurationAssembly: false,
+    stockEntry: false,
+    manualStockOutput: false,
+    supplierOrderPickup: false,
+  };
+
+  assert.equal(
+    getOperationalConfirmationGuard("manual_stock_entry_preview", noneRecognized),
+    null,
+  );
+  assert.equal(hasOperationalConfirmationText(noneRecognized), false);
+});
+
+test("model response copy is natural and maps each answer to a closed suggestion", async () => {
+  const source = await read("lib/ai/assistant.ts");
+
+  assert.match(source, /São \$\{quantity\} \$\{block\.model\.official\} sem kit\./);
+  assert.match(source, /Se quiser, separo quantos estão com kit e quantos estão sem kit\./);
+  assert.match(source, /Também posso conferir quantos estão montados com kit\./);
+  assert.match(source, /Posso mostrar em quais configurações eles estão\./);
+  assert.match(source, /SHOW_SERVO_MODEL_KIT_SPLIT/);
+  assert.match(source, /SHOW_SERVO_MODEL_MOUNTED/);
+  assert.match(source, /SHOW_SERVO_MODEL_CONFIGURATIONS/);
+});
+
+test("suggestion continuation re-queries official inventory and cannot invoke an operation", async () => {
+  const source = await read("lib/ai/assistant.ts");
+  const condition = source.indexOf("isAssistantSuggestedFollowUpReply(message) &&");
+  const start = source.lastIndexOf("if (", condition);
+  const end = source.indexOf(
+    "if (contextualModel && isServoModelInventoryFollowUp(message))",
+    start,
+  );
+  const continuation = source.slice(start, end);
+
+  assert.match(continuation, /consultAssistantServoModelInventory/);
+  assert.match(continuation, /answerServoModelMountedConfigurations/);
+  assert.doesNotMatch(continuation, /createAssistant.*Preview/);
+  assert.doesNotMatch(continuation, /proposalToken|fetch\(|rpc\(/i);
+  assert.match(source, /Use o botão Confirmar retirada/);
+  assert.match(source, /Use o botão Confirmar entrada/);
+  assert.match(source, /Use o botão Confirmar saída/);
+});
+
+test("mounted configuration follow-ups use current quantity and a scoped breakdown", async () => {
+  const assistant = await read("lib/ai/assistant.ts");
+  const conversation = await read("lib/assistant-conversation.ts");
+  const data = await read("lib/assistant-data.ts");
+
+  assert.match(assistant, /scope:\s*"MOUNTED_CONFIGURATIONS"/);
+  assert.match(assistant, /block\.mountedQuantity/);
+  assert.match(
+    conversation,
+    /Esses \$\{block\.mountedQuantity\} \$\{block\.model\.official\} montados com kit/,
+  );
+  assert.match(conversation, /distribuídos nestas configurações/);
+  assert.match(data, /configurationTargets\.reduce/);
+  assert.match(data, /!== mountedQuantity/);
+
+  const scoped = addAssistantConversationalCopy({
+    message: "Configurações atuais.",
+    structuredBlock: {
+      kind: "servo_model_inventory_breakdown",
+      scope: "MOUNTED_CONFIGURATIONS",
+      mountedQuantity: 4,
+      model: { official: "MBF-025", normalized: "MBF025" },
+    },
+  });
+  assert.equal(
+    scoped.leadText,
+    "Esses 4 MBF-025 montados com kit estão distribuídos nestas configurações:",
+  );
+  assert.equal(scoped.followUpText, null);
+
+  const full = addAssistantConversationalCopy({
+    message: "Estoque completo.",
+    structuredBlock: {
+      kind: "servo_model_inventory_breakdown",
+      scope: "FULL_MODEL",
+      mountedQuantity: 4,
+      model: { official: "MBF-025", normalized: "MBF025" },
+    },
+  });
+  assert.equal(full.leadText, "Separei o estoque físico desse modelo.");
+});
+
+test("mounted configuration cards exclude bare Servo without changing the full-model view", async () => {
+  const source = await read("components/assistant-structured-block.tsx");
+  const component = source.slice(
+    source.indexOf("function ServoModelInventoryBreakdown"),
+    source.indexOf("function SupplierOrder", source.indexOf("function ServoModelInventoryBreakdown")),
+  );
+
+  assert.match(component, /block\.scope === "MOUNTED_CONFIGURATIONS"/);
+  assert.match(component, /!mountedConfigurationsOnly && block\.bareServo/);
+  assert.match(component, /block\.configurations\.map/);
+  assert.match(component, /Configurações com kit/);
+});
+
+test("both mounted and kit-split suggestions resolve to the mounted-only presentation", async () => {
+  const source = await read("lib/ai/assistant.ts");
+  const condition = source.indexOf("isAssistantSuggestedFollowUpReply(message) &&");
+  const suggestionRoute = source.slice(
+    source.lastIndexOf("if (", condition),
+    source.indexOf("if (contextualModel && isServoModelInventoryFollowUp(message))"),
+  );
+  const explicitRoute = source.slice(
+    source.indexOf("if (contextualModel && isServoModelInventoryFollowUp(message))"),
+    source.indexOf("if (lastItemQuery", source.indexOf("if (contextualModel && isServoModelInventoryFollowUp(message))")),
+  );
+
+  assert.match(suggestionRoute, /SHOW_SERVO_MODEL_KIT_SPLIT/);
+  assert.match(suggestionRoute, /answerServoModelMountedConfigurations/);
+  assert.match(explicitRoute, /SHOW_SERVO_MODEL_CONFIGURATIONS/);
+  assert.match(explicitRoute, /answerServoModelMountedConfigurations/);
+});
+
+test("new conversation resets messages and the entire structured context", async () => {
+  const source = await read("components/assistant-conversation-provider.tsx");
+  const reset = source.slice(
+    source.indexOf("const resetConversation"),
+    source.indexOf("useEffect(() =>", source.indexOf("const resetConversation")),
+  );
+  assert.match(reset, /setMessages\(\[\]\)/);
+  assert.match(reset, /setConversationContext\(emptyAssistantConversationContext\(\)\)/);
+});
+
+test("contextual follow-ups are deterministic and text confirmation stays non-operational", async () => {
+  const routing = await read("lib/ai/assistant-routing.ts");
+  const assistant = await read("lib/ai/assistant.ts");
+  assert.match(routing, /dentro\\s\+de/);
+  assert.match(routing, /tem\|esta/);
+  assert.match(assistant, /Use o botão Confirmar retirada/);
+  assert.match(assistant, /Use o botão Confirmar entrada/);
+  assert.match(assistant, /Use o botão Confirmar saída/);
+});
+
+test("empty context is deterministic", () => {
+  assert.deepEqual(emptyAssistantConversationContext(), {
+    topic: "GENERAL",
+    itemQuery: null,
+    itemReferenceKind: null,
+    supplierOrderId: null,
+    supplierOrderCatalogCode: null,
+    lastIntent: null,
+    suggestedFollowUp: null,
+  });
+});

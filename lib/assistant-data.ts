@@ -1225,8 +1225,7 @@ export async function consultAssistantServoModelInventory(
 
   if (
     matchingServos.length > 1 ||
-    (matchingServos.length === 0 &&
-      matchingConfigurations.length === 0)
+    matchingServos.length === 0
   ) {
     return null;
   }
@@ -1238,6 +1237,18 @@ export async function consultAssistantServoModelInventory(
   if (
     !officialModel ||
     normalizeServoModel(officialModel) !== normalizedModel
+  ) {
+    return null;
+  }
+
+  const looseQuantity = matchingServos[0].loose_quantity;
+  const mountedQuantity = matchingServos[0].mounted_quantity;
+  const totalQuantity = matchingServos[0].total_quantity;
+
+  if (
+    mountedQuantity === undefined ||
+    totalQuantity === undefined ||
+    totalQuantity !== looseQuantity + mountedQuantity
   ) {
     return null;
   }
@@ -1317,6 +1328,16 @@ export async function consultAssistantServoModelInventory(
       };
     },
   );
+
+  if (
+    configurationTargets.reduce(
+      (sum, configuration) => sum + configuration.target.currentStock,
+      0,
+    ) !== mountedQuantity
+  ) {
+    return null;
+  }
+
   const shownConfigurations = configurationTargets.slice(
     0,
     maximumServoModelConfigurations,
@@ -1341,11 +1362,15 @@ export async function consultAssistantServoModelInventory(
 
   return {
     kind: "servo_model_inventory_breakdown",
+    scope: "FULL_MODEL",
     model: {
       official: officialModel,
       normalized: normalizedModel,
     },
     bareServo,
+    looseQuantity,
+    mountedQuantity,
+    totalQuantity,
     configurations: shownConfigurations,
     totalConfigurations: configurationTargets.length,
     remainingConfigurations:

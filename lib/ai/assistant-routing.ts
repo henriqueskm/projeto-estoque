@@ -147,6 +147,9 @@ export function isItemFollowUpMessage(message: string) {
     /^(e\s+)?quant(as?|os?)\s+(estao|tem)\b.{0,30}\b(montad|avuls)/.test(
       normalizedMessage,
     ) ||
+    /^(e\s+)?quant(as?|os?)\s+(?:estao\s+)?(?:com\s+kit|sem\s+kit|separad)/.test(
+      normalizedMessage,
+    ) ||
     /^(e\s+)?(qual\s+e\s+)?(a\s+)?situacao\b/.test(normalizedMessage) ||
     /^(e\s+)?(esta|ta)\s+(baixo|zerado)\b/.test(normalizedMessage) ||
     /^(e\s+)?quanto\s+falta\b.{0,40}\bminimo\b/.test(normalizedMessage) ||
@@ -156,9 +159,99 @@ export function isItemFollowUpMessage(message: string) {
     /^(e\s+)?(qual\s+)?(servo|kit|composicao)\b/.test(
       normalizedMessage,
     ) ||
+    /^(e\s+)?(?:dentro\s+de|nas|em|quais)\s+caixas\b/.test(
+      normalizedMessage,
+    ) ||
+    /^(e\s+)?(?:tem|esta)\s+pouco\s+(?:dele|desse|deste)?\b/.test(
+      normalizedMessage,
+    ) ||
+    /^(e\s+)?(?:qual\s+(?:kit|servo)\s+dele|do\s+que\s+(?:ele\s+)?e\s+formado)\b/.test(
+      normalizedMessage,
+    ) ||
+    /^(e\s+)?(?:quais\s+(?:configuracoes|codigos)|em\s+quais\s+configuracoes|como\b.{0,35}\bdistribuidos|mostre\s+as\s+configuracoes)\b/.test(
+      normalizedMessage,
+    ) ||
+    /^(e\s+)?(?:com\s+kit|sem\s+kit|separados?)\b/.test(
+      normalizedMessage,
+    ) ||
     /^(e\s+)?(mostre|mostrar|ver|abra|abrir)\b.{0,20}\b(foto|imagem)\b/.test(
       normalizedMessage,
     )
+  );
+}
+
+export type AssistantServoModelInventoryView =
+  | "TOTAL"
+  | "MOUNTED"
+  | "LOOSE"
+  | "BREAKDOWN"
+  | "BOX_AMBIGUOUS";
+
+export function isServoModelInventoryFollowUp(message: string) {
+  const normalizedMessage = normalizeAssistantText(message);
+
+  return (
+    /^(e\s+)?(?:quanto|quantos|quantas)\b/.test(normalizedMessage) ||
+    /^(e\s+)?(?:no\s+total|com\s+kit|sem\s+kit|separados?)\b/.test(
+      normalizedMessage,
+    ) ||
+    /\b(configuracoes|codigos\s+com\s+kit|distribuidos|caixas|qual\s+(?:kit|servo))\b/.test(
+      normalizedMessage,
+    )
+  );
+}
+
+export function isAssistantSuggestedFollowUpReply(message: string) {
+  const normalizedMessage = normalizeAssistantText(message)
+    .replace(/[?!.,;:]+$/g, "")
+    .trim();
+
+  return /^(?:sim|pode|quero|mostra|me mostra|pode mostrar|quais|quais sao|quais deles)$/.test(
+    normalizedMessage,
+  );
+}
+
+export function routeServoModelInventoryView(
+  message: string,
+): AssistantServoModelInventoryView {
+  const normalizedMessage = normalizeAssistantText(message);
+
+  if (
+    /\b(dentro\s+de\s+caixas|nas\s+caixas|em\s+caixas|quais\s+caixas)\b/.test(
+      normalizedMessage,
+    )
+  ) {
+    return "BOX_AMBIGUOUS";
+  }
+
+  if (
+    /\b(quais\s+(?:configuracoes|codigos(?:\s+com\s+kit)?)|em\s+quais\s+configuracoes|como\b.{0,45}\bdistribuidos|mostre\s+as\s+configuracoes|qual\s+(?:kit|servo))\b/.test(
+      normalizedMessage,
+    )
+  ) {
+    return "BREAKDOWN";
+  }
+
+  if (/\b(sem\s+kit|separados?)\b/.test(normalizedMessage)) {
+    return "LOOSE";
+  }
+
+  if (/\b(com\s+kit|montados?\s+com\s+kit)\b/.test(normalizedMessage)) {
+    return "MOUNTED";
+  }
+
+  return "TOTAL";
+}
+
+export function hasClearInventoryQueryIntent(message: string) {
+  const normalizedMessage = normalizeAssistantText(message);
+
+  if (/\b(pedido|pedidos|negociacao|fornecedor)\b/.test(normalizedMessage)) {
+    return false;
+  }
+
+  return /\b(quanto|quantos|quanta|quantas|tenho|temos|tem|estoque|saldo|quantidade|disponivel|situacao|baixo|baixa|pouco|minimo|composicao|configuracoes|qual\s+kit|qual\s+servo)\b/.test(
+    normalizedMessage,
   );
 }
 
@@ -442,7 +535,7 @@ export function routeAssistantClarification(
       ? true
       : /\bquanto\s+tem\b/.test(normalizedMessage) ||
         /\bsituacao\b/.test(normalizedMessage) ||
-        /\b(?:quero\s+)?(?:consultar|ver|veja|mostrar|mostre)\b/.test(
+        /\b(?:quero\s+)?(?:consultar|ver|veja|mostrar|mostre|falar|fale|contar|conte|dizer|diga|explicar|explique|informar|informe)\b/.test(
           normalizedMessage,
         ) ||
         normalizeCatalogCode(
@@ -538,7 +631,7 @@ export function routeInventoryItemSummaryQuestion(
     );
   const asksMinimum = /\bminimo\b/.test(normalizedMessage);
   const asksStatus =
-    /\b(baixo|baixos|baixa|baixas|zerado|zerados|zerada|zeradas|repor|reposicao|situacao)\b/.test(
+    /\b(baixo|baixos|baixa|baixas|pouco|zerado|zerados|zerada|zeradas|repor|reposicao|situacao)\b/.test(
       normalizedMessage,
     );
   const asksStock =

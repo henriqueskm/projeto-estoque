@@ -17,7 +17,34 @@ export type { AssistantSupplierOrderPhotoCreateResultBlock } from "@/lib/assista
 
 export const assistantMessageMaxLength = 2000;
 export const assistantQueryMaxLength = 120;
-export const assistantRequestMaxCharacters = 4096;
+export const assistantRequestMaxCharacters = 12_000;
+
+export type AssistantConversationTopic =
+  | "GENERAL"
+  | "INVENTORY"
+  | "SUPPLIER_ORDER"
+  | "CATALOG"
+  | "REPLENISHMENT";
+
+export type AssistantSuggestedFollowUp =
+  | "SHOW_SERVO_MODEL_KIT_SPLIT"
+  | "SHOW_SERVO_MODEL_MOUNTED"
+  | "SHOW_SERVO_MODEL_CONFIGURATIONS";
+
+export type AssistantConversationContext = {
+  topic: AssistantConversationTopic;
+  itemQuery: string | null;
+  itemReferenceKind: "SERVO_MODEL" | "CATALOG_CODE" | null;
+  supplierOrderId: string | null;
+  supplierOrderCatalogCode: string | null;
+  lastIntent: string | null;
+  suggestedFollowUp: AssistantSuggestedFollowUp | null;
+};
+
+export type AssistantRecentConversationMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
 
 export type AssistantServoModelInventoryAction =
   | {
@@ -78,9 +105,8 @@ export type AssistantConfigurationDisassemblySelection = {
 
 export type AssistantChatRequest = {
   message: string;
-  lastItemQuery?: string;
-  lastSupplierOrderId?: string;
-  lastSupplierOrderCatalogCode?: string;
+  recentConversation?: AssistantRecentConversationMessage[];
+  conversationContext?: AssistantConversationContext;
   selectedSupplierOrderItemId?: string;
   inventoryAction?: AssistantServoModelInventoryAction;
   stockEntrySelection?: AssistantStockEntrySelection;
@@ -428,9 +454,15 @@ export type AssistantSupplierOrderFinalizationConfirmationResult = {
 
 export type AssistantChatSuccess = {
   message: string;
+  leadText?: string | null;
+  followUpText?: string | null;
+  conversationContext?: AssistantConversationContext;
   contextItemQuery?: string | null;
+  contextItemReferenceKind?: "SERVO_MODEL" | "CATALOG_CODE" | null;
   contextSupplierOrderId?: string | null;
   contextSupplierOrderCatalogCode?: string | null;
+  contextLastIntent?: string | null;
+  contextSuggestedFollowUp?: AssistantSuggestedFollowUp | null;
   structuredBlock?: AssistantStructuredBlock;
 };
 
@@ -625,6 +657,7 @@ export type AssistantServoModelConfigurationTarget = {
 
 export type AssistantServoModelInventoryBreakdownBlock = {
   kind: "servo_model_inventory_breakdown";
+  scope: "FULL_MODEL" | "MOUNTED_CONFIGURATIONS";
   model: {
     official: string;
     normalized: string;
@@ -633,6 +666,9 @@ export type AssistantServoModelInventoryBreakdownBlock = {
     targetKind: "item";
     itemType: "SERVO";
   }) | null;
+  looseQuantity: number;
+  mountedQuantity: number;
+  totalQuantity: number;
   configurations: AssistantServoModelConfigurationTarget[];
   totalConfigurations: number;
   remainingConfigurations: number;
@@ -1648,16 +1684,26 @@ function parseServoModelInventoryBreakdown(
     isRecord(model) && typeof model.normalized === "string"
       ? model.normalized.trim()
       : "";
+  const looseQuantity = value.looseQuantity;
+  const mountedQuantity = value.mountedQuantity;
+  const totalQuantity = value.totalQuantity;
+  const scope = value.scope === undefined ? "FULL_MODEL" : value.scope;
 
   if (
     !officialModel ||
     officialModel.length > assistantQueryMaxLength ||
     !normalizedModel ||
+    (scope !== "FULL_MODEL" && scope !== "MOUNTED_CONFIGURATIONS") ||
     normalizeServoModel(officialModel) !== normalizedModel ||
     normalizeServoModel(normalizedModel) !== normalizedModel ||
     (bareServo !== null &&
       (bareServo.targetKind !== "item" ||
         bareServo.itemType !== "SERVO")) ||
+    !isNonnegativeInteger(looseQuantity) ||
+    !isNonnegativeInteger(mountedQuantity) ||
+    !isNonnegativeInteger(totalQuantity) ||
+    totalQuantity !== looseQuantity + mountedQuantity ||
+    (bareServo !== null && bareServo.currentStock !== looseQuantity) ||
     !Array.isArray(value.configurations) ||
     configurationEntries.length > 6 ||
     configurationEntries.some((entry) => entry === null) ||
@@ -1678,11 +1724,15 @@ function parseServoModelInventoryBreakdown(
 
   return {
     kind: "servo_model_inventory_breakdown",
+    scope,
     model: {
       official: officialModel,
       normalized: normalizedModel,
     },
     bareServo: bareServo as AssistantServoModelInventoryBreakdownBlock["bareServo"],
+    looseQuantity,
+    mountedQuantity,
+    totalQuantity,
     configurations:
       configurationEntries as AssistantServoModelConfigurationTarget[],
     totalConfigurations: value.totalConfigurations,

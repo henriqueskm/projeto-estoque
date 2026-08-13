@@ -1,16 +1,35 @@
 # Objetivo atual
 
-- **ID:** NK-ORD-008D
-- **Título:** Criação segura de Pedido a partir da prévia da foto
+- **ID:** NK-AI-CTX-001
+- **Título:** Conversa contextual, memória curta e personalidade da Assistente NK
 - **Prioridade:** alta
-- **Fase:** aplicação operacional / validação humana controlada
-- **Estado:** `HUMAN_CREATE_TEST_PASSED / REMOTE_VERIFIED`
+- **Fase:** aplicação / validação conversacional humana
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_CONVERSATION_TEST`
 - **Classificação:** **B — ajustes somente de aplicação**
-- **Dependências:** NK-ORD-008C3B `DONE / HUMAN_TEST_APPROVED / MERGED` pelo
-  PR #27; MIG-ORD-008A e MIG-ORD-008C3A aplicadas e verificadas
-- **Base:** `cb1f82c2e8402eab6a794f210efb7207097d8b61`
-- **Branch:** `agent/assistant-photo-order-create`
-- **PR:** [#28](https://github.com/henriqueskm/projeto-estoque/pull/28) (draft)
+- **Dependências:** NK-ORD-008D `DONE / HUMAN_TEST_PASSED / REMOTE_VERIFIED /
+  MERGED` pelo PR #28; NK-ORD-009B `DONE / HUMAN_UI_APPROVED / MERGED` pelo
+  PR #30. O PR #29 foi rejeitado visualmente e não integra a implementação
+  aprovada.
+- **Base:** `5e613db7adffd718a8d10b376e430522aeab6bf2`
+- **Branch:** `agent/assistant-contextual-conversation`
+- **PR:** draft a criar
+
+## Implementação NK-AI-CTX-001
+
+- janela recente limitada às três últimas trocas, seis mensagens e 6.000
+  caracteres, contendo somente `role` e fallback textual seguro;
+- contexto estruturado pequeno separa Estoque, Pedido, Catálogo e Reposição e
+  é sempre tratado como pista que precisa ser revalidada pelo backend;
+- respostas estruturadas podem renderizar texto curto, card existente e um
+  complemento opcional na mesma mensagem;
+- sugestões são determinísticas e limitadas a uma por resposta;
+- Nova conversa e logout removem mensagens e todo o contexto efêmero;
+- a sessão passa à versão 2 e não persiste proposal token, idempotency key,
+  mídia, payload operacional ou memória no banco;
+- roteadores determinísticos e confirmação operacional exclusivamente por
+  botão permanecem preservados.
+
+## Encerramentos anteriores
 
 ## Implementação NK-ORD-008D
 
@@ -49,8 +68,8 @@
 - zero stock entry, batch ou movimento vinculado ao Pedido;
 - zero authorization, readiness ou evento Safisa.
 
-Próxima etapa: **revisão humana para merge do PR #28**. O PR permanece draft e
-nenhuma nova operação remota está autorizada por este registro.
+Estado final: **DONE / HUMAN_TEST_PASSED / REMOTE_VERIFIED / MERGED** pelo PR
+#28. Nenhuma nova operação remota é autorizada por este registro histórico.
 
 ## Implementação NK-ORD-008C3B
 

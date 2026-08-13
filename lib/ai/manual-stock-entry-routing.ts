@@ -8,6 +8,7 @@ export type ManualStockEntryRoute =
   | { kind: "NOT_MANUAL_STOCK_ENTRY" }
   | { kind: "BUTTON_CONFIRMATION_TEXT" }
   | { kind: "CANCEL" }
+  | { kind: "MISSING_QUANTITY"; targetQuery: string | null }
   | { kind: "INVALID"; message: string }
   | { kind: "AMBIGUOUS_FLOW"; quantity: number; targetQuery: string }
   | { kind: "ACTION"; request: ManualStockEntryRequest };
@@ -51,7 +52,7 @@ function normalizeAssistantText(value: string) {
 }
 
 const manualStockEntryCommandPattern =
-  /^\s*(?:(?:dê|de|dar)\s+entrada|adicione|adicionar|coloque|colocar|lance|lançar)\b\s*/iu;
+  /^\s*(?:(?:quero|preciso|pode)\s+)?(?:de\s+entrada(?:\s+manual)?|dar\s+entrada(?:\s+manual)?|adicione|adicionar|coloque|coloca(?:r)?|lance|lancar)\b\s*/iu;
 
 type QuantityMatch = {
   quantity: number;
@@ -84,8 +85,10 @@ function extractManualStockEntryQuantity(value: string): QuantityMatch | null {
   return null;
 }
 
-function cleanManualStockEntryTarget(value: string, quantityMatch: QuantityMatch) {
-  const withoutQuantity = `${value.slice(0, quantityMatch.index)} ${value.slice(quantityMatch.index + quantityMatch.length)}`;
+function cleanManualStockEntryTarget(value: string, quantityMatch: QuantityMatch | null) {
+  const withoutQuantity = quantityMatch
+    ? `${value.slice(0, quantityMatch.index)} ${value.slice(quantityMatch.index + quantityMatch.length)}`
+    : value;
 
   return withoutQuantity
     .replace(/\b(?:no|ao|para\s+o)\s+estoque\b/giu, " ")
@@ -93,7 +96,7 @@ function cleanManualStockEntryTarget(value: string, quantityMatch: QuantityMatch
     .replace(/\b(?:kit\s+de\s+instala[cç][aã]o|kit\s+de\s+reparo|pe[cç]a\s+avulsa|pe[cç]a)\b/giu, " ")
     .replace(/[?!.,;:]+$/g, "")
     .trim()
-    .replace(/^(?:(?:em|do|da|de|mais)\s+)+/iu, "")
+    .replace(/^(?:(?:em|do|da|de|mais|o|a)\s+)+/iu, "")
     .replace(/^c[oó]d(?:igo)?\.?\s*/iu, "")
     .trim();
 }
@@ -107,20 +110,23 @@ export function routeManualStockEntryAction(rawMessage: string): ManualStockEntr
     return { kind: "CANCEL" };
   }
   if (/\bpedido\b/.test(message)) return { kind: "NOT_MANUAL_STOCK_ENTRY" };
-  const regularCommand = /^\s*(?:(?:dê|dar)\s+entrada|adicione|adicionar|coloque|colocar|lance|lançar)\b/iu.test(rawMessage);
-  const unaccentedEntryCommand = /^\s*de\s+entrada\b/iu.test(rawMessage) &&
-    /\bestoque\b/.test(message) &&
-    /\b(?:\d{1,10}|um|uma)\s+unidades?\b/.test(message);
-  const entryIntent = regularCommand || unaccentedEntryCommand;
-  if (!entryIntent) return { kind: "NOT_MANUAL_STOCK_ENTRY" };
+  const commandMatch = manualStockEntryCommandPattern.exec(message);
+  if (!commandMatch) return { kind: "NOT_MANUAL_STOCK_ENTRY" };
   if (/-\s*\d+\s+unidades?\b/.test(message)) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a entrada manual." };
   }
 
-  const messageWithoutCommand = rawMessage.replace(manualStockEntryCommandPattern, "");
+  const messageWithoutCommand = rawMessage.slice(commandMatch[0].length);
   const quantityMatch = extractManualStockEntryQuantity(messageWithoutCommand);
   const quantity = quantityMatch?.quantity ?? null;
-  if (!quantityMatch || !quantity || !Number.isSafeInteger(quantity) || quantity > maximumInteger) {
+  if (!quantityMatch) {
+    const targetQuery = cleanManualStockEntryTarget(messageWithoutCommand, null);
+    return {
+      kind: "MISSING_QUANTITY",
+      targetQuery: targetQuery && targetQuery.length <= 120 ? targetQuery : null,
+    };
+  }
+  if (!quantity || !Number.isSafeInteger(quantity) || quantity > maximumInteger) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a entrada manual." };
   }
 

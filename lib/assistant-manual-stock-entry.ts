@@ -106,6 +106,7 @@ function createManualStockEntryPreviewForTarget(
     regeneratePrompt: `Entrada manual de ${quantity} unidade${quantity === 1 ? "" : "s"} do Cód. ${target.displayCode}.`,
   };
   return { message: block.message, structuredBlock: block, contextItemQuery: target.displayCode,
+    contextItemReferenceKind: "CATALOG_CODE",
     contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
 }
 

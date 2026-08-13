@@ -21,6 +21,8 @@ import {
   type AssistantConversationMessage,
   type AssistantSessionState,
 } from "@/lib/assistant-session";
+import { emptyAssistantConversationContext } from "@/lib/assistant-conversation";
+import type { AssistantConversationContext as AssistantConversationState } from "@/lib/assistant-types";
 
 type PersistOptions = {
   scrollTop?: number;
@@ -33,14 +35,8 @@ type AssistantConversationContextValue = {
   setMessages: Dispatch<SetStateAction<AssistantConversationMessage[]>>;
   draft: string;
   setDraft: Dispatch<SetStateAction<string>>;
-  lastItemQuery: string | null;
-  setLastItemQuery: Dispatch<SetStateAction<string | null>>;
-  lastSupplierOrderId: string | null;
-  setLastSupplierOrderId: Dispatch<SetStateAction<string | null>>;
-  lastSupplierOrderCatalogCode: string | null;
-  setLastSupplierOrderCatalogCode: Dispatch<
-    SetStateAction<string | null>
-  >;
+  conversationContext: AssistantConversationState;
+  setConversationContext: Dispatch<SetStateAction<AssistantConversationState>>;
   scrollTop: number;
   setScrollTop: Dispatch<SetStateAction<number>>;
   persistNow: (options?: PersistOptions) => void;
@@ -55,9 +51,7 @@ function createEmptySession(): AssistantSessionState {
     conversationId: crypto.randomUUID(),
     messages: [],
     draft: "",
-    lastItemQuery: null,
-    lastSupplierOrderId: null,
-    lastSupplierOrderCatalogCode: null,
+    conversationContext: emptyAssistantConversationContext(),
     scrollTop: 0,
   };
 }
@@ -75,14 +69,8 @@ export function AssistantConversationProvider({
     [],
   );
   const [draft, setDraft] = useState("");
-  const [lastItemQuery, setLastItemQuery] = useState<string | null>(null);
-  const [lastSupplierOrderId, setLastSupplierOrderId] = useState<
-    string | null
-  >(null);
-  const [
-    lastSupplierOrderCatalogCode,
-    setLastSupplierOrderCatalogCode,
-  ] = useState<string | null>(null);
+  const [conversationContext, setConversationContext] =
+    useState<AssistantConversationState>(emptyAssistantConversationContext);
   const [scrollTop, setScrollTop] = useState(0);
   const storageKey = useMemo(
     () => getAssistantSessionStorageKey(userId),
@@ -99,18 +87,14 @@ export function AssistantConversationProvider({
             conversationId,
             messages,
             draft,
-            lastItemQuery,
-            lastSupplierOrderId,
-            lastSupplierOrderCatalogCode,
+            conversationContext,
             scrollTop,
           }
         : null,
     [
       conversationId,
       draft,
-      lastItemQuery,
-      lastSupplierOrderCatalogCode,
-      lastSupplierOrderId,
+      conversationContext,
       messages,
       scrollTop,
     ],
@@ -177,9 +161,7 @@ export function AssistantConversationProvider({
     setConversationId(emptySession.conversationId);
     setMessages([]);
     setDraft("");
-    setLastItemQuery(null);
-    setLastSupplierOrderId(null);
-    setLastSupplierOrderCatalogCode(null);
+    setConversationContext(emptyAssistantConversationContext());
     setScrollTop(0);
 
     try {
@@ -196,9 +178,7 @@ export function AssistantConversationProvider({
     setConversationId(nextSession.conversationId);
     setMessages([]);
     setDraft("");
-    setLastItemQuery(null);
-    setLastSupplierOrderId(null);
-    setLastSupplierOrderCatalogCode(null);
+    setConversationContext(emptyAssistantConversationContext());
     setScrollTop(0);
     sessionRef.current = nextSession;
     writeSession(nextSession);
@@ -245,11 +225,7 @@ export function AssistantConversationProvider({
       setConversationId(session.conversationId);
       setMessages(session.messages);
       setDraft(session.draft);
-      setLastItemQuery(session.lastItemQuery);
-      setLastSupplierOrderId(session.lastSupplierOrderId);
-      setLastSupplierOrderCatalogCode(
-        session.lastSupplierOrderCatalogCode,
-      );
+      setConversationContext(session.conversationContext);
       setScrollTop(session.scrollTop);
       sessionRef.current = session;
       setIsHydrated(true);
@@ -320,12 +296,8 @@ export function AssistantConversationProvider({
       setMessages,
       draft,
       setDraft,
-      lastItemQuery,
-      setLastItemQuery,
-      lastSupplierOrderId,
-      setLastSupplierOrderId,
-      lastSupplierOrderCatalogCode,
-      setLastSupplierOrderCatalogCode,
+      conversationContext,
+      setConversationContext,
       scrollTop,
       setScrollTop,
       persistNow,
@@ -335,9 +307,7 @@ export function AssistantConversationProvider({
       conversationId,
       draft,
       isHydrated,
-      lastItemQuery,
-      lastSupplierOrderCatalogCode,
-      lastSupplierOrderId,
+      conversationContext,
       messages,
       persistNow,
       resetConversation,

@@ -1049,19 +1049,26 @@ function ServoModelInventoryBreakdown({
 }: {
   block: AssistantServoModelInventoryBreakdownBlock;
 }) {
+  const mountedConfigurationsOnly =
+    block.scope === "MOUNTED_CONFIGURATIONS";
+
   return (
     <div className="min-w-0">
       <p className="text-[0.68rem] font-black tracking-[0.12em] text-brand-gold-dark uppercase">
-        Estoque por modelo
+        {mountedConfigurationsOnly ? "Configurações com kit" : "Estoque por modelo"}
       </p>
       <h3 className="mt-0.5 break-words text-base font-black text-text-primary sm:text-lg">
-        Estoque do modelo {block.model.official}
+        {mountedConfigurationsOnly
+          ? `Configurações do modelo ${block.model.official}`
+          : `Estoque do modelo ${block.model.official}`}
       </h3>
       <p className="mt-1 text-xs font-semibold text-text-muted">
-        Cada saldo físico é mostrado separadamente.
+        {mountedConfigurationsOnly
+          ? "Somente os Servos montados com kit são mostrados aqui."
+          : "Cada saldo físico é mostrado separadamente."}
       </p>
       <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
-        {block.bareServo ? (
+        {!mountedConfigurationsOnly && block.bareServo ? (
           <ServoModelBreakdownTarget
             target={block.bareServo}
             codes={[block.bareServo.displayCode]}
