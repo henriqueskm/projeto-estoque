@@ -39,6 +39,10 @@ import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
 import { routeSupplierOrderPickupAction } from "@/lib/ai/supplier-order-pickup-routing";
 import { routeSupplierOrderStockEntryAction } from "@/lib/ai/supplier-order-stock-entry-routing";
 import { routeManualStockEntryAction } from "@/lib/ai/manual-stock-entry-routing";
+import {
+  getOperationalConfirmationGuard,
+  hasOperationalConfirmationText,
+} from "@/lib/ai/assistant-confirmation-guard";
 import { routeManualStockOutputAction } from "@/lib/ai/manual-stock-output-routing";
 import { routeConfigurationAssemblyAction } from "@/lib/ai/configuration-assembly-routing";
 import { routeConfigurationDisassemblyAction } from "@/lib/ai/configuration-disassembly-routing";
@@ -1125,12 +1129,35 @@ export async function answerAssistantQuestion(
       ? normalizeServoModel(lastItemQuery)
       : null;
 
-  if (isAssistantSuggestedFollowUpReply(message)) {
-    const suggestedFollowUp = conversationContext.suggestedFollowUp;
+  const operationalConfirmationRoutes = {
+    supplierOrderFinalization:
+      supplierOrderFinalizationRoute.kind === "BUTTON_CONFIRMATION_TEXT",
+    configurationDisassembly:
+      configurationDisassemblyRoute.kind === "BUTTON_CONFIRMATION_TEXT",
+    configurationAssembly:
+      configurationAssemblyRoute.kind === "BUTTON_CONFIRMATION_TEXT",
+    stockEntry:
+      supplierOrderStockEntryRoute.kind === "BUTTON_CONFIRMATION_TEXT" ||
+      manualStockEntryRoute.kind === "BUTTON_CONFIRMATION_TEXT",
+    manualStockOutput:
+      manualStockOutputRoute.kind === "BUTTON_CONFIRMATION_TEXT",
+    supplierOrderPickup: pickupRoute.kind === "BUTTON_CONFIRMATION_TEXT",
+  };
+  const operationalConfirmationGuard = getOperationalConfirmationGuard(
+    conversationContext.lastIntent,
+    operationalConfirmationRoutes,
+  );
 
-    if (!contextualModel || !suggestedFollowUp) {
-      return answerMissingSuggestedFollowUpReference();
-    }
+  if (operationalConfirmationGuard) {
+    return { message: operationalConfirmationGuard };
+  }
+
+  if (
+    isAssistantSuggestedFollowUpReply(message) &&
+    contextualModel &&
+    conversationContext.suggestedFollowUp
+  ) {
+    const suggestedFollowUp = conversationContext.suggestedFollowUp;
 
     const block = await executeStockQuery(() =>
       consultAssistantServoModelInventory(contextualModel),
@@ -1145,6 +1172,13 @@ export async function answerAssistantQuestion(
     }
 
     return answerServoModelMountedConfigurations(block);
+  }
+
+  if (
+    isAssistantSuggestedFollowUpReply(message) ||
+    hasOperationalConfirmationText(operationalConfirmationRoutes)
+  ) {
+    return answerMissingSuggestedFollowUpReference();
   }
 
   if (contextualModel && isServoModelInventoryFollowUp(message)) {

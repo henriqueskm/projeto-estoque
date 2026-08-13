@@ -14,6 +14,10 @@ import {
   extractServoModelCandidate,
   normalizeServoModel,
 } from "../lib/servo-model-search.ts";
+import {
+  getOperationalConfirmationGuard,
+  hasOperationalConfirmationText,
+} from "../lib/ai/assistant-confirmation-guard.ts";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -571,6 +575,52 @@ test("short natural replies can continue only a typed read-only suggestion", asy
   );
 });
 
+test("operational preview context selects the matching non-executing confirmation guard", () => {
+  const allRecognized = {
+    supplierOrderFinalization: true,
+    configurationDisassembly: true,
+    configurationAssembly: true,
+    stockEntry: true,
+    manualStockOutput: true,
+    supplierOrderPickup: true,
+  };
+  const cases = [
+    ["manual_stock_entry_preview", "Confirmar entrada", "Nenhuma entrada foi executada"],
+    ["supplier_order_stock_entry_preview", "Confirmar entrada", "Nenhuma entrada foi executada"],
+    ["manual_stock_output_preview", "Confirmar saída", "Nenhuma saída foi executada"],
+    ["configuration_assembly_preview", "botão de confirmação", "Nenhuma operação foi executada"],
+    ["configuration_disassembly_preview", "botão de confirmação", "Nenhuma operação foi executada"],
+    ["assistant_action_preview", "Confirmar retirada", "Nenhuma retirada foi executada"],
+    ["supplier_order_finalization_preview", "Confirmar finalização", "Nenhum Pedido foi finalizado"],
+  ];
+
+  for (const [lastIntent, requiredButton, nonExecution] of cases) {
+    const message = getOperationalConfirmationGuard(lastIntent, allRecognized);
+    assert.match(message, new RegExp(requiredButton), lastIntent);
+    assert.match(message, new RegExp(nonExecution), lastIntent);
+  }
+  assert.equal(hasOperationalConfirmationText(allRecognized), true);
+  assert.equal(getOperationalConfirmationGuard(null, allRecognized), null);
+  assert.equal(getOperationalConfirmationGuard("SERVO_MODEL_TOTAL", allRecognized), null);
+});
+
+test("confirmation guard requires both matching preview context and router recognition", () => {
+  const noneRecognized = {
+    supplierOrderFinalization: false,
+    configurationDisassembly: false,
+    configurationAssembly: false,
+    stockEntry: false,
+    manualStockOutput: false,
+    supplierOrderPickup: false,
+  };
+
+  assert.equal(
+    getOperationalConfirmationGuard("manual_stock_entry_preview", noneRecognized),
+    null,
+  );
+  assert.equal(hasOperationalConfirmationText(noneRecognized), false);
+});
+
 test("model response copy is natural and maps each answer to a closed suggestion", async () => {
   const source = await read("lib/ai/assistant.ts");
 
@@ -585,7 +635,8 @@ test("model response copy is natural and maps each answer to a closed suggestion
 
 test("suggestion continuation re-queries official inventory and cannot invoke an operation", async () => {
   const source = await read("lib/ai/assistant.ts");
-  const start = source.indexOf("if (isAssistantSuggestedFollowUpReply(message))");
+  const condition = source.indexOf("isAssistantSuggestedFollowUpReply(message) &&");
+  const start = source.lastIndexOf("if (", condition);
   const end = source.indexOf(
     "if (contextualModel && isServoModelInventoryFollowUp(message))",
     start,
@@ -658,8 +709,9 @@ test("mounted configuration cards exclude bare Servo without changing the full-m
 
 test("both mounted and kit-split suggestions resolve to the mounted-only presentation", async () => {
   const source = await read("lib/ai/assistant.ts");
+  const condition = source.indexOf("isAssistantSuggestedFollowUpReply(message) &&");
   const suggestionRoute = source.slice(
-    source.indexOf("if (isAssistantSuggestedFollowUpReply(message))"),
+    source.lastIndexOf("if (", condition),
     source.indexOf("if (contextualModel && isServoModelInventoryFollowUp(message))"),
   );
   const explicitRoute = source.slice(
