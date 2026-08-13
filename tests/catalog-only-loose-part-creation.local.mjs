@@ -19,6 +19,7 @@ const secondActiveUser = "30000000-0000-4000-8000-000000000002";
 const inactiveUser = "30000000-0000-4000-8000-000000000003";
 const deletedProfileUser = "30000000-0000-4000-8000-000000000004";
 const key = (n) => `30000000-0000-4000-8001-${String(n).padStart(12, "0")}`;
+const delay = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 
 function psql(sql, { allowFailure = false } = {}) {
   try {
@@ -302,18 +303,36 @@ psql(`
   delete from public.commercial_configuration_codes where code = 'C3A-XRACE';
 `);
 
-// Commercial-first and item-first inserts reject the second domain deterministically.
-psql(`insert into public.commercial_configuration_codes (configuration_id, code) values ('${configurationId}', 'C3A-COMM-FIRST')`);
-failure = asActive(createCall("C3A-COMM-FIRST", "ITEM DEVE FALHAR"), { allowFailure: true });
-assert.match(failure, /commercial configuration code/i);
+// Commercial-first keeps its transaction open; the concurrent item waits and loses.
+const commercialFirstConnection = concurrentSql(`
+  begin;
+  insert into public.commercial_configuration_codes (configuration_id, code)
+  values ('${configurationId}', 'C3A-COMM-FIRST');
+  select pg_sleep(0.5);
+  commit;
+`);
+await delay(100);
+const itemSecondConnection = concurrent(activeUser, createCall("C3A-COMM-FIRST", "ITEM DEVE FALHAR"));
+const commercialFirstResults = await Promise.allSettled([commercialFirstConnection, itemSecondConnection]);
+assert.equal(commercialFirstResults[0].status, "fulfilled");
+assert.equal(commercialFirstResults[1].status, "rejected");
+assert.match(commercialFirstResults[1].reason.message, /commercial configuration code/i);
 assert.equal(number("select count(*) from public.items where code = 'C3A-COMM-FIRST'"), 0);
 
-const itemFirst = jsonFrom(asActive(createCall("C3A-ITEM-FIRST", "ITEM PRIMEIRO")));
-failure = psql(
-  `insert into public.commercial_configuration_codes (configuration_id, code) values ('${configurationId}', 'C3A-ITEM-FIRST')`,
-  { allowFailure: true },
+// Item-first keeps the shared lock; the concurrent commercial code waits and loses.
+const itemFirstConnection = concurrent(
+  activeUser,
+  `${createCall("C3A-ITEM-FIRST", "ITEM PRIMEIRO")}; select pg_sleep(0.5)`,
 );
-assert.match(failure, /physical catalog item/i);
+await delay(100);
+const commercialSecondConnection = concurrentSql(
+  `insert into public.commercial_configuration_codes (configuration_id, code) values ('${configurationId}', 'C3A-ITEM-FIRST')`,
+);
+const itemFirstResults = await Promise.allSettled([itemFirstConnection, commercialSecondConnection]);
+assert.equal(itemFirstResults[0].status, "fulfilled");
+assert.equal(itemFirstResults[1].status, "rejected");
+assert.match(itemFirstResults[1].reason.message, /physical catalog item/i);
+const itemFirst = jsonFrom(itemFirstResults[0].value);
 assert.equal(number("select count(*) from public.commercial_configuration_codes where code = 'C3A-ITEM-FIRST'"), 0);
 
 // UPDATE is protected in both directions, not only INSERT.
