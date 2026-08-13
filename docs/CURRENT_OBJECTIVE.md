@@ -10,7 +10,7 @@
   foto aprovada
 - **Base:** `03a4e7840c92a96ca2b0872ddf3ccf291134aa26`
 - **Branch:** `agent/catalog-only-loose-part-creation`
-- **PR:** draft a abrir
+- **PR:** [#25](https://github.com/henriqueskm/projeto-estoque/pull/25) (draft)
 
 ## Implementação local MIG-ORD-008C3A
 

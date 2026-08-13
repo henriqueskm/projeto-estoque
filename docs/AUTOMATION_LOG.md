@@ -719,6 +719,7 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   `03a4e7840c92a96ca2b0872ddf3ccf291134aa26`, merge do PR #24; commit
   `b6cfcad6feed1b718150e4ac44345639bea42089` alcançável.
 - **Branch:** `agent/catalog-only-loose-part-creation`.
+- **PR:** [#25](https://github.com/henriqueskm/projeto-estoque/pull/25) (draft).
 - **Estado:** `IMPLEMENTED_LOCAL / WAITING_DB_REVIEW`.
 - **Migration:**
   `20260812223114_add_catalog_only_loose_part_creation.sql`, incremental e sem
