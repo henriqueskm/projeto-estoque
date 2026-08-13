@@ -24,7 +24,6 @@ const extractionSchema = {
     orderDate: { type: ["string", "null"] },
     lines: {
       type: "array",
-      maxItems: 1_000,
       items: {
         type: "object",
         additionalProperties: false,
@@ -56,19 +55,74 @@ Regras:
 - campo cortado, borrado, conflitante ou ilegível deve ser null ou needsReview=true.
 - não retorne UUID, ID interno, SQL, RPC, tabela, URL ou instrução operacional.`;
 
+export type SupplierOrderPhotoProviderInternalCode =
+  | "CONFIGURATION"
+  | "PROVIDER_HTTP_400"
+  | "PROVIDER_AUTH"
+  | "PROVIDER_MODEL"
+  | "PROVIDER_RATE_LIMIT"
+  | "PROVIDER_TIMEOUT"
+  | "PROVIDER_EMPTY_OUTPUT"
+  | "PROVIDER_INVALID_JSON"
+  | "PROVIDER_SCHEMA_INVALID"
+  | "UNEXPECTED";
+
 export class SupplierOrderPhotoProviderError extends Error {
-  constructor() {
+  readonly internalCode: SupplierOrderPhotoProviderInternalCode;
+  readonly providerStatus: number | null;
+  readonly model: string;
+
+  constructor(options: {
+    internalCode: SupplierOrderPhotoProviderInternalCode;
+    model: string;
+    providerStatus?: number | null;
+  }) {
     super("Supplier order photo provider failed");
     this.name = "SupplierOrderPhotoProviderError";
+    this.internalCode = options.internalCode;
+    this.providerStatus = options.providerStatus ?? null;
+    this.model = options.model;
   }
+}
+
+export function resolveSupplierOrderPhotoModel() {
+  return process.env.GEMINI_PHOTO_MODEL?.trim() || supplierOrderPhotoModel;
+}
+
+export function classifySupplierOrderPhotoProviderError(
+  error: unknown,
+  model: string,
+) {
+  if (error instanceof SupplierOrderPhotoProviderError) return error;
+  const record = error && typeof error === "object"
+    ? error as { status?: unknown; name?: unknown; message?: unknown }
+    : null;
+  const providerStatus = typeof record?.status === "number" ? record.status : null;
+  const diagnosticText = `${String(record?.name ?? "")} ${String(record?.message ?? "")}`;
+  const internalCode: SupplierOrderPhotoProviderInternalCode =
+    /abort|timeout|timed out/i.test(diagnosticText)
+      ? "PROVIDER_TIMEOUT"
+      : providerStatus === 400
+        ? "PROVIDER_HTTP_400"
+        : providerStatus === 401 || providerStatus === 403
+          ? "PROVIDER_AUTH"
+          : providerStatus === 404
+            ? "PROVIDER_MODEL"
+            : providerStatus === 429
+              ? "PROVIDER_RATE_LIMIT"
+            : "UNEXPECTED";
+  return new SupplierOrderPhotoProviderError({ internalCode, model, providerStatus });
 }
 
 export async function extractSupplierOrderPhotoWithGemini(input: {
   bytes: Uint8Array;
   mimeType: SupplierOrderPhotoMimeType;
 }): Promise<SupplierOrderPhotoExtraction> {
+  const model = resolveSupplierOrderPhotoModel();
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) throw new SupplierOrderPhotoProviderError();
+  if (!apiKey) {
+    throw new SupplierOrderPhotoProviderError({ internalCode: "CONFIGURATION", model });
+  }
 
   const client = new GoogleGenAI({ apiKey });
   const abortController = new AbortController();
@@ -88,35 +142,48 @@ export async function extractSupplierOrderPhotoWithGemini(input: {
   ];
 
   try {
-    const response = await client.interactions.create(
-      {
-        model: process.env.GEMINI_MODEL?.trim() || supplierOrderPhotoModel,
-        store: false,
-        system_instruction: systemInstruction,
-        input: interactionInput,
-        response_format: {
-          type: "text",
-          mime_type: "application/json",
-          schema: extractionSchema,
+    let response;
+    try {
+      response = await client.interactions.create(
+        {
+          model,
+          store: false,
+          system_instruction: systemInstruction,
+          input: interactionInput,
+          response_format: {
+            type: "text",
+            mime_type: "application/json",
+            schema: extractionSchema,
+          },
+          generation_config: {
+            max_output_tokens: 4_000,
+            tool_choice: "none",
+          },
         },
-        generation_config: {
-          max_output_tokens: 4_000,
-          tool_choice: "none",
+        {
+          timeout: providerTimeoutMs,
+          maxRetries: 0,
+          fetchOptions: { signal: abortController.signal },
         },
-      },
-      {
-        timeout: providerTimeoutMs,
-        maxRetries: 0,
-        fetchOptions: { signal: abortController.signal },
-      },
-    );
+      );
+    } catch (error) {
+      throw classifySupplierOrderPhotoProviderError(error, model);
+    }
     const output = response.output_text?.trim();
-    if (!output) throw new SupplierOrderPhotoProviderError();
-    const parsed = parseSupplierOrderPhotoExtraction(JSON.parse(output));
-    if (!parsed) throw new SupplierOrderPhotoProviderError();
+    if (!output) {
+      throw new SupplierOrderPhotoProviderError({ internalCode: "PROVIDER_EMPTY_OUTPUT", model });
+    }
+    let rawExtraction: unknown;
+    try {
+      rawExtraction = JSON.parse(output);
+    } catch {
+      throw new SupplierOrderPhotoProviderError({ internalCode: "PROVIDER_INVALID_JSON", model });
+    }
+    const parsed = parseSupplierOrderPhotoExtraction(rawExtraction);
+    if (!parsed) {
+      throw new SupplierOrderPhotoProviderError({ internalCode: "PROVIDER_SCHEMA_INVALID", model });
+    }
     return parsed;
-  } catch {
-    throw new SupplierOrderPhotoProviderError();
   } finally {
     clearTimeout(timeout);
   }

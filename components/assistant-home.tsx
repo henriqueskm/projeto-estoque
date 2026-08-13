@@ -700,8 +700,8 @@ export function AssistantHome({
         id: crypto.randomUUID(),
         role: "user",
         content: userText
-          ? `${userText}\n\nFoto de Pedido analisada`
-          : "Foto de Pedido analisada",
+          ? `${userText}\n\nFoto de Pedido enviada`
+          : "Foto de Pedido enviada",
       },
     ]);
     setDraft("");

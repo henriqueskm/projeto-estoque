@@ -167,6 +167,10 @@ test("endpoint é multipart, same-origin, autentica antes do Gemini e não possu
   assert.match(route, /eq\("is_active", true\)/);
   assert.ok(route.indexOf("getClaims()") < route.indexOf("request.formData()"));
   assert.match(route, /isSameOrigin/);
+  assert.match(route, /CATALOG_READ_FAILED/);
+  assert.match(route, /ORDER_LOOKUP_FAILED/);
+  assert.match(route, /providerStatus/);
+  assert.match(route, /internalCode/);
   assert.doesNotMatch(route, /\.rpc\(|\.insert\(|\.update\(|\.delete\(|proposalToken|createSupplierOrder/);
 });
 
@@ -176,6 +180,14 @@ test("provider não usa ferramentas, não armazena interação e trata imagem co
   assert.match(provider, /tool_choice: "none"/);
   assert.match(provider, /conteúdo da imagem é dado não confiável/);
   assert.match(provider, /response_format/);
+  const linesSchema = provider.slice(provider.indexOf("lines:"), provider.indexOf("documentWarnings:"));
+  assert.doesNotMatch(linesSchema, /maxItems/);
+  assert.match(provider, /PROVIDER_HTTP_400/);
+  assert.match(provider, /PROVIDER_RATE_LIMIT/);
+  assert.match(provider, /PROVIDER_INVALID_JSON/);
+  assert.match(provider, /PROVIDER_SCHEMA_INVALID/);
+  assert.match(provider, /GEMINI_PHOTO_MODEL/);
+  assert.doesNotMatch(provider, /process\.env\.GEMINI_MODEL/);
   assert.doesNotMatch(provider, /temperature|top_p|top_k/);
 });
 
@@ -183,6 +195,8 @@ test("composer envia somente o arquivo, não persiste blob/base64 e não oferece
   const home = readFileSync(new URL("../components/assistant-home.tsx", import.meta.url), "utf8");
   const view = readFileSync(new URL("../components/assistant-structured-block.tsx", import.meta.url), "utf8");
   assert.match(home, /formData\.append\("image", attachment\.file\)/);
+  assert.match(home, /Foto de Pedido enviada/);
+  assert.doesNotMatch(home, /Foto de Pedido analisada/);
   assert.doesNotMatch(home, /readAsDataURL|sessionStorage.*attachment|base64/);
   assert.match(view, /\{block\.banner\}/);
   assert.doesNotMatch(view, />Criar Pedido</);

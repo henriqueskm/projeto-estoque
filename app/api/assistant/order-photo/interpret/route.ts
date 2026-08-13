@@ -11,11 +11,32 @@ import {
   interpretSupplierOrderPhoto,
   type SupplierOrderPhotoCatalogTarget,
 } from "@/lib/assistant-supplier-order-photo";
-import { extractSupplierOrderPhotoWithGemini } from "@/lib/ai/supplier-order-photo-gemini";
+import {
+  extractSupplierOrderPhotoWithGemini,
+  resolveSupplierOrderPhotoModel,
+  SupplierOrderPhotoProviderError,
+  type SupplierOrderPhotoProviderInternalCode,
+} from "@/lib/ai/supplier-order-photo-gemini";
 import { physicalItemTypes } from "@/lib/inbound-types";
 import { createClient } from "@/lib/supabase/server";
 
 const multipartOverheadAllowance = 64 * 1024;
+
+type SupplierOrderPhotoRouteInternalCode =
+  | SupplierOrderPhotoProviderInternalCode
+  | "CATALOG_READ_FAILED"
+  | "ORDER_LOOKUP_FAILED"
+  | "UNEXPECTED";
+
+class SupplierOrderPhotoRouteError extends Error {
+  constructor(
+    readonly internalCode: SupplierOrderPhotoRouteInternalCode,
+    readonly stage: "catalog" | "order_lookup",
+  ) {
+    super("Supplier order photo route dependency failed");
+    this.name = "SupplierOrderPhotoRouteError";
+  }
+}
 
 function response(body: SupplierOrderPhotoInterpretSuccess | SupplierOrderPhotoInterpretError, status: number) {
   return NextResponse.json(body, {
@@ -47,7 +68,7 @@ async function loadCatalog(
       .select("id, code, configuration_id, is_active").eq("is_active", true),
   ]);
   if (itemsResult.error || configurationsResult.error || codesResult.error) {
-    throw new Error("catalog_read_failed");
+    throw new SupplierOrderPhotoRouteError("CATALOG_READ_FAILED", "catalog");
   }
   const items = (itemsResult.data ?? []) as Array<{
     id: string; code: string; description: string; item_type: string; is_active: boolean;
@@ -138,11 +159,15 @@ export async function POST(request: Request) {
         const result = await supabase.from("supplier_order_summaries")
           .select("id, negotiation_number, status, is_in_history")
           .eq("negotiation_number", negotiationNumber).limit(2);
-        if (result.error) throw new Error("order_read_failed");
+        if (result.error) {
+          throw new SupplierOrderPhotoRouteError("ORDER_LOOKUP_FAILED", "order_lookup");
+        }
         const rows = (result.data ?? []) as Array<{
           id: string; negotiation_number: string; status: string; is_in_history: boolean;
         }>;
-        if (rows.length > 1) throw new Error("duplicate_identity_invariant");
+        if (rows.length > 1) {
+          throw new SupplierOrderPhotoRouteError("ORDER_LOOKUP_FAILED", "order_lookup");
+        }
         const order = rows[0];
         return order ? {
           negotiationNumber: order.negotiation_number,
@@ -158,9 +183,15 @@ export async function POST(request: Request) {
       durationMs: Date.now() - startedAt,
     });
     return response({ message: "Foto de Pedido analisada", structuredBlock: block }, 200);
-  } catch {
+  } catch (error) {
+    const providerError = error instanceof SupplierOrderPhotoProviderError ? error : null;
+    const routeError = error instanceof SupplierOrderPhotoRouteError ? error : null;
     console.warn("assistant_order_photo", {
       outcome: "ERROR",
+      stage: providerError ? "provider" : routeError?.stage ?? "interpretation",
+      internalCode: providerError?.internalCode ?? routeError?.internalCode ?? "UNEXPECTED",
+      providerStatus: providerError?.providerStatus ?? null,
+      model: providerError?.model ?? resolveSupplierOrderPhotoModel(),
       mimeType: validation.mimeType,
       sizeBytes: file.size,
       durationMs: Date.now() - startedAt,
