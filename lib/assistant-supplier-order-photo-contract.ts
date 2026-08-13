@@ -46,6 +46,15 @@ export type AssistantSupplierOrderPhotoPreviewLine = {
   rawDescription: string | null;
   quantity: number | null;
   resolution: "IDENTIFIED" | "NEEDS_REVIEW";
+  blockingReasons: Array<
+    | "CODE_NOT_FOUND"
+    | "CODE_MISSING"
+    | "CODE_AMBIGUOUS"
+    | "CODE_UNCERTAIN"
+    | "DESCRIPTION_CONFLICT"
+    | "QUANTITY_MISSING"
+    | "VISUAL_REVIEW"
+  >;
   descriptionMatch: "MATCH" | "NOT_PRESENT" | "CONFLICT" | "UNCERTAIN";
   warning: string | null;
   consolidatedLineCount: number;
@@ -377,7 +386,7 @@ export function parseAssistantSupplierOrderPhotoPreviewBlock(
   for (const raw of value.lines) {
     if (!isRecord(raw) || !hasExactKeys(raw, [
       "rawCode", "displayCode", "description", "rawDescription", "quantity",
-      "resolution", "descriptionMatch", "warning", "consolidatedLineCount",
+      "resolution", "blockingReasons", "descriptionMatch", "warning", "consolidatedLineCount",
     ])) return null;
     const rawCode = parseNullableText(raw.rawCode, 120);
     const displayCode = parseNullableText(raw.displayCode, 120);
@@ -389,12 +398,18 @@ export function parseAssistantSupplierOrderPhotoPreviewBlock(
       rawDescription === undefined || warning === undefined ||
       (raw.quantity !== null && (!Number.isSafeInteger(raw.quantity) || (raw.quantity as number) < 1)) ||
       !["IDENTIFIED", "NEEDS_REVIEW"].includes(String(raw.resolution)) ||
+      !Array.isArray(raw.blockingReasons) || raw.blockingReasons.length > 6 ||
+      raw.blockingReasons.some((reason) => ![
+        "CODE_NOT_FOUND", "CODE_MISSING", "CODE_AMBIGUOUS", "CODE_UNCERTAIN",
+        "DESCRIPTION_CONFLICT", "QUANTITY_MISSING", "VISUAL_REVIEW",
+      ].includes(String(reason))) ||
       !["MATCH", "NOT_PRESENT", "CONFLICT", "UNCERTAIN"].includes(String(raw.descriptionMatch)) ||
       !Number.isSafeInteger(raw.consolidatedLineCount) || (raw.consolidatedLineCount as number) < 1
     ) return null;
     lines.push({ rawCode, displayCode, description, rawDescription,
       quantity: raw.quantity as number | null,
       resolution: raw.resolution as AssistantSupplierOrderPhotoPreviewLine["resolution"],
+      blockingReasons: raw.blockingReasons as AssistantSupplierOrderPhotoPreviewLine["blockingReasons"],
       descriptionMatch: raw.descriptionMatch as AssistantSupplierOrderPhotoPreviewLine["descriptionMatch"],
       warning, consolidatedLineCount: raw.consolidatedLineCount as number });
   }

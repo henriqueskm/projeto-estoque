@@ -9,7 +9,6 @@ import {
 } from "@/lib/assistant-supplier-order-photo-contract";
 import {
   interpretSupplierOrderPhoto,
-  type SupplierOrderPhotoCatalogTarget,
 } from "@/lib/assistant-supplier-order-photo";
 import {
   extractSupplierOrderPhotoWithGemini,
@@ -17,7 +16,7 @@ import {
   SupplierOrderPhotoProviderError,
   type SupplierOrderPhotoProviderInternalCode,
 } from "@/lib/ai/supplier-order-photo-gemini";
-import { physicalItemTypes } from "@/lib/inbound-types";
+import { loadSupplierOrderPhotoCatalog, SupplierOrderPhotoCatalogError } from "@/lib/assistant-supplier-order-photo-catalog";
 import { createClient } from "@/lib/supabase/server";
 
 const multipartOverheadAllowance = 64 * 1024;
@@ -54,52 +53,6 @@ function isSameOrigin(request: Request) {
   } catch {
     return false;
   }
-}
-
-async function loadCatalog(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<SupplierOrderPhotoCatalogTarget[]> {
-  const [itemsResult, configurationsResult, codesResult] = await Promise.all([
-    supabase.from("items").select("id, code, description, item_type, is_active")
-      .in("item_type", [...physicalItemTypes]).eq("is_active", true),
-    supabase.from("commercial_configurations")
-      .select("id, description, servo_id, installation_kit_id, is_active").eq("is_active", true),
-    supabase.from("commercial_configuration_codes")
-      .select("id, code, configuration_id, is_active").eq("is_active", true),
-  ]);
-  if (itemsResult.error || configurationsResult.error || codesResult.error) {
-    throw new SupplierOrderPhotoRouteError("CATALOG_READ_FAILED", "catalog");
-  }
-  const items = (itemsResult.data ?? []) as Array<{
-    id: string; code: string; description: string; item_type: string; is_active: boolean;
-  }>;
-  const itemById = new Map(items.map((item) => [item.id, item]));
-  const physicalTargets: SupplierOrderPhotoCatalogTarget[] = items.map((item) => ({
-    identity: `ITEM:${item.id}`,
-    codeIdentity: item.id,
-    code: item.code,
-    description: item.description,
-  }));
-  const configurationById = new Map(
-    ((configurationsResult.data ?? []) as Array<{
-      id: string; description: string | null; servo_id: string; installation_kit_id: string; is_active: boolean;
-    }>).map((configuration) => [configuration.id, configuration]),
-  );
-  const configurationTargets = ((codesResult.data ?? []) as Array<{
-    id: string; code: string; configuration_id: string; is_active: boolean;
-  }>).flatMap((code) => {
-    const configuration = configurationById.get(code.configuration_id);
-    const servo = configuration ? itemById.get(configuration.servo_id) : null;
-    const kit = configuration ? itemById.get(configuration.installation_kit_id) : null;
-    if (!configuration || !servo || !kit) return [];
-    return [{
-      identity: `CONFIGURATION:${configuration.id}`,
-      codeIdentity: code.id,
-      code: code.code,
-      description: configuration.description?.trim() || `${servo.description} + ${kit.code}`,
-    } satisfies SupplierOrderPhotoCatalogTarget];
-  });
-  return [...physicalTargets, ...configurationTargets];
 }
 
 export async function POST(request: Request) {
@@ -154,7 +107,15 @@ export async function POST(request: Request) {
   try {
     const block = await interpretSupplierOrderPhoto({
       extract: () => extractSupplierOrderPhotoWithGemini({ bytes, mimeType: validation.mimeType }),
-      loadCatalog: () => loadCatalog(supabase),
+      loadCatalog: async () => {
+        try { return await loadSupplierOrderPhotoCatalog(supabase); }
+        catch (error) {
+          if (error instanceof SupplierOrderPhotoCatalogError) {
+            throw new SupplierOrderPhotoRouteError("CATALOG_READ_FAILED", "catalog");
+          }
+          throw error;
+        }
+      },
       findExistingOrder: async (negotiationNumber) => {
         const result = await supabase.from("supplier_order_summaries")
           .select("id, negotiation_number, status, is_in_history")

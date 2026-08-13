@@ -52,6 +52,13 @@ function isInformationalAnnotationWarning(warning: string | null) {
   return !/\b(?:COBRE|COBRINDO|SOBREPOE|ALTERA|ALTERANDO|CONTRADIZ|SUBSTITUI|ILEGIVEL|INCERTO|INCERTA|DUVIDA)\b/.test(normalized);
 }
 
+function isCodeUncertainWarning(warning: string | null) {
+  if (!warning) return true;
+  const normalized = normalizeDescription(warning);
+  if (/\bQUANTIDADE\b/.test(normalized) && !/\bCODIGO\b/.test(normalized)) return false;
+  return /\b(?:CODIGO|ILEGIVEL|INCERTO|INCERTA|DUVIDA)\b/.test(normalized);
+}
+
 function descriptionMatch(
   rawDescription: string | null,
   officialDescription: string,
@@ -127,6 +134,15 @@ export async function interpretSupplierOrderPhoto(
     const target = candidates.length === 1 ? candidates[0] : null;
     const match = target ? descriptionMatch(line.rawDescription, target.description) : "UNCERTAIN";
     const modelNeedsReview = line.needsReview && !isInformationalAnnotationWarning(line.warning);
+    const blockingReasons: AssistantSupplierOrderPhotoPreviewBlock["lines"][number]["blockingReasons"] = [];
+    if (!line.rawCode) blockingReasons.push("CODE_MISSING");
+    else if (candidates.length === 0) blockingReasons.push("CODE_NOT_FOUND");
+    else if (candidates.length > 1) blockingReasons.push("CODE_AMBIGUOUS");
+    const codeIsUncertain = modelNeedsReview && line.rawCode && isCodeUncertainWarning(line.warning);
+    if (codeIsUncertain) blockingReasons.push("CODE_UNCERTAIN");
+    if (!line.quantity) blockingReasons.push("QUANTITY_MISSING");
+    if (match === "CONFLICT") blockingReasons.push("DESCRIPTION_CONFLICT");
+    if (modelNeedsReview && !codeIsUncertain && line.quantity) blockingReasons.push("VISUAL_REVIEW");
     const needsReview =
       modelNeedsReview || !line.rawCode || !line.quantity || !target || match === "CONFLICT";
     const warning =
@@ -153,6 +169,7 @@ export async function interpretSupplierOrderPhoto(
         rawDescription: line.rawDescription,
         quantity: line.quantity,
         resolution: needsReview ? "NEEDS_REVIEW" as const : "IDENTIFIED" as const,
+        blockingReasons,
         descriptionMatch: match,
         warning,
         consolidatedLineCount: 1,
@@ -182,7 +199,7 @@ export async function interpretSupplierOrderPhoto(
     } else {
       consolidated.push({
         ...entry,
-        line: { ...entry.line, resolution: "NEEDS_REVIEW", warning: "A soma das quantidades excede o limite seguro." },
+        line: { ...entry.line, resolution: "NEEDS_REVIEW", blockingReasons: [...entry.line.blockingReasons, "QUANTITY_MISSING"], warning: "A soma das quantidades excede o limite seguro." },
       });
     }
   }

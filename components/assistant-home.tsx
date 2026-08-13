@@ -1620,6 +1620,11 @@ export function AssistantHome({
                             handleSupplierOrderFinalizationCancellation(chatMessage.id, block);
                           }}
                           confirmingSupplierOrderFinalization={confirmingSupplierOrderFinalizationMessageId === chatMessage.id}
+                          onSupplierOrderPhotoUpdate={(block) => {
+                            setMessages((current) => current.map((message) => message.id === chatMessage.id
+                              ? { ...message, content: block.fallbackText, structuredBlock: block }
+                              : message));
+                          }}
                         />
                       ) : (
                         <AssistantMessageContent

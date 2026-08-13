@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import type {
@@ -47,6 +47,7 @@ import type {
   AssistantStockOutputSelection,
 } from "@/lib/assistant-types";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
+import { updateSupplierOrderPhotoPreviewLine } from "@/lib/assistant-supplier-order-photo-preview";
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
 const orderDateFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -65,9 +66,105 @@ const orderStatusLabels = {
 
 function SupplierOrderPhotoPreview({
   block,
+  disabled,
+  onUpdate,
 }: {
   block: AssistantSupplierOrderPhotoPreviewBlock;
+  disabled: boolean;
+  onUpdate?: (block: AssistantSupplierOrderPhotoPreviewBlock) => void;
 }) {
+  const [dialog, setDialog] = useState<null | { mode: "correct" | "create"; lineIndex: number; code: string; description: string }>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const submitInFlightRef = useRef(false);
+  const dialogMode = dialog?.mode;
+
+  useEffect(() => {
+    if (!dialogMode) return;
+    firstFieldRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSubmitting) {
+        setDialog(null);
+        window.requestAnimationFrame(() => triggerRef.current?.focus());
+      }
+      if (event.key === "Tab") {
+        const controls = dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled])',
+        );
+        if (!controls?.length) return;
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [dialogMode, isSubmitting]);
+
+  function closeDialog() {
+    if (isSubmitting) return;
+    setDialog(null);
+    setDialogError(null);
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }
+
+  async function submitDialog() {
+    if (!dialog || submitInFlightRef.current || !onUpdate) return;
+    const code = dialog.code.trim();
+    const description = dialog.description.trim();
+    if (!code || code.length > 120 || (dialog.mode === "create" && (!description || description.length > 500))) {
+      setDialogError("Revise o código e a descrição informados.");
+      return;
+    }
+    submitInFlightRef.current = true;
+    setIsSubmitting(true);
+    setDialogError(null);
+    try {
+      const endpoint = dialog.mode === "correct"
+        ? "/api/assistant/order-photo/resolve-code"
+        : "/api/assistant/order-photo/create-loose-part";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dialog.mode === "correct" ? { code } : { code, description }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      const result = payload && typeof payload === "object" && !Array.isArray(payload)
+        ? payload as Record<string, unknown> : null;
+      if (!response.ok) throw new Error(typeof result?.error === "string" ? result.error : "Não foi possível concluir a operação.");
+      if (dialog.mode === "correct" && result?.status === "NOT_FOUND") {
+        setDialog({ ...dialog, mode: "create", code });
+        setDialogError("Código não cadastrado. Você pode cadastrar uma peça avulsa.");
+        return;
+      }
+      if (typeof result?.code !== "string" || typeof result.description !== "string") {
+        throw new Error("Não foi possível validar o retorno do catálogo.");
+      }
+      onUpdate(updateSupplierOrderPhotoPreviewLine(block, dialog.lineIndex, {
+        code: result.code, description: result.description,
+      }));
+      setNotice(dialog.mode === "create"
+        ? `Peça avulsa ${result.created === false ? "já cadastrada" : "cadastrada"}. Estoque inicial: 0.`
+        : `Cód. ${result.code} identificado no catálogo.`);
+      setDialog(null);
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    } catch (error) {
+      setDialogError(error instanceof Error ? error.message : "Não foi possível concluir a operação.");
+    } finally {
+      submitInFlightRef.current = false;
+      setIsSubmitting(false);
+    }
+  }
   const stateLabels = {
     READY_FOR_REVIEW: "Pronta para revisão",
     NEEDS_REVIEW: "Precisa de revisão",
@@ -116,7 +213,11 @@ function SupplierOrderPhotoPreview({
 
         {block.lines.length ? (
           <div className="divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral">
-            {block.lines.map((line, index) => (
+            {block.lines.map((line, index) => {
+              const hasCodeBlocker = line.blockingReasons.some((reason) => reason.startsWith("CODE_"));
+              const canCreateDirectly = line.blockingReasons.includes("CODE_NOT_FOUND") &&
+                !line.blockingReasons.includes("CODE_UNCERTAIN") && Boolean(line.rawCode);
+              return (
               <article key={`${line.rawCode ?? "unknown"}-${index}`} className="p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -144,10 +245,32 @@ function SupplierOrderPhotoPreview({
                     {line.resolution === "IDENTIFIED" ? "ℹ" : "⚠"} {line.warning}
                   </p>
                 ) : null}
+                {line.resolution === "NEEDS_REVIEW" && hasCodeBlocker ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" disabled={disabled || isSubmitting} onClick={(event) => {
+                      triggerRef.current = event.currentTarget;
+                      setDialogError(null);
+                      setDialog({ mode: "correct", lineIndex: index, code: line.displayCode ?? line.rawCode ?? "", description: line.rawDescription ?? "" });
+                    }} className="nk-focus min-h-10 rounded-xl border border-border-neutral px-3 text-xs font-black text-text-primary hover:bg-app-background disabled:opacity-50">
+                      Corrigir código
+                    </button>
+                    {canCreateDirectly ? (
+                      <button type="button" disabled={disabled || isSubmitting} onClick={(event) => {
+                        triggerRef.current = event.currentTarget;
+                        setDialogError(null);
+                        setDialog({ mode: "create", lineIndex: index, code: line.rawCode ?? "", description: line.rawDescription ?? "" });
+                      }} className="nk-focus min-h-10 rounded-xl bg-brand-charcoal px-3 text-xs font-black text-white hover:bg-brand-charcoal-soft disabled:opacity-50">
+                        Cadastrar peça avulsa
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </article>
-            ))}
+            );})}
           </div>
         ) : null}
+
+        {notice ? <p role="status" className="text-xs font-bold text-emerald-800">{notice}</p> : null}
 
         {block.warnings.length ? (
           <ul className="space-y-1 text-xs leading-5 font-semibold text-amber-900">
@@ -165,6 +288,38 @@ function SupplierOrderPhotoPreview({
           </Link>
         ) : null}
       </div>
+      {dialog ? (
+        <div className="fixed inset-0 z-[180] flex items-end justify-center bg-black/60 sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) closeDialog();
+        }}>
+          <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="photo-line-dialog-title" className="max-h-[90dvh] w-full overflow-y-auto rounded-t-3xl bg-surface p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-md sm:rounded-2xl sm:p-6">
+            <h3 id="photo-line-dialog-title" className="text-lg font-black text-text-primary">
+              {dialog.mode === "create" ? "Cadastrar peça avulsa" : "Corrigir código"}
+            </h3>
+            <div className="mt-4 space-y-4">
+              <label className="block text-sm font-black text-text-primary">Código
+                <input ref={firstFieldRef} value={dialog.code} maxLength={120} disabled={isSubmitting} onChange={(event) => setDialog({ ...dialog, code: event.target.value })} className="nk-field mt-1 block min-h-11 w-full rounded-xl border px-3" />
+              </label>
+              {dialog.mode === "create" ? (
+                <>
+                  <label className="block text-sm font-black text-text-primary">Descrição
+                    <input value={dialog.description} maxLength={500} disabled={isSubmitting} onChange={(event) => setDialog({ ...dialog, description: event.target.value })} className="nk-field mt-1 block min-h-11 w-full rounded-xl border px-3" />
+                  </label>
+                  <div className="rounded-xl bg-app-background px-3 py-2 text-sm"><strong>Tipo:</strong> Peça avulsa</div>
+                  <p className="text-xs leading-5 font-semibold text-text-muted">Isso cria somente o cadastro da peça. Não adiciona estoque e não cria o Pedido.</p>
+                </>
+              ) : null}
+              {dialogError ? <p role="alert" className="text-sm font-bold text-red-800">{dialogError}</p> : null}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" disabled={isSubmitting} onClick={closeDialog} className="nk-focus min-h-11 rounded-xl border border-border-neutral px-4 text-sm font-black">Cancelar</button>
+              <button type="button" disabled={isSubmitting} onClick={() => void submitDialog()} className="nk-focus min-h-11 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:opacity-50">
+                {isSubmitting ? "Aguarde..." : dialog.mode === "create" ? "Cadastrar peça" : "Validar código"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -2412,6 +2567,7 @@ export function AssistantStructuredBlockView({
   onSupplierOrderFinalizationConfirm,
   onSupplierOrderFinalizationCancel,
   confirmingSupplierOrderFinalization = false,
+  onSupplierOrderPhotoUpdate,
 }: {
   block: AssistantStructuredBlock;
   disabled?: boolean;
@@ -2454,10 +2610,11 @@ export function AssistantStructuredBlockView({
   onSupplierOrderFinalizationConfirm?: (block: AssistantSupplierOrderFinalizationPreviewBlock) => void;
   onSupplierOrderFinalizationCancel?: (block: AssistantSupplierOrderFinalizationPreviewBlock) => void;
   confirmingSupplierOrderFinalization?: boolean;
+  onSupplierOrderPhotoUpdate?: (block: AssistantSupplierOrderPhotoPreviewBlock) => void;
 }) {
   switch (block.kind) {
     case "supplier_order_photo_preview":
-      return <SupplierOrderPhotoPreview block={block} />;
+      return <SupplierOrderPhotoPreview block={block} disabled={disabled} onUpdate={onSupplierOrderPhotoUpdate} />;
     case "supplier_order_stock_entry_preview":
     case "manual_stock_entry_preview":
       return <StockEntryPreview block={block} disabled={disabled} confirming={confirmingStockEntry}
