@@ -3,14 +3,38 @@
 - **ID:** NK-ORD-008C3B
 - **Título:** Modal de cadastro de Peça avulsa na prévia do Pedido por foto
 - **Prioridade:** alta
-- **Fase:** aplicação / aguardando implementação
-- **Estado:** `READY`
+- **Fase:** aplicação / validação humana
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_TEST`
 - **Classificação:** **B — ajustes somente de aplicação**
 - **Dependências:** MIG-ORD-008C3A `DONE / APPLIED_REMOTE / VERIFIED`; NK-ORD-008B
   mesclada pelo PR #24; política de revisão da foto aprovada
-- **Base:** `e2e95bd76cff530d5b6c61dc6174f9c4360d47f4`
-- **Branch:** a definir
-- **PR:** pendente
+- **Base:** `351962c18e1c1d091d371e27f2c773e4a30eae71`
+- **Branch:** `agent/assistant-photo-loose-part-registration`
+- **PR:** [#27](https://github.com/henriqueskm/projeto-estoque/pull/27) (draft)
+
+## Implementação NK-ORD-008C3B
+
+- a prévia possui motivos bloqueantes machine-readable, sem interpretar texto
+  de warning para decidir ações;
+- código desconhecido confirmado permite correção exata ou cadastro explícito
+  de Peça avulsa; leitura visual incerta não oferece cadastro direto;
+- `POST /api/assistant/order-photo/resolve-code` reutiliza o mesmo loader do
+  catálogo e não faz fuzzy matching;
+- `POST /api/assistant/order-photo/create-loose-part` aceita somente `code` e
+  `description` e chama exclusivamente `public.create_loose_part`;
+- modal no desktop e bottom sheet no celular preservam foco, Escape, backdrop
+  seguro e bloqueio síncrono de duplo envio;
+- a linha e o structured block da mensagem existente são atualizados sem nova
+  fotografia, Gemini ou armazenamento paralelo;
+- quantidade ou revisão visual ainda pendente continua bloqueando a prévia;
+- o banner “Somente prévia — nenhum Pedido foi criado.” permanece e não existe
+  botão nem endpoint para criar Pedido.
+- frete, transporte, envio, SEDEX, tarifas, taxas e serviços claramente
+  não-estoque são excluídos depois de dar prioridade a qualquer match exato do
+  catálogo; geram apenas warning informativo e não recebem ações de cadastro.
+
+Próxima etapa: **NK-ORD-008D**, criação segura do Pedido somente depois da
+validação humana desta prévia totalmente resolvida.
 
 ## Rollout remoto MIG-ORD-008C3A
 

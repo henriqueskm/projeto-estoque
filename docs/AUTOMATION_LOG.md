@@ -800,3 +800,28 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   verificações posteriores passaram.
 - **Próxima etapa:** NK-ORD-008C3B — modal/bottom sheet “Cadastrar peça avulsa”
   na prévia de Pedido por foto; criação real de Pedido continua fora do escopo.
+
+## 2026-08-13 — NK-ORD-008C3B / correção e cadastro na prévia da foto
+
+- **Base:** `origin/main` em `351962c18e1c1d091d371e27f2c773e4a30eae71`.
+- **Branch:** `agent/assistant-photo-loose-part-registration`.
+- **PR:** [#27](https://github.com/henriqueskm/projeto-estoque/pull/27) (draft).
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_TEST`.
+- **Contrato da prévia:** motivos bloqueantes tipados distinguem código ausente,
+  desconhecido, ambíguo ou incerto, conflito, quantidade e revisão visual.
+- **Correção:** consulta exata e read-only reutiliza o catálogo oficial; não há
+  fuzzy matching nem nova chamada Gemini.
+- **Cadastro:** endpoint estrito, same-origin e autenticado chama somente
+  `public.create_loose_part(code, description)`; `created=true` e replay
+  compatível são sucesso.
+- **UX:** modal desktop/bottom sheet mobile pré-preenchido, tipo fixo Peça
+  avulsa, foco restaurado e duplo envio bloqueado.
+- **Separação operacional:** a mensagem existente é atualizada sem persistir a
+  imagem; nenhuma criação de Pedido, entrada, saldo, lote ou movimento foi
+  habilitada.
+- **Próxima etapa:** NK-ORD-008D permanece separada e depende de validação
+  humana desta fase.
+- **Hardening C3B1:** linhas desconhecidas inequivocamente logísticas ou de
+  cobrança são classificadas server-side como `NON_STOCK_CHARGE`, excluídas do
+  total e mantidas apenas como warning informativo. Match exato de catálogo
+  sempre prevalece; produtos físicos desconhecidos continuam registráveis.

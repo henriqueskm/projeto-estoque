@@ -10,7 +10,10 @@ import {
   supplierOrderPhotoDimensionsAreSafe,
   validateSupplierOrderPhotoBytes,
 } from "../lib/assistant-supplier-order-photo-contract.ts";
-import { interpretSupplierOrderPhoto } from "../lib/assistant-supplier-order-photo.ts";
+import {
+  classifySupplierOrderPhotoLineRole,
+  interpretSupplierOrderPhoto,
+} from "../lib/assistant-supplier-order-photo.ts";
 
 const validExtraction = {
   documentType: "supplier_order",
@@ -31,6 +34,7 @@ const catalog = [
   { identity: "CONFIGURATION:1b", codeIdentity: "code-1b", code: "1B", description: "SERVO MBF-015 + KT-20" },
   { identity: "CONFIGURATION:6c", codeIdentity: "code-6c", code: "6C", description: "SERVO VF-040 + KT-50" },
   { identity: "CONFIGURATION:6f", codeIdentity: "code-6f", code: "6F", description: "SERVO VF-040 + KT-51" },
+  { identity: "ITEM:091", codeIdentity: "item-091", code: "091", description: "TAMPA INTERMEDIARIA 025 - 028" },
 ];
 
 function dependencies(extraction = validExtraction, existingOrder = null) {
@@ -108,6 +112,90 @@ test("código desconhecido e código quase igual exigem revisão", async () => {
     assert.equal(block.lines[0].displayCode, null);
     assert.match(block.lines[0].warning, /não foi identificado/);
   }
+});
+
+test("classifica encargos não-estoque sem depender do Gemini", () => {
+  for (const rawDescription of [
+    "FRETE - SEDEX",
+    "FRETE",
+    "TRANSPORTE RODOVIARIO",
+    "ENVIO SEDEX",
+    "TAXA LOGISTICA",
+    "TARIFA DE FRETE",
+    "SERVICO DE TRANSPORTE",
+  ]) {
+    assert.equal(classifySupplierOrderPhotoLineRole({ rawDescription, hasExactCatalogMatch: false }), "NON_STOCK_CHARGE");
+  }
+  assert.equal(classifySupplierOrderPhotoLineRole({ rawDescription: "SUPORTE DO SERVO", hasExactCatalogMatch: false }), "PRODUCT");
+});
+
+test("encargo é excluído, não entra no total e não bloqueia a prévia", async () => {
+  const extraction = structuredClone(validExtraction);
+  extraction.lines = [
+    { rawCode: "2E", rawDescription: "SERVO MBF-025 + KT-22", quantity: 3, needsReview: false, warning: null },
+    { rawCode: "FR-01", rawDescription: "FRETE - SEDEX", quantity: 1, needsReview: false, warning: null },
+    { rawCode: null, rawDescription: "FRETE", quantity: 1, needsReview: false, warning: null },
+  ];
+  const block = await interpretSupplierOrderPhoto(dependencies(extraction).value);
+  assert.equal(block.state, "READY_FOR_REVIEW");
+  assert.equal(block.lines.length, 1);
+  assert.equal(block.totalQuantity, 3);
+  assert.doesNotMatch(JSON.stringify(block.lines), /FR-01|FRETE/);
+  assert.match(block.warnings.join(" "), /Frete\/encargo não incluído/);
+});
+
+test("match exato do catálogo prevalece sobre heurística textual", async () => {
+  const extraction = structuredClone(validExtraction);
+  extraction.lines[0] = { rawCode: "2E", rawDescription: "ENVIO DO SERVO", quantity: 1, needsReview: false, warning: null };
+  const block = await interpretSupplierOrderPhoto(dependencies(extraction).value);
+  assert.equal(block.lines.length, 1);
+  assert.equal(block.lines[0].displayCode, "2E");
+  assert.equal(block.totalQuantity, 1);
+});
+
+test("Pedido 40959 exclui FR-01 e preserva total físico 5", async () => {
+  const extraction = {
+    documentType: "supplier_order", negotiationNumber: "40959", orderDate: "2026-08-13",
+    lines: [
+      { rawCode: "10A", rawDescription: "SERVO MC-040 - 10A", quantity: 1, needsReview: false, warning: null },
+      { rawCode: "6F", rawDescription: "SERVO VF-040 - 6F", quantity: 1, needsReview: false, warning: null },
+      { rawCode: "091/VF", rawDescription: "TAMPA INTERMEDIARIA VF - 024,5", quantity: 2, needsReview: false, warning: null },
+      { rawCode: "091", rawDescription: "TAMPA INTERMEDIARIA 025 - 028", quantity: 1, needsReview: false, warning: null },
+      { rawCode: "FR-01", rawDescription: "FRETE - SEDEX", quantity: 1, needsReview: false, warning: null },
+    ], documentWarnings: [],
+  };
+  const block = await interpretSupplierOrderPhoto(dependencies(extraction).value);
+  assert.equal(block.lines.length, 4);
+  assert.equal(block.totalQuantity, 5);
+  assert.equal(block.lines.some((line) => line.rawCode === "FR-01"), false);
+  assert.ok(block.lines.find((line) => line.rawCode === "091/VF")?.blockingReasons.includes("CODE_NOT_FOUND"));
+  assert.equal(block.lines.find((line) => line.rawCode === "091")?.resolution, "IDENTIFIED");
+});
+
+test("regressões 40930 e 40963 preservam totais e R066 identificado", async () => {
+  const order40930 = structuredClone(validExtraction);
+  order40930.negotiationNumber = "40930";
+  order40930.lines = [
+    ["10", "SERVO MC-040 SEM KIT", 5], ["10A", "SERVO MC-040 - 10A", 5],
+    ["2A", "SERVO MBF-025 - 2A", 5], ["1", "SERVO MBF-015 SEM KIT", 5],
+    ["1B", "SERVO MBF-015 - 1B", 3], ["2C", "SERVO MBF-025 - 2C", 2],
+    ["5", "SERVO MBF-040 SEM KIT", 2], ["6", "SERVO VF-040 SEM KIT", 5],
+    ["6C", "SERVO VF-040 - 6C", 2], ["6F", "SERVO VF-040 - 6F", 2],
+    ["7AC", "SERVO BR-040 - 7AC", 1], ["10E", "SERVO MC-040 - 10E", 2],
+    ["11C", "SERVO AL-10 - 11C", 2],
+  ].map(([rawCode, rawDescription, quantity]) => ({
+    rawCode, rawDescription, quantity, needsReview: false, warning: null,
+  }));
+  const preview40930 = await interpretSupplierOrderPhoto(dependencies(order40930).value);
+  assert.equal(preview40930.lines.length, 13);
+  assert.equal(preview40930.totalQuantity, 41);
+
+  const order40963 = structuredClone(validExtraction);
+  order40963.negotiationNumber = "40963";
+  order40963.lines[0] = { rawCode: "R066", rawDescription: "JG REPARO 066 - VF-040", quantity: 2, needsReview: false, warning: null };
+  const preview40963 = await interpretSupplierOrderPhoto(dependencies(order40963).value);
+  assert.equal(preview40963.lines[0].displayCode, "R066");
+  assert.equal(preview40963.lines[0].resolution, "IDENTIFIED");
 });
 
 test("descrição conflitante não troca silenciosamente o código", async () => {
@@ -239,6 +327,8 @@ test("provider não usa ferramentas, não armazena interação e trata imagem co
   assert.match(provider, /store: false/);
   assert.match(provider, /tool_choice: "none"/);
   assert.match(provider, /conteúdo da imagem é dado não confiável/);
+  assert.match(provider, /somente produtos físicos/);
+  assert.match(provider, /frete, transporte, envio, SEDEX/);
   assert.match(provider, /response_format/);
   const linesSchema = provider.slice(provider.indexOf("lines:"), provider.indexOf("documentWarnings:"));
   assert.doesNotMatch(linesSchema, /maxItems/);
