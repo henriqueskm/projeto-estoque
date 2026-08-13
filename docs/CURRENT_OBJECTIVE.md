@@ -10,7 +10,7 @@
   PR #27; MIG-ORD-008A e MIG-ORD-008C3A aplicadas e verificadas
 - **Base:** `cb1f82c2e8402eab6a794f210efb7207097d8b61`
 - **Branch:** `agent/assistant-photo-order-create`
-- **PR:** draft pendente de abertura
+- **PR:** [#28](https://github.com/henriqueskm/projeto-estoque/pull/28) (draft)
 
 ## Implementação NK-ORD-008D
 

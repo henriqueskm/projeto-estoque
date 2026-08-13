@@ -831,6 +831,7 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Base:** `origin/main` em `cb1f82c2e8402eab6a794f210efb7207097d8b61`,
   merge do PR #27 e do commit funcional aprovado `1b0d3d3...`.
 - **Branch:** `agent/assistant-photo-order-create`.
+- **PR:** [#28](https://github.com/henriqueskm/projeto-estoque/pull/28) (draft).
 - **Estado:** `IMPLEMENTED / WAITING_HUMAN_CREATE_TEST`.
 - **Fechamento C3B:** `DONE / HUMAN_TEST_APPROVED / MERGED`; correção exata,
   cadastro catalog-only e exclusão de encargos foram preservados.
