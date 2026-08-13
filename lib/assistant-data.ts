@@ -1328,6 +1328,16 @@ export async function consultAssistantServoModelInventory(
       };
     },
   );
+
+  if (
+    configurationTargets.reduce(
+      (sum, configuration) => sum + configuration.target.currentStock,
+      0,
+    ) !== mountedQuantity
+  ) {
+    return null;
+  }
+
   const shownConfigurations = configurationTargets.slice(
     0,
     maximumServoModelConfigurations,
@@ -1352,6 +1362,7 @@ export async function consultAssistantServoModelInventory(
 
   return {
     kind: "servo_model_inventory_breakdown",
+    scope: "FULL_MODEL",
     model: {
       official: officialModel,
       normalized: normalizedModel,

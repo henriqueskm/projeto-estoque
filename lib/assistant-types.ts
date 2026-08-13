@@ -657,6 +657,7 @@ export type AssistantServoModelConfigurationTarget = {
 
 export type AssistantServoModelInventoryBreakdownBlock = {
   kind: "servo_model_inventory_breakdown";
+  scope: "FULL_MODEL" | "MOUNTED_CONFIGURATIONS";
   model: {
     official: string;
     normalized: string;
@@ -1686,11 +1687,13 @@ function parseServoModelInventoryBreakdown(
   const looseQuantity = value.looseQuantity;
   const mountedQuantity = value.mountedQuantity;
   const totalQuantity = value.totalQuantity;
+  const scope = value.scope === undefined ? "FULL_MODEL" : value.scope;
 
   if (
     !officialModel ||
     officialModel.length > assistantQueryMaxLength ||
     !normalizedModel ||
+    (scope !== "FULL_MODEL" && scope !== "MOUNTED_CONFIGURATIONS") ||
     normalizeServoModel(officialModel) !== normalizedModel ||
     normalizeServoModel(normalizedModel) !== normalizedModel ||
     (bareServo !== null &&
@@ -1721,6 +1724,7 @@ function parseServoModelInventoryBreakdown(
 
   return {
     kind: "servo_model_inventory_breakdown",
+    scope,
     model: {
       official: officialModel,
       normalized: normalizedModel,

@@ -933,6 +933,42 @@ function answerServoModelInventoryAction(
   };
 }
 
+function answerServoModelMountedConfigurations(
+  block: AssistantServoModelInventoryBreakdownBlock | null,
+): AssistantChatSuccess {
+  if (!block) {
+    return {
+      message: "Não encontrei esse modelo de servo no catálogo atual.",
+      contextItemQuery: null,
+      contextItemReferenceKind: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  const scopedBlock: AssistantServoModelInventoryBreakdownBlock = {
+    ...block,
+    scope: "MOUNTED_CONFIGURATIONS",
+    fallbackText: [
+      `${block.mountedQuantity} ${block.model.official} montado${block.mountedQuantity === 1 ? "" : "s"} com kit.`,
+      ...block.configurations.map(
+        ({ target, aliases }) =>
+          `Cód. ${aliases.join(" / ")}: ${target.currentStock}.`,
+      ),
+    ].join("\n"),
+  };
+
+  return {
+    message: scopedBlock.fallbackText,
+    structuredBlock: scopedBlock,
+    contextItemQuery: block.model.official,
+    contextItemReferenceKind: "SERVO_MODEL",
+    contextLastIntent: "SERVO_MODEL_MOUNTED_CONFIGURATIONS",
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+  };
+}
+
 function answerServoModelInventoryQuantity(
   block: AssistantServoModelInventoryBreakdownBlock | null,
   view: "TOTAL" | "MOUNTED" | "LOOSE",
@@ -1108,10 +1144,7 @@ export async function answerAssistantQuestion(
       return answerServoModelInventoryQuantity(block, "MOUNTED");
     }
 
-    return answerServoModelInventoryAction(block, {
-      action: "show_servo_model_inventory_breakdown",
-      normalizedModel: contextualModel,
-    });
+    return answerServoModelMountedConfigurations(block);
   }
 
   if (contextualModel && isServoModelInventoryFollowUp(message)) {
@@ -1126,10 +1159,13 @@ export async function answerAssistantQuestion(
     );
 
     return view === "BREAKDOWN"
-      ? answerServoModelInventoryAction(block, {
-          action: "show_servo_model_inventory_breakdown",
-          normalizedModel: contextualModel,
-        })
+      ? conversationContext.suggestedFollowUp ===
+        "SHOW_SERVO_MODEL_CONFIGURATIONS"
+        ? answerServoModelMountedConfigurations(block)
+        : answerServoModelInventoryAction(block, {
+            action: "show_servo_model_inventory_breakdown",
+            normalizedModel: contextualModel,
+          })
       : answerServoModelInventoryQuantity(block, view);
   }
 

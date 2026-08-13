@@ -511,12 +511,84 @@ test("suggestion continuation re-queries official inventory and cannot invoke an
   const continuation = source.slice(start, end);
 
   assert.match(continuation, /consultAssistantServoModelInventory/);
-  assert.match(continuation, /show_servo_model_inventory_breakdown/);
+  assert.match(continuation, /answerServoModelMountedConfigurations/);
   assert.doesNotMatch(continuation, /createAssistant.*Preview/);
   assert.doesNotMatch(continuation, /proposalToken|fetch\(|rpc\(/i);
   assert.match(source, /Use o botão Confirmar retirada/);
   assert.match(source, /Use o botão Confirmar entrada/);
   assert.match(source, /Use o botão Confirmar saída/);
+});
+
+test("mounted configuration follow-ups use current quantity and a scoped breakdown", async () => {
+  const assistant = await read("lib/ai/assistant.ts");
+  const conversation = await read("lib/assistant-conversation.ts");
+  const data = await read("lib/assistant-data.ts");
+
+  assert.match(assistant, /scope:\s*"MOUNTED_CONFIGURATIONS"/);
+  assert.match(assistant, /block\.mountedQuantity/);
+  assert.match(
+    conversation,
+    /Esses \$\{block\.mountedQuantity\} \$\{block\.model\.official\} montados com kit/,
+  );
+  assert.match(conversation, /distribuídos nestas configurações/);
+  assert.match(data, /configurationTargets\.reduce/);
+  assert.match(data, /!== mountedQuantity/);
+
+  const scoped = addAssistantConversationalCopy({
+    message: "Configurações atuais.",
+    structuredBlock: {
+      kind: "servo_model_inventory_breakdown",
+      scope: "MOUNTED_CONFIGURATIONS",
+      mountedQuantity: 4,
+      model: { official: "MBF-025", normalized: "MBF025" },
+    },
+  });
+  assert.equal(
+    scoped.leadText,
+    "Esses 4 MBF-025 montados com kit estão distribuídos nestas configurações:",
+  );
+  assert.equal(scoped.followUpText, null);
+
+  const full = addAssistantConversationalCopy({
+    message: "Estoque completo.",
+    structuredBlock: {
+      kind: "servo_model_inventory_breakdown",
+      scope: "FULL_MODEL",
+      mountedQuantity: 4,
+      model: { official: "MBF-025", normalized: "MBF025" },
+    },
+  });
+  assert.equal(full.leadText, "Separei o estoque físico desse modelo.");
+});
+
+test("mounted configuration cards exclude bare Servo without changing the full-model view", async () => {
+  const source = await read("components/assistant-structured-block.tsx");
+  const component = source.slice(
+    source.indexOf("function ServoModelInventoryBreakdown"),
+    source.indexOf("function SupplierOrder", source.indexOf("function ServoModelInventoryBreakdown")),
+  );
+
+  assert.match(component, /block\.scope === "MOUNTED_CONFIGURATIONS"/);
+  assert.match(component, /!mountedConfigurationsOnly && block\.bareServo/);
+  assert.match(component, /block\.configurations\.map/);
+  assert.match(component, /Configurações com kit/);
+});
+
+test("both mounted and kit-split suggestions resolve to the mounted-only presentation", async () => {
+  const source = await read("lib/ai/assistant.ts");
+  const suggestionRoute = source.slice(
+    source.indexOf("if (isAssistantSuggestedFollowUpReply(message))"),
+    source.indexOf("if (contextualModel && isServoModelInventoryFollowUp(message))"),
+  );
+  const explicitRoute = source.slice(
+    source.indexOf("if (contextualModel && isServoModelInventoryFollowUp(message))"),
+    source.indexOf("if (lastItemQuery", source.indexOf("if (contextualModel && isServoModelInventoryFollowUp(message))")),
+  );
+
+  assert.match(suggestionRoute, /SHOW_SERVO_MODEL_KIT_SPLIT/);
+  assert.match(suggestionRoute, /answerServoModelMountedConfigurations/);
+  assert.match(explicitRoute, /SHOW_SERVO_MODEL_CONFIGURATIONS/);
+  assert.match(explicitRoute, /answerServoModelMountedConfigurations/);
 });
 
 test("new conversation resets messages and the entire structured context", async () => {

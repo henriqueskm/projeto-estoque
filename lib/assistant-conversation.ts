@@ -353,6 +353,18 @@ export function addAssistantConversationalCopy(
   }
 
   if (block.kind === "servo_model_inventory_breakdown") {
+    if (block.scope === "MOUNTED_CONFIGURATIONS") {
+      const singular = block.mountedQuantity === 1;
+
+      return {
+        ...answer,
+        leadText: singular
+          ? `Esse 1 ${block.model.official} montado com kit está nesta configuração:`
+          : `Esses ${block.mountedQuantity} ${block.model.official} montados com kit estão distribuídos nestas configurações:`,
+        followUpText: null,
+      };
+    }
+
     return {
       ...answer,
       leadText: "Separei o estoque físico desse modelo.",
