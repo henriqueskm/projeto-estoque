@@ -878,3 +878,27 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Método:** somente consultas `SELECT` no projeto remoto vinculado; nenhuma
   RPC mutável, edição, retirada, entrada, migration, repair ou seed.
 - **Próxima etapa:** revisão humana para merge; o PR permanece draft.
+
+## 2026-08-13 — NK-AI-CTX-001 / conversa contextual e personalidade
+
+- **Base:** `origin/main` em
+  `5e613db7adffd718a8d10b376e430522aeab6bf2`, merge aprovado do PR #30.
+- **Encerramentos:** NK-ORD-008D ficou `DONE / HUMAN_TEST_PASSED /
+  REMOTE_VERIFIED / MERGED` pelo PR #28; NK-ORD-009B ficou `DONE /
+  HUMAN_UI_APPROVED / MERGED` pelo PR #30. O PR #29 foi rejeitado visualmente
+  e não representa a implementação aprovada.
+- **Branch:** `agent/assistant-contextual-conversation`.
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_CONVERSATION_TEST`.
+- **Memória curta:** até três trocas, seis mensagens e 6.000 caracteres de
+  fallback textual seguro; structured blocks, tokens, UUIDs, mídia e payloads
+  operacionais não entram na janela.
+- **Contexto:** tópico, item, Pedido, código de linha e última intenção formam
+  uma pista tipada; o servidor continua re-resolvendo catálogo e Pedido atuais.
+- **Apresentação:** uma resposta pode conter lead curto, card existente e um
+  complemento opcional, com no máximo uma sugestão relevante.
+- **Persistência:** session schema v2; Nova conversa e logout limpam a memória
+  e nenhum estado de conversa foi adicionado ao Supabase.
+- **Segurança:** roteamento determinístico e contratos HMAC permanecem; texto
+  como “sim” ou histórico adulterado não confirma operação.
+- **Próxima etapa:** validação humana dos cenários contextuais e do equilíbrio
+  entre naturalidade, brevidade e utilidade.

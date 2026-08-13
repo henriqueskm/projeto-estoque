@@ -156,6 +156,12 @@ export function isItemFollowUpMessage(message: string) {
     /^(e\s+)?(qual\s+)?(servo|kit|composicao)\b/.test(
       normalizedMessage,
     ) ||
+    /^(e\s+)?(?:dentro\s+de|quais)\s+caixas\b/.test(
+      normalizedMessage,
+    ) ||
+    /^(e\s+)?(?:tem|esta)\s+pouco\s+(?:dele|desse|deste)?\b/.test(
+      normalizedMessage,
+    ) ||
     /^(e\s+)?(mostre|mostrar|ver|abra|abrir)\b.{0,20}\b(foto|imagem)\b/.test(
       normalizedMessage,
     )
@@ -538,7 +544,7 @@ export function routeInventoryItemSummaryQuestion(
     );
   const asksMinimum = /\bminimo\b/.test(normalizedMessage);
   const asksStatus =
-    /\b(baixo|baixos|baixa|baixas|zerado|zerados|zerada|zeradas|repor|reposicao|situacao)\b/.test(
+    /\b(baixo|baixos|baixa|baixas|pouco|zerado|zerados|zerada|zeradas|repor|reposicao|situacao)\b/.test(
       normalizedMessage,
     );
   const asksStock =

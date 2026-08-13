@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   assistantMessageMaxLength,
-  assistantQueryMaxLength,
   assistantRequestMaxCharacters,
   parseAssistantServoModelInventoryAction,
   parseAssistantStockEntrySelection,
@@ -11,6 +10,13 @@ import {
   type AssistantChatError,
   type AssistantChatSuccess,
 } from "@/lib/assistant-types";
+import {
+  addAssistantConversationalCopy,
+  deriveAssistantConversationContext,
+  emptyAssistantConversationContext,
+  parseAssistantConversationContext,
+  parseAssistantRecentConversation,
+} from "@/lib/assistant-conversation";
 import {
   answerAssistantQuestion,
   AssistantServiceError,
@@ -167,10 +173,8 @@ export async function POST(request: Request) {
   const bodyKeys = Object.keys(bodyRecord);
   const message =
     typeof bodyRecord.message === "string" ? bodyRecord.message.trim() : "";
-  const rawLastItemQuery = bodyRecord.lastItemQuery;
-  const rawLastSupplierOrderId = bodyRecord.lastSupplierOrderId;
-  const rawLastSupplierOrderCatalogCode =
-    bodyRecord.lastSupplierOrderCatalogCode;
+  const rawRecentConversation = bodyRecord.recentConversation;
+  const rawConversationContext = bodyRecord.conversationContext;
   const rawSelectedSupplierOrderItemId =
     bodyRecord.selectedSupplierOrderItemId;
   const rawInventoryAction = bodyRecord.inventoryAction;
@@ -183,9 +187,8 @@ export async function POST(request: Request) {
     bodyKeys.some(
       (key) =>
         key !== "message" &&
-        key !== "lastItemQuery" &&
-        key !== "lastSupplierOrderId" &&
-        key !== "lastSupplierOrderCatalogCode" &&
+        key !== "recentConversation" &&
+        key !== "conversationContext" &&
         key !== "selectedSupplierOrderItemId" &&
         key !== "inventoryAction" &&
         key !== "stockEntrySelection" &&
@@ -205,38 +208,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const normalizedLastItemQuery =
-    typeof rawLastItemQuery === "string" ? rawLastItemQuery.trim() : "";
-  const lastItemQuery =
-    normalizedLastItemQuery &&
-    normalizedLastItemQuery.length <= assistantQueryMaxLength
-      ? normalizedLastItemQuery
-      : null;
-  const normalizedLastSupplierOrderId =
-    typeof rawLastSupplierOrderId === "string"
-      ? rawLastSupplierOrderId.trim()
-      : "";
-  const lastSupplierOrderId =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      normalizedLastSupplierOrderId,
-    )
-      ? normalizedLastSupplierOrderId
-      : null;
-  const normalizedLastSupplierOrderCatalogCode =
-    typeof rawLastSupplierOrderCatalogCode === "string"
-      ? rawLastSupplierOrderCatalogCode
-          .trim()
-          .replace(/\s+/g, " ")
-          .toLocaleUpperCase("pt-BR")
-      : "";
-  const lastSupplierOrderCatalogCode =
-    normalizedLastSupplierOrderCatalogCode.length <=
-      assistantQueryMaxLength &&
-    /^(?=.*\d)[A-Z0-9]+(?:[ -][A-Z0-9]+)*$/.test(
-      normalizedLastSupplierOrderCatalogCode,
-    )
-      ? normalizedLastSupplierOrderCatalogCode
-      : null;
+  const recentConversation =
+    rawRecentConversation === undefined
+      ? []
+      : parseAssistantRecentConversation(rawRecentConversation);
+  const conversationContext =
+    rawConversationContext === undefined
+      ? emptyAssistantConversationContext()
+      : parseAssistantConversationContext(rawConversationContext);
+
+  if (!recentConversation || !conversationContext) {
+    return errorResponse("O contexto da conversa não é válido.", 400);
+  }
   const normalizedSelectedSupplierOrderItemId =
     typeof rawSelectedSupplierOrderItemId === "string"
       ? rawSelectedSupplierOrderItemId.trim()
@@ -287,9 +270,9 @@ export async function POST(request: Request) {
   try {
     const answer = await answerAssistantQuestion(
       message,
-      lastItemQuery,
-      lastSupplierOrderId,
-      lastSupplierOrderCatalogCode,
+      conversationContext.itemQuery,
+      conversationContext.supplierOrderId,
+      conversationContext.supplierOrderCatalogCode,
       authentication.firstName,
       authentication.userId,
       authentication.profileName,
@@ -299,9 +282,18 @@ export async function POST(request: Request) {
       stockOutputSelection,
       configurationAssemblySelection,
       configurationDisassemblySelection,
+      recentConversation,
+      conversationContext,
     );
+    const conversationalAnswer = addAssistantConversationalCopy(answer);
 
-    return NextResponse.json<AssistantChatSuccess>(answer);
+    return NextResponse.json<AssistantChatSuccess>({
+      ...conversationalAnswer,
+      conversationContext: deriveAssistantConversationContext(
+        conversationContext,
+        conversationalAnswer,
+      ),
+    });
   } catch (error) {
     if (error instanceof AssistantServiceError) {
       return serviceErrorResponse(error);

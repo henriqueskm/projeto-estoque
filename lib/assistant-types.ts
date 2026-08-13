@@ -17,7 +17,27 @@ export type { AssistantSupplierOrderPhotoCreateResultBlock } from "@/lib/assista
 
 export const assistantMessageMaxLength = 2000;
 export const assistantQueryMaxLength = 120;
-export const assistantRequestMaxCharacters = 4096;
+export const assistantRequestMaxCharacters = 12_000;
+
+export type AssistantConversationTopic =
+  | "GENERAL"
+  | "INVENTORY"
+  | "SUPPLIER_ORDER"
+  | "CATALOG"
+  | "REPLENISHMENT";
+
+export type AssistantConversationContext = {
+  topic: AssistantConversationTopic;
+  itemQuery: string | null;
+  supplierOrderId: string | null;
+  supplierOrderCatalogCode: string | null;
+  lastIntent: string | null;
+};
+
+export type AssistantRecentConversationMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
 
 export type AssistantServoModelInventoryAction =
   | {
@@ -78,9 +98,8 @@ export type AssistantConfigurationDisassemblySelection = {
 
 export type AssistantChatRequest = {
   message: string;
-  lastItemQuery?: string;
-  lastSupplierOrderId?: string;
-  lastSupplierOrderCatalogCode?: string;
+  recentConversation?: AssistantRecentConversationMessage[];
+  conversationContext?: AssistantConversationContext;
   selectedSupplierOrderItemId?: string;
   inventoryAction?: AssistantServoModelInventoryAction;
   stockEntrySelection?: AssistantStockEntrySelection;
@@ -428,6 +447,9 @@ export type AssistantSupplierOrderFinalizationConfirmationResult = {
 
 export type AssistantChatSuccess = {
   message: string;
+  leadText?: string | null;
+  followUpText?: string | null;
+  conversationContext?: AssistantConversationContext;
   contextItemQuery?: string | null;
   contextSupplierOrderId?: string | null;
   contextSupplierOrderCatalogCode?: string | null;

@@ -62,6 +62,11 @@ import {
   type AssistantSupplierOrderFinalizationPreviewBlock,
   type AssistantSupplierOrderFinalizationResultBlock,
 } from "@/lib/assistant-types";
+import {
+  buildAssistantRecentConversation,
+  parseAssistantConversationContext,
+  parseAssistantConversationalText,
+} from "@/lib/assistant-conversation";
 import type { StockSummary } from "@/lib/home-data";
 
 type AssistantHomeProps = {
@@ -155,12 +160,8 @@ export function AssistantHome({
     setMessages,
     draft,
     setDraft,
-    lastItemQuery,
-    setLastItemQuery,
-    lastSupplierOrderId,
-    setLastSupplierOrderId,
-    lastSupplierOrderCatalogCode,
-    setLastSupplierOrderCatalogCode,
+    conversationContext,
+    setConversationContext,
     scrollTop,
     setScrollTop,
     persistNow,
@@ -547,17 +548,18 @@ export function AssistantHome({
     }
 
     try {
-      const requestSupplierOrderId =
-        context?.supplierOrderId ?? lastSupplierOrderId;
+      const requestConversationContext = context?.supplierOrderId
+        ? {
+            ...conversationContext,
+            topic: "SUPPLIER_ORDER" as const,
+            itemQuery: null,
+            supplierOrderId: context.supplierOrderId,
+          }
+        : conversationContext;
       const requestBody: AssistantChatRequest = {
         message: submittedMessage,
-        ...(lastItemQuery ? { lastItemQuery } : {}),
-        ...(requestSupplierOrderId
-          ? { lastSupplierOrderId: requestSupplierOrderId }
-          : {}),
-        ...(lastSupplierOrderCatalogCode
-          ? { lastSupplierOrderCatalogCode }
-          : {}),
+        recentConversation: buildAssistantRecentConversation(messages),
+        conversationContext: requestConversationContext,
         ...(context?.supplierOrderItemId
           ? {
               selectedSupplierOrderItemId:
@@ -596,58 +598,20 @@ export function AssistantHome({
       const structuredBlock = response.ok
         ? parseAssistantStructuredBlock(responseBody?.structuredBlock)
         : null;
+      const leadText = response.ok
+        ? parseAssistantConversationalText(responseBody?.leadText)
+        : null;
+      const followUpText = response.ok
+        ? parseAssistantConversationalText(responseBody?.followUpText)
+        : null;
+      const nextConversationContext = response.ok
+        ? parseAssistantConversationContext(
+            responseBody?.conversationContext,
+          )
+        : null;
 
-      if (
-        response.ok &&
-        responseBody &&
-        Object.prototype.hasOwnProperty.call(
-          responseBody,
-          "contextItemQuery",
-        )
-      ) {
-        const contextItemQuery = responseBody.contextItemQuery;
-        setLastItemQuery(
-          typeof contextItemQuery === "string" &&
-            contextItemQuery.trim()
-            ? contextItemQuery.trim()
-            : null,
-        );
-      }
-
-      if (
-        response.ok &&
-        responseBody &&
-        Object.prototype.hasOwnProperty.call(
-          responseBody,
-          "contextSupplierOrderCatalogCode",
-        )
-      ) {
-        const contextSupplierOrderCatalogCode =
-          responseBody.contextSupplierOrderCatalogCode;
-        setLastSupplierOrderCatalogCode(
-          typeof contextSupplierOrderCatalogCode === "string" &&
-            contextSupplierOrderCatalogCode.trim()
-            ? contextSupplierOrderCatalogCode.trim()
-            : null,
-        );
-      }
-
-      if (
-        response.ok &&
-        responseBody &&
-        Object.prototype.hasOwnProperty.call(
-          responseBody,
-          "contextSupplierOrderId",
-        )
-      ) {
-        const contextSupplierOrderId =
-          responseBody.contextSupplierOrderId;
-        setLastSupplierOrderId(
-          typeof contextSupplierOrderId === "string" &&
-            /^[0-9a-f-]{36}$/i.test(contextSupplierOrderId)
-            ? contextSupplierOrderId
-            : null,
-        );
+      if (nextConversationContext) {
+        setConversationContext(nextConversationContext);
       }
 
       setMessages((current) => [
@@ -660,6 +624,8 @@ export function AssistantHome({
               ? responseMessage.trim()
               : "Não foi possível concluir a consulta agora. Tente novamente.",
           ...(structuredBlock ? { structuredBlock } : {}),
+          ...(leadText ? { leadText } : {}),
+          ...(followUpText ? { followUpText } : {}),
         },
       ]);
     } catch {
@@ -893,10 +859,15 @@ export function AssistantHome({
         });
       });
       replacePickupPreview(messageId, parsedBlock);
-      setLastSupplierOrderId(result.contextSupplierOrderId);
-      setLastSupplierOrderCatalogCode(
-        result.contextSupplierOrderCatalogCode,
-      );
+      setConversationContext((current) => ({
+        ...current,
+        topic: result.contextSupplierOrderId ? "SUPPLIER_ORDER" : "GENERAL",
+        itemQuery: null,
+        supplierOrderId: result.contextSupplierOrderId,
+        supplierOrderCatalogCode:
+          result.contextSupplierOrderCatalogCode,
+        lastIntent: "supplier_order_pickup_result",
+      }));
 
       if (
         parsedBlock.outcome === "success" ||
@@ -975,7 +946,7 @@ export function AssistantHome({
 
   function replaceStockEntryPreview(messageId: string, block: StockEntryResult) {
     setMessages((current) => current.map((message) => message.id === messageId
-      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      ? { ...message, content: block.message, structuredBlock: block, leadText: undefined, followUpText: undefined, restoredMediaReferences: undefined }
       : message));
   }
 
@@ -1001,7 +972,14 @@ export function AssistantHome({
       replaceStockEntryPreview(messageId, parsed as StockEntryResult);
       if (block.action === "supplier_order_stock_entry") {
         const contextId = record?.contextSupplierOrderId;
-        setLastSupplierOrderId(typeof contextId === "string" ? contextId : null);
+        setConversationContext((current) => ({
+          ...current,
+          topic: typeof contextId === "string" ? "SUPPLIER_ORDER" : "GENERAL",
+          itemQuery: null,
+          supplierOrderId: typeof contextId === "string" ? contextId : null,
+          supplierOrderCatalogCode: null,
+          lastIntent: "supplier_order_stock_entry_result",
+        }));
       }
       if (parsed.outcome === "success") startStockRefresh(() => router.refresh());
     } catch {
@@ -1040,7 +1018,7 @@ export function AssistantHome({
 
   function replaceStockOutputPreview(messageId: string, block: AssistantManualStockOutputResultBlock) {
     setMessages((current) => current.map((message) => message.id === messageId
-      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      ? { ...message, content: block.message, structuredBlock: block, leadText: undefined, followUpText: undefined, restoredMediaReferences: undefined }
       : message));
   }
 
@@ -1088,7 +1066,7 @@ export function AssistantHome({
 
   function replaceConfigurationAssemblyPreview(messageId: string, block: AssistantConfigurationAssemblyResultBlock) {
     setMessages((current) => current.map((message) => message.id === messageId
-      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      ? { ...message, content: block.message, structuredBlock: block, leadText: undefined, followUpText: undefined, restoredMediaReferences: undefined }
       : message));
   }
 
@@ -1151,7 +1129,7 @@ export function AssistantHome({
     block: AssistantConfigurationDisassemblyResultBlock,
   ) {
     setMessages((current) => current.map((message) => message.id === messageId
-      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      ? { ...message, content: block.message, structuredBlock: block, leadText: undefined, followUpText: undefined, restoredMediaReferences: undefined }
       : message));
   }
 
@@ -1217,7 +1195,7 @@ export function AssistantHome({
     block: AssistantSupplierOrderFinalizationResultBlock,
   ) {
     setMessages((current) => current.map((message) => message.id === messageId
-      ? { ...message, content: block.message, structuredBlock: block, restoredMediaReferences: undefined }
+      ? { ...message, content: block.message, structuredBlock: block, leadText: undefined, followUpText: undefined, restoredMediaReferences: undefined }
       : message));
   }
 
@@ -1519,7 +1497,13 @@ export function AssistantHome({
                     <article className="rounded-2xl rounded-bl-md border border-border-neutral bg-surface px-4 py-3 text-sm leading-6 text-text-primary shadow-sm sm:text-base">
                       <span className="sr-only">Assistente NK: </span>
                       {chatMessage.structuredBlock ? (
-                        <AssistantStructuredBlockView
+                        <div className="space-y-3">
+                          {chatMessage.leadText ? (
+                            <AssistantMessageContent
+                              content={chatMessage.leadText}
+                            />
+                          ) : null}
+                          <AssistantStructuredBlockView
                           block={chatMessage.structuredBlock}
                           disabled={isInteractionLocked}
                           onPromptSelect={(prompt, context) => {
@@ -1625,7 +1609,15 @@ export function AssistantHome({
                               ? { ...message, content: block.fallbackText, structuredBlock: block }
                               : message));
                           }}
-                        />
+                          />
+                          {chatMessage.followUpText ? (
+                            <div className="border-t border-border-neutral pt-3 text-text-muted">
+                              <AssistantMessageContent
+                                content={chatMessage.followUpText}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
                       ) : (
                         <AssistantMessageContent
                           content={chatMessage.content}

@@ -2,11 +2,18 @@ import {
   assistantMessageMaxLength,
   assistantQueryMaxLength,
   parseAssistantStructuredBlock,
+  type AssistantConversationContext,
   type AssistantStructuredBlock,
 } from "@/lib/assistant-types";
+import {
+  assistantConversationalTextLimit,
+  emptyAssistantConversationContext,
+  parseAssistantConversationContext,
+  parseAssistantConversationalText,
+} from "@/lib/assistant-conversation";
 import { expireStockEntryPreview, expireSupplierOrderFinalizationPreview, expireSupplierOrderPickupPreview } from "@/lib/ai/assistant-action-persistence";
 
-export const assistantSessionVersion = 1;
+export const assistantSessionVersion = 2;
 export const assistantSessionStoragePrefix =
   "negocios-k:assistant-session";
 export const assistantSessionMessageLimit = 50;
@@ -29,6 +36,8 @@ export type AssistantConversationMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  leadText?: string;
+  followUpText?: string;
   structuredBlock?: AssistantStructuredBlock;
   restoredMediaReferences?: AssistantMediaReference[];
 };
@@ -37,9 +46,7 @@ export type AssistantSessionState = {
   conversationId: string;
   messages: AssistantConversationMessage[];
   draft: string;
-  lastItemQuery: string | null;
-  lastSupplierOrderId: string | null;
-  lastSupplierOrderCatalogCode: string | null;
+  conversationContext: AssistantConversationContext;
   scrollTop: number;
 };
 
@@ -332,6 +339,16 @@ function parseMediaReferences(value: unknown) {
 function parseMessage(value: unknown): AssistantConversationMessage | null {
   if (
     !isRecord(value) ||
+    Object.keys(value).some(
+      (key) =>
+        key !== "id" &&
+        key !== "role" &&
+        key !== "content" &&
+        key !== "leadText" &&
+        key !== "followUpText" &&
+        key !== "structuredBlock" &&
+        key !== "restoredMediaReferences",
+    ) ||
     typeof value.id !== "string" ||
     !uuidPattern.test(value.id) ||
     (value.role !== "user" && value.role !== "assistant") ||
@@ -346,6 +363,8 @@ function parseMessage(value: unknown): AssistantConversationMessage | null {
     value.structuredBlock === undefined
       ? undefined
       : parseAssistantStructuredBlock(value.structuredBlock);
+  const leadText = parseAssistantConversationalText(value.leadText);
+  const followUpText = parseAssistantConversationalText(value.followUpText);
   const mediaReferences =
     value.restoredMediaReferences === undefined
       ? []
@@ -353,9 +372,14 @@ function parseMessage(value: unknown): AssistantConversationMessage | null {
 
   if (
     (value.structuredBlock !== undefined && !structuredBlock) ||
+    (value.leadText !== undefined && !leadText) ||
+    (value.followUpText !== undefined && !followUpText) ||
     mediaReferences === null ||
     (value.role === "user" &&
-      (structuredBlock !== undefined || mediaReferences.length > 0))
+      (structuredBlock !== undefined ||
+        leadText !== null ||
+        followUpText !== null ||
+        mediaReferences.length > 0))
   ) {
     return null;
   }
@@ -364,36 +388,13 @@ function parseMessage(value: unknown): AssistantConversationMessage | null {
     id: value.id,
     role: value.role,
     content: value.content,
+    ...(leadText ? { leadText } : {}),
+    ...(followUpText ? { followUpText } : {}),
     ...(structuredBlock ? { structuredBlock } : {}),
     ...(mediaReferences.length > 0
       ? { restoredMediaReferences: mediaReferences }
       : {}),
   };
-}
-
-function parseNullableQuery(
-  value: unknown,
-  validator?: (query: string) => boolean,
-) {
-  if (value === null) {
-    return null;
-  }
-
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const query = value.trim();
-
-  if (
-    !query ||
-    query.length > assistantQueryMaxLength ||
-    (validator && !validator(query))
-  ) {
-    return undefined;
-  }
-
-  return query;
 }
 
 export function getAssistantSessionStorageKey(userId: string) {
@@ -436,6 +437,16 @@ export function parseAssistantSession(
 
   if (
     !isRecord(value) ||
+    Object.keys(value).some(
+      (key) =>
+        key !== "version" &&
+        key !== "conversationId" &&
+        key !== "messages" &&
+        key !== "draft" &&
+        key !== "conversationContext" &&
+        key !== "scrollTop" &&
+        key !== "updatedAt",
+    ) ||
     value.version !== assistantSessionVersion ||
     typeof value.conversationId !== "string" ||
     !uuidPattern.test(value.conversationId) ||
@@ -452,26 +463,13 @@ export function parseAssistantSession(
   }
 
   const messages = value.messages.map(parseMessage);
-  const lastItemQuery = parseNullableQuery(value.lastItemQuery);
-  const lastSupplierOrderId = parseNullableQuery(
-    value.lastSupplierOrderId,
-    (query) => uuidPattern.test(query),
-  );
-  const lastSupplierOrderCatalogCode = parseNullableQuery(
-    value.lastSupplierOrderCatalogCode,
-    (query) =>
-      catalogCodePattern.test(
-        query
-          .replace(/\s+/g, " ")
-          .toLocaleUpperCase("pt-BR"),
-      ),
+  const conversationContext = parseAssistantConversationContext(
+    value.conversationContext,
   );
 
   if (
     messages.some((message) => message === null) ||
-    lastItemQuery === undefined ||
-    lastSupplierOrderId === undefined ||
-    lastSupplierOrderCatalogCode === undefined
+    !conversationContext
   ) {
     return null;
   }
@@ -480,9 +478,7 @@ export function parseAssistantSession(
     conversationId: value.conversationId,
     messages: messages as AssistantConversationMessage[],
     draft: value.draft,
-    lastItemQuery,
-    lastSupplierOrderId,
-    lastSupplierOrderCatalogCode,
+    conversationContext,
     scrollTop: Math.round(value.scrollTop),
   };
 }
@@ -496,6 +492,12 @@ export function serializeAssistantSession(state: AssistantSessionState) {
           id: message.id,
           role: message.role,
           content: message.content.slice(0, messageContentLimit),
+          ...(message.leadText
+            ? { leadText: message.leadText.slice(0, assistantConversationalTextLimit) }
+            : {}),
+          ...(message.followUpText
+            ? { followUpText: message.followUpText.slice(0, assistantConversationalTextLimit) }
+            : {}),
         };
       }
 
@@ -509,6 +511,12 @@ export function serializeAssistantSession(state: AssistantSessionState) {
         id: message.id,
         role: message.role,
         content: message.content.slice(0, messageContentLimit),
+        ...(message.leadText
+          ? { leadText: message.leadText.slice(0, assistantConversationalTextLimit) }
+          : {}),
+        ...(message.followUpText
+          ? { followUpText: message.followUpText.slice(0, assistantConversationalTextLimit) }
+          : {}),
         ...(message.structuredBlock.kind === "catalog_media"
           ? {}
           : { structuredBlock: sanitized.block }),
@@ -522,10 +530,9 @@ export function serializeAssistantSession(state: AssistantSessionState) {
     conversationId: state.conversationId,
     messages,
     draft: state.draft.slice(0, assistantMessageMaxLength),
-    lastItemQuery: state.lastItemQuery,
-    lastSupplierOrderId: state.lastSupplierOrderId,
-    lastSupplierOrderCatalogCode:
-      state.lastSupplierOrderCatalogCode,
+    conversationContext:
+      parseAssistantConversationContext(state.conversationContext) ??
+      emptyAssistantConversationContext(),
     scrollTop: Math.max(0, Math.round(state.scrollTop)),
     updatedAt: Date.now(),
   };
