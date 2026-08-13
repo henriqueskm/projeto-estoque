@@ -712,3 +712,63 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Estado:** `IMPLEMENTED / WAITING_HUMAN_PHOTO_REVIEW`.
 - **Próxima etapa:** NK-ORD-008C, validação visual com fotos reais controladas.
   NK-ORD-008D só poderá habilitar confirmação/criação após nova autorização.
+
+## 2026-08-12 — MIG-ORD-008C3A / contrato catalog-only de Peça avulsa
+
+- **Base:** `origin/main` em
+  `03a4e7840c92a96ca2b0872ddf3ccf291134aa26`, merge do PR #24; commit
+  `b6cfcad6feed1b718150e4ac44345639bea42089` alcançável.
+- **Branch:** `agent/catalog-only-loose-part-creation`.
+- **PR:** [#25](https://github.com/henriqueskm/projeto-estoque/pull/25) (draft).
+- **Estado:** `IMPLEMENTED_LOCAL / WAITING_DB_REVIEW`.
+- **Migration:**
+  `20260812223114_add_catalog_only_loose_part_creation.sql`, incremental e sem
+  alteração de migrations históricas.
+- **Contrato:** `public.create_loose_part(text, text)` exige autenticação e
+  profile interno ativo com nome; `private.resolve_or_create_loose_part`
+  centraliza trim, limites, lock, colisões, subtipo, estado ativo e descrição.
+- **Autoria:** `items.created_by` e `created_by_name_snapshot` são nulos para o
+  legado e obrigatoriamente preenchidos pelas novas criações catalog-only e
+  `NEW_LOOSE_PART`.
+- **Separação física:** cadastro catalog-only cria somente `items` e
+  `loose_parts`; não cria `stock_balances`, lotes, movimentos ou Pedidos. Saldo
+  é lido como zero pelos loaders oficiais, que tratam a ausência de balance
+  como quantidade zero.
+- **Compatibilidade:** `private.stock_inbound_lines_with_loose_parts` passou a
+  reutilizar a primitiva e continua chamando o worker oficial de inbound uma
+  única vez, com replay idempotente e saldo correto.
+- **Validação local:** duas reconstruções independentes tiveram assinaturas de
+  schema e catálogo idênticas; 7 testes estáticos e 21 cenários dinâmicos
+  passaram, incluindo duas conexões concorrentes e rollback forçado do subtipo.
+  Regressões de Entrada, Saída, montagem, desmontagem, foto e Pedidos passaram;
+  `db lint` local retornou zero erro.
+- **Remoto:** nenhuma migration aplicada, item/Pedido criado, saldo alterado ou
+  RPC mutável chamada.
+- **Próxima etapa:** NK-ORD-008C3B — modal “Cadastrar peça avulsa” na prévia da
+  foto, bloqueado até DB review e rollout separado. Criação real de Pedido
+  continua bloqueada.
+
+## 2026-08-12 — MIG-ORD-008C3A / DB review final
+
+- **Estado:** `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`.
+- **Preflight remoto somente leitura:** 3 profiles totais, 2 ativos, zero
+  profile ativo sem nome e zero colisões exatas entre `items.code` e
+  `commercial_configuration_codes.code`; nenhuma mutação remota foi executada.
+- **Autoria:** `items_created_by_idx` cobre a FK; os quatro estados permitidos
+  foram testados e `ON DELETE SET NULL` preservou o snapshot nominal após a
+  exclusão local do profile.
+- **Namespace compartilhado:** preflight rejeita colisão existente; uma única
+  função-trigger privada nos dois catálogos usa o mesmo advisory lock por
+  código para proteger `INSERT` e `UPDATE` nos dois sentidos. A auditoria
+  encontrou apenas writers históricos/de referência para códigos comerciais e
+  nenhum writer mutável da aplicação.
+- **Validação local:** corrida cruzada em duas conexões, ordem commercial-first
+  e item-first, UPDATE nos dois sentidos e replay inbound com payload divergente
+  passaram. Supabase CLI 2.112.0 aplicou a migration exatamente uma vez e
+  retornou dry-run vazio; o cenário incompatível falhou com rollback integral
+  de história e objetos.
+- **Separação física:** cadastro catalog-only permaneceu com zero lote,
+  movimento, entrada de Pedido ou saldo; `NEW_LOOSE_PART` tradicional continuou
+  criando exatamente um inbound e seu replay não duplicou efeito.
+- **Próxima etapa:** rollout remoto controlado separado; depois,
+  NK-ORD-008C3B — modal/bottom sheet “Cadastrar peça avulsa”.
