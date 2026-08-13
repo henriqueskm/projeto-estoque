@@ -236,17 +236,20 @@ test("keeps the normal empty state only for confirmed zero alerts", () => {
   assert.equal(state.data.alertCount, 0);
 });
 
-test("shows ready pickup quantities per item without inventing a zero badge", () => {
+test("shows only the official ready quantity still waiting for pickup per item", () => {
   const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
+  const detail = orders.slice(orders.indexOf('aria-labelledby={`${titleId}-items`}'));
   const readyWaitingPickupByItem = [1, 0, 2];
 
   assert.equal(
     readyWaitingPickupByItem.reduce((total, quantity) => total + quantity, 0),
     3,
   );
-  assert.match(orders, /item\.readyWaitingPickupQuantity > 0/);
-  assert.match(orders, /Pronto:/);
-  assert.match(orders, /item\.readyWaitingPickupQuantity/);
+  assert.match(detail, /item\.readyWaitingPickupQuantity > 0/);
+  assert.match(detail, /Pronto para retirar:/);
+  assert.match(detail, /item\.readyWaitingPickupQuantity/);
+  assert.doesNotMatch(detail, /Pronto pela Safisa:/);
+  assert.doesNotMatch(detail, /Disponível para retirar:/);
 });
 
 test("limits total picked quantity to the valid ready quantity", () => {

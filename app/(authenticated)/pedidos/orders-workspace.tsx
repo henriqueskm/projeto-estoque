@@ -3503,26 +3503,19 @@ function OrderDetailsDialog({
                       {item.readyWaitingPickupQuantity > 0 ? (
                         <p className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[0.68rem] leading-4 font-bold text-emerald-900 sm:text-xs">
                           <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-emerald-600" />
-                          Pronto: {" "}
+                          Pronto para retirar: {" "}
                           <strong className="font-mono font-black">
                             {quantityFormatter.format(
                               item.readyWaitingPickupQuantity,
                             )}
                           </strong>
                         </p>
-                      ) : null}
-                      <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                        Pronto pela Safisa:{" "}
-                        <strong className="font-mono font-black text-text-primary">
-                          {quantityFormatter.format(item.readyQuantity)}
-                        </strong>{" "}
-                        · Disponível para retirar:{" "}
-                        <strong className="font-mono font-black text-emerald-800">
-                          {quantityFormatter.format(
-                            item.readyWaitingPickupQuantity,
-                          )}
-                        </strong>
-                      </p>
+                      ) : (
+                        <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                          Pronto para retirar:{" "}
+                          <strong className="font-mono font-black">0</strong>
+                        </p>
+                      )}
                       {item.waitingStockQuantity > 0 ? (
                         <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-amber-900 sm:text-xs">
                           Pendente antigo de entrada:{" "}
@@ -3554,14 +3547,16 @@ function OrderDetailsDialog({
                         </div>
                         <button
                           type="button"
+                          aria-label="Confirmar retirada e entrada automática no estoque"
+                          title="Confirmar retirada e entrada automática no estoque"
                           disabled={!changed || isPending}
                           onClick={() => savePicked(item)}
-                          className="nk-focus inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-sky-800/20 bg-gradient-to-b from-sky-600 to-sky-700 px-3 text-[0.68rem] font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:from-sky-700 hover:to-sky-800 hover:shadow disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-none disabled:bg-slate-300 disabled:text-slate-600 disabled:shadow-none"
+                          className="nk-focus inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-sky-800/20 bg-gradient-to-b from-sky-600 to-sky-700 px-2.5 text-[0.68rem] font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:from-sky-700 hover:to-sky-800 hover:shadow disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-none disabled:bg-slate-300 disabled:text-slate-600 disabled:shadow-none"
                         >
                           <CheckIcon aria-hidden="true" className="size-3" />
                           {isPending && pendingItemId === item.id
-                            ? "Confirmando..."
-                            : "Confirmar retirada + entrada"}
+                            ? "Retirando..."
+                            : "Retirar"}
                         </button>
                         {pickupDelta > 0 ? (
                           <p className="basis-full text-left text-[0.68rem] font-black text-emerald-800 sm:text-right">
