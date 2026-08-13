@@ -1404,6 +1404,14 @@ export async function answerAssistantQuestion(
     return { message: manualStockEntryRoute.message };
   }
 
+  if (manualStockEntryRoute.kind === "MISSING_QUANTITY") {
+    return {
+      message: manualStockEntryRoute.targetQuery
+        ? `Qual quantidade do Cód. ${manualStockEntryRoute.targetQuery} você quer dar entrada?`
+        : "Informe o código ou modelo e a quantidade que deseja dar entrada.",
+    };
+  }
+
   if (manualStockEntryRoute.kind === "AMBIGUOUS_FLOW") {
     return createManualStockEntryAmbiguity(
       manualStockEntryRoute.quantity,

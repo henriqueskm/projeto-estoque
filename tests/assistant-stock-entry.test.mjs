@@ -72,6 +72,74 @@ test("roteia entradas manuais claras e esclarece modelo ambíguo", () => {
   assert.equal(routeManualStockEntryAction("Dê entrada em -2 unidades do KT-29.").kind, "INVALID");
 });
 
+test("reconhece formulações naturais de entrada manual sem desviar para consulta", () => {
+  for (const phrase of [
+    "Dê entrada em 1 unidade do 1B.",
+    "Dê entrada em 1 unidade do 1B no estoque.",
+    "Dar entrada em 1 unidade do 1B.",
+    "Quero colocar 1 unidade do 1B no estoque.",
+    "Quero dar entrada em 1 unidade do 1B.",
+    "Preciso colocar 1 unidade do 1B no estoque.",
+    "Preciso dar entrada em 1 unidade do 1B.",
+    "Coloque 1 unidade do 1B no estoque.",
+    "Coloca 1 unidade do 1B no estoque.",
+    "Adicionar 1 unidade do 1B no estoque.",
+    "Adicione 1 unidade do 1B no estoque.",
+    "Lance 1 unidade do 1B no estoque.",
+    "Quero adicionar 1 unidade do 1B ao estoque.",
+    "Pode colocar 1 unidade do 1B no estoque.",
+    "quero coloca 1 unidade do 1b no estoque",
+    "de entrada em um 1b no estoque",
+  ]) {
+    const result = routeManualStockEntryAction(phrase);
+    assert.equal(result.kind, "ACTION", phrase);
+    assert.equal(result.request.quantity, 1, phrase);
+    assert.equal(result.request.targetQuery.toLocaleUpperCase("pt-BR"), "1B", phrase);
+    assert.equal(result.request.requestedIdentity, null, phrase);
+  }
+});
+
+test("interpreta um como quantidade somente dentro do comando operacional", () => {
+  for (const phrase of [
+    "Dê entrada em um 1B no estoque.",
+    "Coloque um 1B no estoque.",
+  ]) {
+    const result = routeManualStockEntryAction(phrase);
+    assert.equal(result.kind, "ACTION", phrase);
+    assert.equal(result.request.quantity, 1, phrase);
+    assert.equal(result.request.targetQuery, "1B", phrase);
+  }
+});
+
+test("reconhece entrada manual sem quantidade e preserva o alvo para esclarecimento", () => {
+  for (const phrase of [
+    "Quero dar entrada manual do 1B.",
+    "de entrada manual de 1b no estoque",
+    "Dar entrada do 1B no estoque.",
+    "Colocar o 1B no estoque.",
+  ]) {
+    const result = routeManualStockEntryAction(phrase);
+    assert.equal(result.kind, "MISSING_QUANTITY", phrase);
+    assert.equal(result.targetQuery.toLocaleUpperCase("pt-BR"), "1B", phrase);
+  }
+  assert.deepEqual(routeManualStockEntryAction("Quero dar entrada manual."), {
+    kind: "MISSING_QUANTITY",
+    targetQuery: null,
+  });
+});
+
+test("preserva consultas somente leitura fora da rota de entrada manual", () => {
+  for (const phrase of [
+    "Quanto tem do 1B?",
+    "Qual o estoque do 1B?",
+    "Me mostre o 1B.",
+    "Tem 1B no estoque?",
+    "Quanto tem do MBF-025?",
+  ]) {
+    assert.equal(routeManualStockEntryAction(phrase).kind, "NOT_MANUAL_STOCK_ENTRY", phrase);
+  }
+});
+
 test("qualificador sem kit tem prioridade e aceita variações do modelo", () => {
   for (const phrase of [
     "Dê entrada em 3 unidades do MBF015 sem kit.",
