@@ -48,6 +48,20 @@ test("wide order dialogs stay proportionate and keep item controls near their me
   assert.match(orders, /bg-gradient-to-b from-sky-600 to-sky-700/);
 });
 
+test("order detail preserves its layout while compacting only the pickup information and action", () => {
+  const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
+  const detail = orders.slice(orders.indexOf('aria-labelledby={`${titleId}-items`}'));
+
+  assert.match(detail, /Pronto para retirar:/);
+  assert.doesNotMatch(detail, /Pronto pela Safisa:/);
+  assert.doesNotMatch(detail, /Disponível para retirar:/);
+  assert.match(detail, /item\.readyWaitingPickupQuantity/);
+  assert.match(detail, /\{isPending && pendingItemId === item\.id[\s\S]*\? "Retirando\.\.\."[\s\S]*: "Retirar"\}/);
+  assert.match(detail, /aria-label="Confirmar retirada e entrada automática no estoque"/);
+  assert.match(detail, /title="Confirmar retirada e entrada automática no estoque"/);
+  assert.doesNotMatch(detail, /Confirmar retirada \+ entrada/);
+});
+
 test("order detail opens available item images from the code without an eye button", () => {
   const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
   const image = read("components/commercial-configuration-image.tsx");
