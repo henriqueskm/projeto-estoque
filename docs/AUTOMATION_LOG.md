@@ -772,3 +772,31 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   criando exatamente um inbound e seu replay não duplicou efeito.
 - **Próxima etapa:** rollout remoto controlado separado; depois,
   NK-ORD-008C3B — modal/bottom sheet “Cadastrar peça avulsa”.
+
+## 2026-08-13 — MIG-ORD-008C3A / rollout remoto final
+
+- **Base:** `main` em `e2e95bd76cff530d5b6c61dc6174f9c4360d47f4`, merge
+  do PR #25.
+- **Estado:** `DONE / APPLIED_REMOTE / VERIFIED`.
+- **Projeto:** `EstoqueNK` (`isdjboconmwaqipjrjvp`).
+- **Migration:** `20260812223114_add_catalog_only_loose_part_creation.sql`,
+  SHA-256 canônico
+  `a15b6f21be76843f7c4be7a56d03cc205cbe2e24a2d0cc8ce8ef5e68b64b3e3f`.
+- **Preflight:** 2 profiles ativos, zero ativo sem nome, zero colisão exata de
+  namespace e somente a migration autorizada no dry-run.
+- **Aplicação:** um único `db push --linked`, entre 11:46:27 e 11:46:34 BRT;
+  histórico com uma ocorrência e dry-run posterior vazio.
+- **Contrato remoto:** colunas, FK `ON DELETE SET NULL`, check de autoria,
+  `items_created_by_idx`, wrapper público, primitiva privada, grants e os dois
+  triggers compartilhados foram introspectados e aprovados. O inbound continua
+  delegando à primitiva e ao worker oficial, sem `INSERT` paralelo em `items`.
+- **Integridade:** counts e fingerprints de catálogo, saldos físicos,
+  movimentos, Pedidos e entradas de Pedido ficaram idênticos antes/depois;
+  `db lint --linked` retornou zero erro.
+- **Efeito operacional:** zero peça/item/Pedido criado ou alterado, zero entrada,
+  movimento, saldo ou operação Safisa. O único write remoto foi a migration.
+- **Warning:** a CLI não conseguiu cachear o catálogo localmente porque o Docker
+  Desktop estava indisponível; o push remoto concluiu com sucesso e todas as
+  verificações posteriores passaram.
+- **Próxima etapa:** NK-ORD-008C3B — modal/bottom sheet “Cadastrar peça avulsa”
+  na prévia de Pedido por foto; criação real de Pedido continua fora do escopo.

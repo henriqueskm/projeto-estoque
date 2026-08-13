@@ -1,16 +1,25 @@
 # Objetivo atual
 
-- **ID:** MIG-ORD-008C3A
-- **Título:** Cadastro de Peça avulsa sem movimentar Estoque
+- **ID:** NK-ORD-008C3B
+- **Título:** Modal de cadastro de Peça avulsa na prévia do Pedido por foto
 - **Prioridade:** alta
-- **Fase:** DB review final concluído / rollout remoto separado
-- **Estado:** `DB_REVIEW_APPROVED / NOT_APPLIED_REMOTE`
-- **Classificação:** **C — migration incremental necessária**
-- **Dependências:** NK-ORD-008B mesclada pelo PR #24; política de revisão da
-  foto aprovada
-- **Base:** `03a4e7840c92a96ca2b0872ddf3ccf291134aa26`
-- **Branch:** `agent/catalog-only-loose-part-creation`
-- **PR:** [#25](https://github.com/henriqueskm/projeto-estoque/pull/25) (draft)
+- **Fase:** aplicação / aguardando implementação
+- **Estado:** `READY`
+- **Classificação:** **B — ajustes somente de aplicação**
+- **Dependências:** MIG-ORD-008C3A `DONE / APPLIED_REMOTE / VERIFIED`; NK-ORD-008B
+  mesclada pelo PR #24; política de revisão da foto aprovada
+- **Base:** `e2e95bd76cff530d5b6c61dc6174f9c4360d47f4`
+- **Branch:** a definir
+- **PR:** pendente
+
+## Rollout remoto MIG-ORD-008C3A
+
+A migration `20260812223114_add_catalog_only_loose_part_creation.sql` foi
+aplicada e verificada no projeto `isdjboconmwaqipjrjvp` em 13/08/2026. O
+histórico contém uma ocorrência, o dry-run posterior ficou vazio e schema,
+privilégios, triggers e worker inbound correspondem ao contrato aprovado.
+Counts e fingerprints de catálogo, saldos, movimentos e Pedidos permaneceram
+idênticos; nenhuma peça, item, Pedido ou movimentação operacional foi criada.
 
 ## Implementação local MIG-ORD-008C3A
 
@@ -41,9 +50,8 @@ do cenário incompatível. Os testes dinâmicos cobriram corrida cruzada entre o
 dois domínios, UPDATE nos dois sentidos, os quatro estados de autoria, replay
 inbound com payload divergente e ausência total de efeito físico no cadastro.
 
-Próxima etapa: **NK-ORD-008C3B**, modal “Cadastrar peça avulsa” dentro da prévia
-da foto, somente depois da revisão e implantação separada desta migration. A
-criação real de Pedido permanece bloqueada.
+Próxima etapa: **NK-ORD-008C3B**, modal/bottom sheet “Cadastrar peça avulsa”
+dentro da prévia da foto. A criação real de Pedido permanece bloqueada.
 
 ## Implementação NK-ORD-008B
 
