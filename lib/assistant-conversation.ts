@@ -3,6 +3,7 @@ import type {
   AssistantConversationContext,
   AssistantConversationTopic,
   AssistantRecentConversationMessage,
+  AssistantSuggestedFollowUp,
   AssistantStructuredBlock,
 } from "@/lib/assistant-types";
 
@@ -23,6 +24,11 @@ const topics = new Set<AssistantConversationTopic>([
   "SUPPLIER_ORDER",
   "CATALOG",
   "REPLENISHMENT",
+]);
+const suggestedFollowUps = new Set<AssistantSuggestedFollowUp>([
+  "SHOW_SERVO_MODEL_KIT_SPLIT",
+  "SHOW_SERVO_MODEL_MOUNTED",
+  "SHOW_SERVO_MODEL_CONFIGURATIONS",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -130,6 +136,7 @@ export function emptyAssistantConversationContext(): AssistantConversationContex
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
     lastIntent: null,
+    suggestedFollowUp: null,
   };
 }
 
@@ -145,6 +152,7 @@ export function parseAssistantConversationContext(
       "supplierOrderId",
       "supplierOrderCatalogCode",
       "lastIntent",
+      "suggestedFollowUp",
     ]) ||
     typeof value.topic !== "string" ||
     !topics.has(value.topic as AssistantConversationTopic)
@@ -165,6 +173,15 @@ export function parseAssistantConversationContext(
     120,
   );
   const lastIntent = parseNullableText(value.lastIntent, 120);
+  const suggestedFollowUp =
+    value.suggestedFollowUp === undefined || value.suggestedFollowUp === null
+      ? null
+      : typeof value.suggestedFollowUp === "string" &&
+          suggestedFollowUps.has(
+            value.suggestedFollowUp as AssistantSuggestedFollowUp,
+          )
+        ? (value.suggestedFollowUp as AssistantSuggestedFollowUp)
+        : undefined;
 
   if (
     itemQuery === undefined ||
@@ -172,6 +189,7 @@ export function parseAssistantConversationContext(
     supplierOrderId === undefined ||
     supplierOrderCatalogCode === undefined ||
     lastIntent === undefined ||
+    suggestedFollowUp === undefined ||
     (supplierOrderId !== null && !uuidPattern.test(supplierOrderId)) ||
     (supplierOrderCatalogCode !== null &&
       !catalogCodePattern.test(
@@ -198,8 +216,18 @@ export function parseAssistantConversationContext(
   const itemReferenceMismatch =
     (itemQuery === null) !== (itemReferenceKind === null) ||
     (value.topic !== "INVENTORY" && itemReferenceKind !== null);
+  const suggestedFollowUpMismatch =
+    suggestedFollowUp !== null &&
+    (value.topic !== "INVENTORY" ||
+      itemQuery === null ||
+      itemReferenceKind !== "SERVO_MODEL");
 
-  if (hasInventoryAndOrderContext || topicMismatch || itemReferenceMismatch) {
+  if (
+    hasInventoryAndOrderContext ||
+    topicMismatch ||
+    itemReferenceMismatch ||
+    suggestedFollowUpMismatch
+  ) {
     return null;
   }
 
@@ -211,6 +239,7 @@ export function parseAssistantConversationContext(
     supplierOrderCatalogCode:
       supplierOrderCatalogCode?.toLocaleUpperCase("pt-BR") ?? null,
     lastIntent,
+    suggestedFollowUp,
   };
 }
 
@@ -292,12 +321,17 @@ export function deriveAssistantConversationContext(
     supplierOrderCatalogCode:
       topic === "SUPPLIER_ORDER" ? supplierOrderCatalogCode : null,
     lastIntent:
+      answer.contextLastIntent ??
       answer.structuredBlock?.kind ??
       (topic === "INVENTORY"
         ? "inventory_item_query"
         : topic === "SUPPLIER_ORDER"
           ? "supplier_order_query"
           : "general_conversation"),
+    suggestedFollowUp:
+      topic === "INVENTORY" && itemReferenceKind === "SERVO_MODEL"
+        ? (answer.contextSuggestedFollowUp ?? null)
+        : null,
   };
 }
 
@@ -322,7 +356,7 @@ export function addAssistantConversationalCopy(
     return {
       ...answer,
       leadText: "Separei o estoque físico desse modelo.",
-      followUpText: "Se quiser, posso detalhar uma dessas configurações.",
+      followUpText: null,
     };
   }
 

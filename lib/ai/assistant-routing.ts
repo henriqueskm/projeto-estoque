@@ -201,6 +201,16 @@ export function isServoModelInventoryFollowUp(message: string) {
   );
 }
 
+export function isAssistantSuggestedFollowUpReply(message: string) {
+  const normalizedMessage = normalizeAssistantText(message)
+    .replace(/[?!.,;:]+$/g, "")
+    .trim();
+
+  return /^(?:sim|pode|quero|mostra|me mostra|pode mostrar|quais|quais sao|quais deles)$/.test(
+    normalizedMessage,
+  );
+}
+
 export function routeServoModelInventoryView(
   message: string,
 ): AssistantServoModelInventoryView {

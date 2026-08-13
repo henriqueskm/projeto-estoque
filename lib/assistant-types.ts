@@ -26,6 +26,11 @@ export type AssistantConversationTopic =
   | "CATALOG"
   | "REPLENISHMENT";
 
+export type AssistantSuggestedFollowUp =
+  | "SHOW_SERVO_MODEL_KIT_SPLIT"
+  | "SHOW_SERVO_MODEL_MOUNTED"
+  | "SHOW_SERVO_MODEL_CONFIGURATIONS";
+
 export type AssistantConversationContext = {
   topic: AssistantConversationTopic;
   itemQuery: string | null;
@@ -33,6 +38,7 @@ export type AssistantConversationContext = {
   supplierOrderId: string | null;
   supplierOrderCatalogCode: string | null;
   lastIntent: string | null;
+  suggestedFollowUp: AssistantSuggestedFollowUp | null;
 };
 
 export type AssistantRecentConversationMessage = {
@@ -455,6 +461,8 @@ export type AssistantChatSuccess = {
   contextItemReferenceKind?: "SERVO_MODEL" | "CATALOG_CODE" | null;
   contextSupplierOrderId?: string | null;
   contextSupplierOrderCatalogCode?: string | null;
+  contextLastIntent?: string | null;
+  contextSuggestedFollowUp?: AssistantSuggestedFollowUp | null;
   structuredBlock?: AssistantStructuredBlock;
 };
 

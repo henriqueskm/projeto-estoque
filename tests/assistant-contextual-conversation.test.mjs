@@ -400,6 +400,7 @@ test("session v2 persists conversational copy and structured context", async () 
   assert.match(source, /leadText/);
   assert.match(source, /followUpText/);
   assert.match(source, /conversationContext/);
+  assert.match(source, /parseAssistantConversationContext/);
   assert.doesNotMatch(source, /lastItemQuery:/);
 });
 
@@ -409,6 +410,113 @@ test("renders one assistant response in text, card, text order", async () => {
   const card = source.indexOf("<AssistantStructuredBlockView", lead);
   const follow = source.indexOf("chatMessage.followUpText", card);
   assert.ok(lead >= 0 && card > lead && follow > card);
+});
+
+test("plain assistant responses render content and an optional follow-up in the same bubble", async () => {
+  const source = await read("components/assistant-home.tsx");
+  const plainBranch = source.indexOf('className="space-y-2"');
+  const content = source.indexOf("content={chatMessage.content}", plainBranch);
+  const followCondition = source.indexOf("chatMessage.followUpText ?", content);
+  const followContent = source.indexOf("content={chatMessage.followUpText}", followCondition);
+  const articleEnd = source.indexOf("</article>", followContent);
+
+  assert.ok(plainBranch >= 0 && content > plainBranch);
+  assert.ok(followCondition > content && followContent > followCondition);
+  assert.ok(articleEnd > followContent);
+  assert.match(source.slice(plainBranch, articleEnd), /chatMessage\.followUpText \? \(/);
+});
+
+test("typed read-only suggestions are strict, restorable and cleared by unrelated answers", () => {
+  const total = deriveAssistantConversationContext(
+    emptyAssistantConversationContext(),
+    {
+      message: "Você tem 11 MBF-025 no total.",
+      contextItemQuery: "MBF-025",
+      contextItemReferenceKind: "SERVO_MODEL",
+      contextLastIntent: "SERVO_MODEL_TOTAL",
+      contextSuggestedFollowUp: "SHOW_SERVO_MODEL_KIT_SPLIT",
+    },
+  );
+
+  assert.equal(total.lastIntent, "SERVO_MODEL_TOTAL");
+  assert.equal(total.suggestedFollowUp, "SHOW_SERVO_MODEL_KIT_SPLIT");
+  assert.deepEqual(parseAssistantConversationContext(total), total);
+  assert.equal(
+    parseAssistantConversationContext({
+      ...total,
+      suggestedFollowUp: "EXECUTE_LAST_ACTION",
+    }),
+    null,
+  );
+  assert.equal(
+    parseAssistantConversationContext({
+      ...total,
+      itemReferenceKind: "CATALOG_CODE",
+    }),
+    null,
+  );
+
+  const cleared = deriveAssistantConversationContext(total, {
+    message: "Resposta sem sugestão.",
+  });
+  assert.equal(cleared.suggestedFollowUp, null);
+});
+
+test("short natural replies can continue only a typed read-only suggestion", async () => {
+  const routing = await routingModule;
+
+  for (const phrase of [
+    "sim",
+    "pode",
+    "quero",
+    "mostra",
+    "me mostra",
+    "pode mostrar",
+    "quais?",
+    "quais são?",
+    "quais deles?",
+  ]) {
+    assert.equal(routing.isAssistantSuggestedFollowUpReply(phrase), true, phrase);
+  }
+
+  assert.equal(
+    routing.isAssistantSuggestedFollowUpReply("confirme a retirada"),
+    false,
+  );
+  assert.equal(
+    routing.isAssistantSuggestedFollowUpReply("faça a entrada"),
+    false,
+  );
+});
+
+test("model response copy is natural and maps each answer to a closed suggestion", async () => {
+  const source = await read("lib/ai/assistant.ts");
+
+  assert.match(source, /São \$\{quantity\} \$\{block\.model\.official\} sem kit\./);
+  assert.match(source, /Se quiser, separo quantos estão com kit e quantos estão sem kit\./);
+  assert.match(source, /Também posso conferir quantos estão montados com kit\./);
+  assert.match(source, /Posso mostrar em quais configurações eles estão\./);
+  assert.match(source, /SHOW_SERVO_MODEL_KIT_SPLIT/);
+  assert.match(source, /SHOW_SERVO_MODEL_MOUNTED/);
+  assert.match(source, /SHOW_SERVO_MODEL_CONFIGURATIONS/);
+});
+
+test("suggestion continuation re-queries official inventory and cannot invoke an operation", async () => {
+  const source = await read("lib/ai/assistant.ts");
+  const start = source.indexOf("if (isAssistantSuggestedFollowUpReply(message))");
+  const end = source.indexOf(
+    "if (contextualModel && isServoModelInventoryFollowUp(message))",
+    start,
+  );
+  const continuation = source.slice(start, end);
+
+  assert.match(continuation, /consultAssistantServoModelInventory/);
+  assert.match(continuation, /show_servo_model_inventory_breakdown/);
+  assert.doesNotMatch(continuation, /createAssistant.*Preview/);
+  assert.doesNotMatch(continuation, /proposalToken|fetch\(|rpc\(/i);
+  assert.match(source, /Use o botão Confirmar retirada/);
+  assert.match(source, /Use o botão Confirmar entrada/);
+  assert.match(source, /Use o botão Confirmar saída/);
 });
 
 test("new conversation resets messages and the entire structured context", async () => {
@@ -439,5 +547,6 @@ test("empty context is deterministic", () => {
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
     lastIntent: null,
+    suggestedFollowUp: null,
   });
 });

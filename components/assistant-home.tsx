@@ -869,6 +869,7 @@ export function AssistantHome({
         supplierOrderCatalogCode:
           result.contextSupplierOrderCatalogCode,
         lastIntent: "supplier_order_pickup_result",
+        suggestedFollowUp: null,
       }));
 
       if (
@@ -982,6 +983,7 @@ export function AssistantHome({
           supplierOrderId: typeof contextId === "string" ? contextId : null,
           supplierOrderCatalogCode: null,
           lastIntent: "supplier_order_stock_entry_result",
+          suggestedFollowUp: null,
         }));
       }
       if (parsed.outcome === "success") startStockRefresh(() => router.refresh());
@@ -1622,9 +1624,18 @@ export function AssistantHome({
                           ) : null}
                         </div>
                       ) : (
-                        <AssistantMessageContent
-                          content={chatMessage.content}
-                        />
+                        <div className="space-y-2">
+                          <AssistantMessageContent
+                            content={chatMessage.content}
+                          />
+                          {chatMessage.followUpText ? (
+                            <div className="text-text-muted">
+                              <AssistantMessageContent
+                                content={chatMessage.followUpText}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
                       )}
                       {chatMessage.restoredMediaReferences?.length ? (
                         <div

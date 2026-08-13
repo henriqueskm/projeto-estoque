@@ -26,6 +26,7 @@ import {
   getExplicitGreeting,
   getStandaloneGreeting,
   hasClearInventoryQueryIntent,
+  isAssistantSuggestedFollowUpReply,
   isItemFollowUpMessage,
   isServoModelInventoryFollowUp,
   isItemToSupplierOrdersFollowUp,
@@ -87,6 +88,7 @@ import type {
   AssistantPhysicalItemResult,
   AssistantServoModelInventoryAction,
   AssistantServoModelInventoryBreakdownBlock,
+  AssistantSuggestedFollowUp,
   AssistantStockSummaryResult,
 } from "@/lib/assistant-types";
 import {
@@ -894,6 +896,7 @@ function answerServoModelInventoryAction(
       structuredBlock: block,
       contextItemQuery: block.model.official,
       contextItemReferenceKind: "SERVO_MODEL",
+      contextLastIntent: "SERVO_MODEL_BREAKDOWN",
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
@@ -954,19 +957,63 @@ function answerServoModelInventoryQuantity(
     view === "MOUNTED"
       ? `Você tem ${quantity} ${block.model.official} montado${quantity === 1 ? "" : "s"} com kit.`
       : view === "LOOSE"
-        ? `Você tem ${quantity} ${block.model.official} sem kit montado.`
+        ? `São ${quantity} ${block.model.official} sem kit.`
         : `Você tem ${quantity} ${block.model.official} no total.`;
+  const suggestedFollowUp: AssistantSuggestedFollowUp =
+    view === "TOTAL"
+      ? "SHOW_SERVO_MODEL_KIT_SPLIT"
+      : view === "LOOSE"
+        ? "SHOW_SERVO_MODEL_MOUNTED"
+        : "SHOW_SERVO_MODEL_CONFIGURATIONS";
 
   return {
     message,
     followUpText:
       view === "TOTAL"
-        ? "Posso separar quantos estão com kit e quantos estão sem kit."
+        ? "Se quiser, separo quantos estão com kit e quantos estão sem kit."
         : view === "MOUNTED"
-          ? "Também posso mostrar em quais configurações eles estão."
-          : null,
+          ? "Posso mostrar em quais configurações eles estão."
+          : "Também posso conferir quantos estão montados com kit.",
     contextItemQuery: block.model.official,
     contextItemReferenceKind: "SERVO_MODEL",
+    contextLastIntent: `SERVO_MODEL_${view}`,
+    contextSuggestedFollowUp: suggestedFollowUp,
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+  };
+}
+
+function answerServoModelKitSplit(
+  block: AssistantServoModelInventoryBreakdownBlock | null,
+): AssistantChatSuccess {
+  if (!block) {
+    return {
+      message: "Não encontrei esse modelo de servo no catálogo atual.",
+      contextItemQuery: null,
+      contextItemReferenceKind: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
+  return {
+    message: `São ${block.looseQuantity} ${block.model.official} sem kit e ${block.mountedQuantity} montado${block.mountedQuantity === 1 ? "" : "s"} com kit.`,
+    followUpText: "Posso mostrar em quais configurações os montados estão.",
+    contextItemQuery: block.model.official,
+    contextItemReferenceKind: "SERVO_MODEL",
+    contextLastIntent: "SERVO_MODEL_KIT_SPLIT",
+    contextSuggestedFollowUp: "SHOW_SERVO_MODEL_CONFIGURATIONS",
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+  };
+}
+
+function answerMissingSuggestedFollowUpReference(): AssistantChatSuccess {
+  return {
+    message:
+      "Preciso saber a qual consulta você está se referindo. Diga o modelo ou o Cód. que deseja consultar.",
+    contextItemQuery: null,
+    contextItemReferenceKind: null,
     contextSupplierOrderId: null,
     contextSupplierOrderCatalogCode: null,
   };
@@ -1041,6 +1088,31 @@ export async function answerAssistantQuestion(
     conversationContext.itemReferenceKind === "SERVO_MODEL"
       ? normalizeServoModel(lastItemQuery)
       : null;
+
+  if (isAssistantSuggestedFollowUpReply(message)) {
+    const suggestedFollowUp = conversationContext.suggestedFollowUp;
+
+    if (!contextualModel || !suggestedFollowUp) {
+      return answerMissingSuggestedFollowUpReference();
+    }
+
+    const block = await executeStockQuery(() =>
+      consultAssistantServoModelInventory(contextualModel),
+    );
+
+    if (suggestedFollowUp === "SHOW_SERVO_MODEL_KIT_SPLIT") {
+      return answerServoModelKitSplit(block);
+    }
+
+    if (suggestedFollowUp === "SHOW_SERVO_MODEL_MOUNTED") {
+      return answerServoModelInventoryQuantity(block, "MOUNTED");
+    }
+
+    return answerServoModelInventoryAction(block, {
+      action: "show_servo_model_inventory_breakdown",
+      normalizedModel: contextualModel,
+    });
+  }
 
   if (contextualModel && isServoModelInventoryFollowUp(message)) {
     const view = routeServoModelInventoryView(message);
