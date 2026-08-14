@@ -902,3 +902,31 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   como “sim” ou histórico adulterado não confirma operação.
 - **Próxima etapa:** validação humana dos cenários contextuais e do equilíbrio
   entre naturalidade, brevidade e utilidade.
+
+## 2026-08-13 — NK-AI-STAT-001A / estatísticas conversacionais
+
+- **Base:** `origin/main` em
+  `df1e360598cffbec16c755991d74d9b148a479d5`, merge do PR #31.
+- **Encerramento:** NK-AI-CTX-001 ficou `DONE / HUMAN_TEST_APPROVED / MERGED`
+  pelo PR #31.
+- **Branch:** `agent/assistant-conversational-statistics`.
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_STATISTICS_TEST`.
+- **Fonte oficial:** cada consulta usa `loadStatisticsData(period)` e o
+  `StatisticsData` já calculado; a Assistente não soma, ordena ou compara dados
+  por uma implementação paralela.
+- **Roteamento:** intents estatísticas fechadas cobrem resumo, totais,
+  comparações, categorias, rankings, códigos exatos e itens sem movimento nos
+  períodos oficiais de 7, 30 e 90 dias.
+- **Contexto:** sessão estrita v3 adiciona tópico `STATISTICS`, período, intent
+  e código; a troca para Estoque ou Pedido limpa o contexto estatístico.
+- **Semântica:** “vendeu” é aceito como linguagem natural, mas os resultados
+  continuam descritos como “saídas externas”; montagem permanece separada.
+- **Apresentação:** resumo, breakdown e ranking possuem bloco compacto com
+  período visível e link interno `/estatisticas?periodo=N`.
+- **Identidade:** aliases de uma mesma configuração aparecem agrupados e não
+  duplicam quantidades; código existente com zero é distinto de código ausente.
+- **Segurança:** sugestões estatísticas são tipadas e somente leitura; as
+  guardas de confirmação operacional continuam com prioridade e nenhuma rota
+  mutável, RPC, proposal token, migration ou escrita remota foi adicionada.
+- **Próxima etapa:** validação humana das consultas naturais, continuidade de
+  período, cards móveis e troca de contexto.
