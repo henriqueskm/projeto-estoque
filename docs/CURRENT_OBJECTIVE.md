@@ -1,33 +1,35 @@
 # Objetivo atual
 
-- **ID:** NK-AI-CTX-001
-- **Título:** Conversa contextual, memória curta e personalidade da Assistente NK
+- **ID:** NK-AI-STAT-001A
+- **Título:** Estatísticas conversacionais da Assistente NK
 - **Prioridade:** alta
-- **Fase:** aplicação / validação conversacional humana
-- **Estado:** `IMPLEMENTED / WAITING_HUMAN_CONVERSATION_TEST`
+- **Fase:** aplicação / validação estatística humana
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_STATISTICS_TEST`
 - **Classificação:** **B — ajustes somente de aplicação**
-- **Dependências:** NK-ORD-008D `DONE / HUMAN_TEST_PASSED / REMOTE_VERIFIED /
-  MERGED` pelo PR #28; NK-ORD-009B `DONE / HUMAN_UI_APPROVED / MERGED` pelo
-  PR #30. O PR #29 foi rejeitado visualmente e não integra a implementação
-  aprovada.
-- **Base:** `5e613db7adffd718a8d10b376e430522aeab6bf2`
-- **Branch:** `agent/assistant-contextual-conversation`
-- **PR:** draft a criar
+- **Dependências:** NK-AI-CTX-001 `DONE / HUMAN_TEST_APPROVED / MERGED` pelo
+  PR #31; camada oficial de Estatísticas existente.
+- **Base:** `df1e360598cffbec16c755991d74d9b148a479d5`
+- **Branch:** `agent/assistant-conversational-statistics`
+- **PR:** [#32](https://github.com/henriqueskm/projeto-estoque/pull/32) (draft)
 
-## Implementação NK-AI-CTX-001
+## Implementação NK-AI-STAT-001A
 
-- janela recente limitada às três últimas trocas, seis mensagens e 6.000
-  caracteres, contendo somente `role` e fallback textual seguro;
-- contexto estruturado pequeno separa Estoque, Pedido, Catálogo e Reposição e
-  é sempre tratado como pista que precisa ser revalidada pelo backend;
-- respostas estruturadas podem renderizar texto curto, card existente e um
-  complemento opcional na mesma mensagem;
-- sugestões são determinísticas e limitadas a uma por resposta;
-- Nova conversa e logout removem mensagens e todo o contexto efêmero;
-- a sessão passa à versão 2 e não persiste proposal token, idempotency key,
-  mídia, payload operacional ou memória no banco;
-- roteadores determinísticos e confirmação operacional exclusivamente por
-  botão permanecem preservados.
+- o roteamento estatístico é determinístico, possui intents fechadas e exige
+  período oficial de 7, 30 ou 90 dias;
+- cada turno recarrega `loadStatisticsData(period)` e apresenta os resultados
+  calculados pela camada oficial existente;
+- o contexto efêmero ganhou tópico `STATISTICS`, período, intent e código na
+  sessão estrita v3, sem persistência no banco;
+- resumo, breakdown e ranking usam structured block compacto, mobile-first e
+  link validado para `/estatisticas?periodo=N`;
+- aliases comerciais permanecem agrupados pela configuração física e consulta
+  de código usa somente correspondência exata e catálogo oficial;
+- “vendeu” e “vendido” podem expressar a intenção, mas a resposta preserva a
+  semântica oficial de “saídas externas”;
+- sugestões tipadas continuam somente leitura e a guarda de confirmação
+  operacional segue com prioridade sobre qualquer follow-up estatístico;
+- nenhuma RPC mutável, proposal token, idempotency key, migration ou alteração
+  de banco foi adicionada.
 
 ## Encerramentos anteriores
 

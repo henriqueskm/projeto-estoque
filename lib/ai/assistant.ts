@@ -47,6 +47,8 @@ import { routeManualStockOutputAction } from "@/lib/ai/manual-stock-output-routi
 import { routeConfigurationAssemblyAction } from "@/lib/ai/configuration-assembly-routing";
 import { routeConfigurationDisassemblyAction } from "@/lib/ai/configuration-disassembly-routing";
 import { routeSupplierOrderFinalizationAction } from "@/lib/ai/supplier-order-finalization-routing";
+import { routeAssistantStatisticsQuestion } from "@/lib/ai/statistics-routing";
+import { answerAssistantStatistics } from "@/lib/assistant-statistics";
 import {
   createAssistantSupplierOrderStockEntryPreview,
 } from "@/lib/assistant-supplier-order-stock-entry";
@@ -1111,6 +1113,10 @@ export async function answerAssistantQuestion(
   const pickupRoute = routeSupplierOrderPickupAction(message);
   const purchaseRecommendationRoute =
     routePurchaseRecommendationQuestion(message);
+  const statisticsRoute = routeAssistantStatisticsQuestion(
+    message,
+    conversationContext,
+  );
   const intent = classifyAssistantIntent(message);
   const standaloneGreeting = getStandaloneGreeting(message);
 
@@ -1150,6 +1156,43 @@ export async function answerAssistantQuestion(
 
   if (operationalConfirmationGuard) {
     return { message: operationalConfirmationGuard };
+  }
+
+  if (statisticsRoute.kind === "QUERY") {
+    return answerAssistantStatistics(statisticsRoute.request);
+  }
+
+  if (statisticsRoute.kind === "CLARIFY_PERIOD") {
+    return {
+      message: "As Estatísticas atuais trabalham com os últimos 7, 30 ou 90 dias. Qual período você quer consultar?",
+      contextItemQuery: null,
+      contextItemReferenceKind: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+      contextLastIntent: statisticsRoute.intent,
+      contextSuggestedFollowUp: null,
+      contextStatisticsPeriod: null,
+      contextStatisticsIntent: statisticsRoute.intent,
+      contextStatisticsCode: statisticsRoute.code,
+    };
+  }
+
+  if (statisticsRoute.kind === "ITEM_COMPARISON_UNAVAILABLE") {
+    return {
+      message: "A comparação com o período anterior está disponível para os totais de entradas e saídas externas, mas ainda não por item ou configuração.",
+      contextStatisticsPeriod: conversationContext.statisticsPeriod,
+      contextStatisticsIntent: conversationContext.statisticsIntent,
+      contextStatisticsCode: conversationContext.statisticsCode,
+    };
+  }
+
+  if (statisticsRoute.kind === "CLARIFY_COMPARISON_TARGET") {
+    return {
+      message: "Você quer comparar as entradas ou as saídas externas com o período anterior?",
+      contextStatisticsPeriod: conversationContext.statisticsPeriod,
+      contextStatisticsIntent: conversationContext.statisticsIntent,
+      contextStatisticsCode: conversationContext.statisticsCode,
+    };
   }
 
   if (
