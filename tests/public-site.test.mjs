@@ -76,3 +76,19 @@ test("public presentation keeps product terminology and excludes Remotion", () =
   assert.doesNotMatch(presentation, /caixa completa|faturamento|vendas financeiras/i);
   assert.doesNotMatch(packageJson, /remotion/i);
 });
+
+test("public color tokens define every referenced custom property", () => {
+  const stylesheet = read("app/(public)/public-site.css");
+  const definitions = new Set(
+    [...stylesheet.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map((match) => match[1]),
+  );
+  const references = new Set(
+    [...stylesheet.matchAll(/var\((--[a-z0-9-]+)\)/gi)].map((match) => match[1]),
+  );
+
+  assert.match(stylesheet, /--public-gold-dark:\s*#9a6a28;/i);
+  assert.deepEqual(
+    [...references].filter((token) => !definitions.has(token)),
+    [],
+  );
+});
