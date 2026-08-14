@@ -13,7 +13,7 @@ import {
 } from "@/lib/assistant-conversation";
 import { expireStockEntryPreview, expireSupplierOrderFinalizationPreview, expireSupplierOrderPickupPreview } from "@/lib/ai/assistant-action-persistence";
 
-export const assistantSessionVersion = 2;
+export const assistantSessionVersion = 3;
 export const assistantSessionStoragePrefix =
   "negocios-k:assistant-session";
 export const assistantSessionMessageLimit = 50;
@@ -298,6 +298,7 @@ function sanitizeStructuredBlock(
     case "assistant_clarification":
       return { block, mediaReferences: [] };
     case "purchase_recommendation_list":
+    case "assistant_statistics":
     case "supplier_order_aggregate":
     case "supplier_order_ambiguity":
       return { block, mediaReferences: [] };

@@ -3,6 +3,7 @@ import type {
   AssistantConversationContext,
   AssistantConversationTopic,
   AssistantRecentConversationMessage,
+  AssistantStatisticsIntent,
   AssistantSuggestedFollowUp,
   AssistantStructuredBlock,
 } from "@/lib/assistant-types";
@@ -24,11 +25,24 @@ const topics = new Set<AssistantConversationTopic>([
   "SUPPLIER_ORDER",
   "CATALOG",
   "REPLENISHMENT",
+  "STATISTICS",
 ]);
 const suggestedFollowUps = new Set<AssistantSuggestedFollowUp>([
   "SHOW_SERVO_MODEL_KIT_SPLIT",
   "SHOW_SERVO_MODEL_MOUNTED",
   "SHOW_SERVO_MODEL_CONFIGURATIONS",
+  "SHOW_STATISTICS_RANKING",
+  "SHOW_STATISTICS_CATEGORIES",
+  "SHOW_STATISTICS_TOP_CONFIGURATION",
+]);
+const statisticsPeriods = new Set([7, 30, 90]);
+const statisticsIntents = new Set<AssistantStatisticsIntent>([
+  "SUMMARY", "INBOUND_TOTAL", "OUTBOUND_TOTAL", "OUTBOUND_COMPARISON",
+  "INBOUND_COMPARISON", "SERVO_KIT_SPLIT", "OUTBOUND_BY_CATEGORY",
+  "TOP_CONFIGURATION", "TOP_LOOSE_SERVO", "TOP_LOOSE_KIT",
+  "TOP_REPAIR_KIT", "TOP_LOOSE_PART", "TOP_KIT_USED_IN_ASSEMBLY",
+  "CONFIGURATION_RANKING", "LOOSE_SERVO_RANKING", "CODE_OUTBOUND",
+  "WITHOUT_MOVEMENT",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -137,6 +151,9 @@ export function emptyAssistantConversationContext(): AssistantConversationContex
     supplierOrderCatalogCode: null,
     lastIntent: null,
     suggestedFollowUp: null,
+    statisticsPeriod: null,
+    statisticsIntent: null,
+    statisticsCode: null,
   };
 }
 
@@ -153,6 +170,9 @@ export function parseAssistantConversationContext(
       "supplierOrderCatalogCode",
       "lastIntent",
       "suggestedFollowUp",
+      "statisticsPeriod",
+      "statisticsIntent",
+      "statisticsCode",
     ]) ||
     typeof value.topic !== "string" ||
     !topics.has(value.topic as AssistantConversationTopic)
@@ -182,6 +202,17 @@ export function parseAssistantConversationContext(
           )
         ? (value.suggestedFollowUp as AssistantSuggestedFollowUp)
         : undefined;
+  const statisticsPeriod = value.statisticsPeriod === null
+    ? null
+    : typeof value.statisticsPeriod === "number" && statisticsPeriods.has(value.statisticsPeriod)
+      ? value.statisticsPeriod as 7 | 30 | 90
+      : undefined;
+  const statisticsIntent = value.statisticsIntent === null
+    ? null
+    : typeof value.statisticsIntent === "string" && statisticsIntents.has(value.statisticsIntent as AssistantStatisticsIntent)
+      ? value.statisticsIntent as AssistantStatisticsIntent
+      : undefined;
+  const statisticsCode = parseNullableText(value.statisticsCode, 120);
 
   if (
     itemQuery === undefined ||
@@ -190,6 +221,9 @@ export function parseAssistantConversationContext(
     supplierOrderCatalogCode === undefined ||
     lastIntent === undefined ||
     suggestedFollowUp === undefined ||
+    statisticsPeriod === undefined ||
+    statisticsIntent === undefined ||
+    statisticsCode === undefined ||
     (supplierOrderId !== null && !uuidPattern.test(supplierOrderId)) ||
     (supplierOrderCatalogCode !== null &&
       !catalogCodePattern.test(
@@ -217,16 +251,29 @@ export function parseAssistantConversationContext(
     (itemQuery === null) !== (itemReferenceKind === null) ||
     (value.topic !== "INVENTORY" && itemReferenceKind !== null);
   const suggestedFollowUpMismatch =
-    suggestedFollowUp !== null &&
-    (value.topic !== "INVENTORY" ||
-      itemQuery === null ||
-      itemReferenceKind !== "SERVO_MODEL");
+    suggestedFollowUp !== null && (
+      suggestedFollowUp.startsWith("SHOW_STATISTICS_")
+        ? value.topic !== "STATISTICS"
+        : value.topic !== "INVENTORY" || itemQuery === null || itemReferenceKind !== "SERVO_MODEL"
+    );
+  const statisticsMismatch =
+    value.topic === "STATISTICS"
+      ? statisticsIntent === null ||
+        itemQuery !== null ||
+        supplierOrderId !== null ||
+        supplierOrderCatalogCode !== null ||
+        (statisticsCode !== null) !== (statisticsIntent === "CODE_OUTBOUND") ||
+        (suggestedFollowUp === "SHOW_STATISTICS_RANKING" && statisticsIntent !== "TOP_CONFIGURATION") ||
+        (suggestedFollowUp === "SHOW_STATISTICS_CATEGORIES" && statisticsIntent !== "SUMMARY") ||
+        (suggestedFollowUp === "SHOW_STATISTICS_TOP_CONFIGURATION" && statisticsIntent !== "SERVO_KIT_SPLIT")
+      : statisticsPeriod !== null || statisticsIntent !== null || statisticsCode !== null;
 
   if (
     hasInventoryAndOrderContext ||
     topicMismatch ||
     itemReferenceMismatch ||
-    suggestedFollowUpMismatch
+    suggestedFollowUpMismatch ||
+    statisticsMismatch
   ) {
     return null;
   }
@@ -240,6 +287,9 @@ export function parseAssistantConversationContext(
       supplierOrderCatalogCode?.toLocaleUpperCase("pt-BR") ?? null,
     lastIntent,
     suggestedFollowUp,
+    statisticsPeriod,
+    statisticsIntent,
+    statisticsCode: statisticsCode?.toLocaleUpperCase("pt-BR") ?? null,
   };
 }
 
@@ -276,6 +326,7 @@ function topicForBlock(block: AssistantStructuredBlock | undefined) {
   ) {
     return "REPLENISHMENT" as const;
   }
+  if (block.kind === "assistant_statistics") return "STATISTICS" as const;
   return null;
 }
 
@@ -332,6 +383,9 @@ export function deriveAssistantConversationContext(
     "contextSupplierOrderCatalogCode",
   );
   const blockTopic = topicForBlock(answer.structuredBlock);
+  const hasStatisticsPeriod = Object.prototype.hasOwnProperty.call(answer, "contextStatisticsPeriod");
+  const hasStatisticsIntent = Object.prototype.hasOwnProperty.call(answer, "contextStatisticsIntent");
+  const hasStatisticsCode = Object.prototype.hasOwnProperty.call(answer, "contextStatisticsCode");
   const itemQuery = hasItem ? (answer.contextItemQuery ?? null) : previous.itemQuery;
   const itemReferenceKind = hasItemReferenceKind
     ? (answer.contextItemReferenceKind ?? null)
@@ -348,7 +402,18 @@ export function deriveAssistantConversationContext(
     ? "SUPPLIER_ORDER"
     : hasItem && itemQuery
       ? "INVENTORY"
-      : blockTopic ?? (hasItem || hasOrder ? "GENERAL" : previous.topic);
+      : blockTopic === "STATISTICS" || hasStatisticsIntent
+        ? "STATISTICS"
+        : blockTopic ?? (hasItem || hasOrder ? "GENERAL" : previous.topic);
+  const statisticsPeriod = hasStatisticsPeriod
+    ? (answer.contextStatisticsPeriod ?? null)
+    : previous.statisticsPeriod;
+  const statisticsIntent = hasStatisticsIntent
+    ? (answer.contextStatisticsIntent ?? null)
+    : previous.statisticsIntent;
+  const statisticsCode = hasStatisticsCode
+    ? (answer.contextStatisticsCode ?? null)
+    : previous.statisticsCode;
 
   return {
     topic,
@@ -367,9 +432,12 @@ export function deriveAssistantConversationContext(
           ? "supplier_order_query"
           : "general_conversation"),
     suggestedFollowUp:
-      topic === "INVENTORY" && itemReferenceKind === "SERVO_MODEL"
+      (topic === "INVENTORY" && itemReferenceKind === "SERVO_MODEL") || topic === "STATISTICS"
         ? (answer.contextSuggestedFollowUp ?? null)
         : null,
+    statisticsPeriod: topic === "STATISTICS" ? statisticsPeriod : null,
+    statisticsIntent: topic === "STATISTICS" ? statisticsIntent : null,
+    statisticsCode: topic === "STATISTICS" ? statisticsCode : null,
   };
 }
 

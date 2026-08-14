@@ -46,6 +46,7 @@ import type {
   AssistantStructuredBlock,
   AssistantStockEntrySelection,
   AssistantStockOutputSelection,
+  AssistantStatisticsBlock,
 } from "@/lib/assistant-types";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
 import { updateSupplierOrderPhotoPreviewLine } from "@/lib/assistant-supplier-order-photo-preview";
@@ -72,6 +73,48 @@ const orderStatusLabels = {
   COMPLETED: "Concluído",
   CANCELLED: "Cancelado",
 } as const;
+
+function AssistantStatistics({ block }: { block: AssistantStatisticsBlock }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border-neutral bg-surface" aria-label={block.title}>
+      <div className="border-b border-border-neutral px-4 py-3">
+        <p className="text-[11px] font-black tracking-[0.12em] text-brand-gold-ink uppercase">Estatísticas · últimos {block.period} dias</p>
+        <h3 className="mt-1 text-base font-black text-text-primary">{block.title}</h3>
+        <p className="mt-1 text-sm leading-5 font-semibold text-text-muted">{block.description}</p>
+      </div>
+      {block.metrics.length > 0 ? (
+        <dl className="grid grid-cols-2 gap-px bg-border-neutral sm:grid-cols-4">
+          {block.metrics.map((metric) => (
+            <div key={metric.label} className="bg-surface px-3 py-2.5">
+              <dt className="text-[10px] font-black tracking-wide text-text-muted uppercase">{metric.label}</dt>
+              <dd className="mt-0.5 text-xl font-black tabular-nums text-text-primary">{quantityFormatter.format(metric.value)}</dd>
+              {metric.detail ? <dd className="text-xs font-bold text-text-muted">{metric.detail}</dd> : null}
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {block.ranking.length > 0 ? (
+        <ol className="divide-y divide-border-neutral">
+          {block.ranking.map((item) => (
+            <li key={`${item.position}-${item.code}`} className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5">
+              <span className="text-sm font-black text-brand-gold-ink">{item.position}º</span>
+              <span className="min-w-0">
+                <strong className="block text-sm font-black text-text-primary">Cód. {item.code}</strong>
+                <span className="block text-xs leading-4 font-semibold text-text-muted">{item.description}</span>
+              </span>
+              <strong className="text-sm font-black tabular-nums text-text-primary">{quantityFormatter.format(item.quantity)}</strong>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      <div className="border-t border-border-neutral px-3 py-2.5">
+        <Link href={block.statisticsHref} className="nk-focus inline-flex min-h-10 items-center rounded-xl border border-border-neutral px-3 text-sm font-black text-text-primary hover:bg-app-background">
+          Abrir Estatísticas
+        </Link>
+      </div>
+    </section>
+  );
+}
 
 function SupplierOrderPhotoPreview({
   block,
@@ -2883,6 +2926,8 @@ export function AssistantStructuredBlockView({
   ) => void;
 }) {
   switch (block.kind) {
+    case "assistant_statistics":
+      return <AssistantStatistics block={block} />;
     case "supplier_order_photo_preview":
       return <SupplierOrderPhotoPreview block={block} disabled={disabled} onUpdate={onSupplierOrderPhotoUpdate} />;
     case "supplier_order_photo_create_result":

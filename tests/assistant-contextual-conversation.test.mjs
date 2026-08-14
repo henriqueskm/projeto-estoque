@@ -125,6 +125,9 @@ test("keeps inventory and supplier order contexts mutually exclusive", () => {
     itemReferenceKind: "SERVO_MODEL",
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
+    statisticsPeriod: null,
+    statisticsIntent: null,
+    statisticsCode: null,
     lastIntent: "inventory_item_summary",
   });
   assert.equal(inventory?.itemQuery, "MBF-025");
@@ -158,6 +161,9 @@ test("strictly validates the item reference discriminator", () => {
     itemReferenceKind: "CATALOG_CODE",
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
+    statisticsPeriod: null,
+    statisticsIntent: null,
+    statisticsCode: null,
     lastIntent: "inventory_item_summary",
   };
 
@@ -244,6 +250,9 @@ test("H-I: model and catalog-code contexts remain distinct and the latest refere
     itemReferenceKind: "SERVO_MODEL",
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
+    statisticsPeriod: null,
+    statisticsIntent: null,
+    statisticsCode: null,
     lastIntent: "servo_model_inventory_breakdown",
   });
   assert.ok(modelContext);
@@ -373,6 +382,9 @@ test("a catalog-code context is not reinterpreted as a servo-model kit state", a
     itemReferenceKind: "CATALOG_CODE",
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
+    statisticsPeriod: null,
+    statisticsIntent: null,
+    statisticsCode: null,
     lastIntent: "inventory_item_summary",
   });
 
@@ -480,9 +492,9 @@ test("supplier-order lists derive suggestions from official visible line totals"
   );
 });
 
-test("session v2 persists conversational copy and structured context", async () => {
+test("session v3 persists conversational copy and structured context", async () => {
   const source = await read("lib/assistant-session.ts");
-  assert.match(source, /assistantSessionVersion = 2/);
+  assert.match(source, /assistantSessionVersion = 3/);
   assert.match(source, /leadText/);
   assert.match(source, /followUpText/);
   assert.match(source, /conversationContext/);
@@ -752,6 +764,9 @@ test("empty context is deterministic", () => {
     itemReferenceKind: null,
     supplierOrderId: null,
     supplierOrderCatalogCode: null,
+    statisticsPeriod: null,
+    statisticsIntent: null,
+    statisticsCode: null,
     lastIntent: null,
     suggestedFollowUp: null,
   });

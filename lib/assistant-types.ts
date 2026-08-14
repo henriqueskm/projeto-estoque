@@ -24,12 +24,35 @@ export type AssistantConversationTopic =
   | "INVENTORY"
   | "SUPPLIER_ORDER"
   | "CATALOG"
-  | "REPLENISHMENT";
+  | "REPLENISHMENT"
+  | "STATISTICS";
+
+export type AssistantStatisticsIntent =
+  | "SUMMARY"
+  | "INBOUND_TOTAL"
+  | "OUTBOUND_TOTAL"
+  | "OUTBOUND_COMPARISON"
+  | "INBOUND_COMPARISON"
+  | "SERVO_KIT_SPLIT"
+  | "OUTBOUND_BY_CATEGORY"
+  | "TOP_CONFIGURATION"
+  | "TOP_LOOSE_SERVO"
+  | "TOP_LOOSE_KIT"
+  | "TOP_REPAIR_KIT"
+  | "TOP_LOOSE_PART"
+  | "TOP_KIT_USED_IN_ASSEMBLY"
+  | "CONFIGURATION_RANKING"
+  | "LOOSE_SERVO_RANKING"
+  | "CODE_OUTBOUND"
+  | "WITHOUT_MOVEMENT";
 
 export type AssistantSuggestedFollowUp =
   | "SHOW_SERVO_MODEL_KIT_SPLIT"
   | "SHOW_SERVO_MODEL_MOUNTED"
-  | "SHOW_SERVO_MODEL_CONFIGURATIONS";
+  | "SHOW_SERVO_MODEL_CONFIGURATIONS"
+  | "SHOW_STATISTICS_RANKING"
+  | "SHOW_STATISTICS_CATEGORIES"
+  | "SHOW_STATISTICS_TOP_CONFIGURATION";
 
 export type AssistantConversationContext = {
   topic: AssistantConversationTopic;
@@ -39,6 +62,26 @@ export type AssistantConversationContext = {
   supplierOrderCatalogCode: string | null;
   lastIntent: string | null;
   suggestedFollowUp: AssistantSuggestedFollowUp | null;
+  statisticsPeriod: 7 | 30 | 90 | null;
+  statisticsIntent: AssistantStatisticsIntent | null;
+  statisticsCode: string | null;
+};
+
+export type AssistantStatisticsBlock = {
+  kind: "assistant_statistics";
+  mode: "SUMMARY" | "RANKING" | "BREAKDOWN";
+  period: 7 | 30 | 90;
+  title: string;
+  description: string;
+  metrics: Array<{ label: string; value: number; detail?: string }>;
+  ranking: Array<{
+    position: number;
+    code: string;
+    description: string;
+    quantity: number;
+  }>;
+  statisticsHref: `/estatisticas?periodo=${7 | 30 | 90}`;
+  fallbackText: string;
 };
 
 export type AssistantRecentConversationMessage = {
@@ -463,6 +506,9 @@ export type AssistantChatSuccess = {
   contextSupplierOrderCatalogCode?: string | null;
   contextLastIntent?: string | null;
   contextSuggestedFollowUp?: AssistantSuggestedFollowUp | null;
+  contextStatisticsPeriod?: 7 | 30 | 90 | null;
+  contextStatisticsIntent?: AssistantStatisticsIntent | null;
+  contextStatisticsCode?: string | null;
   structuredBlock?: AssistantStructuredBlock;
 };
 
@@ -1008,7 +1054,8 @@ export type AssistantStructuredBlock =
   | AssistantConfigurationDisassemblyPreviewBlock
   | AssistantConfigurationDisassemblyResultBlock
   | AssistantSupplierOrderFinalizationPreviewBlock
-  | AssistantSupplierOrderFinalizationResultBlock;
+  | AssistantSupplierOrderFinalizationResultBlock
+  | AssistantStatisticsBlock;
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -2111,6 +2158,50 @@ export function parseAssistantStructuredBlock(
 ): AssistantStructuredBlock | null {
   if (!isRecord(value)) {
     return null;
+  }
+
+  if (value.kind === "assistant_statistics") {
+    const period = value.period;
+    const metrics = Array.isArray(value.metrics) ? value.metrics : [];
+    const ranking = Array.isArray(value.ranking) ? value.ranking : [];
+    const href = `/estatisticas?periodo=${period}`;
+    if (
+      !["SUMMARY", "RANKING", "BREAKDOWN"].includes(String(value.mode)) ||
+      ![7, 30, 90].includes(Number(period)) ||
+      typeof value.title !== "string" || !value.title.trim() || value.title.length > 120 ||
+      typeof value.description !== "string" || !value.description.trim() || value.description.length > 500 ||
+      typeof value.fallbackText !== "string" || !value.fallbackText.trim() || value.fallbackText.length > 1200 ||
+      value.statisticsHref !== href ||
+      metrics.length > 8 || ranking.length > 5 ||
+      metrics.some((metric) => !isRecord(metric) || typeof metric.label !== "string" || !metric.label.trim() ||
+        metric.label.length > 80 || !isNonnegativeInteger(metric.value) ||
+        (metric.detail !== undefined && (typeof metric.detail !== "string" || !metric.detail.trim() || metric.detail.length > 160))) ||
+      ranking.some((item, index) => !isRecord(item) || item.position !== index + 1 ||
+        typeof item.code !== "string" || !item.code.trim() || item.code.length > 120 ||
+        typeof item.description !== "string" || !item.description.trim() || item.description.length > 300 ||
+        !isNonnegativeInteger(item.quantity))
+    ) return null;
+    return {
+      kind: "assistant_statistics",
+      mode: value.mode as AssistantStatisticsBlock["mode"],
+      period: period as AssistantStatisticsBlock["period"],
+      title: value.title.trim(), description: value.description.trim(),
+      metrics: metrics.map((metric) => ({
+        label: String((metric as Record<string, unknown>).label).trim(),
+        value: (metric as Record<string, unknown>).value as number,
+        ...((metric as Record<string, unknown>).detail
+          ? { detail: String((metric as Record<string, unknown>).detail).trim() }
+          : {}),
+      })),
+      ranking: ranking.map((item) => ({
+        position: (item as Record<string, unknown>).position as number,
+        code: String((item as Record<string, unknown>).code).trim(),
+        description: String((item as Record<string, unknown>).description).trim(),
+        quantity: (item as Record<string, unknown>).quantity as number,
+      })),
+      statisticsHref: href as AssistantStatisticsBlock["statisticsHref"],
+      fallbackText: value.fallbackText.trim(),
+    };
   }
 
   if (value.kind === "supplier_order_photo_preview") {
