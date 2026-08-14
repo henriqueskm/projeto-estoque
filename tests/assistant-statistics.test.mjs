@@ -66,8 +66,51 @@ test("routes the required explicit and contextual statistics intents", () => {
   assert.equal(routeAssistantStatisticsQuestion("Quais itens não tiveram movimento?", statisticsContext("SUMMARY")).request.intent, "WITHOUT_MOVEMENT");
   assert.equal(routeAssistantStatisticsQuestion("Quantos Servos com kit saíram nos últimos 30 dias?", emptyContext).request.intent, "SERVO_KIT_SPLIT");
   assert.equal(routeAssistantStatisticsQuestion("Qual foi o mais vendido com kit nos últimos 30 dias?", emptyContext).request.intent, "TOP_CONFIGURATION");
-  assert.equal(routeAssistantStatisticsQuestion("Como ficou comparado ao período anterior?", statisticsContext("SUMMARY")).request.intent, "OUTBOUND_COMPARISON");
+  assert.equal(routeAssistantStatisticsQuestion("Como ficou comparado ao período anterior?", statisticsContext("SUMMARY")).kind, "CLARIFY_COMPARISON_TARGET");
   assert.equal(routeAssistantStatisticsQuestion("O 2A saiu mais que no período anterior?", statisticsContext("CODE_OUTBOUND", 30, "2A")).kind, "ITEM_COMPARISON_UNAVAILABLE");
+});
+
+test("comparison follow-ups preserve the last statistical referent", () => {
+  for (const intent of [
+    "TOP_CONFIGURATION", "TOP_LOOSE_SERVO", "TOP_LOOSE_KIT",
+    "TOP_REPAIR_KIT", "TOP_LOOSE_PART", "TOP_KIT_USED_IN_ASSEMBLY",
+    "CONFIGURATION_RANKING", "LOOSE_SERVO_RANKING", "CODE_OUTBOUND",
+  ]) {
+    const code = intent === "CODE_OUTBOUND" ? "2A" : null;
+    assert.equal(
+      routeAssistantStatisticsQuestion("Foi mais que no período anterior?", statisticsContext(intent, 30, code)).kind,
+      "ITEM_COMPARISON_UNAVAILABLE",
+      intent,
+    );
+  }
+  assert.equal(
+    routeAssistantStatisticsQuestion("Foi mais que no período anterior?", statisticsContext("OUTBOUND_TOTAL")).request.intent,
+    "OUTBOUND_COMPARISON",
+  );
+  assert.equal(
+    routeAssistantStatisticsQuestion("Foi mais que no período anterior?", statisticsContext("INBOUND_TOTAL")).request.intent,
+    "INBOUND_COMPARISON",
+  );
+  assert.equal(
+    routeAssistantStatisticsQuestion("Foi mais que no período anterior?", statisticsContext("SUMMARY")).kind,
+    "CLARIFY_COMPARISON_TARGET",
+  );
+  assert.equal(
+    routeAssistantStatisticsQuestion("Entradas", statisticsContext("SUMMARY")).request.intent,
+    "INBOUND_COMPARISON",
+  );
+  assert.equal(
+    routeAssistantStatisticsQuestion("Saídas externas", statisticsContext("SUMMARY")).request.intent,
+    "OUTBOUND_COMPARISON",
+  );
+  assert.equal(
+    routeAssistantStatisticsQuestion("E antes?", statisticsContext("TOP_CONFIGURATION")).kind,
+    "ITEM_COMPARISON_UNAVAILABLE",
+  );
+  assert.equal(
+    routeAssistantStatisticsQuestion("E nos 30 dias anteriores?", statisticsContext("OUTBOUND_TOTAL")).request.intent,
+    "OUTBOUND_COMPARISON",
+  );
 });
 
 test("period is mandatory, unsupported calendar periods never map silently", () => {
@@ -94,6 +137,8 @@ test("official data produces summary, comparison and semantic-safe answers", asy
   assert.match(summary.message, /12 entradas e 21 saídas externas/);
   assert.equal(summary.structuredBlock.metrics.length, 4);
   assert.equal(summary.structuredBlock.statisticsHref, "/estatisticas?periodo=30");
+  assert.equal(summary.contextSuggestedFollowUp, "SHOW_STATISTICS_CATEGORIES");
+  assert.equal(summary.followUpText, "Posso detalhar as saídas por categoria.");
   const noBase = await buildAssistantStatisticsAnswer({ intent: "INBOUND_COMPARISON", period: 30, code: null }, data);
   assert.match(noBase.message, /Não há base/);
   assert.doesNotMatch(noBase.message, /%/);
@@ -101,6 +146,11 @@ test("official data produces summary, comparison and semantic-safe answers", asy
   assert.match(sold.message, /saídas externas/);
   assert.doesNotMatch(sold.message, /vendidas/);
   assert.match(sold.message, /1B \/ 1D/);
+  assert.equal(sold.contextSuggestedFollowUp, "SHOW_STATISTICS_RANKING");
+  assert.equal(sold.followUpText, "Posso mostrar o ranking das cinco configurações com mais saídas.");
+  const split = await buildAssistantStatisticsAnswer({ intent: "SERVO_KIT_SPLIT", period: 30, code: null }, data);
+  assert.equal(split.contextSuggestedFollowUp, "SHOW_STATISTICS_TOP_CONFIGURATION");
+  assert.equal(split.followUpText, "Também posso mostrar qual configuração com kit mais saiu.");
   const assembly = await buildAssistantStatisticsAnswer({ intent: "TOP_KIT_USED_IN_ASSEMBLY", period: 30, code: null }, data);
   assert.match(assembly.message, /utilizado em montagens/);
   assert.doesNotMatch(assembly.message, /saída externa/);

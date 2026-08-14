@@ -87,11 +87,15 @@ function topAnswer(
   const message = assemblyUse
     ? `Nos últimos ${request.period} dias, o Cód. ${code} foi o kit mais utilizado em montagens, com ${quantity.format(top.quantity)} unidades.`
     : `Considerando as saídas externas dos últimos ${request.period} dias, o Cód. ${code} ficou em primeiro entre ${subject}, com ${quantity.format(top.quantity)} unidades.`;
+  const showsRanking = !assemblyUse && request.intent === "TOP_CONFIGURATION";
   return {
     message,
+    ...(showsRanking
+      ? { followUpText: "Posso mostrar o ranking das cinco configurações com mais saídas." }
+      : {}),
     ...baseContext(
       request,
-      !assemblyUse && request.intent === "TOP_CONFIGURATION"
+      showsRanking
         ? "SHOW_STATISTICS_RANKING"
         : null,
     ),
@@ -135,7 +139,7 @@ export function buildAssistantStatisticsAnswer(
   switch (request.intent) {
     case "SUMMARY": {
       const message = `Nos últimos ${period} dias, foram registradas ${quantity.format(data.totals.inbound)} entradas e ${quantity.format(data.totals.outbound)} saídas externas.`;
-      return { message, structuredBlock: block("SUMMARY", period, `Resumo · ${period} dias`, message, [
+      return { message, followUpText: "Posso detalhar as saídas por categoria.", structuredBlock: block("SUMMARY", period, `Resumo · ${period} dias`, message, [
         { label: "Entradas", value: data.totals.inbound }, { label: "Saídas externas", value: data.totals.outbound },
         { label: "Montagens", value: data.totals.assembled }, { label: "Desmontagens", value: data.totals.disassembled },
       ]), ...baseContext(request, "SHOW_STATISTICS_CATEGORIES") };
@@ -146,7 +150,7 @@ export function buildAssistantStatisticsAnswer(
     case "OUTBOUND_COMPARISON": return { message: comparisonText("saídas externas", data.comparisons.outbound), ...baseContext(request) };
     case "SERVO_KIT_SPLIT": {
       const message = `Nos últimos ${period} dias, saíram ${quantity.format(data.servoSales.withKit)} Servos montados com kit e ${quantity.format(data.servoSales.withoutKit)} Servos sem kit, totalizando ${quantity.format(data.servoSales.total)} saídas externas de Servos.`;
-      return { message, structuredBlock: block("BREAKDOWN", period, "Servos com kit e sem kit", message, [
+      return { message, followUpText: "Também posso mostrar qual configuração com kit mais saiu.", structuredBlock: block("BREAKDOWN", period, "Servos com kit e sem kit", message, [
         { label: "Servos com kit", value: data.servoSales.withKit, detail: `${percent.format(data.servoSales.withKitPercentage)}%` },
         { label: "Servos sem kit", value: data.servoSales.withoutKit, detail: `${percent.format(data.servoSales.withoutKitPercentage)}%` },
         { label: "Total de Servos", value: data.servoSales.total },

@@ -13,8 +13,24 @@ export type AssistantStatisticsRequest = {
 export type AssistantStatisticsRoute =
   | { kind: "NOT_STATISTICS" }
   | { kind: "ITEM_COMPARISON_UNAVAILABLE" }
+  | { kind: "CLARIFY_COMPARISON_TARGET" }
   | { kind: "CLARIFY_PERIOD"; intent: AssistantStatisticsIntent; code: string | null }
   | { kind: "QUERY"; request: AssistantStatisticsRequest };
+
+const entityOrBreakdownIntents = new Set<AssistantStatisticsIntent>([
+  "SERVO_KIT_SPLIT",
+  "OUTBOUND_BY_CATEGORY",
+  "TOP_CONFIGURATION",
+  "TOP_LOOSE_SERVO",
+  "TOP_LOOSE_KIT",
+  "TOP_REPAIR_KIT",
+  "TOP_LOOSE_PART",
+  "TOP_KIT_USED_IN_ASSEMBLY",
+  "CONFIGURATION_RANKING",
+  "LOOSE_SERVO_RANKING",
+  "CODE_OUTBOUND",
+  "WITHOUT_MOVEMENT",
+]);
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -75,18 +91,31 @@ function explicitIntent(message: string): { intent: AssistantStatisticsIntent; c
 
 function contextualIntent(message: string, context: AssistantConversationContext) {
   if (context.topic !== "STATISTICS" || !context.statisticsIntent) return null;
+  if (context.statisticsIntent === "SUMMARY" && /^(?:as )?entradas$/.test(message)) {
+    return { intent: "INBOUND_COMPARISON" as const, code: null };
+  }
+  if (context.statisticsIntent === "SUMMARY" && /^(?:as )?saidas(?: externas)?$/.test(message)) {
+    return { intent: "OUTBOUND_COMPARISON" as const, code: null };
+  }
   if (/^(?:e\s+)?sem kit$/.test(message) && context.statisticsIntent === "TOP_CONFIGURATION") return { intent: "TOP_LOOSE_SERVO" as const, code: null };
   if (/^(?:e\s+)?(?:com|sem) kit$/.test(message) && context.statisticsIntent === "SERVO_KIT_SPLIT") return { intent: "SERVO_KIT_SPLIT" as const, code: null };
   if (/^(?:e\s+)?com kit$/.test(message) && context.statisticsIntent === "TOP_LOOSE_SERVO") return { intent: "TOP_CONFIGURATION" as const, code: null };
   if (/^(?:e\s+)?(?:nos\s+)?(?:ultimos?\s+)?(?:7|30|90)\s+dias?$/.test(message)) return { intent: context.statisticsIntent, code: context.statisticsCode };
-  if (/^(?:foi|foram)\s+mais\s+que\s+no\s+periodo\s+anterior$/.test(message)) {
-    if (["OUTBOUND_TOTAL", "OUTBOUND_COMPARISON", "TOP_CONFIGURATION", "TOP_LOOSE_SERVO", "CODE_OUTBOUND"].includes(context.statisticsIntent)) {
+  if (
+    /^(?:(?:foi|foram) mais que no periodo anterior|e?\s*comparad[oa]s? ao periodo anterior|e antes|e nos (?:7|30|90) dias anteriores|como (?:ficou|ficaram) comparad[oa]s? ao periodo anterior)$/.test(message)
+  ) {
+    if (["OUTBOUND_TOTAL", "OUTBOUND_COMPARISON"].includes(context.statisticsIntent)) {
       return { intent: "OUTBOUND_COMPARISON" as const, code: null };
     }
-    if (["INBOUND_TOTAL", "INBOUND_COMPARISON"].includes(context.statisticsIntent)) return { intent: "INBOUND_COMPARISON" as const, code: null };
-  }
-  if (/^(?:e\s+)?como (?:ficou|ficaram) comparad[oa]s? ao periodo anterior$/.test(message)) {
-    return { intent: context.statisticsIntent === "INBOUND_TOTAL" ? "INBOUND_COMPARISON" as const : "OUTBOUND_COMPARISON" as const, code: null };
+    if (["INBOUND_TOTAL", "INBOUND_COMPARISON"].includes(context.statisticsIntent)) {
+      return { intent: "INBOUND_COMPARISON" as const, code: null };
+    }
+    if (context.statisticsIntent === "SUMMARY") {
+      return { clarifyComparisonTarget: true as const };
+    }
+    if (entityOrBreakdownIntents.has(context.statisticsIntent)) {
+      return { unsupportedItemComparison: true as const };
+    }
   }
   if (/\b(?:esse|este|o)\s+codigo\b.*\bperiodo anterior\b/.test(message)) return { unsupportedItemComparison: true as const };
   return null;
@@ -110,6 +139,7 @@ export function routeAssistantStatisticsQuestion(
   }
   const contextual = contextualIntent(message, context);
   if (contextual && "unsupportedItemComparison" in contextual) return { kind: "ITEM_COMPARISON_UNAVAILABLE" };
+  if (contextual && "clarifyComparisonTarget" in contextual) return { kind: "CLARIFY_COMPARISON_TARGET" };
   if (context.topic === "STATISTICS" && /\b[a-z0-9/-]+\b.*\bsaiu mais que no periodo anterior\b/.test(message)) {
     return { kind: "ITEM_COMPARISON_UNAVAILABLE" };
   }

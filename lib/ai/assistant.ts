@@ -1186,6 +1186,15 @@ export async function answerAssistantQuestion(
     };
   }
 
+  if (statisticsRoute.kind === "CLARIFY_COMPARISON_TARGET") {
+    return {
+      message: "Você quer comparar as entradas ou as saídas externas com o período anterior?",
+      contextStatisticsPeriod: conversationContext.statisticsPeriod,
+      contextStatisticsIntent: conversationContext.statisticsIntent,
+      contextStatisticsCode: conversationContext.statisticsCode,
+    };
+  }
+
   if (
     isAssistantSuggestedFollowUpReply(message) &&
     contextualModel &&
