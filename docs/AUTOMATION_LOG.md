@@ -940,6 +940,7 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Encerramento:** NK-AI-STAT-001A ficou `DONE / HUMAN_TEST_APPROVED / MERGED`
   pelo PR #32.
 - **Branch:** `agent/public-presentation-site`.
+- **PR:** [#33](https://github.com/henriqueskm/projeto-estoque/pull/33) (draft).
 - **Estado:** `PUBLIC_PRESENTATION_AND_MANUAL_IMPLEMENTED /
   WAITING_HUMAN_VISUAL_REVIEW`.
 - **Rotas públicas:** `/apresentacao`, `/manual` e dez artigos iniciais; todas

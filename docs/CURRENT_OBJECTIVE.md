@@ -10,7 +10,7 @@
   PR #32; auditorias NK-WEB-001A e NK-WEB-001B concluídas.
 - **Base:** `cccff93a1e7297a0c9563cb73fa2da564a466dd0`
 - **Branch:** `agent/public-presentation-site`
-- **PR:** draft pendente de criação.
+- **PR:** [#33](https://github.com/henriqueskm/projeto-estoque/pull/33) (draft).
 
 ## Implementação NK-WEB-001C
 
