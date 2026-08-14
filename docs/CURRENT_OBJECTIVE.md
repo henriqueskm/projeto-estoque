@@ -1,37 +1,41 @@
 # Objetivo atual
 
-- **ID:** NK-AI-STAT-001A
-- **Título:** Estatísticas conversacionais da Assistente NK
+- **ID:** NK-WEB-001C
+- **Título:** Site público de apresentação + base do manual
 - **Prioridade:** alta
-- **Fase:** aplicação / validação estatística humana
-- **Estado:** `IMPLEMENTED / WAITING_HUMAN_STATISTICS_TEST`
+- **Fase:** aplicação pública / validação visual humana
+- **Estado:** `PUBLIC_PRESENTATION_AND_MANUAL_IMPLEMENTED / WAITING_HUMAN_VISUAL_REVIEW`
 - **Classificação:** **B — ajustes somente de aplicação**
-- **Dependências:** NK-AI-CTX-001 `DONE / HUMAN_TEST_APPROVED / MERGED` pelo
-  PR #31; camada oficial de Estatísticas existente.
-- **Base:** `df1e360598cffbec16c755991d74d9b148a479d5`
-- **Branch:** `agent/assistant-conversational-statistics`
-- **PR:** [#32](https://github.com/henriqueskm/projeto-estoque/pull/32) (draft)
+- **Dependências:** NK-AI-STAT-001A `DONE / HUMAN_TEST_APPROVED / MERGED` pelo
+  PR #32; auditorias NK-WEB-001A e NK-WEB-001B concluídas.
+- **Base:** `cccff93a1e7297a0c9563cb73fa2da564a466dd0`
+- **Branch:** `agent/public-presentation-site`
+- **PR:** [#33](https://github.com/henriqueskm/projeto-estoque/pull/33) (draft).
 
-## Implementação NK-AI-STAT-001A
+## Implementação NK-WEB-001C
 
-- o roteamento estatístico é determinístico, possui intents fechadas e exige
-  período oficial de 7, 30 ou 90 dias;
-- cada turno recarrega `loadStatisticsData(period)` e apresenta os resultados
-  calculados pela camada oficial existente;
-- o contexto efêmero ganhou tópico `STATISTICS`, período, intent e código na
-  sessão estrita v3, sem persistência no banco;
-- resumo, breakdown e ranking usam structured block compacto, mobile-first e
-  link validado para `/estatisticas?periodo=N`;
-- aliases comerciais permanecem agrupados pela configuração física e consulta
-  de código usa somente correspondência exata e catálogo oficial;
-- “vendeu” e “vendido” podem expressar a intenção, mas a resposta preserva a
-  semântica oficial de “saídas externas”;
-- sugestões tipadas continuam somente leitura e a guarda de confirmação
-  operacional segue com prioridade sobre qualquer follow-up estatístico;
-- nenhuma RPC mutável, proposal token, idempotency key, migration ou alteração
-  de banco foi adicionada.
+- `/apresentacao`, `/manual` e os dez artigos iniciais são conteúdo público
+  estático, com identidade visual separada da aplicação interna;
+- a allowlist do proxy contém somente `/apresentacao`, `/manual` e `/manual/*`,
+  com retorno anterior à criação do cliente Supabase;
+- `/`, áreas operacionais, APIs e `/safisa` preservam suas guardas atuais;
+- a apresentação cobre visão integrada, Assistente NK, Pedido por foto,
+  Estoque, Pedidos, Portal Safisa, Estatísticas, segurança e PWA;
+- screenshots aprovados foram incorporados localmente; o dashboard desktop de
+  Estatísticas foi omitido por conter nome pessoal na sidebar;
+- o manual usa conteúdo TypeScript estático nesta primeira versão, sem MDX e
+  sem dependências novas, com navegação desktop/mobile e anterior/próximo;
+- todas as páginas públicas permanecem `noindex` durante a revisão visual;
+- Remotion, banco, manifest PWA, ícones e regras operacionais não foram
+  alterados.
 
 ## Encerramentos anteriores
+
+## Encerramento NK-AI-STAT-001A
+
+- Estado: **DONE / HUMAN_TEST_APPROVED / MERGED** pelo PR #32.
+- Consultas, rankings, períodos, aliases e sugestões estatísticas foram
+  aprovados no teste humano e integrados à `main`.
 
 ## Implementação NK-ORD-008D
 

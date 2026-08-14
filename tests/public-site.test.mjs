@@ -1,0 +1,139 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import test from "node:test";
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+const readPngDimensions = (path) => {
+  const contents = readFileSync(new URL(`../${path}`, import.meta.url));
+  assert.equal(contents.subarray(1, 4).toString("ascii"), "PNG", `${path} must be a PNG`);
+  return {
+    width: contents.readUInt32BE(16),
+    height: contents.readUInt32BE(20),
+  };
+};
+
+test("public allowlist is narrow and returns before Supabase authentication", () => {
+  const proxy = read("lib/supabase/proxy.ts");
+  const earlyReturn = proxy.indexOf("if (isStaticPublicContentRoute)");
+  const clientCreation = proxy.indexOf("createServerClient(");
+
+  assert.match(proxy, /pathname === "\/apresentacao"/);
+  assert.match(proxy, /pathname === "\/manual"/);
+  assert.match(proxy, /pathname\.startsWith\("\/manual\/"\)/);
+  assert.ok(earlyReturn > -1 && earlyReturn < clientCreation);
+  assert.doesNotMatch(proxy, /pathname\.startsWith\("\/apresentacao"\)/);
+  assert.doesNotMatch(proxy, /pathname\.startsWith\("\/api"\)/);
+});
+
+test("authenticated and Safisa surfaces remain outside the public allowlist", () => {
+  const proxy = read("lib/supabase/proxy.ts");
+  const publicExpression = proxy.slice(proxy.indexOf("const isStaticPublicContentRoute"), proxy.indexOf("if (isStaticPublicContentRoute)"));
+
+  for (const route of ["/", "/estoque", "/pedidos", "/estatisticas", "/api", "/safisa"]) {
+    assert.doesNotMatch(publicExpression, new RegExp(`\"${route.replace("/", "\\/")}\"`));
+  }
+  assert.match(proxy, /pathname\.startsWith\("\/safisa"\)/);
+});
+
+test("presentation and manual pages are static and do not import operational loaders", () => {
+  const paths = [
+    "app/(public)/apresentacao/page.tsx",
+    "app/(public)/manual/page.tsx",
+    "app/(public)/manual/[slug]/page.tsx",
+    "app/(public)/manual/layout.tsx",
+  ];
+  const source = paths.map(read).join("\n");
+
+  assert.doesNotMatch(source, /@\/lib\/supabase/);
+  assert.doesNotMatch(source, /createClient|requireActiveProfile|loadSafisaPickupAlerts|loadStatisticsData|loadInventory/);
+  assert.doesNotMatch(source, /use client/);
+  assert.match(source, /robots: \{ index: false, follow: false \}/);
+});
+
+test("all required manual routes have initial content", () => {
+  const content = read("lib/public-manual-content.ts");
+  for (const slug of ["primeiros-passos", "assistente", "estoque", "entrada-saida", "pedidos", "montagem", "estatisticas", "safisa", "historico", "faq"]) {
+    assert.match(content, new RegExp(`slug: \"${slug}\"`));
+  }
+  assert.match(read("app/(public)/manual/[slug]/page.tsx"), /generateStaticParams/);
+});
+
+test("approved local screenshots exist and Drive URLs are not shipped", () => {
+  const presentation = read("app/(public)/apresentacao/page.tsx");
+  assert.doesNotMatch(presentation, /drive\.google\.com|usercontent\.google\.com/);
+
+  for (const path of [
+    "public/presentation/screenshots/assistant/presentation-assistant-context-mobile.png",
+    "public/presentation/screenshots/photo-order/presentation-supplier-order-photo-sanitized.png",
+    "public/presentation/screenshots/inventory/presentation-hero-inventory-desktop.png",
+    "public/presentation/screenshots/orders/presentation-orders-flow-mobile.png",
+    "public/presentation/screenshots/orders/presentation-orders-overview-desktop.png",
+    "public/presentation/screenshots/orders/presentation-order-detail-desktop.png",
+    "public/presentation/screenshots/safisa/presentation-safisa-portal-mobile.png",
+    "public/presentation/screenshots/statistics/presentation-statistics-ranking-mobile.png",
+    "public/presentation/screenshots/statistics/presentation-statistics-dashboard-desktop.png",
+  ]) {
+    assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
+  }
+});
+
+test("high-resolution presentation screenshots keep their original dimensions", () => {
+  const presentation = read("app/(public)/apresentacao/page.tsx");
+  const storedForFutureUse = new Set([
+    "public/presentation/screenshots/orders/presentation-orders-overview-desktop.png",
+  ]);
+  const expectedDimensions = new Map([
+    ["public/presentation/screenshots/assistant/presentation-assistant-context-mobile.png", { width: 1170, height: 2532 }],
+    ["public/presentation/screenshots/assistant/presentation-assistant-statistics-mobile.png", { width: 1170, height: 2532 }],
+    ["public/presentation/screenshots/photo-order/presentation-photo-order-upload-mobile.png", { width: 1170, height: 2532 }],
+    ["public/presentation/screenshots/photo-order/presentation-photo-order-preview-mobile.png", { width: 1170, height: 2532 }],
+    ["public/presentation/screenshots/orders/presentation-orders-overview-desktop.png", { width: 4059, height: 2079 }],
+    ["public/presentation/screenshots/inventory/presentation-hero-inventory-desktop.png", { width: 4059, height: 2079 }],
+    ["public/presentation/screenshots/orders/presentation-order-detail-desktop.png", { width: 4059, height: 2079 }],
+    ["public/presentation/screenshots/statistics/presentation-statistics-dashboard-desktop.png", { width: 4059, height: 2079 }],
+    ["public/presentation/screenshots/orders/presentation-orders-flow-mobile.png", { width: 1158, height: 2079 }],
+    ["public/presentation/screenshots/safisa/presentation-safisa-portal-mobile.png", { width: 1734, height: 3120 }],
+  ]);
+
+  for (const [path, dimensions] of expectedDimensions) {
+    assert.deepEqual(readPngDimensions(path), dimensions, path);
+
+    if (storedForFutureUse.has(path)) continue;
+
+    const publicPath = path.replace(/^public/, "");
+    const escapedPath = publicPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(
+      presentation,
+      new RegExp(`${escapedPath}[\\s\\S]{0,240}width=\\{${dimensions.width}\\}[\\s\\S]{0,80}height=\\{${dimensions.height}\\}`),
+      `${publicPath} must declare its intrinsic dimensions`,
+    );
+  }
+});
+
+test("public presentation keeps product terminology and excludes Remotion", () => {
+  const presentation = read("app/(public)/apresentacao/page.tsx");
+  const packageJson = read("package.json");
+  assert.match(presentation, /Servos com kit/);
+  assert.match(presentation, /Servos sem kit/);
+  assert.match(presentation, /saídas externas/);
+  assert.match(presentation, /Automação sem abrir mão do controle/);
+  assert.doesNotMatch(presentation, /caixa completa|faturamento|vendas financeiras/i);
+  assert.doesNotMatch(packageJson, /remotion/i);
+});
+
+test("public color tokens define every referenced custom property", () => {
+  const stylesheet = read("app/(public)/public-site.css");
+  const definitions = new Set(
+    [...stylesheet.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map((match) => match[1]),
+  );
+  const references = new Set(
+    [...stylesheet.matchAll(/var\((--[a-z0-9-]+)\)/gi)].map((match) => match[1]),
+  );
+
+  assert.match(stylesheet, /--public-gold-dark:\s*#9a6a28;/i);
+  assert.deepEqual(
+    [...references].filter((token) => !definitions.has(token)),
+    [],
+  );
+});
