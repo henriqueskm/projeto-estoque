@@ -2,6 +2,16 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const isStaticPublicContentRoute =
+    pathname === "/apresentacao" ||
+    pathname === "/manual" ||
+    pathname.startsWith("/manual/");
+
+  if (isStaticPublicContentRoute) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -33,17 +43,17 @@ export async function updateSession(request: NextRequest) {
 
   const { data } = await supabase.auth.getClaims();
   const isPublicRoute =
-    request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/auth") ||
-    request.nextUrl.pathname === "/safisa/login";
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/auth") ||
+    pathname === "/safisa/login";
   const handlesAuthenticationInRoute =
-    request.nextUrl.pathname === "/api/assistant/chat" ||
-    request.nextUrl.pathname ===
+    pathname === "/api/assistant/chat" ||
+    pathname ===
       "/api/assistant/actions/supplier-order-pickup";
 
   if (!data?.claims && !isPublicRoute && !handlesAuthenticationInRoute) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = request.nextUrl.pathname.startsWith("/safisa")
+    loginUrl.pathname = pathname.startsWith("/safisa")
       ? "/safisa/login"
       : "/login";
     loginUrl.search = "";

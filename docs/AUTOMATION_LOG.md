@@ -932,3 +932,31 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   mutável, RPC, proposal token, migration ou escrita remota foi adicionada.
 - **Próxima etapa:** validação humana das consultas naturais, continuidade de
   período, cards móveis e troca de contexto.
+
+## 2026-08-14 — NK-WEB-001C / apresentação pública e base do manual
+
+- **Base:** `origin/main` em
+  `cccff93a1e7297a0c9563cb73fa2da564a466dd0`, merge aprovado do PR #32.
+- **Encerramento:** NK-AI-STAT-001A ficou `DONE / HUMAN_TEST_APPROVED / MERGED`
+  pelo PR #32.
+- **Branch:** `agent/public-presentation-site`.
+- **Estado:** `PUBLIC_PRESENTATION_AND_MANUAL_IMPLEMENTED /
+  WAITING_HUMAN_VISUAL_REVIEW`.
+- **Rotas públicas:** `/apresentacao`, `/manual` e dez artigos iniciais; todas
+  usam conteúdo estático, metadata própria e `noindex` durante a revisão.
+- **Separação:** a allowlist contém somente `/apresentacao`, `/manual` e
+  `/manual/*`; o retorno ocorre antes de qualquer criação de cliente Supabase.
+  Aplicação interna, APIs e Portal Safisa continuam protegidos.
+- **Apresentação:** hero, visão integrada, Assistente NK, Pedido por foto,
+  Estoque, Pedidos/fornecedor, Estatísticas, segurança, PWA, manual e CTA final.
+- **Assets:** screenshots aprovados foram baixados para caminhos locais. O
+  dashboard desktop de Estatísticas foi omitido porque a sidebar exibia nome
+  pessoal; nenhum link do Google Drive é usado em produção.
+- **Manual:** conteúdo inicial útil e tipado em TypeScript, navegação lateral
+  no desktop, seletor de tópicos no mobile e links anterior/próximo. MDX não
+  foi adicionado porque a base pequena não justifica três dependências e uma
+  configuração global nesta versão.
+- **Escopo:** zero consulta Supabase nas páginas públicas, zero Remotion, zero
+  migration, banco, manifest PWA, ícone ou regra operacional alterada.
+- **Próxima etapa:** revisão humana do visual, copy, responsividade, assets e
+  navegação no Vercel Preview do PR draft.

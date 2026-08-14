@@ -10,6 +10,7 @@
     "test:safisa-portal": "node --experimental-strip-types --test tests/safisa-portal.test.mjs",
     "test:safisa-pickup-alerts": "node --experimental-strip-types --test tests/safisa-pickup-alerts.test.mjs",
     "test:ui-layout": "node --test tests/ui-layout-regressions.test.mjs",
+    "test:public-site": "node --test tests/public-site.test.mjs",
     "test:safisa-migrations": "node tests/safisa-portal-migration.test.mjs && node tests/safisa-legacy-order-transition.test.mjs",
     "test:safisa-automatic-orders": "node tests/safisa-automatic-orders.test.mjs",
     "test:safisa-automatic-orders:local": "node tests/safisa-automatic-orders.local.mjs",
