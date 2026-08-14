@@ -56,16 +56,16 @@ export default function PresentationPage() {
             <DeviceFrameDesktop
               src="/presentation/screenshots/inventory/presentation-hero-inventory-desktop.png"
               alt="Tela de Estoque com resumo, pesquisa e categorias do catálogo"
-              width={1103}
-              height={610}
+              width={4059}
+              height={2079}
               priority
               className="hero-desktop"
             />
             <DeviceFrameMobile
               src="/presentation/screenshots/assistant/presentation-assistant-context-mobile.png"
               alt="Assistente NK respondendo uma consulta contextual sobre o modelo MBF-025"
-              width={1080}
-              height={2220}
+              width={1170}
+              height={2532}
               priority
               className="hero-mobile"
             />
@@ -111,14 +111,14 @@ export default function PresentationPage() {
             <DeviceFrameMobile
               src="/presentation/screenshots/assistant/presentation-assistant-context-mobile.png"
               alt="Conversa contextual da Assistente NK sobre saldo de Servos com kit"
-              width={1080}
-              height={2220}
+              width={1170}
+              height={2532}
             />
             <DeviceFrameMobile
               src="/presentation/screenshots/assistant/presentation-assistant-statistics-mobile.png"
               alt="Assistente NK respondendo uma consulta estatística com ranking oficial"
-              width={1080}
-              height={2220}
+              width={1170}
+              height={2532}
               className="assistant-frame-secondary"
             />
           </div>
@@ -158,14 +158,14 @@ export default function PresentationPage() {
             <DeviceFrameMobile
               src="/presentation/screenshots/photo-order/presentation-photo-order-upload-mobile.png"
               alt="Assistente NK analisando uma foto de Pedido selecionada na galeria"
-              width={1080}
-              height={2220}
+              width={1170}
+              height={2532}
             />
             <DeviceFrameMobile
               src="/presentation/screenshots/photo-order/presentation-photo-order-preview-mobile.png"
               alt="Prévia de Pedido com itens identificados e indicação de revisão"
-              width={1080}
-              height={2220}
+              width={1170}
+              height={2532}
             />
             <DeviceFrameMobile
               src="/presentation/screenshots/photo-order/presentation-photo-order-confirm-mobile.png"
@@ -205,8 +205,8 @@ export default function PresentationPage() {
           <DeviceFrameDesktop
             src="/presentation/screenshots/inventory/presentation-hero-inventory-desktop.png"
             alt="Visão geral do Estoque com totais, pesquisa e categorias físicas"
-            width={1103}
-            height={610}
+            width={4059}
+            height={2079}
           />
         </div>
       </section>
@@ -217,14 +217,22 @@ export default function PresentationPage() {
             <DeviceFrameMobile
               src="/presentation/screenshots/orders/presentation-orders-flow-mobile.png"
               alt="Detalhe mobile de um Pedido com quantidades solicitadas, retiradas e prontas"
-              width={1080}
-              height={2220}
+              width={1158}
+              height={2079}
+              className="orders-detail-mobile"
+            />
+            <DeviceFrameDesktop
+              src="/presentation/screenshots/orders/presentation-order-detail-desktop.png"
+              alt="Detalhe de um Pedido com quantidades solicitadas, retiradas e prontas"
+              width={4059}
+              height={2079}
+              className="orders-detail-desktop"
             />
             <DeviceFrameMobile
               src="/presentation/screenshots/safisa/presentation-safisa-portal-mobile.png"
               alt="Portal do fornecedor mostrando prontidão por item do Pedido"
-              width={1080}
-              height={2220}
+              width={1734}
+              height={3120}
               className="orders-safisa-frame"
             />
           </div>
@@ -258,12 +266,22 @@ export default function PresentationPage() {
               <li>Comparação entre períodos baseada no histórico real.</li>
             </ul>
           </div>
-          <DeviceFrameMobile
-            src="/presentation/screenshots/statistics/presentation-statistics-ranking-mobile.png"
-            alt="Ranking mobile de itens mais movimentados no período"
-            width={1080}
-            height={2220}
-          />
+          <div className="statistics-visuals">
+            <DeviceFrameMobile
+              src="/presentation/screenshots/statistics/presentation-statistics-ranking-mobile.png"
+              alt="Ranking mobile de itens mais movimentados no período"
+              width={1080}
+              height={2220}
+              className="statistics-ranking-mobile"
+            />
+            <DeviceFrameDesktop
+              src="/presentation/screenshots/statistics/presentation-statistics-dashboard-desktop.png"
+              alt="Painel de Estatísticas com resumo e gráficos do período"
+              width={4059}
+              height={2079}
+              className="statistics-dashboard-desktop"
+            />
+          </div>
         </div>
       </section>
 

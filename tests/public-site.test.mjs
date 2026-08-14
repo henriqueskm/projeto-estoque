@@ -4,6 +4,15 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
+const readPngDimensions = (path) => {
+  const contents = readFileSync(new URL(`../${path}`, import.meta.url));
+  assert.equal(contents.subarray(1, 4).toString("ascii"), "PNG", `${path} must be a PNG`);
+  return {
+    width: contents.readUInt32BE(16),
+    height: contents.readUInt32BE(20),
+  };
+};
+
 test("public allowlist is narrow and returns before Supabase authentication", () => {
   const proxy = read("lib/supabase/proxy.ts");
   const earlyReturn = proxy.indexOf("if (isStaticPublicContentRoute)");
@@ -59,10 +68,46 @@ test("approved local screenshots exist and Drive URLs are not shipped", () => {
     "public/presentation/screenshots/photo-order/presentation-supplier-order-photo-sanitized.png",
     "public/presentation/screenshots/inventory/presentation-hero-inventory-desktop.png",
     "public/presentation/screenshots/orders/presentation-orders-flow-mobile.png",
+    "public/presentation/screenshots/orders/presentation-orders-overview-desktop.png",
+    "public/presentation/screenshots/orders/presentation-order-detail-desktop.png",
     "public/presentation/screenshots/safisa/presentation-safisa-portal-mobile.png",
     "public/presentation/screenshots/statistics/presentation-statistics-ranking-mobile.png",
+    "public/presentation/screenshots/statistics/presentation-statistics-dashboard-desktop.png",
   ]) {
     assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
+  }
+});
+
+test("high-resolution presentation screenshots keep their original dimensions", () => {
+  const presentation = read("app/(public)/apresentacao/page.tsx");
+  const storedForFutureUse = new Set([
+    "public/presentation/screenshots/orders/presentation-orders-overview-desktop.png",
+  ]);
+  const expectedDimensions = new Map([
+    ["public/presentation/screenshots/assistant/presentation-assistant-context-mobile.png", { width: 1170, height: 2532 }],
+    ["public/presentation/screenshots/assistant/presentation-assistant-statistics-mobile.png", { width: 1170, height: 2532 }],
+    ["public/presentation/screenshots/photo-order/presentation-photo-order-upload-mobile.png", { width: 1170, height: 2532 }],
+    ["public/presentation/screenshots/photo-order/presentation-photo-order-preview-mobile.png", { width: 1170, height: 2532 }],
+    ["public/presentation/screenshots/orders/presentation-orders-overview-desktop.png", { width: 4059, height: 2079 }],
+    ["public/presentation/screenshots/inventory/presentation-hero-inventory-desktop.png", { width: 4059, height: 2079 }],
+    ["public/presentation/screenshots/orders/presentation-order-detail-desktop.png", { width: 4059, height: 2079 }],
+    ["public/presentation/screenshots/statistics/presentation-statistics-dashboard-desktop.png", { width: 4059, height: 2079 }],
+    ["public/presentation/screenshots/orders/presentation-orders-flow-mobile.png", { width: 1158, height: 2079 }],
+    ["public/presentation/screenshots/safisa/presentation-safisa-portal-mobile.png", { width: 1734, height: 3120 }],
+  ]);
+
+  for (const [path, dimensions] of expectedDimensions) {
+    assert.deepEqual(readPngDimensions(path), dimensions, path);
+
+    if (storedForFutureUse.has(path)) continue;
+
+    const publicPath = path.replace(/^public/, "");
+    const escapedPath = publicPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(
+      presentation,
+      new RegExp(`${escapedPath}[\\s\\S]{0,240}width=\\{${dimensions.width}\\}[\\s\\S]{0,80}height=\\{${dimensions.height}\\}`),
+      `${publicPath} must declare its intrinsic dimensions`,
+    );
   }
 });
 

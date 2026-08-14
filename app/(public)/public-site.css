@@ -133,8 +133,10 @@
 .orders-visuals { position: relative; min-height: 41rem; }
 .orders-visuals .device-mobile { position: absolute; top: 0; left: 3%; width: min(62vw, 17rem); transform: rotate(-2.5deg); }
 .orders-visuals .orders-safisa-frame { top: 5rem; right: 0; left: auto; width: min(55vw, 15rem); transform: rotate(3deg); }
+.orders-detail-desktop { display: none; }
 .statistics-section { background: radial-gradient(circle at 80% 12%, rgba(105,30,210,.16), transparent 27rem), var(--public-navy); }
 .statistics-section .device-mobile { width: min(78vw, 19rem); margin-inline: auto; transform: rotate(1.5deg); }
+.statistics-dashboard-desktop { display: none; }
 .metric-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: .65rem; margin-top: 1.5rem; }
 .metric-strip span { display: grid; padding: .8rem; border: 1px solid rgba(255,255,255,.14); border-radius: .85rem; color: #aeb8bd; font-size: .68rem; text-align: center; }
 .metric-strip strong { color: white; font-size: 1.3rem; }
@@ -186,6 +188,11 @@
   .split-section-assistant .section-copy { order: 1; }
   .split-section-assistant .assistant-visual-stack { order: 2; }
   .orders-visuals { min-height: 47rem; }
+  .orders-visuals .orders-detail-mobile { display: none; }
+  .orders-visuals .orders-detail-desktop { position: absolute; top: 1.5rem; left: 0; display: block; width: min(100%, 38rem); transform: rotate(-1deg); }
+  .orders-visuals .orders-safisa-frame { top: 9rem; }
+  .statistics-ranking-mobile { display: none; }
+  .statistics-dashboard-desktop { display: block; width: 100%; transform: rotate(1deg); }
 }
 
 @media (min-width: 64rem) {
