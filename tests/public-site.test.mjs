@@ -55,12 +55,12 @@ test("approved local screenshots exist and Drive URLs are not shipped", () => {
   assert.doesNotMatch(presentation, /drive\.google\.com|usercontent\.google\.com/);
 
   for (const path of [
-    "public/presentation/screenshots/assistant/assistant-context-reference-mobile.png",
-    "public/presentation/screenshots/photo-order/supplier-order-photo-sanitized.png",
-    "public/presentation/screenshots/inventory/inventory-overview-desktop.png",
-    "public/presentation/screenshots/orders/supplier-order-detail-mobile.png",
-    "public/presentation/screenshots/safisa/safisa-portal-mobile.png",
-    "public/presentation/screenshots/statistics/statistics-ranking-mobile.png",
+    "public/presentation/screenshots/assistant/presentation-assistant-context-mobile.png",
+    "public/presentation/screenshots/photo-order/presentation-supplier-order-photo-sanitized.png",
+    "public/presentation/screenshots/inventory/presentation-hero-inventory-desktop.png",
+    "public/presentation/screenshots/orders/presentation-orders-flow-mobile.png",
+    "public/presentation/screenshots/safisa/presentation-safisa-portal-mobile.png",
+    "public/presentation/screenshots/statistics/presentation-statistics-ranking-mobile.png",
   ]) {
     assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
   }

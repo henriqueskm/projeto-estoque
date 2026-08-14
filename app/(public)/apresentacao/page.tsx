@@ -54,7 +54,7 @@ export default function PresentationPage() {
           <div className="hero-visual" aria-label="NK Estoque no desktop e no celular">
             <div className="hero-glow" aria-hidden="true" />
             <DeviceFrameDesktop
-              src="/presentation/screenshots/inventory/inventory-overview-desktop.png"
+              src="/presentation/screenshots/inventory/presentation-hero-inventory-desktop.png"
               alt="Tela de Estoque com resumo, pesquisa e categorias do catálogo"
               width={1103}
               height={610}
@@ -62,10 +62,10 @@ export default function PresentationPage() {
               className="hero-desktop"
             />
             <DeviceFrameMobile
-              src="/presentation/screenshots/assistant/assistant-context-reference-mobile.png"
+              src="/presentation/screenshots/assistant/presentation-assistant-context-mobile.png"
               alt="Assistente NK respondendo uma consulta contextual sobre o modelo MBF-025"
               width={1080}
-              height={2400}
+              height={2220}
               priority
               className="hero-mobile"
             />
@@ -109,16 +109,16 @@ export default function PresentationPage() {
           </div>
           <div className="assistant-visual-stack">
             <DeviceFrameMobile
-              src="/presentation/screenshots/assistant/assistant-context-reference-mobile.png"
+              src="/presentation/screenshots/assistant/presentation-assistant-context-mobile.png"
               alt="Conversa contextual da Assistente NK sobre saldo de Servos com kit"
               width={1080}
-              height={2400}
+              height={2220}
             />
             <DeviceFrameMobile
-              src="/presentation/screenshots/assistant/assistant-statistics-reference-mobile.png"
+              src="/presentation/screenshots/assistant/presentation-assistant-statistics-mobile.png"
               alt="Assistente NK respondendo uma consulta estatística com ranking oficial"
               width={1080}
-              height={2400}
+              height={2220}
               className="assistant-frame-secondary"
             />
           </div>
@@ -136,7 +136,7 @@ export default function PresentationPage() {
           <div className="photo-story">
             <figure className="document-frame">
               <Image
-                src="/presentation/screenshots/photo-order/supplier-order-photo-sanitized.png"
+                src="/presentation/screenshots/photo-order/presentation-supplier-order-photo-sanitized.png"
                 alt="Exemplo sanitizado de Pedido impresso usado para interpretação"
                 width={1448}
                 height={1086}
@@ -156,28 +156,28 @@ export default function PresentationPage() {
 
           <div className="photo-screens">
             <DeviceFrameMobile
-              src="/presentation/screenshots/photo-order/photo-order-upload-mobile.png"
+              src="/presentation/screenshots/photo-order/presentation-photo-order-upload-mobile.png"
               alt="Assistente NK analisando uma foto de Pedido selecionada na galeria"
               width={1080}
-              height={2400}
+              height={2220}
             />
             <DeviceFrameMobile
-              src="/presentation/screenshots/photo-order/photo-order-preview-mobile.png"
+              src="/presentation/screenshots/photo-order/presentation-photo-order-preview-mobile.png"
               alt="Prévia de Pedido com itens identificados e indicação de revisão"
               width={1080}
-              height={2400}
+              height={2220}
             />
             <DeviceFrameMobile
-              src="/presentation/screenshots/photo-order/photo-order-confirm-mobile.png"
+              src="/presentation/screenshots/photo-order/presentation-photo-order-confirm-mobile.png"
               alt="Confirmação explícita da criação do Pedido com resumo das linhas"
               width={1080}
-              height={2400}
+              height={2220}
             />
             <DeviceFrameMobile
-              src="/presentation/screenshots/photo-order/photo-order-result-mobile.png"
+              src="/presentation/screenshots/photo-order/presentation-photo-order-result-mobile.png"
               alt="Resultado da criação segura do Pedido"
               width={1080}
-              height={2400}
+              height={2220}
             />
           </div>
           <div className="public-note">
@@ -203,7 +203,7 @@ export default function PresentationPage() {
             </ul>
           </div>
           <DeviceFrameDesktop
-            src="/presentation/screenshots/inventory/inventory-overview-desktop.png"
+            src="/presentation/screenshots/inventory/presentation-hero-inventory-desktop.png"
             alt="Visão geral do Estoque com totais, pesquisa e categorias físicas"
             width={1103}
             height={610}
@@ -215,16 +215,16 @@ export default function PresentationPage() {
         <div className="public-shell split-section">
           <div className="orders-visuals">
             <DeviceFrameMobile
-              src="/presentation/screenshots/orders/supplier-order-detail-mobile.png"
+              src="/presentation/screenshots/orders/presentation-orders-flow-mobile.png"
               alt="Detalhe mobile de um Pedido com quantidades solicitadas, retiradas e prontas"
               width={1080}
-              height={2400}
+              height={2220}
             />
             <DeviceFrameMobile
-              src="/presentation/screenshots/safisa/safisa-portal-mobile.png"
+              src="/presentation/screenshots/safisa/presentation-safisa-portal-mobile.png"
               alt="Portal do fornecedor mostrando prontidão por item do Pedido"
               width={1080}
-              height={2400}
+              height={2220}
               className="orders-safisa-frame"
             />
           </div>
@@ -259,10 +259,10 @@ export default function PresentationPage() {
             </ul>
           </div>
           <DeviceFrameMobile
-            src="/presentation/screenshots/statistics/statistics-ranking-mobile.png"
+            src="/presentation/screenshots/statistics/presentation-statistics-ranking-mobile.png"
             alt="Ranking mobile de itens mais movimentados no período"
             width={1080}
-            height={2400}
+            height={2220}
           />
         </div>
       </section>
