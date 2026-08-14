@@ -10,7 +10,7 @@
   PR #31; camada oficial de Estatísticas existente.
 - **Base:** `df1e360598cffbec16c755991d74d9b148a479d5`
 - **Branch:** `agent/assistant-conversational-statistics`
-- **PR:** draft a criar
+- **PR:** [#32](https://github.com/henriqueskm/projeto-estoque/pull/32) (draft)
 
 ## Implementação NK-AI-STAT-001A
 

@@ -910,6 +910,8 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
 - **Encerramento:** NK-AI-CTX-001 ficou `DONE / HUMAN_TEST_APPROVED / MERGED`
   pelo PR #31.
 - **Branch:** `agent/assistant-conversational-statistics`.
+- **PR:** [#32](https://github.com/henriqueskm/projeto-estoque/pull/32)
+  (draft).
 - **Estado:** `IMPLEMENTED / WAITING_HUMAN_STATISTICS_TEST`.
 - **Fonte oficial:** cada consulta usa `loadStatisticsData(period)` e o
   `StatisticsData` já calculado; a Assistente não soma, ordena ou compara dados
