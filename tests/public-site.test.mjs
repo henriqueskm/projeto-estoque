@@ -79,7 +79,10 @@ test("approved local screenshots exist and Drive URLs are not shipped", () => {
 });
 
 test("high-resolution presentation screenshots keep their original dimensions", () => {
-  const presentation = read("app/(public)/apresentacao/page.tsx");
+  const presentation = [
+    read("app/(public)/apresentacao/page.tsx"),
+    read("components/public-site/assistant-demo-fallback.tsx"),
+  ].join("\n");
   const storedForFutureUse = new Set([
     "public/presentation/screenshots/orders/presentation-orders-overview-desktop.png",
   ]);
@@ -111,7 +114,7 @@ test("high-resolution presentation screenshots keep their original dimensions", 
   }
 });
 
-test("public presentation keeps product terminology and excludes Remotion", () => {
+test("public presentation keeps product terminology and pins the approved Remotion foundation", () => {
   const presentation = read("app/(public)/apresentacao/page.tsx");
   const packageJson = read("package.json");
   assert.match(presentation, /Servos com kit/);
@@ -119,7 +122,9 @@ test("public presentation keeps product terminology and excludes Remotion", () =
   assert.match(presentation, /saídas externas/);
   assert.match(presentation, /Automação sem abrir mão do controle/);
   assert.doesNotMatch(presentation, /caixa completa|faturamento|vendas financeiras/i);
-  assert.doesNotMatch(packageJson, /remotion/i);
+  assert.match(packageJson, /"remotion":\s*"4\.0\.512"/);
+  assert.match(packageJson, /"@remotion\/player":\s*"4\.0\.512"/);
+  assert.match(packageJson, /"@remotion\/cli":\s*"4\.0\.512"/);
 });
 
 test("public color tokens define every referenced custom property", () => {

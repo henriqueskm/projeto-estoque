@@ -110,6 +110,13 @@
 .assistant-visual-stack { position: relative; display: grid; min-height: 36rem; place-items: center; }
 .assistant-visual-stack .device-mobile { width: min(66vw, 17rem); transform: rotate(-2.5deg) translateX(-16%); }
 .assistant-visual-stack .assistant-frame-secondary { position: absolute; right: 2%; bottom: -2rem; width: min(48vw, 13rem); transform: rotate(3deg); }
+.assistant-demo-boundary { width: 100%; min-width: 0; }
+.assistant-demo-fallback { position: relative; display: grid; min-height: 32rem; place-items: center; }
+.assistant-demo-fallback .device-mobile { width: min(66vw, 17rem); transform: rotate(-2.5deg) translateX(-16%); }
+.assistant-demo-fallback .assistant-frame-secondary { position: absolute; right: 2%; bottom: -2rem; width: min(48vw, 13rem); transform: rotate(3deg); }
+.assistant-demo-player-shell { overflow: hidden; border: 1px solid rgba(255,255,255,.16); border-radius: 1.1rem; background: #0d1114; box-shadow: 0 34px 72px -38px rgba(0,0,0,.72); }
+.assistant-demo-player-shell > div { overflow: hidden; border-radius: inherit; }
+.assistant-demo-player-shell > p { margin: 0; padding: .65rem 1rem .75rem; color: #aab3b8; font-size: .66rem; font-weight: 650; line-height: 1.45; text-align: center; }
 
 .photo-order-section { background: linear-gradient(180deg, #f7f5ef 0%, #fff 42%, #f7f5ef 100%); }
 .photo-story { display: grid; gap: 2.5rem; align-items: start; }
@@ -186,7 +193,7 @@
   .hero-visual { min-height: 32rem; }
   .split-section { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .split-section-assistant .section-copy { order: 1; }
-  .split-section-assistant .assistant-visual-stack { order: 2; }
+  .split-section-assistant .assistant-demo-boundary { order: 2; }
   .orders-visuals { min-height: 47rem; }
   .orders-visuals .orders-detail-mobile { display: none; }
   .orders-visuals .orders-detail-desktop { position: absolute; top: 1.5rem; left: 0; display: block; width: min(100%, 38rem); transform: rotate(-1deg); }
@@ -223,6 +230,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .public-site *, .public-site *::before, .public-site *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  .assistant-demo-player-shell { display: none; }
 }
 
 .manual-site { min-height: 72dvh; padding: 1.5rem 0 5rem; background: #fff; }

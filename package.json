@@ -11,6 +11,8 @@
     "test:safisa-pickup-alerts": "node --experimental-strip-types --test tests/safisa-pickup-alerts.test.mjs",
     "test:ui-layout": "node --test tests/ui-layout-regressions.test.mjs",
     "test:public-site": "node --test tests/public-site.test.mjs",
+    "test:remotion-assistant-demo": "node --test tests/remotion-assistant-demo.test.mjs",
+    "remotion:studio": "remotion studio remotion/index.ts --no-open",
     "test:safisa-migrations": "node tests/safisa-portal-migration.test.mjs && node tests/safisa-legacy-order-transition.test.mjs",
     "test:safisa-automatic-orders": "node tests/safisa-automatic-orders.test.mjs",
     "test:safisa-automatic-orders:local": "node tests/safisa-automatic-orders.local.mjs",
@@ -37,13 +39,16 @@
   },
   "dependencies": {
     "@google/genai": "^2.13.0",
+    "@remotion/player": "4.0.512",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.6",
     "next": "16.2.11",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "remotion": "4.0.512"
   },
   "devDependencies": {
+    "@remotion/cli": "4.0.512",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

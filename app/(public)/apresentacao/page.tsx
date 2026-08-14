@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import AssistantDemoPlayer from "@/components/public-site/assistant-demo-player";
 import { DeviceFrameDesktop, DeviceFrameMobile } from "@/components/public-site/device-frame";
 
 export const metadata: Metadata = {
@@ -107,21 +108,7 @@ export default function PresentationPage() {
               <li>Nunca executa uma mutação apenas porque o usuário escreveu “sim”.</li>
             </ul>
           </div>
-          <div className="assistant-visual-stack">
-            <DeviceFrameMobile
-              src="/presentation/screenshots/assistant/presentation-assistant-context-mobile.png"
-              alt="Conversa contextual da Assistente NK sobre saldo de Servos com kit"
-              width={1170}
-              height={2532}
-            />
-            <DeviceFrameMobile
-              src="/presentation/screenshots/assistant/presentation-assistant-statistics-mobile.png"
-              alt="Assistente NK respondendo uma consulta estatística com ranking oficial"
-              width={1170}
-              height={2532}
-              className="assistant-frame-secondary"
-            />
-          </div>
+          <AssistantDemoPlayer />
         </div>
       </section>
 
