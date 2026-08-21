@@ -17,13 +17,13 @@ export function StatisticsConversationScene() {
   return (
     <div style={{position: "absolute", inset: 0, opacity: fadeWindow(frame, sceneDuration, 24, 24), background: "radial-gradient(circle at 72% 15%, #2f3a41 0%, #171d21 58%, #0d1114 100%)"}}>
       <AssistantChrome>
-        <div style={{position: "absolute", inset: 0, padding: "38px 54px 70px", transform: `translateY(${scroll}px)`}}>
+        <div style={{position: "absolute", inset: 0, padding: "38px 54px 70px", translate: `0 ${scroll}px`}}>
           <ChatMessage side="user" style={entrance(frame, fps, 8)}>
             Qual Servo com kit mais saiu nos últimos {statistics.periodDays} dias?
           </ChatMessage>
           <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 42)}}>
             <div>Considerando as <strong>saídas externas</strong> dos últimos {statistics.periodDays} dias, o <strong>Cód. {statistics.leadingCode}</strong> ficou em primeiro entre Servos com kit, com <strong>{statistics.leadingQuantity} unidades</strong>.</div>
-            <div style={{marginTop: 10, color: demoColors.muted, fontSize: 23}}>Posso mostrar o ranking das cinco configurações com mais saídas.</div>
+            <div style={{marginTop: 10, color: demoColors.muted, fontSize: 23}}>Posso mostrar o ranking de até cinco configurações com mais saídas.</div>
           </ChatMessage>
           <ChatMessage side="user" style={{marginTop: 24, ...entrance(frame, fps, 104)}}>Sim</ChatMessage>
           <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 138)}}>
@@ -41,7 +41,7 @@ export function StatisticsConversationScene() {
                   <div style={{color: demoColors.muted, fontSize: 13, fontWeight: 850}}>SAÍDAS</div>
                 </div>
               </div>
-              <div style={{padding: "13px 20px", color: demoColors.muted, fontSize: 15, fontWeight: 700}}>Ranking oficial com cinco configurações</div>
+              <div style={{padding: "13px 20px", color: demoColors.muted, fontSize: 15, fontWeight: 700}}>Ranking oficial das configurações com saída no período.</div>
             </div>
           </ChatMessage>
         </div>

@@ -22,10 +22,32 @@ test("the demo fixture is local, typed and matches the approved screenshots", as
 
   assert.match(fixture, /totalQuantity:\s*11/);
   assert.match(fixture, /mountedQuantity:\s*4/);
+  assert.match(fixture, /kind:\s*"partial_reference"/);
+  assert.match(fixture, /code:\s*"2A"/);
+  assert.match(fixture, /description:\s*"MBF-025 \+ KT-18"/);
+  assert.match(fixture, /quantity:\s*3/);
+  assert.match(fixture, /assertCompleteBreakdownMatchesMountedQuantity/);
+  assert.match(fixture, /configurationsTotal !== inventory\.mountedQuantity/);
+  assert.doesNotMatch(fixture, /officialConfigurationCodes/);
   assert.match(fixture, /leadingCode:\s*"1B \/ 1D"/);
   assert.match(fixture, /leadingDescription:\s*"SERVO MBF-015 \+ KT-02"/);
   assert.match(fixture, /leadingQuantity:\s*2/);
   assert.doesNotMatch(fixture, /supabase|fetch\(|Gemini|@google\/genai/i);
+});
+
+test("mounted configuration and ranking copy do not claim unavailable data", async () => {
+  const inventory = await read("remotion/scenes/InventoryConversationScene.tsx");
+  const statistics = await read("remotion/scenes/StatisticsConversationScene.tsx");
+
+  assert.match(inventory, /Posso mostrar uma configuração do modelo com saldo montado\./);
+  assert.match(inventory, /Configurações do modelo \{inventory\.model\}/);
+  assert.match(inventory, /Cód\. \{configuration\.code\}/);
+  assert.match(inventory, /ESTOQUE/);
+  assert.match(inventory, /hasCompleteMountedBreakdown\s*\?/);
+  assert.match(inventory, /Esta é uma configuração do modelo/);
+  assert.match(statistics, /ranking de até cinco configurações com mais saídas/);
+  assert.match(statistics, /Ranking oficial das configurações com saída no período\./);
+  assert.doesNotMatch(statistics, /Ranking oficial com cinco configurações/);
 });
 
 test("composition animation is frame-driven and has no CSS timeline", async () => {
@@ -42,6 +64,7 @@ test("composition animation is frame-driven and has no CSS timeline", async () =
   assert.match(source, /useVideoConfig/);
   assert.match(source, /interpolate/);
   assert.match(source, /spring/);
+  assert.match(source, /translate:\s*`0 \$\{scroll\}px`/);
   assert.doesNotMatch(source, /animation(Name)?\s*:|transition\s*:/i);
 });
 

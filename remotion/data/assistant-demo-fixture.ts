@@ -1,9 +1,26 @@
+type MountedConfiguration = {
+  code: string;
+  description: string;
+  quantity: number;
+};
+
+type MountedConfigurationBreakdown =
+  | {
+      kind: "complete";
+      configurations: readonly MountedConfiguration[];
+    }
+  | {
+      /** A verified example only; it must not be read as the full mounted balance. */
+      kind: "partial_reference";
+      configurations: readonly MountedConfiguration[];
+    };
+
 export type AssistantDemoFixture = {
   inventory: {
     model: string;
     totalQuantity: number;
     mountedQuantity: number;
-    officialConfigurationCodes: readonly string[];
+    mountedConfigurationBreakdown: MountedConfigurationBreakdown;
   };
   statistics: {
     periodDays: number;
@@ -13,16 +30,46 @@ export type AssistantDemoFixture = {
   };
 };
 
+function assertCompleteBreakdownMatchesMountedQuantity(
+  inventory: AssistantDemoFixture["inventory"],
+) {
+  const breakdown = inventory.mountedConfigurationBreakdown;
+
+  if (breakdown.kind !== "complete") {
+    return;
+  }
+
+  const configurationsTotal = breakdown.configurations.reduce(
+    (total, configuration) => total + configuration.quantity,
+    0,
+  );
+
+  if (configurationsTotal !== inventory.mountedQuantity) {
+    throw new Error("A complete mounted configuration breakdown must match mountedQuantity.");
+  }
+}
+
 /**
  * Static presentation-only data transcribed from the approved screenshots.
  * It must never be replaced with an operational data source.
  */
-export const assistantDemoFixture = {
+export const assistantDemoFixture: AssistantDemoFixture = {
   inventory: {
     model: "MBF-025",
     totalQuantity: 11,
     mountedQuantity: 4,
-    officialConfigurationCodes: ["2A", "2B", "2C", "2D", "2E", "2F", "2H"],
+    // The approved screenshot confirms this one positive balance, but not the
+    // complete distribution of all four mounted units.
+    mountedConfigurationBreakdown: {
+      kind: "partial_reference",
+      configurations: [
+        {
+          code: "2A",
+          description: "MBF-025 + KT-18",
+          quantity: 3,
+        },
+      ],
+    },
   },
   statistics: {
     periodDays: 30,
@@ -30,4 +77,6 @@ export const assistantDemoFixture = {
     leadingDescription: "SERVO MBF-015 + KT-02",
     leadingQuantity: 2,
   },
-} as const satisfies AssistantDemoFixture;
+};
+
+assertCompleteBreakdownMatchesMountedQuantity(assistantDemoFixture.inventory);
