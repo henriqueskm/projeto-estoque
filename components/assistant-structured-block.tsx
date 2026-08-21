@@ -1640,7 +1640,7 @@ function PurchaseRecommendationCard({
       : `${item.relatedOrders.length} Pedidos relacionados`;
 
   return (
-    <li className="grid gap-x-4 gap-y-1.5 border-b border-border-neutral py-2.5 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+    <li className="grid gap-x-4 gap-y-1.5 border-b border-border-neutral py-2.5 last:border-b-0 min-[440px]:grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
       <div className="min-w-0">
         <p className="break-words text-sm font-bold text-text-primary">
           <span className="mr-1 font-mono text-xs font-black text-brand-gold-ink">
@@ -1654,7 +1654,7 @@ function PurchaseRecommendationCard({
           </p>
         ) : null}
       </div>
-      <dl className="flex gap-3 text-xs sm:shrink-0">
+      <dl className="flex gap-3 text-xs min-[440px]:col-start-2 min-[440px]:row-start-1 sm:shrink-0">
         <div>
           <dt className="font-black text-text-muted">Est.</dt>
           <dd className="font-mono text-sm font-black text-text-primary">
@@ -1670,7 +1670,7 @@ function PurchaseRecommendationCard({
           </dd>
         </div>
       </dl>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold text-text-muted sm:max-w-72 sm:justify-end">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold text-text-muted min-[440px]:col-span-2 sm:col-span-1 sm:max-w-72 sm:justify-end">
         {item.group === "BUY_NOW" ? (
           <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 font-black text-amber-950">
             Comprar {quantityFormatter.format(item.recommendedQuantity ?? 0)}

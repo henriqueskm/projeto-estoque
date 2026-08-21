@@ -52,6 +52,8 @@ test("purchase recommendations use a compact market-list layout", () => {
   assert.match(recommendations, /Cód\. \{item\.primaryCode\}/);
   assert.match(recommendations, /Est\.<\/dt>/);
   assert.match(recommendations, /Mín\.<\/dt>/);
+  assert.match(recommendations, /min-\[440px\]:grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  assert.match(recommendations, /min-\[440px\]:col-start-2 min-\[440px\]:row-start-1/);
   assert.match(recommendations, /Comprar \{quantityFormatter\.format\(item\.recommendedQuantity/);
   assert.match(recommendations, /Já comprado \{quantityFormatter\.format\(item\.pendingPurchaseQuantity\)\}/);
   assert.match(recommendations, /Projetado \$\{quantityFormatter\.format\(item\.projectedStock\)\}/);
