@@ -338,6 +338,8 @@ test("provider não usa ferramentas, não armazena interação e trata imagem co
   assert.match(provider, /PROVIDER_SCHEMA_INVALID/);
   assert.match(provider, /GEMINI_PHOTO_MODEL/);
   assert.doesNotMatch(provider, /process\.env\.GEMINI_MODEL/);
+  const contract = readFileSync(new URL("../lib/assistant-supplier-order-photo-contract.ts", import.meta.url), "utf8");
+  assert.match(contract, /supplierOrderPhotoModel = "gemini-3\.7-flash"/);
   assert.doesNotMatch(provider, /temperature|top_p|top_k/);
 });
 
