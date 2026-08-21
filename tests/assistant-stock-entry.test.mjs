@@ -72,6 +72,17 @@ test("roteia entradas manuais claras e esclarece modelo ambíguo", () => {
   assert.equal(routeManualStockEntryAction("Dê entrada em -2 unidades do KT-29.").kind, "INVALID");
 });
 
+test("atalho de entrada manual pede os detalhes sem cair no fluxo de Pedido", () => {
+  assert.deepEqual(routeManualStockEntryAction("Dê entrada manual."), {
+    kind: "MISSING_QUANTITY",
+    targetQuery: null,
+  });
+  assert.equal(
+    routeSupplierOrderStockEntryAction("Dê entrada manual.").kind,
+    "NOT_SUPPLIER_ORDER_STOCK_ENTRY",
+  );
+});
+
 test("reconhece formulações naturais de entrada manual sem desviar para consulta", () => {
   for (const phrase of [
     "Dê entrada em 1 unidade do 1B.",

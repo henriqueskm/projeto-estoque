@@ -12,6 +12,7 @@ import {
 import {
   createManualStockEntryProposalToken,
 } from "../lib/ai/stock-entry-action-tokens.ts";
+import { routeSupplierOrderPickupAction } from "../lib/ai/supplier-order-pickup-routing.ts";
 import {
   handleStockEntryActionRequest,
   parseStockEntryActionBody,
@@ -46,6 +47,17 @@ test("roteia saídas manuais determinísticas", () => {
     assert.equal(result.request.targetQuery, query, phrase);
     assert.equal(result.request.quantity, quantity, phrase);
   }
+});
+
+test("atalho de saída manual não cai na retirada por Pedido", () => {
+  assert.equal(
+    routeManualStockOutputAction("Dê saída manual.").kind,
+    "INVALID",
+  );
+  assert.equal(
+    routeSupplierOrderPickupAction("Dê saída manual.").kind,
+    "NOT_PICKUP_ACTION",
+  );
 });
 
 test("remove qualificadores singulares e plurais antes de resolver Servo com kit", () => {
