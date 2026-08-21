@@ -1,16 +1,32 @@
 # Objetivo atual
 
-- **ID:** NK-WEB-001C
-- **Título:** Site público de apresentação + base do manual
+- **ID:** NK-WEB-002A
+- **Título:** Remotion foundation + demo de conversa da Assistente
 - **Prioridade:** alta
-- **Fase:** aplicação pública / validação visual humana
-- **Estado:** `PUBLIC_PRESENTATION_AND_MANUAL_IMPLEMENTED / WAITING_HUMAN_VISUAL_REVIEW`
+- **Fase:** apresentação pública / animação demonstrativa
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_ANIMATION_REVIEW`
 - **Classificação:** **B — ajustes somente de aplicação**
-- **Dependências:** NK-AI-STAT-001A `DONE / HUMAN_TEST_APPROVED / MERGED` pelo
-  PR #32; auditorias NK-WEB-001A e NK-WEB-001B concluídas.
-- **Base:** `cccff93a1e7297a0c9563cb73fa2da564a466dd0`
-- **Branch:** `agent/public-presentation-site`
-- **PR:** [#33](https://github.com/henriqueskm/projeto-estoque/pull/33) (draft).
+- **Dependências:** NK-WEB-001C, NK-WEB-001D e NK-WEB-001D1
+  `DONE / HUMAN_VISUAL_APPROVED / MERGED` pelo PR #33.
+- **Base:** `d307d38c27c8b08d8198e106d319106fdfd6c70d`
+- **Branch:** `agent/remotion-assistant-demo`
+- **PR:** draft a abrir.
+
+## Implementação NK-WEB-002A
+
+- Remotion, Player e CLI usam a mesma versão estável fixa `4.0.512`;
+- a composição `AssistantConversationDemo` possui 600 frames, 30 fps e
+  resolução 1920 × 1080, com cerca de 20 segundos;
+- duas conversas aprovadas foram reconstruídas em React: contexto de Estoque e
+  ranking de saídas externas, seguidas por um encerramento curto de marca;
+- toda animação da composição é dirigida por frame com `useCurrentFrame`,
+  `useVideoConfig`, `interpolate`, `spring` e `Sequence`;
+- o fixture é local, tipado e estático, sem Supabase, API operacional ou
+  provider de IA;
+- o Player fica somente na seção Assistente, carrega dinamicamente ao se
+  aproximar da viewport e preserva screenshots estáticos antes do carregamento;
+- celular e `prefers-reduced-motion: reduce` usam o fallback estático aprovado;
+- texto, metadata e allowlist pública continuam server-side e `noindex`.
 
 ## Implementação NK-WEB-001C
 

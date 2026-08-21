@@ -961,3 +961,28 @@ Este arquivo é append-only. Não registrar tokens, cookies, JWTs, segredos, pro
   migration, banco, manifest PWA, ícone ou regra operacional alterada.
 - **Próxima etapa:** revisão humana do visual, copy, responsividade, assets e
   navegação no Vercel Preview do PR draft.
+
+## 2026-08-14 — NK-WEB-002A / Remotion foundation e demo da Assistente
+
+- **Base:** `origin/main` em
+  `d307d38c27c8b08d8198e106d319106fdfd6c70d`, merge aprovado do PR #33.
+- **Encerramentos:** NK-WEB-001C, NK-WEB-001D e NK-WEB-001D1 ficaram
+  `DONE / HUMAN_VISUAL_APPROVED / MERGED` pelo PR #33.
+- **Branch:** `agent/remotion-assistant-demo`.
+- **Estado:** `IMPLEMENTED / WAITING_HUMAN_ANIMATION_REVIEW`.
+- **Fundação:** `remotion`, `@remotion/player` e `@remotion/cli` fixados na
+  versão `4.0.512`; Studio disponível por `npm run remotion:studio`.
+- **Composição:** `AssistantConversationDemo`, 1920 × 1080, 30 fps, 600
+  frames. As cenas reconstroem em React o contexto de Estoque, o ranking de
+  saídas externas e um encerramento curto da NK Estoque.
+- **Fonte visual:** o screenshot aprovado prevalece sobre o fixture de teste
+  divergente no ranking: Cód. `1B / 1D`, `SERVO MBF-015 + KT-02`, duas saídas.
+- **Execução:** timeline 100% baseada em frames e `Sequence`; nenhum CSS
+  animation/transition controla a composição.
+- **Integração:** Player isolado e lazy na seção Assistente de `/apresentacao`,
+  iniciado somente perto da viewport. Mobile e reduced motion preservam os
+  screenshots aprovados como fallback.
+- **Dados e segurança:** fixture local tipado; zero Supabase, API operacional,
+  Gemini, RPC, banco ou lógica de negócio na demonstração.
+- **Próxima etapa:** revisão humana do ritmo, legibilidade e transições no PR
+  draft, sem merge automático.
