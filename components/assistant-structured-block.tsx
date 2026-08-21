@@ -628,16 +628,6 @@ function SupplierOrderPhotoCreateResult({
   );
 }
 
-function getPurchaseOrderSituationLabel(
-  order: PurchaseRecommendationItem["relatedOrders"][number],
-) {
-  return order.closureKind === "FINALIZED"
-    ? "Finalizado"
-    : order.closureKind === "CANCELLED"
-      ? "Cancelado"
-      : orderStatusLabels[order.status];
-}
-
 function MediaControl({
   descriptor,
   labeled = false,
@@ -1643,139 +1633,33 @@ function PurchaseRecommendationCard({
 }: {
   item: PurchaseRecommendationItem;
 }) {
-  const hasPendingPurchase = item.pendingPurchaseQuantity > 0;
-  const groupDetails = {
-    BUY_NOW: {
-      label: "Comprar agora",
-      className: "bg-amber-100 text-amber-950",
-    },
-    ALREADY_ORDERED: {
-      label: "Já comprado",
-      className: "bg-emerald-100 text-emerald-900",
-    },
-    MISSING_MINIMUM: {
-      label: "Sem mínimo",
-      className: "bg-slate-100 text-slate-700",
-    },
-    NO_ACTION: {
-      label: "Sem reposição",
-      className: "bg-blue-100 text-blue-900",
-    },
-  }[item.group];
-
   return (
-    <article className="rounded-xl border border-border-neutral bg-white p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-black text-text-primary">
+    <li className="grid gap-2 border-b border-border-neutral py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+      <div className="min-w-0">
+        <p className="font-mono text-xs font-black text-brand-gold-ink">
           Cód. {item.primaryCode}
-        </span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-[0.6rem] font-black uppercase ${groupDetails.className}`}
-        >
-          {groupDetails.label}
-        </span>
-      </div>
-      {item.aliases.length > 0 ? (
-        <p className="mt-1 text-[0.68rem] font-semibold text-text-muted">
-          Também: {item.aliases.map((code) => `Cód. ${code}`).join(", ")}
         </p>
-      ) : null}
-      <p className="mt-1 text-[0.65rem] font-black tracking-[0.08em] text-text-muted uppercase">
-        {item.typeLabel}
-      </p>
-      <p className="mt-1 break-words text-sm font-bold text-text-primary">
-        {item.description}
-      </p>
-      <dl className="mt-2 grid grid-cols-2 gap-1.5">
-        <div className="rounded-lg bg-app-background px-2 py-1.5">
-          <dt className="text-[0.58rem] font-black text-text-muted uppercase">
-            Estoque
-          </dt>
-          <dd className="font-mono text-sm font-black text-text-primary">
+        <p className="mt-0.5 break-words text-sm font-bold text-text-primary">
+          {item.description}
+        </p>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-4 text-xs sm:shrink-0">
+        <div>
+          <dt className="font-black text-text-muted uppercase">Estoque</dt>
+          <dd className="mt-0.5 font-mono text-sm font-black text-text-primary">
             {quantityFormatter.format(item.currentStock)}
           </dd>
         </div>
-        <div className="rounded-lg bg-app-background px-2 py-1.5">
-          <dt className="text-[0.58rem] font-black text-text-muted uppercase">
-            Mínimo
-          </dt>
-          <dd className="font-mono text-sm font-black text-text-primary">
+        <div>
+          <dt className="font-black text-text-muted uppercase">Mínimo</dt>
+          <dd className="mt-0.5 font-mono text-sm font-black text-text-primary">
             {item.minimumStock === null
               ? "Não definido"
               : quantityFormatter.format(item.minimumStock)}
           </dd>
         </div>
-        {item.group === "BUY_NOW" ? (
-          <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2">
-            <dt className="text-[0.58rem] font-black text-amber-950 uppercase">
-              Comprar
-            </dt>
-            <dd className="font-mono text-lg font-black text-text-primary">
-              {quantityFormatter.format(item.recommendedQuantity ?? 0)}{" "}
-              <span className="text-xs">
-                {item.recommendedQuantity === 1 ? "unidade" : "unidades"}
-              </span>
-            </dd>
-          </div>
-        ) : null}
-        {hasPendingPurchase ? (
-          <>
-            <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
-              <dt className="text-[0.58rem] font-black text-emerald-900 uppercase">
-                Pendente
-              </dt>
-              <dd className="font-mono text-sm font-black text-text-primary">
-                {quantityFormatter.format(item.pendingPurchaseQuantity)}
-              </dd>
-            </div>
-            <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
-              <dt className="text-[0.58rem] font-black text-emerald-900 uppercase">
-                Projetado
-              </dt>
-              <dd className="font-mono text-sm font-black text-text-primary">
-                {quantityFormatter.format(item.projectedStock ?? 0)}
-              </dd>
-            </div>
-          </>
-        ) : null}
       </dl>
-      {hasPendingPurchase ? (
-        <>
-          <p className="mt-2 text-xs font-bold text-text-muted">
-            {item.coverage === "SUFFICIENT"
-              ? "A compra pendente cobre o mínimo."
-              : "A compra pendente ainda não cobre o mínimo."}
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {item.relatedOrders.map((order, index) => (
-              <Link
-                key={`${order.orderId}-${order.codeSnapshot}-${index}`}
-                href={order.href}
-                className="nk-focus min-h-10 rounded-lg border border-border-neutral bg-app-background px-2.5 py-1.5 text-xs font-black text-text-primary hover:bg-white"
-                title={`Comprado como Cód. ${order.codeSnapshot}`}
-              >
-                <span className="block">
-                  Pedido {order.negotiationNumber} · Cód.{" "}
-                  {order.codeSnapshot}
-                </span>
-                <span className="block text-[0.62rem] font-semibold text-text-muted">
-                  {getPurchaseOrderSituationLabel(order)} ·{" "}
-                  {orderDateFormatter.format(
-                    new Date(`${order.orderDate}T00:00:00Z`),
-                  )}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </>
-      ) : null}
-      <Link
-        href={item.inventoryHref}
-        className="nk-focus mt-3 inline-flex min-h-10 items-center rounded-lg border border-border-neutral px-3 text-xs font-black text-text-primary hover:bg-app-background"
-      >
-        Abrir no Estoque
-      </Link>
-    </article>
+    </li>
   );
 }
 
@@ -1818,14 +1702,14 @@ function PurchaseRecommendationList({
         ))}
       </div>
       {block.items.length > 0 ? (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <ul className="mt-3 divide-y divide-border-neutral rounded-xl border border-border-neutral bg-white px-3">
           {block.items.map((item) => (
             <PurchaseRecommendationCard
               key={`${item.targetKind}-${item.targetId}`}
               item={item}
             />
           ))}
-        </div>
+        </ul>
       ) : (
         <p className="mt-3 rounded-xl border border-dashed border-border-neutral bg-app-background px-3 py-3 text-sm font-semibold text-text-muted">
           Nenhum item encontrado para esta consulta.
@@ -1906,7 +1790,7 @@ function PickupMetric({
           : "border-border-neutral bg-white"
       }`}
     >
-      <span className="block text-[0.56rem] leading-3 font-black text-text-muted uppercase">
+      <span className="block text-xs leading-4 font-black text-text-muted uppercase">
         {label}
       </span>
       <strong className="mt-0.5 block font-mono text-base font-black tabular-nums text-text-primary">
@@ -2042,17 +1926,17 @@ function SupplierOrderPickupPreview({
             {block.markAll.items.map((item) => (
               <div
                 key={item.id}
-                className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border-neutral bg-white px-2.5 py-2"
+                className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border-neutral bg-white px-2.5 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
               >
                 <span className="min-w-0">
                   <strong className="block font-mono text-xs text-violet-900">
                     Cód. {item.displayCode}
                   </strong>
-                  <span className="block truncate text-[0.68rem] font-semibold text-text-muted">
+                  <span className="block break-words text-xs font-semibold text-text-muted">
                     {item.description}
                   </span>
                 </span>
-                <span className="shrink-0 font-mono text-xs font-black tabular-nums text-text-primary">
+                <span className="font-mono text-xs font-black tabular-nums text-text-primary sm:shrink-0">
                   Retirar {quantityFormatter.format(item.addedQuantity)} → Estoque +{quantityFormatter.format(item.automaticStockEntryQuantity)}
                 </span>
               </div>
@@ -2349,7 +2233,7 @@ function StockEntryPreview({
           return (
             <article key={`${line.target.kind}-${line.target.targetId}`} className="rounded-xl border border-violet-200 bg-violet-50/35 p-3">
               <StockEntryTargetHeader target={line.target} />
-              <div className="mt-3 grid grid-cols-3 gap-1.5">
+              <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                 <PickupMetric label="Saldo atual" value={line.target.currentStock} />
                 <PickupMetric label="Entrada" value={line.entryQuantity} emphasis />
                 <PickupMetric label="Saldo estimado" value={line.estimatedStockAfter} emphasis />
@@ -2381,7 +2265,9 @@ function StockEntryPreview({
           Gerar nova prévia
         </button>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        <>
+          {confirming ? <p role="status" aria-live="polite" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900">Registrando entrada. Não feche esta tela.</p> : null}
+          <div className="mt-4 grid grid-cols-2 gap-2">
           <button type="button" disabled={disabled || confirming || block.state !== "pending" || !block.proposalToken || !onConfirm}
             aria-busy={confirming} onClick={() => onConfirm?.(block)}
             className="nk-focus min-h-11 rounded-xl bg-emerald-700 px-3 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
@@ -2392,7 +2278,8 @@ function StockEntryPreview({
             className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary disabled:opacity-50">
             {block.cancelLabel}
           </button>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -2452,7 +2339,7 @@ function StockOutputPreview({ block, disabled, confirming, onConfirm, onCancel, 
     <div className="mt-3 grid gap-2">
       {block.lines.map((line) => <article key={`${line.target.kind}-${line.target.targetId}`} className="rounded-xl border border-red-200 bg-red-50/35 p-3">
         <StockEntryTargetHeader target={line.target} />
-        <div className="mt-3 grid grid-cols-3 gap-1.5">
+        <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
           <PickupMetric label="Saldo atual" value={line.target.currentStock} />
           <PickupMetric label="Saída" value={-line.outputQuantity} emphasis />
           <PickupMetric label="Saldo estimado" value={line.estimatedStockAfter} emphasis />
@@ -2467,7 +2354,9 @@ function StockOutputPreview({ block, disabled, confirming, onConfirm, onCancel, 
     <p className="mt-3 text-xs font-semibold text-text-muted">Esta saída será registrada como uma saída manual confirmada pela Assistente NK. O banco fará a validação final.</p>
     {expired ? <button type="button" disabled={disabled || !onPromptSelect} onClick={() => onPromptSelect?.(block.regeneratePrompt)}
       className="nk-focus mt-4 min-h-11 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:opacity-50">Gerar nova prévia</button>
-      : <div className="mt-4 grid grid-cols-2 gap-2">
+      : <>
+        {confirming ? <p role="status" aria-live="polite" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-900">Registrando saída. Não feche esta tela.</p> : null}
+        <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button" disabled={disabled || confirming || block.state !== "pending" || !block.proposalToken || !onConfirm}
           aria-busy={confirming} onClick={() => onConfirm?.(block)}
           className="nk-focus min-h-11 rounded-xl bg-red-700 px-3 text-sm font-black text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50">
@@ -2475,7 +2364,8 @@ function StockOutputPreview({ block, disabled, confirming, onConfirm, onCancel, 
         </button>
         <button type="button" disabled={disabled || confirming || block.state !== "pending" || !onCancel} onClick={() => onCancel?.(block)}
           className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary disabled:opacity-50">{block.cancelLabel}</button>
-      </div>}
+        </div>
+      </>}
   </div>;
 }
 
@@ -2491,7 +2381,7 @@ function StockOutputResult({ block }: { block: AssistantManualStockOutputResultB
     </div>
     <div className="mt-3 grid gap-2">{block.lines.map((line) => <article key={`${line.target.kind}-${line.target.targetId}`} className="rounded-xl border border-border-neutral bg-white p-3">
       <StockEntryTargetHeader target={line.target} />
-      <div className="mt-3 grid grid-cols-3 gap-1.5">
+      <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         <PickupMetric label="Antes" value={line.previousStock} />
         <PickupMetric label="Saída" value={line.outputQuantity} emphasis />
         <PickupMetric label="Depois" value={line.currentStock} emphasis />
@@ -2535,7 +2425,7 @@ function ConfigurationAssemblyPreview({ block, disabled, confirming, onConfirm, 
     <p className="mt-1 text-xs font-semibold text-text-muted sm:text-sm">{expired ? "Gere uma nova prévia com os saldos atuais." : block.message}</p>
     <article className="mt-3 rounded-xl border border-violet-200 bg-violet-50/35 p-3">
       <ConfigurationAssemblyTargetHeader target={block.target} />
-      <div className="mt-3 grid grid-cols-3 gap-1.5">
+      <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         <PickupMetric label="Montados agora" value={block.target.currentStock} />
         <PickupMetric label="Montagem" value={block.quantity} emphasis />
         <PickupMetric label="Montados depois" value={block.mountedStockAfter} emphasis />
@@ -2548,7 +2438,9 @@ function ConfigurationAssemblyPreview({ block, disabled, confirming, onConfirm, 
     <p className="mt-3 text-xs font-semibold text-text-muted">A montagem consumirá a mesma quantidade de Servos e Kits avulsos. O banco fará a validação final.</p>
     {expired ? <button type="button" disabled={disabled || !onPromptSelect} onClick={() => onPromptSelect?.(block.regeneratePrompt)}
       className="nk-focus mt-4 min-h-11 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:opacity-50">Gerar nova prévia</button>
-      : <div className="mt-4 grid grid-cols-2 gap-2">
+      : <>
+        {confirming ? <p role="status" aria-live="polite" className="mt-4 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900">Registrando montagem. Não feche esta tela.</p> : null}
+        <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button" disabled={disabled || confirming || block.state !== "pending" || !block.proposalToken || !onConfirm}
           aria-busy={confirming} onClick={() => onConfirm?.(block)}
           className="nk-focus min-h-11 rounded-xl bg-violet-700 px-3 text-sm font-black text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50">
@@ -2556,7 +2448,8 @@ function ConfigurationAssemblyPreview({ block, disabled, confirming, onConfirm, 
         </button>
         <button type="button" disabled={disabled || confirming || block.state !== "pending" || !onCancel} onClick={() => onCancel?.(block)}
           className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary disabled:opacity-50">{block.cancelLabel}</button>
-      </div>}
+        </div>
+      </>}
   </div>;
 }
 
@@ -2608,7 +2501,7 @@ function ConfigurationDisassemblyPreview({ block, disabled, confirming, onConfir
     <p className="mt-1 text-xs font-semibold text-text-muted sm:text-sm">{expired ? "Gere uma nova prévia com os saldos atuais." : block.message}</p>
     <article className="mt-3 rounded-xl border border-violet-200 bg-violet-50/35 p-3">
       <ConfigurationAssemblyTargetHeader target={block.target} />
-      <div className="mt-3 grid grid-cols-3 gap-1.5">
+      <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         <PickupMetric label="Montados agora" value={block.target.currentStock} />
         <PickupMetric label="Desmontagem" value={block.quantity} emphasis />
         <PickupMetric label="Montados depois" value={block.mountedStockAfter} emphasis />
@@ -2621,7 +2514,9 @@ function ConfigurationDisassemblyPreview({ block, disabled, confirming, onConfir
     <p className="mt-3 text-xs font-semibold text-text-muted">A desmontagem devolverá a mesma quantidade de Servos e Kits avulsos. O banco fará a validação final.</p>
     {expired ? <button type="button" disabled={disabled || !onPromptSelect} onClick={() => onPromptSelect?.(block.regeneratePrompt)}
       className="nk-focus mt-4 min-h-11 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:opacity-50">Gerar nova prévia</button>
-      : <div className="mt-4 grid grid-cols-2 gap-2">
+      : <>
+        {confirming ? <p role="status" aria-live="polite" className="mt-4 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900">Registrando desmontagem. Não feche esta tela.</p> : null}
+        <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button" disabled={disabled || confirming || block.state !== "pending" || !block.proposalToken || !onConfirm}
           aria-busy={confirming} onClick={() => onConfirm?.(block)}
           className="nk-focus min-h-11 rounded-xl bg-violet-700 px-3 text-sm font-black text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50">
@@ -2629,7 +2524,8 @@ function ConfigurationDisassemblyPreview({ block, disabled, confirming, onConfir
         </button>
         <button type="button" disabled={disabled || confirming || block.state !== "pending" || !onCancel} onClick={() => onCancel?.(block)}
           className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary disabled:opacity-50">{block.cancelLabel}</button>
-      </div>}
+        </div>
+      </>}
   </div>;
 }
 
@@ -2679,7 +2575,7 @@ function SupplierOrderFinalizationPreview({ block, disabled, confirming, onConfi
     <p className="mt-1 text-xs font-semibold text-text-muted sm:text-sm">{expired ? "Gere uma nova prévia com os dados atuais." : block.message}</p>
     <article className="mt-3 rounded-xl border border-violet-200 bg-violet-50/35 p-3">
       <PickupOrderHeader order={block.order} />
-      <div className="mt-3 grid grid-cols-3 gap-1.5">
+      <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         <PickupMetric label="Solicitado" value={block.order.orderedQuantity} />
         <PickupMetric label="Retirado" value={block.order.pickedQuantity} emphasis />
         <PickupMetric label="Pendente" value={block.order.waitingPickupQuantity} />
@@ -2688,7 +2584,9 @@ function SupplierOrderFinalizationPreview({ block, disabled, confirming, onConfi
     </article>
     {expired ? <button type="button" disabled={disabled || !onPromptSelect} onClick={() => onPromptSelect?.(block.regeneratePrompt)}
       className="nk-focus mt-4 min-h-11 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:opacity-50">Gerar nova prévia</button>
-      : <div className="mt-4 grid grid-cols-2 gap-2">
+      : <>
+        {confirming ? <p role="status" aria-live="polite" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900">Finalizando Pedido. Não feche esta tela.</p> : null}
+        <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button" disabled={disabled || confirming || !block.proposalToken || !onConfirm}
           aria-busy={confirming} onClick={() => onConfirm?.(block)}
           className="nk-focus min-h-11 rounded-xl bg-emerald-700 px-3 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
@@ -2696,7 +2594,8 @@ function SupplierOrderFinalizationPreview({ block, disabled, confirming, onConfi
         </button>
         <button type="button" disabled={disabled || confirming || !onCancel} onClick={() => onCancel?.(block)}
           className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-white px-3 text-sm font-black text-text-primary disabled:opacity-50">{block.cancelLabel}</button>
-      </div>}
+        </div>
+      </>}
   </div>;
 }
 

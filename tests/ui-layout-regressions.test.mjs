@@ -12,6 +12,54 @@ test("a new or restored empty conversation starts at its saved scroll position",
   assert.doesNotMatch(home, /scrollTop > 0 \? scrollTop : conversation\.scrollHeight/);
 });
 
+test("Assistant shortcuts expose operations without shifting the conversation for a floating menu", () => {
+  const home = read("components/assistant-home.tsx");
+
+  assert.match(home, /label: "Preparar entrada"/);
+  assert.match(home, /label: "Preparar saída"/);
+  assert.match(home, /label: "Analisar foto de Pedido"/);
+  assert.match(home, />\s*Nova conversa\s*</);
+  assert.match(home, /onClick=\{handleNewConversationRequest\}/);
+  assert.doesNotMatch(home, /isConversationMenuOpen/);
+  assert.doesNotMatch(home, /flex-col gap-4 pr-12/);
+  assert.match(home, /role="log"/);
+  assert.match(home, /aria-relevant="additions text"/);
+  assert.doesNotMatch(home, /MicrophoneIcon/);
+});
+
+test("Assistant confirmation states name the operation and keep mobile metrics legible", () => {
+  const structured = read("components/assistant-structured-block.tsx");
+
+  assert.match(structured, /Registrando entrada\. Não feche esta tela\./);
+  assert.match(structured, /Registrando saída\. Não feche esta tela\./);
+  assert.match(structured, /Registrando montagem\. Não feche esta tela\./);
+  assert.match(structured, /Registrando desmontagem\. Não feche esta tela\./);
+  assert.match(structured, /Finalizando Pedido\. Não feche esta tela\./);
+  assert.match(structured, /grid-cols-2 gap-1\.5 sm:grid-cols-3/);
+  assert.doesNotMatch(
+    structured,
+    /block truncate text-\[0\.68rem\] font-semibold text-text-muted/,
+  );
+});
+
+test("purchase recommendations use a compact market-list layout", () => {
+  const structured = read("components/assistant-structured-block.tsx");
+  const recommendations = structured.slice(
+    structured.indexOf("function PurchaseRecommendationCard"),
+    structured.indexOf("function AssistantStructuredBlockView"),
+  );
+
+  assert.match(recommendations, /Cód\. \{item\.primaryCode\}/);
+  assert.match(recommendations, /Estoque<\/dt>/);
+  assert.match(recommendations, /Mínimo<\/dt>/);
+  assert.match(
+    recommendations,
+    /<ul className="mt-3 divide-y divide-border-neutral/,
+  );
+  assert.doesNotMatch(recommendations, /Abrir no Estoque/);
+  assert.doesNotMatch(recommendations, /Comprar agora/);
+});
+
 test("inventory headers stay directly below the mobile header and at the desktop top", () => {
   const workspace = read("app/(authenticated)/estoque/inventory-workspace.tsx");
 
