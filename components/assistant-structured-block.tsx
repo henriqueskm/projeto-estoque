@@ -2684,6 +2684,7 @@ function AssistantClarification({
       stockOutputSelection?: AssistantStockOutputSelection;
       configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
       configurationDisassemblySelection?: AssistantConfigurationDisassemblySelection;
+      openOrderPhotoPicker?: boolean;
       cancelStockEntry?: boolean;
       cancelStockOutput?: boolean;
       cancelConfigurationAssembly?: boolean;
@@ -2750,6 +2751,9 @@ function AssistantClarification({
                           : {}),
                         ...(option.configurationDisassemblySelection
                           ? { configurationDisassemblySelection: option.configurationDisassemblySelection }
+                          : {}),
+                        ...(option.id === "initial-order-photo"
+                          ? { openOrderPhotoPicker: true }
                           : {}),
                         ...(option.id === "entry-cancel"
                           ? { cancelStockEntry: true }
@@ -2830,6 +2834,7 @@ export function AssistantStructuredBlockView({
       stockOutputSelection?: AssistantStockOutputSelection;
       configurationAssemblySelection?: AssistantConfigurationAssemblySelection;
       configurationDisassemblySelection?: AssistantConfigurationDisassemblySelection;
+      openOrderPhotoPicker?: boolean;
       cancelStockEntry?: boolean;
       cancelStockOutput?: boolean;
       cancelConfigurationAssembly?: boolean;

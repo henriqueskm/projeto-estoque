@@ -4,7 +4,7 @@ export const supplierOrderPhotoMaxLines = 1_000;
 export const supplierOrderPhotoMaxQuantity = 2_147_483_647;
 export const supplierOrderPhotoMaxDimension = 12_000;
 export const supplierOrderPhotoMaxPixels = 60_000_000;
-export const supplierOrderPhotoModel = "gemini-3.6-flash";
+export const supplierOrderPhotoModel = "gemini-3.7-flash";
 
 export const supplierOrderPhotoMimeTypes = [
   "image/jpeg",

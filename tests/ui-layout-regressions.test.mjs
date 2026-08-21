@@ -14,10 +14,15 @@ test("a new or restored empty conversation starts at its saved scroll position",
 
 test("Assistant shortcuts expose operations without shifting the conversation for a floating menu", () => {
   const home = read("components/assistant-home.tsx");
+  const structured = read("components/assistant-structured-block.tsx");
 
   assert.match(home, /label: "Preparar entrada"/);
   assert.match(home, /label: "Preparar saída"/);
   assert.match(home, /label: "Analisar foto de Pedido"/);
+  assert.match(home, /prompt: "Dê entrada manual\."/);
+  assert.match(home, /prompt: "Dê saída manual\."/);
+  assert.match(home, /context\?\.openOrderPhotoPicker/);
+  assert.match(structured, /option\.id === "initial-order-photo"/);
   assert.match(home, />\s*Nova conversa\s*</);
   assert.match(home, /onClick=\{handleNewConversationRequest\}/);
   assert.doesNotMatch(home, /isConversationMenuOpen/);

@@ -298,6 +298,17 @@ test("direct inventory routing runs before generic catalog clarification", async
   assert.match(source, /itemReferenceKind === "CATALOG_CODE"/);
 });
 
+test("assistant Gemini model defaults to 3.7 Flash with an independent explicit rollback", async () => {
+  const source = await read("lib/ai/assistant.ts");
+
+  assert.match(source, /const defaultGeminiModel = "gemini-3\.7-flash"/);
+  assert.match(
+    source,
+    /process\.env\.GEMINI_ASSISTANT_MODEL\?\.trim\(\) \|\| defaultGeminiModel/,
+  );
+  assert.doesNotMatch(source, /process\.env\.GEMINI_MODEL/);
+});
+
 test("progressive servo-model questions distinguish totals, kit state, breakdown and physical boxes", async () => {
   const routing = await routingModule;
 

@@ -109,13 +109,13 @@ const initialSuggestions: AssistantClarificationBlock = {
     {
       id: "initial-stock-entry",
       label: "Preparar entrada",
-      prompt: "Quero registrar uma entrada no Estoque.",
+      prompt: "Dê entrada manual.",
       category: "inventory",
     },
     {
       id: "initial-stock-output",
       label: "Preparar saída",
-      prompt: "Quero registrar uma saída do Estoque.",
+      prompt: "Dê saída manual.",
       category: "inventory",
     },
     {
@@ -1323,7 +1323,14 @@ export function AssistantHome({
                 <AssistantStructuredBlockView
                   block={initialSuggestions}
                   disabled={isInteractionLocked}
-                  onPromptSelect={(prompt) => {
+                  onPromptSelect={(prompt, context) => {
+                    if (context?.openOrderPhotoPicker) {
+                      setIsAttachmentMenuOpen(true);
+                      window.requestAnimationFrame(() =>
+                        attachmentMenuFirstItemRef.current?.focus(),
+                      );
+                      return;
+                    }
                     void sendAssistantMessage(prompt);
                   }}
                 />
@@ -1433,6 +1440,13 @@ export function AssistantHome({
                           block={chatMessage.structuredBlock}
                           disabled={isInteractionLocked}
                           onPromptSelect={(prompt, context) => {
+                            if (context?.openOrderPhotoPicker) {
+                              setIsAttachmentMenuOpen(true);
+                              window.requestAnimationFrame(() =>
+                                attachmentMenuFirstItemRef.current?.focus(),
+                              );
+                              return;
+                            }
                             if (context?.cancelStockEntry) {
                               setMessages((current) =>
                                 current.map((message) =>

@@ -52,7 +52,7 @@ function normalizeAssistantText(value: string) {
 }
 
 const manualStockEntryCommandPattern =
-  /^\s*(?:(?:quero|preciso|pode)\s+)?(?:de\s+entrada(?:\s+manual)?|dar\s+entrada(?:\s+manual)?|adicione|adicionar|coloque|coloca(?:r)?|lance|lancar)\b\s*/iu;
+  /^\s*(?:(?:quero|preciso|pode)\s+)?(?:(?:de\s+entrada|dar\s+entrada|entrada)(?:\s+manual)?|(?:registrar|registre)(?:\s+(?:uma|a))?\s+entrada(?:\s+manual)?|adicione|adicionar|coloque|coloca(?:r)?|lance|lancar)\b\s*/iu;
 
 type QuantityMatch = {
   quantity: number;
@@ -68,7 +68,7 @@ function extractManualStockEntryQuantity(value: string): QuantityMatch | null {
   const patterns = [
     /\b(?:quantidade\s+de\s+)?(\d{1,10}|um|uma)\s+unidades?\b/iu,
     /\bmais\s+(\d{1,10}|um|uma)\b/iu,
-    /^\s*(?:em|de)?\s*(\d{1,10}|um|uma)\b/iu,
+    /(?:^|\s)(?:em|de|do|da|no|na|para\s+o)?\s*(\d{1,10}|um|uma)\b/iu,
   ];
 
   for (const pattern of patterns) {
@@ -91,14 +91,28 @@ function cleanManualStockEntryTarget(value: string, quantityMatch: QuantityMatch
     : value;
 
   return withoutQuantity
-    .replace(/\b(?:no|ao|para\s+o)\s+estoque\b/giu, " ")
+    .replace(/\b(?:no|na|ao|para\s+o)\s+estoque\b/giu, " ")
     .replace(/\b(?:servo\s+)?(?:com|sem)\s+kit\b/giu, " ")
     .replace(/\b(?:kit\s+de\s+instala[cç][aã]o|kit\s+de\s+reparo|pe[cç]a\s+avulsa|pe[cç]a)\b/giu, " ")
     .replace(/[?!.,;:]+$/g, "")
     .trim()
-    .replace(/^(?:(?:em|do|da|de|mais|o|a)\s+)+/iu, "")
+    .replace(/^(?:(?:em|no|na|do|da|de|mais|o|a)\s+)+/iu, "")
     .replace(/^c[oó]d(?:igo)?\.?\s*/iu, "")
     .trim();
+}
+
+function extractManualStockEntryDetailsReply(value: string): ManualStockEntryRequest | null {
+  const match = value.match(
+    /^\s*(?:c[oó]d(?:igo)?\.?\s*)?([a-z0-9][a-z0-9/-]*)\s*[,;]\s*(\d{1,10}|um|uma)\s+unidades?\s*[?!.]*$/iu,
+  );
+  if (!match) return null;
+
+  const quantity = parseQuantityWord(match[2]);
+  const targetQuery = match[1].trim();
+  if (!targetQuery || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > maximumInteger) {
+    return null;
+  }
+  return { quantity, targetQuery, requestedIdentity: null };
 }
 
 export function routeManualStockEntryAction(rawMessage: string): ManualStockEntryRoute {
@@ -111,7 +125,12 @@ export function routeManualStockEntryAction(rawMessage: string): ManualStockEntr
   }
   if (/\bpedido\b/.test(message)) return { kind: "NOT_MANUAL_STOCK_ENTRY" };
   const commandMatch = manualStockEntryCommandPattern.exec(message);
-  if (!commandMatch) return { kind: "NOT_MANUAL_STOCK_ENTRY" };
+  if (!commandMatch) {
+    const detailsReply = extractManualStockEntryDetailsReply(rawMessage);
+    return detailsReply
+      ? { kind: "ACTION", request: detailsReply }
+      : { kind: "NOT_MANUAL_STOCK_ENTRY" };
+  }
   if (/-\s*\d+\s+unidades?\b/.test(message)) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a entrada manual." };
   }
@@ -137,7 +156,7 @@ export function routeManualStockEntryAction(rawMessage: string): ManualStockEntr
 
   const requestedIdentity = /\b(com kit|caixa|caixa completa|codigo comercial)\b/.test(message)
     ? "COMMERCIAL_CODE" as const
-    : /\b(sem kit|kit de instalacao|kit de reparo|peca|avulso|avulsa|entrada manual)\b/.test(message)
+    : /\b(sem kit|kit de instalacao|kit de reparo|peca|avulso|avulsa)\b/.test(message)
       ? "ITEM" as const
       : null;
 

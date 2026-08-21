@@ -118,7 +118,7 @@ export class AssistantServiceError extends Error {
   }
 }
 
-const defaultGeminiModel = "gemini-3.6-flash";
+const defaultGeminiModel = "gemini-3.7-flash";
 const providerTimeoutMs = 20_000;
 const requestTimeoutMs = 30_000;
 const unsupportedWriteResponse =
@@ -384,7 +384,8 @@ function getGeminiConfiguration() {
 
   return {
     apiKey,
-    model: process.env.GEMINI_MODEL?.trim() || defaultGeminiModel,
+    model:
+      process.env.GEMINI_ASSISTANT_MODEL?.trim() || defaultGeminiModel,
   };
 }
 

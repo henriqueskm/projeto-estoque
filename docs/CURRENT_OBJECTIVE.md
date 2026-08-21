@@ -350,12 +350,21 @@ conseguir comprovar negociação, data e todas as linhas obrigatórias.
 
 - **Provider atual:** Google Gemini Developer API via `@google/genai` e
   Interactions API.
-- **Modelo atual padrão:** `gemini-3.6-flash`, configurável por `GEMINI_MODEL`.
+- **Modelo atual padrão:** `gemini-3.7-flash`.
+- **Override do Assistente:** `GEMINI_ASSISTANT_MODEL`; use
+  `GEMINI_ASSISTANT_MODEL=gemini-3.6-flash` para rollback explícito e
+  independente do fluxo conversacional.
+- **Override da foto de Pedido:** `GEMINI_PHOTO_MODEL`; use
+  `GEMINI_PHOTO_MODEL=gemini-3.6-flash` para rollback explícito e independente
+  da extração multimodal.
 - **Chave server-side:** `GEMINI_API_KEY`.
 - **Configuração atual:** `store: false`, `tool_choice: none`, timeout e zero
-  retry automático; somente texto é enviado hoje.
+  retry automático; o Assistente envia texto e a foto de Pedido usa imagem
+  inline com `response_format` JSON estrito.
+- **Thinking level:** padrão do modelo (`medium` no Gemini 3.7 Flash); nenhum
+  orçamento de tokens ou nível de raciocínio foi alterado nesta migração.
 - **PROVIDER_RECOMMENDED:** Google Gemini Developer API no plano pago.
-- **MODEL_RECOMMENDED:** `gemini-3.6-flash`.
+- **MODEL_RECOMMENDED:** `gemini-3.7-flash`.
 - **WHY:** modelo GA já usado pelo projeto, multimodal, adequado a tarefas
   visuais complexas e com structured output nativo; evita introduzir um segundo
   provider antes de medir o dataset real.
@@ -366,7 +375,7 @@ conseguir comprovar negociação, data e todas as linhas obrigatórias.
 Fontes oficiais consultadas em 2026-08-12:
 
 - [modelos Gemini mais recentes](https://ai.google.dev/gemini-api/docs/latest-model);
-- [Gemini 3.6 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash);
+- [Gemini 3.7 Flash](https://ai.google.dev/gemini-api/docs/latest-model);
 - [entendimento de imagens](https://ai.google.dev/gemini-api/docs/image-understanding);
 - [preços da Gemini Developer API](https://ai.google.dev/gemini-api/docs/pricing);
 - [termos adicionais e tratamento de dados](https://ai.google.dev/gemini-api/terms).
