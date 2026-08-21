@@ -15,12 +15,13 @@ const readPngDimensions = (path) => {
 
 test("public allowlist is narrow and returns before Supabase authentication", () => {
   const proxy = read("lib/supabase/proxy.ts");
-  const earlyReturn = proxy.indexOf("if (isStaticPublicContentRoute)");
+  const earlyReturn = proxy.indexOf("if (isStaticPublicContentRoute || isCommercialProposalRoute)");
   const clientCreation = proxy.indexOf("createServerClient(");
 
   assert.match(proxy, /pathname === "\/apresentacao"/);
   assert.match(proxy, /pathname === "\/manual"/);
   assert.match(proxy, /pathname\.startsWith\("\/manual\/"\)/);
+  assert.match(proxy, /const isCommercialProposalRoute = pathname === "\/apresentacao\/proposta"/);
   assert.ok(earlyReturn > -1 && earlyReturn < clientCreation);
   assert.doesNotMatch(proxy, /pathname\.startsWith\("\/apresentacao"\)/);
   assert.doesNotMatch(proxy, /pathname\.startsWith\("\/api"\)/);
@@ -28,7 +29,7 @@ test("public allowlist is narrow and returns before Supabase authentication", ()
 
 test("authenticated and Safisa surfaces remain outside the public allowlist", () => {
   const proxy = read("lib/supabase/proxy.ts");
-  const publicExpression = proxy.slice(proxy.indexOf("const isStaticPublicContentRoute"), proxy.indexOf("if (isStaticPublicContentRoute)"));
+  const publicExpression = proxy.slice(proxy.indexOf("const isStaticPublicContentRoute"), proxy.indexOf("if (isStaticPublicContentRoute || isCommercialProposalRoute)"));
 
   for (const route of ["/", "/estoque", "/pedidos", "/estatisticas", "/api", "/safisa"]) {
     assert.doesNotMatch(publicExpression, new RegExp(`\"${route.replace("/", "\\/")}\"`));

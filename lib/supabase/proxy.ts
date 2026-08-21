@@ -7,8 +7,9 @@ export async function updateSession(request: NextRequest) {
     pathname === "/apresentacao" ||
     pathname === "/manual" ||
     pathname.startsWith("/manual/");
+  const isCommercialProposalRoute = pathname === "/apresentacao/proposta";
 
-  if (isStaticPublicContentRoute) {
+  if (isStaticPublicContentRoute || isCommercialProposalRoute) {
     return NextResponse.next({ request });
   }
 

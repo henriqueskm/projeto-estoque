@@ -12,6 +12,7 @@
     "test:ui-layout": "node --test tests/ui-layout-regressions.test.mjs",
     "test:assistant-camera": "node --test tests/assistant-camera-capture.test.mjs",
     "test:public-site": "node --test tests/public-site.test.mjs",
+    "test:commercial-proposal": "node --experimental-strip-types --test tests/commercial-proposal.test.mjs",
     "test:remotion-assistant-demo": "node --test tests/remotion-assistant-demo.test.mjs",
     "remotion:studio": "remotion studio remotion/index.ts --no-open",
     "test:safisa-migrations": "node tests/safisa-portal-migration.test.mjs && node tests/safisa-legacy-order-transition.test.mjs",
