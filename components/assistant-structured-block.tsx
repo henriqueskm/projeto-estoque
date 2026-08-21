@@ -1633,32 +1633,71 @@ function PurchaseRecommendationCard({
 }: {
   item: PurchaseRecommendationItem;
 }) {
+  const hasPendingPurchase = item.pendingPurchaseQuantity > 0;
+  const relatedOrderLabel =
+    item.relatedOrders.length === 1
+      ? `Pedido ${item.relatedOrders[0].negotiationNumber}`
+      : `${item.relatedOrders.length} Pedidos relacionados`;
+
   return (
-    <li className="grid gap-2 border-b border-border-neutral py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+    <li className="grid gap-x-4 gap-y-1.5 border-b border-border-neutral py-2.5 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
       <div className="min-w-0">
-        <p className="font-mono text-xs font-black text-brand-gold-ink">
-          Cód. {item.primaryCode}
-        </p>
-        <p className="mt-0.5 break-words text-sm font-bold text-text-primary">
+        <p className="break-words text-sm font-bold text-text-primary">
+          <span className="mr-1 font-mono text-xs font-black text-brand-gold-ink">
+            Cód. {item.primaryCode}
+          </span>
           {item.description}
         </p>
+        {item.aliases.length > 0 ? (
+          <p className="mt-0.5 text-xs font-semibold text-text-muted">
+            Também: {item.aliases.map((code) => `Cód. ${code}`).join(", ")}
+          </p>
+        ) : null}
       </div>
-      <dl className="grid grid-cols-2 gap-x-4 text-xs sm:shrink-0">
+      <dl className="flex gap-3 text-xs sm:shrink-0">
         <div>
-          <dt className="font-black text-text-muted uppercase">Estoque</dt>
-          <dd className="mt-0.5 font-mono text-sm font-black text-text-primary">
+          <dt className="font-black text-text-muted">Est.</dt>
+          <dd className="font-mono text-sm font-black text-text-primary">
             {quantityFormatter.format(item.currentStock)}
           </dd>
         </div>
         <div>
-          <dt className="font-black text-text-muted uppercase">Mínimo</dt>
-          <dd className="mt-0.5 font-mono text-sm font-black text-text-primary">
+          <dt className="font-black text-text-muted">Mín.</dt>
+          <dd className="font-mono text-sm font-black text-text-primary">
             {item.minimumStock === null
               ? "Não definido"
               : quantityFormatter.format(item.minimumStock)}
           </dd>
         </div>
       </dl>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold text-text-muted sm:max-w-72 sm:justify-end">
+        {item.group === "BUY_NOW" ? (
+          <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 font-black text-amber-950">
+            Comprar {quantityFormatter.format(item.recommendedQuantity ?? 0)}
+          </span>
+        ) : null}
+        {hasPendingPurchase ? (
+          <span>
+            Já comprado {quantityFormatter.format(item.pendingPurchaseQuantity)}
+            {item.projectedStock !== null
+              ? ` · Projetado ${quantityFormatter.format(item.projectedStock)}`
+              : ""}
+            {item.coverage === "SUFFICIENT"
+              ? " · cobre mínimo"
+              : item.coverage === "INSUFFICIENT"
+                ? " · ainda falta"
+                : ""}
+          </span>
+        ) : null}
+        {item.relatedOrders.length > 0 ? (
+          <Link
+            href={item.relatedOrders[0].href}
+            className="nk-focus underline decoration-brand-gold/70 underline-offset-2 hover:text-text-primary"
+          >
+            {relatedOrderLabel}
+          </Link>
+        ) : null}
+      </div>
     </li>
   );
 }

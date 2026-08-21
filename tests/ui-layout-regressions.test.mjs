@@ -46,18 +46,22 @@ test("purchase recommendations use a compact market-list layout", () => {
   const structured = read("components/assistant-structured-block.tsx");
   const recommendations = structured.slice(
     structured.indexOf("function PurchaseRecommendationCard"),
-    structured.indexOf("function AssistantStructuredBlockView"),
+    structured.indexOf("function SupplierOrderAmbiguity"),
   );
 
   assert.match(recommendations, /Cód\. \{item\.primaryCode\}/);
-  assert.match(recommendations, /Estoque<\/dt>/);
-  assert.match(recommendations, /Mínimo<\/dt>/);
+  assert.match(recommendations, /Est\.<\/dt>/);
+  assert.match(recommendations, /Mín\.<\/dt>/);
+  assert.match(recommendations, /Comprar \{quantityFormatter\.format\(item\.recommendedQuantity/);
+  assert.match(recommendations, /Já comprado \{quantityFormatter\.format\(item\.pendingPurchaseQuantity\)\}/);
+  assert.match(recommendations, /Projetado \$\{quantityFormatter\.format\(item\.projectedStock\)\}/);
+  assert.match(recommendations, /relatedOrders\[0\]\.href/);
   assert.match(
     recommendations,
     /<ul className="mt-3 divide-y divide-border-neutral/,
   );
   assert.doesNotMatch(recommendations, /Abrir no Estoque/);
-  assert.doesNotMatch(recommendations, /Comprar agora/);
+  assert.doesNotMatch(recommendations, /rounded-xl border border-border-neutral bg-white p-3/);
 });
 
 test("inventory headers stay directly below the mobile header and at the desktop top", () => {
