@@ -42,3 +42,5 @@ next-env.d.ts
 
 # supabase local state
 /supabase/.temp/
+# Resultados de execução locais do laboratório de linguagem natural.
+artifacts/assistant-eval/

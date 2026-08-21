@@ -139,6 +139,9 @@ export function isItemFollowUpMessage(message: string) {
   const normalizedMessage = normalizeAssistantText(message);
 
   return (
+    /^(?:e\s+)?(?:o|a)\s+(?:c[oó]d(?:igo)?\s+)?(?=[a-z0-9/-]*\d)[a-z0-9]+(?:[/-][a-z0-9]+)*\b/.test(
+      normalizedMessage,
+    ) ||
     /^(e\s+)?quant(as?|os?)\b.{0,40}\b(consigo|posso|montad)/.test(
       normalizedMessage,
     ) ||
@@ -232,7 +235,7 @@ export function routeServoModelInventoryView(
     return "BREAKDOWN";
   }
 
-  if (/\b(sem\s+kit|separados?)\b/.test(normalizedMessage)) {
+  if (/\b(sem\s+kit|separados?|soltos?)\b/.test(normalizedMessage)) {
     return "LOOSE";
   }
 
@@ -406,11 +409,19 @@ export function extractExplicitItemQuery(message: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/([A-Z0-9])\s*-\s*([A-Z0-9])/gi, "$1-$2");
   const numericCode = searchableMessage.match(
-    /\b(?:codigo|cod\.?|itens?|servos?|kits?|reparos?|pecas?|caixas?|suportes?|do|da|de)\s+(\d+)\b/i,
+    /\b(?:codigo|cod\.?|itens?|servos?|kits?|reparos?|pecas?|caixas?|suportes?|do|da|de)\s+(\d+)(?![A-Z0-9/-])/i,
   )?.[1];
 
   if (numericCode) {
     return numericCode;
+  }
+
+  const slashSeparatedCode = searchableMessage.match(
+    /\b(?=[A-Z0-9/]*\d)[A-Z0-9]+(?:\/[A-Z0-9]+)+\b/i,
+  )?.[0];
+
+  if (slashSeparatedCode) {
+    return cleanQueryCandidate(slashSeparatedCode);
   }
 
   const servoModelCandidate = extractServoModelCandidate(message);
@@ -477,7 +488,7 @@ export function extractExplicitItemQuery(message: string) {
 
   const alphanumericCodes =
     searchableMessage.match(
-      /\b(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9]+(?:-[A-Z0-9]+)*\b/gi,
+      /\b(?=[A-Z0-9/-]*\d)(?=[A-Z0-9/-]*[A-Z])[A-Z0-9]+(?:[/-][A-Z0-9]+)*\b/gi,
     ) ??
     [];
 
@@ -505,7 +516,7 @@ export function extractExplicitItemQuery(message: string) {
 }
 
 function isExactCatalogCode(value: string) {
-  return /^(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)*$/i.test(value);
+  return /^(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[/-][A-Z0-9]+)*$/i.test(value);
 }
 
 export function isItemToSupplierOrdersFollowUp(message: string) {
@@ -637,7 +648,7 @@ export function routeInventoryItemSummaryQuestion(
   const asksStock =
     /\b(quanto|quantos|quanta|quantas|tenho|temos|tem|possuo|possui|estoque|saldo|quantidade|disponivel|existe|existem|montad[ao]s?)\b/.test(
       normalizedMessage,
-    );
+    ) || /^(?:e\s+)?(?:o|a)\s+(?:c[oó]d(?:igo)?\s+)?(?=[a-z0-9/-]*\d)[a-z0-9]+(?:[/-][a-z0-9]+)*\b/.test(normalizedMessage);
 
   const metric: AssistantInventoryItemSummaryMetric = asksComposition
     ? "COMPOSITION"

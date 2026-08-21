@@ -54,7 +54,7 @@ function extractNegotiation(rawMessage: string): NegotiationMatch | null {
 function parsePositiveQuantity(messageWithoutOrder: string) {
   const message = normalizeAssistantText(messageWithoutOrder);
   const match = message.match(/\b(\d{1,10}|um|uma)\s+unidades?\b/) ??
-    message.match(/\b(?:entrada|lance|lancar)\s+(?:em\s+|mais\s+)?(\d{1,10}|um|uma)\b(?![\p{L}\d])/u) ??
+    message.match(/\b(?:entrada|lance|lancar|poe|joga|coloque)\s+(?:em\s+|mais\s+)?(\d{1,10}|um|uma)\b(?![\p{L}\d])/u) ??
     message.match(/\bmais\s+(\d{1,10}|um|uma)\b(?![\p{L}\d])/u);
   if (!match) return null;
   return /^(um|uma)$/.test(match[1]) ? 1 : Number(match[1]);
@@ -63,9 +63,9 @@ function parsePositiveQuantity(messageWithoutOrder: string) {
 function extractTargetText(messageWithoutOrder: string) {
   return messageWithoutOrder
     .replace(/[,;]+/g, " ")
-    .replace(/^\s*(?:no\s+)?(?:(?:dê|de|dar|registre|registrar)\s+entrada(?:\s+(?:no|para\s+o)\s+estoque)?|(?:lance|lançar)(?:\s+mais)?|coloque)\s*/iu, "")
+    .replace(/^\s*(?:no\s+)?(?:(?:dê|de|dar|registre|registrar)\s+entrada(?:\s+(?:no|para\s+o)\s+estoque)?|(?:lance|lançar)(?:\s+mais)?|coloque|põe|poe|jogue|joga)\s*/iu, "")
     .replace(/^(?:em\s+)?(?:\d{1,10}|um|uma)\s*(?:unidades?)?\s*(?:do|da|de)?\s*/iu, "")
-    .replace(/\s+(?:no|para\s+o|em)\s+estoque\s*$/iu, "")
+    .replace(/\s+(?:no|para\s+o|pra|em)\s+estoque\s*$/iu, "")
     .trim();
 }
 
@@ -83,8 +83,8 @@ export function routeSupplierOrderStockEntryAction(
   if (/^(o que|quais?|quanto|o pedido)\b/.test(message) || /\b(ainda\s+possui|aguardam?\s+entrada|pode\s+entrar)\b/.test(message)) {
     return { kind: "NOT_SUPPLIER_ORDER_STOCK_ENTRY" };
   }
-  const entryVerb = /\b(dar|de|dê|registrar|registre|lancar|lance|lançar|entrada|colocar)\b/.test(message) &&
-    /\b(entrada|estoque|lancar|lance|lançar)\b/.test(message);
+  const entryVerb = /\b(dar|de|dê|registrar|registre|lancar|lance|lançar|entrada|colocar|poe|joga)\b/.test(message) &&
+    /\b(entrada|estoque|lancar|lance|lançar|poe|joga)\b/.test(message);
   if (!mentionsOrder || !entryVerb) return { kind: "NOT_SUPPLIER_ORDER_STOCK_ENTRY" };
   if (/-\s*\d+\s+unidades?\b/.test(message)) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a entrada." };

@@ -60,11 +60,16 @@ export function routePurchaseRecommendationQuestion(
   const asksMissingMinimum =
     /\b(sem|nao\s+(?:tem|possui|temos|possuem))\b.{0,28}\b(estoque\s+)?minimo\b/.test(
       normalized,
+    ) ||
+    /\b(?:o\s+que|quais?\s+itens?)\b.{0,30}\babaixo\b.{0,30}\bminimo\b/.test(
+      normalized,
     );
   const asksAlreadyOrdered =
     /\b(ja\s+(?:foi|foram|esta|estao|tem|temos|possui|possuem)\s+comprad[oa]s?|ja\s+comprad[oa]s?|compra\s+pendente)\b/.test(
       normalized,
     ) ||
+    /\bja\s+tem\s+(?:algo\s+)?comprad[oa]s?\b/.test(normalized) ||
+    /\bo\s+que\s+ja\s+(?:foi\s+)?pedi\s+para\s+comprar\b/.test(normalized) ||
     /\babaixo\b.{0,35}\bminimo\b.{0,35}\b(?:em|no|nos)\s+pedidos?\b/.test(
       normalized,
     );
@@ -80,6 +85,10 @@ export function routePurchaseRecommendationQuestion(
       normalized,
     ) ||
     /\bo\s+que\s+falta\s+comprar\s+hoje\b/.test(normalized) ||
+    /\bo\s+que\s+esta\s+faltando\b/.test(normalized) ||
+    /\b(?:relacao|lista)\s+do\s+que\s+esta\s+faltando\b/.test(normalized) ||
+    /\bo\s+que\s+(?:eu\s+)?preciso\s+repor\b/.test(normalized) ||
+    /\bqual\s+(?:e\s+)?a\s+lista\s+de\s+compra\b/.test(normalized) ||
     /\blista\s+recomendada\s+de\s+compra\b/.test(normalized);
   const asksCodeRecommendation =
     Boolean(queryCode) &&

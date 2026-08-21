@@ -19,19 +19,24 @@ function normalizeAssistantText(value: string) {
     .toLocaleLowerCase("pt-BR").trim();
 }
 
-const commandPattern = /^\s*(?:retire|retirar|tire|tirar|remova|remover|baixe|baixar|d[êe]\s+(?:sa[ií]da|baixa)(?:\s+em)?|dar\s+(?:sa[ií]da|baixa)(?:\s+em)?)\b\s*/iu;
+const commandPattern = /^\s*(?:(?:quero|preciso|pode)\s+)?(?:(?:retire|retirar|tire|tirar|tira|remova|remover|remove|baixe|baixar|baixa|desconte|descontar|desconta)|(?:(?:registrar|registre|registra)\s+)?(?:uma\s+)?sa[ií]da|d[êeáa]\s+(?:sa[ií]da|baixa)(?:\s+em)?|dar\s+(?:sa[ií]da|baixa)(?:\s+em)?)\b\s*/iu;
 
 type QuantityMatch = { quantity: number; index: number; length: number };
 
 function parseQuantityWord(value: string) {
-  return /^(?:um|uma)$/iu.test(value) ? 1 : Number(value);
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  const words: Record<string, number> = {
+    um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5,
+    seis: 6, sete: 7, oito: 8, nove: 9, dez: 10,
+  };
+  return words[normalized] ?? Number(value.replace(/^\+/, ""));
 }
 
 function extractQuantity(value: string): QuantityMatch | null {
   const patterns = [
-    /\b(?:quantidade\s+de\s+)?(\d{1,10}|um|uma)\s+unidades?\b/iu,
-    /\bmais\s+(\d{1,10}|um|uma)\b/iu,
-    /^\s*(?:em|de)?\s*(\d{1,10}|um|uma)\b/iu,
+    /\b(?:quantidade\s+de\s+)?(\+?\d{1,10}|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)\s+unidades?\b/iu,
+    /\bmais\s+(\+?\d{1,10}|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)\b/iu,
+    /^\s*(?:em|de)?\s*(\+?\d{1,10}|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)\b/iu,
   ];
   for (const pattern of patterns) {
     const match = pattern.exec(value);
@@ -52,7 +57,7 @@ function cleanTarget(value: string, quantityMatch: QuantityMatch) {
     .replace(/[?!.,;:]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/^(?:(?:em|do|da|de|mais)\s+)+/iu, "")
+    .replace(/^(?:(?:em|no|na|do|da|de|mais)\s+)+/iu, "")
     .trim();
 }
 
@@ -76,7 +81,7 @@ export function routeManualStockOutputAction(rawMessage: string): ManualStockOut
   }
   if (/\bpedido\b/.test(message)) return { kind: "NOT_MANUAL_STOCK_OUTPUT" };
   if (!commandPattern.test(rawMessage)) return { kind: "NOT_MANUAL_STOCK_OUTPUT" };
-  if (/-\s*\d+\s+unidades?\b/.test(message)) {
+  if (/-\s*\d+\s+unidades?\b/.test(message) || /\b\d+[,.]\d+\s+unidades?\b/.test(message) || /\b\d{11,}\b/.test(message)) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a saída manual." };
   }
   const withoutCommand = rawMessage.replace(commandPattern, "");
