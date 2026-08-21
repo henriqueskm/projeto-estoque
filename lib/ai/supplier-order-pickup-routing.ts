@@ -34,7 +34,7 @@ const catalogCodePattern =
   /^(?=.*\d)[A-Z0-9]+(?:[ -][A-Z0-9]+)*$/;
 const catalogCodeCapture =
   "((?=[a-z0-9-]*\\d)[a-z0-9]+(?:-[a-z0-9]+)*)";
-const quantityCapture = "(\\d{1,10}|uma?|um)";
+const quantityCapture = "(\\d{1,10}|uma?|um|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)";
 
 export function normalizeAssistantCommandText(value: string) {
   return value
@@ -58,7 +58,11 @@ function normalizeCatalogCode(value: string) {
 }
 
 function parseQuantity(value: string) {
-  const quantity = /^(?:uma?|um)$/.test(value) ? 1 : Number(value);
+  const words: Record<string, number> = {
+    um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5,
+    seis: 6, sete: 7, oito: 8, nove: 9, dez: 10,
+  };
+  const quantity = words[value] ?? Number(value);
 
   return Number.isSafeInteger(quantity) &&
     quantity > 0 &&
@@ -191,10 +195,10 @@ function extractPickupMode(message: string):
 
   const incrementQuantity = extractQuantity(message, [
     new RegExp(
-      `\\b(?:retire|retirar|marque|marcar|registre|registrar)\\b.*?\\bmais\\s+${quantityCapture}\\b`,
+      `\\b(?:retire|retirar|retira|marque|marcar|marca|registre|registrar|pegue|pegar|pega)\\b.*?\\bmais\\s+${quantityCapture}\\b`,
     ),
     new RegExp(
-      `\\b(?:retire|retirar)\\s+${quantityCapture}(?:\\s+unidades?)?\\b`,
+      `\\b(?:retire|retirar|retira|pegue|pegar|pega)\\s+${quantityCapture}(?:\\s+unidades?)?\\b`,
     ),
     new RegExp(
       `\\bacrescente\\s+${quantityCapture}(?:\\s+unidades?)?(?:\\s+(?:como\\s+)?retirad[oa]s?)?\\b`,
@@ -307,6 +311,23 @@ export function routeSupplierOrderPickupAction(
     };
   }
 
+  if (
+    pickupMode &&
+    (/\b(?:desse|deste|daquele|dessa|desta)\s+(?:item|linha)\b/.test(
+      message,
+    ) || /\bcomo\s+retirad[oa]s?\b/.test(message))
+  ) {
+    return {
+      kind: "PICKUP_ACTION",
+      request: {
+        mode: pickupMode.mode,
+        catalogCode: null,
+        requestedQuantity: pickupMode.requestedQuantity,
+        negotiationNumber,
+      },
+    };
+  }
+
   const ambiguousQuantity = extractQuantity(message, [
     new RegExp(
       `\\b(?:retire|retirar|marque|marcar)\\s+${quantityCapture}\\b`,
@@ -323,7 +344,7 @@ export function routeSupplierOrderPickupAction(
   }
 
   if (
-    /\b(?:retire|retirar|marque|marcar|acrescente|registre|registrar|defina|definir|deixe|deixar)\b/.test(
+    /\b(?:retire|retirar|marque|marcar|pegue|pegar|pega|acrescente|registre|registrar|defina|definir|deixe|deixar)\b/.test(
       message,
     )
   ) {

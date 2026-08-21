@@ -492,6 +492,9 @@ function isSupplierOrderMessage(
       message,
     ) ||
     /\bparcialmente\s+retirados?\b/.test(message) ||
+    /\b(?:o\s+que\s+)?falta\s+retirar\b/.test(message) ||
+    /\b(?:o\s+que\s+)?foi\s+comprado\b/.test(message) ||
+    /\bquanto\s+falta\s+(?:entrar|dar\s+entrada)\s+(?:no\s+)?estoque\b/.test(message) ||
     /\bquanto\s+(?:eu\s+)?pedi\b/.test(message) ||
     /\bquanto\b.{0,45}\b(retirad[oa]s?|retirar|aguarda(?:m)?\s+entrada)\b/.test(
       message,
@@ -505,6 +508,7 @@ function isSupplierOrderMessage(
       /^(?:e\s+)?quanto\b.{0,35}\b(entrar|entrada|retirar|retirad[oa]s?|solicitad[oa]s?)\b/.test(
         message,
       )) ||
+    (hasContext && /^(?:e\s+)?(?:entrar|entrada)(?:\s+no\s+estoque)?\b/.test(message)) ||
     (hasContext &&
       /\b(desse|deste|dessa|desta|daquele|daquela|dele|nele|esse|este)\b/.test(
         message,

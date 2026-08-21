@@ -85,16 +85,16 @@ function explicitIntent(message: string): { intent: AssistantStatisticsIntent; c
   if (/\b(?:entradas? aumentaram|mais entradas? que|entradas?.*periodo anterior)\b/.test(message)) return { intent: "INBOUND_COMPARISON", code: null };
   if (/\b(?:quantas? entradas?|quanto entrou)\b/.test(message)) return { intent: "INBOUND_TOTAL", code: null };
   if (/\b(?:quantas? saidas?|quanto saiu)\b/.test(message)) return { intent: "OUTBOUND_TOTAL", code: null };
-  if (/\b(?:estatisticas|resumo|como foi a movimentacao|como foram as movimentacoes)\b/.test(message)) return { intent: "SUMMARY", code: null };
+  if (/\b(?:estatisticas|resumo|como foi a movimentacao|como foram as movimentacoes|como foram\s+(?:os\s+)?ultimos?\s+(?:7|30|90)\s+dias?)\b/.test(message)) return { intent: "SUMMARY", code: null };
   return null;
 }
 
 function contextualIntent(message: string, context: AssistantConversationContext) {
   if (context.topic !== "STATISTICS" || !context.statisticsIntent) return null;
-  if (context.statisticsIntent === "SUMMARY" && /^(?:as )?entradas$/.test(message)) {
+  if (context.statisticsIntent === "SUMMARY" && /^(?:e\s+)?(?:as\s+)?entradas$/.test(message)) {
     return { intent: "INBOUND_COMPARISON" as const, code: null };
   }
-  if (context.statisticsIntent === "SUMMARY" && /^(?:as )?saidas(?: externas)?$/.test(message)) {
+  if (context.statisticsIntent === "SUMMARY" && /^(?:e\s+)?(?:as\s+)?saidas(?: externas)?$/.test(message)) {
     return { intent: "OUTBOUND_COMPARISON" as const, code: null };
   }
   if (/^(?:e\s+)?sem kit$/.test(message) && context.statisticsIntent === "TOP_CONFIGURATION") return { intent: "TOP_LOOSE_SERVO" as const, code: null };

@@ -29,6 +29,8 @@ test("roteia montagens determinísticas sem incluir qualificadores no alvo", () 
     ["Monte 3 Servos com kit, 1B.", "1B", 3],
     ["Faça a montagem de 4 unidades do código 2A.", "2A", 4],
     ["Realize a montagem de 1 caixa completa 1D.", "1D", 1],
+    ["Quero montar duas caixas 2A.", "2A", 2],
+    ["Faz uma montagem do 2A.", "2A", 1],
   ];
   for (const [phrase, targetQuery, quantity] of cases) {
     const route = routeConfigurationAssemblyAction(phrase);

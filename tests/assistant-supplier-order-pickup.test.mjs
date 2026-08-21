@@ -87,6 +87,27 @@ test("explicit totals remain set_total and genuinely ambiguous wording remains a
   );
 });
 
+test("follow-ups de retirada preservam quantidade mas exigem contexto oficial da linha", () => {
+  assert.deepEqual(routeSupplierOrderPickupAction("Pegue duas daquele item"), {
+    kind: "PICKUP_ACTION",
+    request: {
+      mode: "increment",
+      catalogCode: null,
+      requestedQuantity: 2,
+      negotiationNumber: null,
+    },
+  });
+  assert.deepEqual(routeSupplierOrderPickupAction("Marca mais 1 como retirado"), {
+    kind: "PICKUP_ACTION",
+    request: {
+      mode: "increment",
+      catalogCode: null,
+      requestedQuantity: 1,
+      negotiationNumber: null,
+    },
+  });
+});
+
 test("confirmation text and pickup reads never become direct pickup actions", () => {
   assert.equal(routeSupplierOrderPickupAction("sim").kind, "BUTTON_CONFIRMATION_TEXT");
   assert.equal(

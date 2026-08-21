@@ -10,11 +10,11 @@ export type SupplierOrderFinalizationRoute =
   | { kind: "ACTION"; request: SupplierOrderFinalizationRequest };
 
 function normalizeNegotiationNumber(value: string) {
-  const normalized = value.trim().replace(/\s+/g, " ");
+  const normalized = value.trim();
 
   return normalized &&
     normalized.length <= 120 &&
-    /^[\p{L}\p{N} /-]+$/u.test(normalized)
+    /^\d+$/.test(normalized)
     ? normalized
     : null;
 }
@@ -37,7 +37,7 @@ export function routeSupplierOrderFinalizationAction(
   }
 
   const match = message.match(
-    /^\s*(?:(?:pode\s+)?(?:finalize|finalizar|encerrar|concluir))\s+(?:o\s+)?pedido\s+(?:n(?:[úu]mero)?\s+)?(.+?)\s*[?!.]*\s*$/iu,
+    /^\s*(?:(?:pode\s+)?(?:finalize|finalizar|encerrar|concluir))\s+(?:o\s+)?pedido(?:\s+(?:n(?:[úu]mero)?\s*)?(.+?))?\s*[?!.]*\s*$/iu,
   );
 
   if (!match) {
