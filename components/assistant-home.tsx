@@ -19,7 +19,6 @@ import {
   CameraIcon,
   CloseIcon,
   ImageIcon,
-  MicrophoneIcon,
   PlusIcon,
   SendIcon,
 } from "@/components/icons";
@@ -97,48 +96,55 @@ const supplierOrderPickupProgressLabels: Record<
 
 const initialSuggestions: AssistantClarificationBlock = {
   kind: "assistant_clarification",
-  title: "O que você quer consultar hoje?",
-  message: "Escolha uma sugestão ou escreva sua pergunta abaixo.",
+  title: "Como posso ajudar?",
+  message:
+    "Consulte dados, prepare uma operação ou envie uma foto de Pedido. Toda alteração exige revisão e confirmação.",
   options: [
+    {
+      id: "initial-inventory-overview",
+      label: "Consultar Estoque",
+      prompt: "Como está o Estoque?",
+      category: "inventory",
+    },
+    {
+      id: "initial-stock-entry",
+      label: "Preparar entrada",
+      prompt: "Quero registrar uma entrada no Estoque.",
+      category: "inventory",
+    },
+    {
+      id: "initial-stock-output",
+      label: "Preparar saída",
+      prompt: "Quero registrar uma saída do Estoque.",
+      category: "inventory",
+    },
+    {
+      id: "initial-order-active",
+      label: "Ver Pedidos",
+      prompt: "Mostre meus Pedidos em andamento.",
+      category: "supplier_orders",
+    },
+    {
+      id: "initial-order-pickup",
+      label: "Preparar retirada",
+      prompt: "Quais Pedidos ainda têm itens para retirar?",
+      category: "supplier_orders",
+    },
+    {
+      id: "initial-order-photo",
+      label: "Analisar foto de Pedido",
+      prompt: "Quero analisar uma foto de Pedido.",
+      category: "media",
+    },
     {
       id: "initial-replenishment",
       label: "Ver o que comprar",
       prompt: "O que preciso comprar?",
       category: "replenishment",
     },
-    {
-      id: "initial-inventory-minimum",
-      label: "Ver abaixo do mínimo",
-      prompt: "Quais itens estão abaixo do estoque mínimo?",
-      category: "inventory",
-    },
-    {
-      id: "initial-order-pickup",
-      label: "Ver retiradas pendentes",
-      prompt: "Quais Pedidos ainda têm itens para retirar?",
-      category: "supplier_orders",
-    },
-    {
-      id: "initial-order-purchased",
-      label: "Ver itens comprados",
-      prompt: "Quais itens já foram comprados?",
-      category: "supplier_orders",
-    },
-    {
-      id: "initial-inventory-without-minimum",
-      label: "Ver sem mínimo",
-      prompt: "Quais produtos estão sem estoque mínimo?",
-      category: "inventory",
-    },
-    {
-      id: "initial-order-active",
-      label: "Ver Pedidos em andamento",
-      prompt: "Mostre meus Pedidos em andamento.",
-      category: "supplier_orders",
-    },
   ],
   fallbackText:
-    "Posso consultar Estoque, Pedidos, fotos e itens para reposição.",
+    "Posso consultar Estoque e Pedidos, preparar operações e analisar fotos de Pedido.",
 };
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
@@ -169,11 +175,7 @@ export function AssistantHome({
   } = useAssistantConversation();
   const [attachment, setAttachment] = useState<LocalAttachment | null>(null);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
-  const [
-    isNewConversationDialogOpen,
-    setIsNewConversationDialogOpen,
-  ] = useState(false);
-  const [isConversationMenuOpen, setIsConversationMenuOpen] =
+  const [isNewConversationDialogOpen, setIsNewConversationDialogOpen] =
     useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -205,18 +207,24 @@ export function AssistantHome({
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const newConversationButtonRef = useRef<HTMLButtonElement>(null);
-  const conversationMenuRef = useRef<HTMLDivElement>(null);
-  const conversationMenuItemRef = useRef<HTMLButtonElement>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
+  const attachmentMenuFirstItemRef = useRef<HTMLButtonElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const attachmentMenuId = useId();
-  const conversationMenuId = useId();
   const firstName = profile.hasRegisteredName
     ? (profile.displayName.split(/\s+/).filter(Boolean)[0] ?? null)
     : null;
   const isInteractionLocked = isPending || isRefreshingStock;
   const isComposerLocked = !isHydrated || isInteractionLocked;
+  const hasOperationalConfirmation = Boolean(
+    confirmingPickupMessageId ||
+      confirmingStockEntryMessageId ||
+      confirmingStockOutputMessageId ||
+      confirmingConfigurationAssemblyMessageId ||
+      confirmingConfigurationDisassemblyMessageId ||
+      confirmingSupplierOrderFinalizationMessageId,
+  );
   const canSubmit =
     !isComposerLocked &&
     Boolean(
@@ -266,6 +274,10 @@ export function AssistantHome({
       return;
     }
 
+    window.requestAnimationFrame(() =>
+      attachmentMenuFirstItemRef.current?.focus(),
+    );
+
     function closeMenu(restoreFocus = false) {
       setIsAttachmentMenuOpen(false);
 
@@ -299,64 +311,6 @@ export function AssistantHome({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isAttachmentMenuOpen]);
-
-  useEffect(() => {
-    if (!isConversationMenuOpen) {
-      return;
-    }
-
-    window.requestAnimationFrame(() =>
-      conversationMenuItemRef.current?.focus(),
-    );
-
-    function closeMenu(restoreFocus = false) {
-      setIsConversationMenuOpen(false);
-
-      if (restoreFocus) {
-        window.requestAnimationFrame(() =>
-          newConversationButtonRef.current?.focus(),
-        );
-      }
-    }
-
-    function handlePointerDown(event: PointerEvent) {
-      if (
-        event.target instanceof Node &&
-        !conversationMenuRef.current?.contains(event.target) &&
-        !newConversationButtonRef.current?.contains(event.target)
-      ) {
-        closeMenu();
-      }
-    }
-
-    function handleKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeMenu(true);
-        return;
-      }
-
-      if (
-        event.key === "ArrowDown" ||
-        event.key === "ArrowUp" ||
-        event.key === "Home" ||
-        event.key === "End"
-      ) {
-        event.preventDefault();
-        conversationMenuItemRef.current?.focus();
-      } else if (event.key === "Tab") {
-        closeMenu();
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isConversationMenuOpen]);
 
   useEffect(() => {
     const conversation = conversationRef.current;
@@ -1284,8 +1238,6 @@ export function AssistantHome({
   }
 
   function handleNewConversationRequest() {
-    setIsConversationMenuOpen(false);
-
     if (messages.length > 0) {
       setIsNewConversationDialogOpen(true);
       return;
@@ -1326,54 +1278,20 @@ export function AssistantHome({
       onClickCapture={handleInternalNavigation}
       className="relative flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden lg:h-dvh"
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 h-0">
-        <div className="relative mx-auto h-0 w-full max-w-4xl">
-          <div className="pointer-events-auto absolute top-2 right-3 sm:right-5 lg:right-2">
-            <button
-              ref={newConversationButtonRef}
-              type="button"
-              disabled={!isHydrated || isInteractionLocked}
-              onClick={() =>
-                setIsConversationMenuOpen((current) => !current)
-              }
-              aria-label="Opções da conversa"
-              aria-haspopup="menu"
-              aria-expanded={isConversationMenuOpen}
-              aria-controls={conversationMenuId}
-              title="Opções da conversa"
-              className="nk-focus inline-flex size-10 items-center justify-center rounded-full border border-border-neutral bg-surface/90 text-text-muted shadow-sm backdrop-blur transition hover:border-brand-gold-dark hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span
-                aria-hidden="true"
-                className="-translate-y-0.5 text-2xl leading-none font-black"
-              >
-                ⋮
-              </span>
-            </button>
-
-            {isConversationMenuOpen ? (
-              <div
-                ref={conversationMenuRef}
-                id={conversationMenuId}
-                role="menu"
-                aria-label="Opções da conversa"
-                className="absolute top-[calc(100%+0.25rem)] right-0 z-40 w-52 rounded-xl border border-border-neutral bg-surface p-1.5 shadow-xl"
-              >
-                <button
-                  ref={conversationMenuItemRef}
-                  type="button"
-                  role="menuitem"
-                  onClick={handleNewConversationRequest}
-                  className="nk-focus flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-black text-text-primary transition hover:bg-app-background"
-                >
-                  <PlusIcon aria-hidden="true" className="size-4" />
-                  Nova conversa
-                </button>
-              </div>
-            ) : null}
-          </div>
+      <header className="shrink-0 border-b border-border-neutral/80 bg-app-background/95 px-4 py-2 backdrop-blur sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-3xl justify-end">
+          <button
+            ref={newConversationButtonRef}
+            type="button"
+            disabled={!isHydrated || isInteractionLocked}
+            onClick={handleNewConversationRequest}
+            className="nk-focus inline-flex min-h-10 items-center gap-2 rounded-xl border border-border-neutral bg-surface px-3 text-sm font-black text-text-primary shadow-sm transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/25 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <PlusIcon aria-hidden="true" className="size-4" />
+            Nova conversa
+          </button>
         </div>
-      </div>
+      </header>
 
       <section
         ref={conversationRef}
@@ -1381,7 +1299,7 @@ export function AssistantHome({
         onScroll={handleConversationScroll}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-1 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-2 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pb-12">
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-4 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-5 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pb-12">
           {!isHydrated ? (
             <p
               role="status"
@@ -1396,8 +1314,8 @@ export function AssistantHome({
                   {firstName ? `Olá, ${firstName}.` : "Olá."}
                 </p>
                 <p className="mt-1 text-sm font-semibold text-text-muted sm:text-base">
-                  Consulte dados reais e prepare retiradas de Pedidos
-                  com confirmação explícita.
+                  Consulte o Estoque, prepare operações ou envie uma foto de
+                  Pedido. Toda alteração exige confirmação explícita.
                 </p>
               </div>
 
@@ -1455,8 +1373,11 @@ export function AssistantHome({
             </div>
           ) : (
             <div
+              role="log"
               aria-live="polite"
-              className="mx-auto flex w-full max-w-3xl flex-col gap-4 pr-12 lg:pr-0"
+              aria-atomic="false"
+              aria-relevant="additions text"
+              className="mx-auto flex w-full max-w-3xl flex-col gap-4"
             >
               {messages.map((chatMessage) => {
                 const isStructured =
@@ -1657,8 +1578,9 @@ export function AssistantHome({
                   </section>
                 );
               })}
-              {isInteractionLocked && !confirmingPickupMessageId ? (
+              {isInteractionLocked && !hasOperationalConfirmation ? (
                 <section
+                  role="status"
                   aria-label="Resposta da Assistente NK em andamento"
                   className="mr-auto"
                 >
@@ -1738,7 +1660,6 @@ export function AssistantHome({
                   type="button"
                   disabled={isComposerLocked}
                   aria-label="Adicionar imagem"
-                  aria-haspopup="menu"
                   aria-expanded={isAttachmentMenuOpen}
                   aria-controls={attachmentMenuId}
                   onClick={() =>
@@ -1753,13 +1674,12 @@ export function AssistantHome({
                   <div
                     ref={attachmentMenuRef}
                     id={attachmentMenuId}
-                    role="menu"
                     aria-label="Opções de imagem"
                     className="absolute bottom-[calc(100%+0.65rem)] left-0 z-40 w-60 overflow-hidden rounded-2xl border border-border-neutral bg-surface p-2 shadow-xl"
                   >
                     <button
+                      ref={attachmentMenuFirstItemRef}
                       type="button"
-                      role="menuitem"
                       onClick={() => {
                         setIsAttachmentMenuOpen(false);
                         cameraInputRef.current?.click();
@@ -1771,7 +1691,6 @@ export function AssistantHome({
                     </button>
                     <button
                       type="button"
-                      role="menuitem"
                       onClick={() => {
                         setIsAttachmentMenuOpen(false);
                         galleryInputRef.current?.click();
@@ -1803,18 +1722,6 @@ export function AssistantHome({
                   className="nk-field block max-h-32 min-h-11 w-full resize-none overflow-y-auto rounded-xl border px-3 py-2.5 text-sm leading-6 outline-none sm:text-base"
                 />
               </label>
-
-              <button
-                type="button"
-                disabled={isComposerLocked}
-                aria-label="Usar microfone"
-                onClick={() =>
-                  setFeedback("Entrada por voz está em preparação.")
-                }
-                className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-app-background text-text-primary transition hover:bg-violet-50 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <MicrophoneIcon className="size-5" />
-              </button>
 
               <button
                 type="submit"
@@ -1852,9 +1759,8 @@ export function AssistantHome({
             />
           </form>
           <p className="mx-auto mt-1 max-w-3xl text-center text-[0.6rem] leading-4 font-semibold text-text-muted sm:mt-1.5 sm:text-[0.68rem]">
-            Consultas e fotos de Pedido geram somente prévias. Retiradas de
-            Pedidos só acontecem após confirmação; áudio e demais operações
-            ainda não estão habilitados.
+            Consultas e fotos de Pedido geram prévias. Entradas, saídas,
+            montagens e retiradas só acontecem após confirmação explícita.
           </p>
       </div>
 
