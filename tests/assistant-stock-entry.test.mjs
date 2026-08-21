@@ -83,6 +83,37 @@ test("atalho de entrada manual pede os detalhes sem cair no fluxo de Pedido", ()
   );
 });
 
+test("reconhece linguagem natural de entrada manual para código comercial sem contexto de Pedido", () => {
+  const phrases = [
+    "Quero registrar uma entrada de 1 do 2A",
+    "Quero registrar uma entrada de 1 unidade do 2A",
+    "quero dar entrada no estoque de 1 do 2A",
+    "Dê entrada manual de 1 do 2A",
+    "Dê entrada de 1 no 2A",
+    "Dê entrada de 1 unidade no 2A",
+    "quero dar entrada no 2A 1 unidade",
+  ];
+
+  for (const phrase of phrases) {
+    assert.deepEqual(routeManualStockEntryAction(phrase), {
+      kind: "ACTION",
+      request: { quantity: 1, targetQuery: "2A", requestedIdentity: null },
+    }, phrase);
+    assert.equal(
+      routeSupplierOrderStockEntryAction(phrase).kind,
+      "NOT_SUPPLIER_ORDER_STOCK_ENTRY",
+      phrase,
+    );
+  }
+});
+
+test("aceita a resposta curta de código e quantidade após o atalho de entrada", () => {
+  assert.deepEqual(routeManualStockEntryAction("2A, 2 unidades"), {
+    kind: "ACTION",
+    request: { quantity: 2, targetQuery: "2A", requestedIdentity: null },
+  });
+});
+
 test("reconhece formulações naturais de entrada manual sem desviar para consulta", () => {
   for (const phrase of [
     "Dê entrada em 1 unidade do 1B.",
@@ -142,6 +173,7 @@ test("reconhece entrada manual sem quantidade e preserva o alvo para esclarecime
 test("preserva consultas somente leitura fora da rota de entrada manual", () => {
   for (const phrase of [
     "Quanto tem do 1B?",
+    "Quanto tem do 2A?",
     "Qual o estoque do 1B?",
     "Me mostre o 1B.",
     "Tem 1B no estoque?",
