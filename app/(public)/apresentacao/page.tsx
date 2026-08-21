@@ -44,6 +44,7 @@ export default function PresentationPage() {
             <div className="public-cta-row">
               <Link className="public-button" href="#funcionalidades">Conhecer as funcionalidades</Link>
               <Link className="public-button public-button-secondary" href="/manual">Abrir o manual</Link>
+              <Link className="public-button public-button-secondary" href="/apresentacao/proposta">Acessar proposta</Link>
             </div>
             <ul className="hero-trust-list" aria-label="Destaques do produto">
               <li>Controle físico confiável</li>
