@@ -1,0 +1,20 @@
+{
+  "sourceCommit": "a3b546f08f2f0c3c73e47c201d7e86c38c5de4ef",
+  "corpusVersion": 1,
+  "caseCount": 152,
+  "capturedAt": "2026-08-21",
+  "score": 65.1,
+  "dimensions": {
+    "routing": 65.1,
+    "entityParsing": 58.3,
+    "context": null,
+    "semanticContract": 65.6,
+    "safety": 75
+  },
+  "knownFailureCount": 53,
+  "notes": [
+    "Baseline captured before routing/parser corrections.",
+    "The first corpus revision did not yet include dedicated multi-turn cases, so context was not scored.",
+    "The runtime artifacts remain ignored; this compact baseline is intentionally versioned for comparison."
+  ]
+}
