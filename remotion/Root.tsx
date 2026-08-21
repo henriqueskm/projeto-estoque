@@ -6,7 +6,7 @@ export function RemotionRoot() {
     <Composition
       id="AssistantConversationDemo"
       component={AssistantConversationDemo}
-      durationInFrames={600}
+      durationInFrames={990}
       fps={30}
       width={1920}
       height={1080}

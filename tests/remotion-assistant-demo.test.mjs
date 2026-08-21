@@ -9,12 +9,14 @@ test("AssistantConversationDemo is registered with the approved composition cont
   const composition = await read("remotion/compositions/AssistantConversationDemo.tsx");
 
   assert.match(root, /id="AssistantConversationDemo"/);
-  assert.match(root, /durationInFrames=\{600\}/);
+  assert.match(root, /durationInFrames=\{990\}/);
   assert.match(root, /fps=\{30\}/);
   assert.match(root, /width=\{1920\}/);
   assert.match(root, /height=\{1080\}/);
-  assert.match(composition, /Sequence from=\{270\}/);
-  assert.match(composition, /Sequence from=\{510\}/);
+  assert.match(composition, /ASSISTANT_DEMO_DURATION = 990/);
+  assert.match(composition, /Sequence from=\{0\} durationInFrames=\{540\}/);
+  assert.match(composition, /Sequence from=\{528\} durationInFrames=\{384\}/);
+  assert.match(composition, /Sequence from=\{906\} durationInFrames=\{84\}/);
 });
 
 test("the demo fixture is local, typed and matches the approved screenshots", async () => {
@@ -65,6 +67,9 @@ test("composition animation is frame-driven and has no CSS timeline", async () =
   assert.match(source, /interpolate/);
   assert.match(source, /spring/);
   assert.match(source, /translate:\s*`0 \$\{scroll\}px`/);
+  assert.match(source, /\[0, 362, 382, 516\], \[0, 0, -340, -340\]/);
+  assert.match(source, /\[0, 228, 250, 360\], \[0, 0, -220, -220\]/);
+  assert.match(source, /durationInFrames: 14/);
   assert.doesNotMatch(source, /animation(Name)?\s*:|transition\s*:/i);
 });
 
@@ -83,6 +88,10 @@ test("public integration lazily loads Player and preserves static reduced-motion
   assert.match(boundary, /<AssistantDemoFallback \/>/);
   assert.match(runtime, /from "@remotion\/player"/);
   assert.match(runtime, /autoPlay/);
+  assert.match(runtime, /loop=\{false\}/);
+  assert.doesNotMatch(runtime, /\n\s*loop\s*[\n\r]/);
+  assert.match(boundary, /rootMargin: "0px 0px -12% 0px"/);
+  assert.match(boundary, /threshold: 0\.35/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 

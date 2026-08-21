@@ -23,12 +23,12 @@ export function entrance(
   const progress = spring({
     frame: frame - startFrame,
     fps,
-    config: {damping: 18, mass: 0.8, stiffness: 130},
-    durationInFrames: 24,
+    config: {damping: 20, mass: 0.8, stiffness: 140},
+    durationInFrames: 14,
   });
 
   return {
     opacity: interpolate(progress, [0, 1], [0, 1]),
-    transform: `translateY(${interpolate(progress, [0, 1], [distance, 0])}px)`,
+    translate: `0 ${interpolate(progress, [0, 1], [distance, 0])}px`,
   };
 }

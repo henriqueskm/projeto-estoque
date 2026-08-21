@@ -3,7 +3,7 @@ import {AssistantChrome, ChatMessage, demoColors} from "../components/AssistantC
 import {assistantDemoFixture} from "../data/assistant-demo-fixture";
 import {entrance, fadeWindow} from "../utils/animation";
 
-const sceneDuration = 300;
+const sceneDuration = 540;
 
 export function InventoryConversationScene() {
   const frame = useCurrentFrame();
@@ -11,7 +11,7 @@ export function InventoryConversationScene() {
   const inventory = assistantDemoFixture.inventory;
   const mountedConfigurationBreakdown = inventory.mountedConfigurationBreakdown;
   const hasCompleteMountedBreakdown = mountedConfigurationBreakdown.kind === "complete";
-  const scroll = interpolate(frame, [0, 250], [0, -310], {
+  const scroll = interpolate(frame, [0, 362, 382, 516], [0, 0, -340, -340], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -20,17 +20,17 @@ export function InventoryConversationScene() {
     <div style={{position: "absolute", inset: 0, opacity: fadeWindow(frame, sceneDuration, 14, 24), background: "radial-gradient(circle at 25% 15%, #334047 0%, #171d21 55%, #0d1114 100%)"}}>
       <AssistantChrome>
         <div style={{position: "absolute", inset: 0, padding: "38px 54px 70px", translate: `0 ${scroll}px`}}>
-          <ChatMessage side="user" style={entrance(frame, fps, 8)}>
+          <ChatMessage side="user" style={entrance(frame, fps, 30, 16)}>
             Quanto tem do {inventory.model}?
           </ChatMessage>
-          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 42)}}>
+          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 82, 16)}}>
             <div>Você tem <strong>{inventory.totalQuantity} {inventory.model}</strong> no total.</div>
             <div style={{marginTop: 10, color: demoColors.muted, fontSize: 23}}>Se quiser, separo quantos estão com kit e quantos estão sem kit.</div>
           </ChatMessage>
-          <ChatMessage side="user" style={{marginTop: 24, ...entrance(frame, fps, 88)}}>
+          <ChatMessage side="user" style={{marginTop: 24, ...entrance(frame, fps, 176, 16)}}>
             Quantos com kit?
           </ChatMessage>
-          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 124)}}>
+          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 226, 16)}}>
             <div>Você tem <strong>{inventory.mountedQuantity} {inventory.model}</strong> montados com kit.</div>
             <div style={{marginTop: 10, color: demoColors.muted, fontSize: 23}}>
               {hasCompleteMountedBreakdown
@@ -38,16 +38,16 @@ export function InventoryConversationScene() {
                 : "Posso mostrar uma configuração do modelo com saldo montado."}
             </div>
           </ChatMessage>
-          <ChatMessage side="user" style={{marginTop: 24, ...entrance(frame, fps, 168)}}>Sim</ChatMessage>
-          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 198)}}>
+          <ChatMessage side="user" style={{marginTop: 24, ...entrance(frame, fps, 326, 16)}}>Sim</ChatMessage>
+          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 362, 16)}}>
             <div>
               {hasCompleteMountedBreakdown
                 ? <>Esses <strong>{inventory.mountedQuantity} {inventory.model}</strong> montados com kit estão distribuídos nestas configurações:</>
                 : <>Esta é uma configuração do modelo <strong>{inventory.model}</strong> com saldo montado:</>}
             </div>
             <div style={{marginTop: 20, overflow: "hidden", border: `1px solid ${demoColors.border}`, borderRadius: 20, background: "#faf9f6"}}>
-              <div style={{padding: "15px 20px", color: "#9a6a28", fontSize: 15, fontWeight: 950, letterSpacing: 2.2}}>CONFIGURAÇÕES COM KIT</div>
-              <div style={{padding: "0 20px 12px", color: demoColors.muted, fontSize: 17, fontWeight: 700}}>Configurações do modelo {inventory.model}</div>
+              <div style={{padding: "15px 20px", color: "#9a6a28", fontSize: 15, fontWeight: 950, letterSpacing: 2.2, ...entrance(frame, fps, 368, 12)}}>CONFIGURAÇÕES COM KIT</div>
+              <div style={{padding: "0 20px 12px", color: demoColors.muted, fontSize: 17, fontWeight: 700, ...entrance(frame, fps, 374, 12)}}>Configurações do modelo {inventory.model}</div>
               {mountedConfigurationBreakdown.configurations.map((configuration, index) => (
                 <div
                   key={configuration.code}
@@ -59,7 +59,7 @@ export function InventoryConversationScene() {
                     padding: "16px 20px",
                     borderTop: `1px solid ${demoColors.border}`,
                     background: "white",
-                    ...entrance(frame, fps, 214 + index * 10, 16),
+                    ...entrance(frame, fps, 380 + index * 7, 12),
                   }}
                 >
                   <div>

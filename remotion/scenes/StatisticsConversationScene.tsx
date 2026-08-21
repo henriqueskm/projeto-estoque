@@ -3,13 +3,13 @@ import {AssistantChrome, ChatMessage, demoColors} from "../components/AssistantC
 import {assistantDemoFixture} from "../data/assistant-demo-fixture";
 import {entrance, fadeWindow} from "../utils/animation";
 
-const sceneDuration = 270;
+const sceneDuration = 384;
 
 export function StatisticsConversationScene() {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const statistics = assistantDemoFixture.statistics;
-  const scroll = interpolate(frame, [0, 225], [0, -220], {
+  const scroll = interpolate(frame, [0, 228, 250, 360], [0, 0, -220, -220], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -18,19 +18,19 @@ export function StatisticsConversationScene() {
     <div style={{position: "absolute", inset: 0, opacity: fadeWindow(frame, sceneDuration, 24, 24), background: "radial-gradient(circle at 72% 15%, #2f3a41 0%, #171d21 58%, #0d1114 100%)"}}>
       <AssistantChrome>
         <div style={{position: "absolute", inset: 0, padding: "38px 54px 70px", translate: `0 ${scroll}px`}}>
-          <ChatMessage side="user" style={entrance(frame, fps, 8)}>
+          <ChatMessage side="user" style={entrance(frame, fps, 30, 16)}>
             Qual Servo com kit mais saiu nos últimos {statistics.periodDays} dias?
           </ChatMessage>
-          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 42)}}>
+          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 82, 16)}}>
             <div>Considerando as <strong>saídas externas</strong> dos últimos {statistics.periodDays} dias, o <strong>Cód. {statistics.leadingCode}</strong> ficou em primeiro entre Servos com kit, com <strong>{statistics.leadingQuantity} unidades</strong>.</div>
             <div style={{marginTop: 10, color: demoColors.muted, fontSize: 23}}>Posso mostrar o ranking de até cinco configurações com mais saídas.</div>
           </ChatMessage>
-          <ChatMessage side="user" style={{marginTop: 24, ...entrance(frame, fps, 104)}}>Sim</ChatMessage>
-          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 138)}}>
+          <ChatMessage side="user" style={{marginTop: 24, ...entrance(frame, fps, 182, 16)}}>Sim</ChatMessage>
+          <ChatMessage side="assistant" style={{marginTop: 24, ...entrance(frame, fps, 228, 16)}}>
             <div style={{width: 880, maxWidth: "100%", overflow: "hidden", border: `1px solid ${demoColors.border}`, borderRadius: 22, background: "#faf9f6"}}>
-              <div style={{padding: "16px 20px", color: "#9a6a28", fontSize: 15, fontWeight: 950, letterSpacing: 2.1}}>ESTATÍSTICAS · ÚLTIMOS {statistics.periodDays} DIAS</div>
-              <div style={{padding: "0 20px 17px", fontSize: 27, fontWeight: 950}}>Ranking · Servos com kit</div>
-              <div style={{display: "grid", gridTemplateColumns: "58px 1fr 120px", alignItems: "center", gap: 16, padding: "18px 20px", borderTop: `1px solid ${demoColors.border}`, background: "white"}}>
+              <div style={{padding: "16px 20px", color: "#9a6a28", fontSize: 15, fontWeight: 950, letterSpacing: 2.1, ...entrance(frame, fps, 234, 12)}}>ESTATÍSTICAS · ÚLTIMOS {statistics.periodDays} DIAS</div>
+              <div style={{padding: "0 20px 17px", fontSize: 27, fontWeight: 950, ...entrance(frame, fps, 240, 12)}}>Ranking · Servos com kit</div>
+              <div style={{display: "grid", gridTemplateColumns: "58px 1fr 120px", alignItems: "center", gap: 16, padding: "18px 20px", borderTop: `1px solid ${demoColors.border}`, background: "white", ...entrance(frame, fps, 246, 12)}}>
                 <div style={{display: "grid", width: 48, height: 48, placeItems: "center", borderRadius: 15, background: "#f5e4be", color: "#8a591b", fontSize: 19, fontWeight: 950}}>1º</div>
                 <div>
                   <div style={{fontSize: 22, fontWeight: 950}}>Cód. {statistics.leadingCode}</div>

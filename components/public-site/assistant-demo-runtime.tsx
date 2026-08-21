@@ -19,7 +19,7 @@ export default function AssistantDemoRuntime() {
         compositionHeight={ASSISTANT_DEMO_HEIGHT}
         fps={ASSISTANT_DEMO_FPS}
         autoPlay
-        loop
+        loop={false}
         controls
         acknowledgeRemotionLicense
         style={{width: "100%", aspectRatio: "16 / 9"}}
