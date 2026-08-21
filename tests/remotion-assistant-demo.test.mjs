@@ -68,7 +68,7 @@ test("composition animation is frame-driven and has no CSS timeline", async () =
   assert.match(source, /spring/);
   assert.match(source, /translate:\s*`0 \$\{scroll\}px`/);
   assert.match(source, /\[0, 362, 382, 516\], \[0, 0, -340, -340\]/);
-  assert.match(source, /\[0, 228, 250, 360\], \[0, 0, -220, -220\]/);
+  assert.match(source, /\[0, 210, 232, 360\], \[0, 0, -220, -220\]/);
   assert.match(source, /durationInFrames: 14/);
   assert.doesNotMatch(source, /animation(Name)?\s*:|transition\s*:/i);
 });
