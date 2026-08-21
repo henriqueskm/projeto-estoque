@@ -23,6 +23,7 @@ import {
   SendIcon,
 } from "@/components/icons";
 import { AssistantMessageContent } from "@/components/assistant-message-content";
+import { AssistantCameraCapture } from "@/components/assistant-camera-capture";
 import { AssistantNewConversationDialog } from "@/components/assistant-new-conversation-dialog";
 import { AssistantRestoredMediaControl } from "@/components/assistant-restored-media-control";
 import { AssistantStructuredBlockView } from "@/components/assistant-structured-block";
@@ -175,6 +176,7 @@ export function AssistantHome({
   } = useAssistantConversation();
   const [attachment, setAttachment] = useState<LocalAttachment | null>(null);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
+  const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
   const [isNewConversationDialogOpen, setIsNewConversationDialogOpen] =
     useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -412,17 +414,10 @@ export function AssistantHome({
     });
   }
 
-  async function handleImageSelection(
-    event: ChangeEvent<HTMLInputElement>,
+  async function prepareSelectedImage(
+    file: File,
     source: LocalAttachment["source"],
   ) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file) {
-      return;
-    }
-
     const initialPreviewUrl = URL.createObjectURL(file);
     setAttachment({ file, previewUrl: initialPreviewUrl, source, status: "preparing" });
     setFeedback("Preparando imagem...");
@@ -450,6 +445,17 @@ export function AssistantHome({
       );
     } finally {
       window.requestAnimationFrame(() => textareaRef.current?.focus());
+    }
+  }
+
+  function handleImageSelection(
+    event: ChangeEvent<HTMLInputElement>,
+    source: LocalAttachment["source"],
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) {
+      void prepareSelectedImage(file, source);
     }
   }
 
@@ -1696,7 +1702,7 @@ export function AssistantHome({
                       type="button"
                       onClick={() => {
                         setIsAttachmentMenuOpen(false);
-                        cameraInputRef.current?.click();
+                        setIsCameraCaptureOpen(true);
                       }}
                       className="nk-focus flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-black text-text-primary transition hover:bg-app-background"
                     >
@@ -1787,6 +1793,25 @@ export function AssistantHome({
           );
         }}
         onConfirm={confirmNewConversation}
+      />
+      <AssistantCameraCapture
+        isOpen={isCameraCaptureOpen}
+        onClose={() => {
+          setIsCameraCaptureOpen(false);
+          window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+        }}
+        onUsePhoto={(file) => {
+          setIsCameraCaptureOpen(false);
+          void prepareSelectedImage(file, "camera");
+        }}
+        onNativeCameraFallback={() => {
+          setIsCameraCaptureOpen(false);
+          window.requestAnimationFrame(() => cameraInputRef.current?.click());
+        }}
+        onGalleryFallback={() => {
+          setIsCameraCaptureOpen(false);
+          window.requestAnimationFrame(() => galleryInputRef.current?.click());
+        }}
       />
       <PwaInstallPrompt />
     </main>
