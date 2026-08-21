@@ -18,7 +18,7 @@ function normalizeAssistantText(value: string) {
     .toLocaleLowerCase("pt-BR").trim();
 }
 
-const commandPattern = /^\s*(?:(?:quero|preciso|pode)\s+)?(?:(?:desmonte|desmontar|desmonta|desmontagem)\b|(?:(?:fa[cç]a|faz|realize)\s+(?:(?:a|uma)\s+)?desmontagem(?:\s+de)?)|(?:abra|abrir)\s+)\s*/iu;
+const commandPattern = /^\s*(?:(?:quero|preciso|pode)\s+)?(?:(?:desmonte|desmontar|desmonta|desmontagem)\b|(?:(?:fa[cç]a|faz|realize)\s+(?:(?:a|uma)\s+)?desmontagem(?:\s+de)?)|(?:abra|abrir|abre)\s+)\s*/iu;
 
 function parseQuantityWord(value: string) {
   const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
@@ -58,7 +58,7 @@ export function routeConfigurationDisassemblyAction(rawMessage: string): Configu
   if (/^(cancelar|cancele)(?:\s+(?:esta|a))?\s+desmontagem\s*[?!.]*$/iu.test(rawMessage.trim())) {
     return { kind: "CANCEL" };
   }
-  const opensBoxes = /\b(?:abra|abrir)\b.{0,30}\bcaixas?\b/.test(normalized);
+  const opensBoxes = /\b(?:abra|abrir|abre)\b.{0,30}\bcaixas?\b/.test(normalized);
   if ((!/\bdesmont(?:a|e|ar|agem)\b/.test(normalized) && !opensBoxes) || !commandPattern.test(rawMessage)) {
     return { kind: "NOT_CONFIGURATION_DISASSEMBLY" };
   }

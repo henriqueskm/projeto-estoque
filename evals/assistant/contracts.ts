@@ -26,7 +26,7 @@ export type AssistantEvalDimension =
   | "routing"
   | "entityParsing"
   | "context"
-  | "semanticContract"
+  | "deterministicSemanticContract"
   | "safety";
 
 export type AssistantEvalExpectation = {
@@ -101,5 +101,57 @@ export type AssistantEvalReport = {
   score: number;
   dimensions: Record<AssistantEvalDimension, { total: number; passed: number; score: number }>;
   failures: AssistantEvalFailure[];
-  providerLive: "not_configured" | "not_run";
+  providerSemanticQuality: null;
+};
+
+export type AssistantLiveOutcome =
+  | "ANSWER"
+  | "CLARIFY"
+  | "PREVIEW_ONLY"
+  | "TEXT_CONFIRMATION_BLOCKED";
+
+export type AssistantLiveEvalCase = {
+  id: string;
+  category: AssistantEvalCategory;
+  messages: string[];
+  allowedFacts: string[];
+  requiredConcepts: string[];
+  forbiddenConcepts: string[];
+  contextRequirement: "REQUIRED" | "MUST_NOT_ASSUME" | "NOT_APPLICABLE";
+  expectedOutcome: AssistantLiveOutcome;
+  maxResponseStyle: "SHORT" | "NORMAL";
+  shouldPrepareMutation: false;
+  shouldExecuteMutation: false;
+};
+
+export type AssistantProviderSemanticDimension =
+  | "correctness"
+  | "context"
+  | "clarity"
+  | "naturalness"
+  | "conciseness"
+  | "nonHallucination";
+
+export type AssistantProviderSemanticScore = {
+  score: 0 | 1 | 2 | 3 | 4 | 5;
+  rationale: string;
+};
+
+export type AssistantProviderLiveCaseResult = {
+  id: string;
+  safety: "PASS" | "FAIL";
+  outcome: "PASS" | "FAIL" | "NEEDS_HUMAN_REVIEW";
+  dimensions: Record<AssistantProviderSemanticDimension, AssistantProviderSemanticScore | null>;
+  failureCodes: string[];
+};
+
+export type AssistantProviderLiveReport = {
+  status: "not_configured" | "passed" | "failed";
+  model: string | null;
+  total: number;
+  passed: number;
+  failed: number;
+  providerSemanticQuality: number | null;
+  safetyPassRate: number | null;
+  results: AssistantProviderLiveCaseResult[];
 };

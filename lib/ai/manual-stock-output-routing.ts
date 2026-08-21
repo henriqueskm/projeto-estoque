@@ -19,7 +19,7 @@ function normalizeAssistantText(value: string) {
     .toLocaleLowerCase("pt-BR").trim();
 }
 
-const commandPattern = /^\s*(?:(?:quero|preciso|pode)\s+)?(?:(?:retire|retirar|tire|tirar|tira|remova|remover|remove|baixe|baixar|baixa)|(?:(?:registrar|registre|registra)\s+)?(?:uma\s+)?sa[ií]da|d[êe]\s+(?:sa[ií]da|baixa)(?:\s+em)?|dar\s+(?:sa[ií]da|baixa)(?:\s+em)?)\b\s*/iu;
+const commandPattern = /^\s*(?:(?:quero|preciso|pode)\s+)?(?:(?:retire|retirar|tire|tirar|tira|remova|remover|remove|baixe|baixar|baixa|desconte|descontar|desconta)|(?:(?:registrar|registre|registra)\s+)?(?:uma\s+)?sa[ií]da|d[êeáa]\s+(?:sa[ií]da|baixa)(?:\s+em)?|dar\s+(?:sa[ií]da|baixa)(?:\s+em)?)\b\s*/iu;
 
 type QuantityMatch = { quantity: number; index: number; length: number };
 
@@ -57,7 +57,7 @@ function cleanTarget(value: string, quantityMatch: QuantityMatch) {
     .replace(/[?!.,;:]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/^(?:(?:em|do|da|de|mais)\s+)+/iu, "")
+    .replace(/^(?:(?:em|no|na|do|da|de|mais)\s+)+/iu, "")
     .trim();
 }
 

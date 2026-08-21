@@ -98,7 +98,7 @@ function extractNegotiationNumber(message: string) {
   }
 
   const commandBoundary = remainder.search(
-    /\s+(?=(?:retire|retirar|marque|marcar|acrescente|registr(?:e|ar)|defina|definir|deixe|deixar)\b|mais\s+(?:\d{1,10}|uma?|um)\b)/,
+    /\s+(?=(?:retire|retirar|retira|tire|tirar|tira|marque|marcar|acrescente|registr(?:e|ar)|defina|definir|deixe|deixar|pegue|pegar)\b|mais\s+(?:\d{1,10}|uma?|um)\b)/,
   );
   const candidate = (
     commandBoundary >= 0
@@ -195,10 +195,10 @@ function extractPickupMode(message: string):
 
   const incrementQuantity = extractQuantity(message, [
     new RegExp(
-      `\\b(?:retire|retirar|retira|marque|marcar|marca|registre|registrar|pegue|pegar|pega)\\b.*?\\bmais\\s+${quantityCapture}\\b`,
+      `\\b(?:retire|retirar|retira|tire|tirar|tira|marque|marcar|marca|registre|registrar|pegue|pegar|pega)\\b.*?\\bmais\\s+${quantityCapture}\\b`,
     ),
     new RegExp(
-      `\\b(?:retire|retirar|retira|pegue|pegar|pega)\\s+${quantityCapture}(?:\\s+unidades?)?\\b`,
+      `\\b(?:retire|retirar|retira|tire|tirar|tira|pegue|pegar|pega)\\s+${quantityCapture}(?:\\s+unidades?)?\\b`,
     ),
     new RegExp(
       `\\bacrescente\\s+${quantityCapture}(?:\\s+unidades?)?(?:\\s+(?:como\\s+)?retirad[oa]s?)?\\b`,
@@ -330,7 +330,7 @@ export function routeSupplierOrderPickupAction(
 
   const ambiguousQuantity = extractQuantity(message, [
     new RegExp(
-      `\\b(?:retire|retirar|marque|marcar)\\s+${quantityCapture}\\b`,
+      `\\b(?:retire|retirar|retira|tire|tirar|tira|marque|marcar)\\s+${quantityCapture}\\b`,
     ),
   ]);
 
@@ -344,7 +344,7 @@ export function routeSupplierOrderPickupAction(
   }
 
   if (
-    /\b(?:retire|retirar|marque|marcar|pegue|pegar|pega|acrescente|registre|registrar|defina|definir|deixe|deixar)\b/.test(
+    /\b(?:retire|retirar|retira|tire|tirar|tira|marque|marcar|pegue|pegar|pega|acrescente|registre|registrar|defina|definir|deixe|deixar)\b/.test(
       message,
     )
   ) {

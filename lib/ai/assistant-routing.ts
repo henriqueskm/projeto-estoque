@@ -235,7 +235,7 @@ export function routeServoModelInventoryView(
     return "BREAKDOWN";
   }
 
-  if (/\b(sem\s+kit|separados?)\b/.test(normalizedMessage)) {
+  if (/\b(sem\s+kit|separados?|soltos?)\b/.test(normalizedMessage)) {
     return "LOOSE";
   }
 

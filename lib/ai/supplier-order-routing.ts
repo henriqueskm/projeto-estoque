@@ -494,7 +494,8 @@ function isSupplierOrderMessage(
     /\bparcialmente\s+retirados?\b/.test(message) ||
     /\b(?:o\s+que\s+)?falta\s+retirar\b/.test(message) ||
     /\b(?:o\s+que\s+)?foi\s+comprado\b/.test(message) ||
-    /\bquanto\s+falta\s+(?:entrar|dar\s+entrada)\s+(?:no\s+)?estoque\b/.test(message) ||
+    /\bquanto\s+falta\s+(?:entrar|dar\s+entrada|colocar)\s+(?:no\s+)?estoque\b/.test(message) ||
+    (hasContext && /^(?:e\s+)?(?:o\s+que\s+)?(?:ainda\s+)?falta\s+colocar\s+no\s+estoque\b/.test(message)) ||
     /\bquanto\s+(?:eu\s+)?pedi\b/.test(message) ||
     /\bquanto\b.{0,45}\b(retirad[oa]s?|retirar|aguarda(?:m)?\s+entrada)\b/.test(
       message,
@@ -650,7 +651,7 @@ export function routeSupplierOrderQuestion(
     /\b(retirados?|retirada)\b.{0,45}\b(ainda\s+nao|nao)\b.{0,20}\b(lancados?|estoque|entrada)\b/.test(
       message,
     ) ||
-    /\b(falta|faltam)\b.{0,20}\b(entrar|entrada)\b.{0,20}\bestoque\b/.test(
+    /\b(falta|faltam)\b.{0,20}\b(entrar|entrada|colocar)\b.{0,20}\bestoque\b/.test(
       message,
     )
       ? true

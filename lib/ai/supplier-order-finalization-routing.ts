@@ -37,7 +37,7 @@ export function routeSupplierOrderFinalizationAction(
   }
 
   const match = message.match(
-    /^\s*(?:(?:pode\s+)?(?:finalize|finalizar|encerrar|concluir))\s+(?:o\s+)?pedido(?:\s+(?:n(?:[úu]mero)?\s*)?(.+?))?\s*[?!.]*\s*$/iu,
+    /^\s*(?:(?:pode\s+)?(?:finalize|finalizar|encerre|encerrar|encerra|concluir))\s+(?:o\s+)?pedido(?:\s+(?:n(?:[úu]mero)?\s*)?(.+?))?\s*[?!.]*\s*$/iu,
   );
 
   if (!match) {

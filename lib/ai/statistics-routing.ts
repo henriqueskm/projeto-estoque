@@ -91,7 +91,7 @@ function explicitIntent(message: string): { intent: AssistantStatisticsIntent; c
 
 function contextualIntent(message: string, context: AssistantConversationContext) {
   if (context.topic !== "STATISTICS" || !context.statisticsIntent) return null;
-  if (context.statisticsIntent === "SUMMARY" && /^(?:e\s+)?(?:as\s+)?entradas$/.test(message)) {
+  if (context.statisticsIntent === "SUMMARY" && /^(?:e\s+)?(?:as\s+)?entradas(?:\s+mesmo)?$/.test(message)) {
     return { intent: "INBOUND_COMPARISON" as const, code: null };
   }
   if (context.statisticsIntent === "SUMMARY" && /^(?:e\s+)?(?:as\s+)?saidas(?: externas)?$/.test(message)) {

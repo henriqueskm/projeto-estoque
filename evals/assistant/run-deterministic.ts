@@ -182,23 +182,27 @@ function evaluateCase(caseItem: AssistantEvalCase): AssistantEvalFailure | null 
   }
 }
 
-export function runAssistantDeterministicEvaluation(): AssistantEvalReport {
-  const failures = assistantEvalCases.map(evaluateCase).filter((item): item is AssistantEvalFailure => Boolean(item));
-  const dimensions = Object.fromEntries((["routing", "entityParsing", "context", "semanticContract", "safety"] as AssistantEvalDimension[]).map((dimension) => {
-    const total = assistantEvalCases.filter((item) => item.dimensions.includes(dimension)).length;
+export function runAssistantEvaluation(cases: readonly AssistantEvalCase[], corpusVersion = 1): AssistantEvalReport {
+  const failures = cases.map(evaluateCase).filter((item): item is AssistantEvalFailure => Boolean(item));
+  const dimensions = Object.fromEntries((["routing", "entityParsing", "context", "deterministicSemanticContract", "safety"] as AssistantEvalDimension[]).map((dimension) => {
+    const total = cases.filter((item) => item.dimensions.includes(dimension)).length;
     const failed = failures.filter((item) => item.dimensions.includes(dimension)).length;
     return [dimension, { total, passed: total - failed, score: total ? Number((((total - failed) / total) * 100).toFixed(1)) : 100 }];
   })) as AssistantEvalReport["dimensions"];
   return {
-    corpusVersion: 1,
-    total: assistantEvalCases.length,
-    passed: assistantEvalCases.length - failures.length,
+    corpusVersion,
+    total: cases.length,
+    passed: cases.length - failures.length,
     failed: failures.length,
-    score: Number((((assistantEvalCases.length - failures.length) / assistantEvalCases.length) * 100).toFixed(1)),
+    score: Number((((cases.length - failures.length) / cases.length) * 100).toFixed(1)),
     dimensions,
     failures,
-    providerLive: process.env.GEMINI_API_KEY ? "not_run" : "not_configured",
+    providerSemanticQuality: null,
   };
+}
+
+export function runAssistantDeterministicEvaluation() {
+  return runAssistantEvaluation(assistantEvalCases);
 }
 
 export async function writeAssistantEvalArtifacts(report = runAssistantDeterministicEvaluation()) {

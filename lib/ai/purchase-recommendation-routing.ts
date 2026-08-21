@@ -69,6 +69,7 @@ export function routePurchaseRecommendationQuestion(
       normalized,
     ) ||
     /\bja\s+tem\s+(?:algo\s+)?comprad[oa]s?\b/.test(normalized) ||
+    /\bo\s+que\s+ja\s+(?:foi\s+)?pedi\s+para\s+comprar\b/.test(normalized) ||
     /\babaixo\b.{0,35}\bminimo\b.{0,35}\b(?:em|no|nos)\s+pedidos?\b/.test(
       normalized,
     );
@@ -85,6 +86,7 @@ export function routePurchaseRecommendationQuestion(
     ) ||
     /\bo\s+que\s+falta\s+comprar\s+hoje\b/.test(normalized) ||
     /\bo\s+que\s+esta\s+faltando\b/.test(normalized) ||
+    /\b(?:relacao|lista)\s+do\s+que\s+esta\s+faltando\b/.test(normalized) ||
     /\bo\s+que\s+(?:eu\s+)?preciso\s+repor\b/.test(normalized) ||
     /\bqual\s+(?:e\s+)?a\s+lista\s+de\s+compra\b/.test(normalized) ||
     /\blista\s+recomendada\s+de\s+compra\b/.test(normalized);

@@ -52,7 +52,7 @@ function normalizeAssistantText(value: string) {
 }
 
 const manualStockEntryCommandPattern =
-  /^\s*(?:(?:quero|preciso|pode)\s+)?(?:(?:de\s+entrada|dar\s+entrada|entrada|entra(?:r)?)(?:\s+manual)?|(?:registrar|registre|registra)(?:\s+(?:uma|a))?\s+entrada(?:\s+manual)?|adicione|adicionar|adiciona|coloque|coloca(?:r)?|p[oõ]e|lance|lancar)\b\s*/iu;
+  /^\s*(?:(?:quero|preciso|pode)\s+)?(?:(?:(?:de|da|dar)\s+entrada|entrada|entra(?:r)?)(?:\s+manual)?|(?:registrar|registre|registra)(?:\s+(?:uma|a))?\s+entrada(?:\s+manual)?|adicione|adicionar|adiciona|coloque|coloca(?:r)?|p[oõ]e|por|bote|botar|bota|lance|lancar|lanca)\b\s*/iu;
 
 type QuantityMatch = {
   quantity: number;
@@ -97,6 +97,7 @@ function cleanManualStockEntryTarget(value: string, quantityMatch: QuantityMatch
 
   return withoutQuantity
     .replace(/\b(?:no|na|ao|para\s+o)\s+estoque\b/giu, " ")
+    .replace(/\b(?:pra|para)\s+mim\b/giu, " ")
     .replace(/\b(?:servo\s+)?(?:com|sem)\s+kit\b/giu, " ")
     .replace(/\b(?:kit\s+de\s+instala[cç][aã]o|kit\s+de\s+reparo|pe[cç]a\s+avulsa|pe[cç]a)\b/giu, " ")
     .replace(/[?!.,;:]+$/g, "")
@@ -136,7 +137,7 @@ export function routeManualStockEntryAction(rawMessage: string): ManualStockEntr
       ? { kind: "ACTION", request: detailsReply }
       : { kind: "NOT_MANUAL_STOCK_ENTRY" };
   }
-  if (/-\s*\d+\s+unidades?\b/.test(message) || /\b\d+[,.]\d+\s+unidades?\b/.test(message) || /\b\d{11,}\b/.test(message)) {
+  if (/(?:^|\s)-\s*\d+(?:\s+unidades?)?\b/.test(message) || /\b\d+[,.]\d+(?:\s+unidades?)?\b/.test(message) || /\b\d{11,}\b/.test(message)) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a entrada manual." };
   }
 
