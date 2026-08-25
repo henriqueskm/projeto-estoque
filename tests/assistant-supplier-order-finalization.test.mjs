@@ -140,7 +140,7 @@ test("roteia somente frases explícitas de finalização e texto nunca confirma"
     "finalize o pedido 1212",
     "FINALIZAR PEDIDO 40971!",
     "pode encerrar o pedido 1212?",
-    "concluir o pedido PED-104.",
+    "concluir o pedido 104.",
   ]) {
     const route = routeSupplierOrderFinalizationAction(phrase);
     assert.equal(route.kind, "ACTION", phrase);
@@ -160,6 +160,10 @@ test("roteia somente frases explícitas de finalização e texto nunca confirma"
 
   for (const phrase of ["sim", "confirmar", "pode finalizar"]) {
     assert.equal(routeSupplierOrderFinalizationAction(phrase).kind, "BUTTON_CONFIRMATION_TEXT", phrase);
+  }
+
+  for (const phrase of ["finalizar pedido", "finalizar pedido 12-12", "finalizar pedido 12 12"]) {
+    assert.equal(routeSupplierOrderFinalizationAction(phrase).kind, "INVALID", phrase);
   }
 });
 

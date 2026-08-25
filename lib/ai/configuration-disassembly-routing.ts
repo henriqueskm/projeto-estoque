@@ -18,16 +18,18 @@ function normalizeAssistantText(value: string) {
     .toLocaleLowerCase("pt-BR").trim();
 }
 
-const commandPattern = /^\s*(?:desmonte|desmontar|desmontagem|quero\s+desmontar|fa[cç]a\s+(?:a\s+)?desmontagem\s+(?:de\s+)?|realize\s+(?:a\s+)?desmontagem\s+(?:de\s+)?)\b\s*/iu;
+const commandPattern = /^\s*(?:(?:quero|preciso|pode)\s+)?(?:(?:desmonte|desmontar|desmonta|desmontagem)\b|(?:(?:fa[cç]a|faz|realize)\s+(?:(?:a|uma)\s+)?desmontagem(?:\s+de)?)|(?:abra|abrir|abre)\s+)\s*/iu;
 
 function parseQuantityWord(value: string) {
-  return /^(?:um|uma)$/iu.test(value) ? 1 : Number(value);
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  const words: Record<string, number> = { um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10 };
+  return words[normalized] ?? Number(value.replace(/^\+/, ""));
 }
 
 function extractQuantity(value: string) {
   for (const pattern of [
-    /\b(?:quantidade\s+de\s+)?(\d{1,10}|um|uma)\s+unidades?\b/iu,
-    /^\s*(\d{1,10}|um|uma)\b/iu,
+    /\b(?:quantidade\s+de\s+)?(\+?\d{1,10}|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)\s+unidades?\b/iu,
+    /^\s*(?:mais\s+)?(\+?\d{1,10}|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)\b/iu,
   ]) {
     const match = pattern.exec(value);
     if (match?.[1]) return { quantity: parseQuantityWord(match[1]), index: match.index, length: match[0].length };
@@ -37,7 +39,7 @@ function extractQuantity(value: string) {
 
 function cleanTarget(value: string, quantityMatch: { index: number; length: number }) {
   return `${value.slice(0, quantityMatch.index)} ${value.slice(quantityMatch.index + quantityMatch.length)}`
-    .replace(/\b(?:servos?\s+com\s+kit|caixas?\s+completas?|configura[cç][aã]o\s+comercial)\b/giu, " ")
+    .replace(/\b(?:servos?\s+com\s+kit|caixas?(?:\s+completas?)?|configura[cç][aã]o\s+comercial)\b/giu, " ")
     .replace(/\b(?:do|da|de|no|na|para\s+o)\s+estoque\b/giu, " ")
     .replace(/\bc[oó]d(?:igo)?\.?\s*/giu, " ")
     .replace(/\b(?:dessa|desta)\s+configura[cç][aã]o\b/giu, " ")
@@ -56,10 +58,11 @@ export function routeConfigurationDisassemblyAction(rawMessage: string): Configu
   if (/^(cancelar|cancele)(?:\s+(?:esta|a))?\s+desmontagem\s*[?!.]*$/iu.test(rawMessage.trim())) {
     return { kind: "CANCEL" };
   }
-  if (!/\bdesmont(?:e|ar|agem)\b/.test(normalized) || !commandPattern.test(rawMessage)) {
+  const opensBoxes = /\b(?:abra|abrir|abre)\b.{0,30}\bcaixas?\b/.test(normalized);
+  if ((!/\bdesmont(?:a|e|ar|agem)\b/.test(normalized) && !opensBoxes) || !commandPattern.test(rawMessage)) {
     return { kind: "NOT_CONFIGURATION_DISASSEMBLY" };
   }
-  if (/-\s*\d+\s+unidades?\b/.test(normalized)) {
+  if (/-\s*\d+\s+unidades?\b/.test(normalized) || /\b\d+[,.]\d+\s+unidades?\b/.test(normalized) || /\b\d{11,}\b/.test(normalized)) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a desmontagem." };
   }
   const withoutCommand = rawMessage.replace(commandPattern, "");

@@ -1,0 +1,35 @@
+{
+  "suite": "NK-AI-EVAL-001A held-out initial",
+  "executedBeforeRouterChanges": true,
+  "total": 40,
+  "passed": 23,
+  "failed": 17,
+  "score": 57.5,
+  "dimensions": {
+    "routing": 57.9,
+    "entityParsing": 51.6,
+    "context": 25,
+    "deterministicSemanticContract": 46.7,
+    "safety": 90
+  },
+  "failureIds": [
+    "held-out-entry-001",
+    "held-out-entry-002",
+    "held-out-entry-003",
+    "held-out-entry-004",
+    "held-out-output-002",
+    "held-out-output-003",
+    "held-out-disassembly-001",
+    "held-out-pickup-001",
+    "held-out-order-entry-001",
+    "held-out-order-entry-003",
+    "held-out-finalization-001",
+    "held-out-purchase-001",
+    "held-out-purchase-002",
+    "held-out-context-002",
+    "held-out-context-003",
+    "held-out-context-004",
+    "held-out-adversarial-004"
+  ],
+  "note": "Recorded before the routing changes in NK-AI-EVAL-001A. The historic 157-case corpus was not modified."
+}

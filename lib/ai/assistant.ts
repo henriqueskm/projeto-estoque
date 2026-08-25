@@ -1529,7 +1529,9 @@ export async function answerAssistantQuestion(
 
   if (pickupRoute.kind === "PICKUP_ACTION") {
     return createAssistantSupplierOrderPickupPreview(
-      pickupRoute.request,
+      pickupRoute.request.catalogCode || !lastSupplierOrderCatalogCode
+        ? pickupRoute.request
+        : { ...pickupRoute.request, catalogCode: lastSupplierOrderCatalogCode },
       {
         userId,
         profileName,
