@@ -14,6 +14,7 @@ test("a new or restored empty conversation starts at its saved scroll position",
 
 test("Assistant shortcuts expose operations without shifting the conversation for a floating menu", () => {
   const home = read("components/assistant-home.tsx");
+  const sidebar = read("components/app-sidebar.tsx");
   const structured = read("components/assistant-structured-block.tsx");
 
   assert.match(home, /label: "Preparar entrada"/);
@@ -23,9 +24,9 @@ test("Assistant shortcuts expose operations without shifting the conversation fo
   assert.match(home, /prompt: "Dê saída manual\."/);
   assert.match(home, /context\?\.openOrderPhotoPicker/);
   assert.match(structured, /option\.id === "initial-order-photo"/);
-  assert.match(home, /aria-label="Nova conversa"/);
-  assert.match(home, /<span className="sr-only">Nova conversa<\/span>/);
-  assert.match(home, /onClick=\{handleNewConversationRequest\}/);
+  assert.match(sidebar, /aria-label="Nova conversa"/);
+  assert.match(sidebar, /assistantNewConversationRequestEvent/);
+  assert.match(home, /addEventListener\([\s\S]*assistantNewConversationRequestEvent/);
   assert.doesNotMatch(home, /isConversationMenuOpen/);
   assert.doesNotMatch(home, /flex-col gap-4 pr-12/);
   assert.match(home, /role="log"/);
@@ -38,7 +39,10 @@ test("Assistant chat keeps transcription feedback below the composer controls", 
   const voice = read("components/assistant-voice-dictation.tsx");
 
   assert.match(home, /bg-gradient-to-b from-app-background via-app-background\/95 to-transparent/);
+  assert.match(home, /className="relative flex h-dvh min-h-0 flex-col overflow-hidden"/);
   assert.match(home, /<BrandMark variant="full" size="lg"/);
+  assert.doesNotMatch(home, /<header className=/);
+  assert.match(read("components/app-sidebar.tsx"), /isAssistantHome \? \(/);
   assert.doesNotMatch(home, /Consultas e fotos de Pedido geram prévias/);
   assert.match(voice, /order-last basis-full rounded-xl/);
   assert.match(voice, /order-last basis-full px-1 text-xs leading-5 font-semibold text-red-800/);

@@ -65,6 +65,7 @@ import {
   type AssistantSupplierOrderFinalizationResultBlock,
 } from "@/lib/assistant-types";
 import { appendAssistantVoiceTranscript } from "@/lib/assistant-voice-contract";
+import { assistantNewConversationRequestEvent } from "@/lib/assistant-ui-events";
 import {
   buildAssistantRecentConversation,
   parseAssistantConversationContext,
@@ -212,7 +213,7 @@ export function AssistantHome({
     useState<string | null>(null);
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const newConversationButtonRef = useRef<HTMLButtonElement>(null);
+  const newConversationReturnFocusRef = useRef<HTMLElement | null>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
   const attachmentMenuFirstItemRef = useRef<HTMLButtonElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -244,6 +245,26 @@ export function AssistantHome({
     ["Reparos", summary?.repairKitTotal],
     ["Peças", summary?.loosePartTotal],
   ] as const;
+
+  useEffect(() => {
+    function requestNewConversation() {
+      newConversationReturnFocusRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      handleNewConversationRequest();
+    }
+
+    window.addEventListener(
+      assistantNewConversationRequestEvent,
+      requestNewConversation,
+    );
+    return () =>
+      window.removeEventListener(
+        assistantNewConversationRequestEvent,
+        requestNewConversation,
+      );
+  });
 
   useEffect(() => {
     return () => {
@@ -1249,6 +1270,10 @@ export function AssistantHome({
   }
 
   function handleNewConversationRequest() {
+    if (!isHydrated || isInteractionLocked) {
+      return;
+    }
+
     if (messages.length > 0) {
       setIsNewConversationDialogOpen(true);
       return;
@@ -1302,25 +1327,8 @@ export function AssistantHome({
   return (
     <main
       onClickCapture={handleInternalNavigation}
-      className="relative flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden lg:h-dvh"
+      className="relative flex h-dvh min-h-0 flex-col overflow-hidden"
     >
-      <header className="shrink-0 border-b border-border-neutral/65 bg-app-background/85 px-4 py-2 backdrop-blur-md sm:px-6 lg:px-8">
-        <div className="mx-auto flex w-full max-w-3xl justify-end">
-          <button
-            ref={newConversationButtonRef}
-            type="button"
-            disabled={!isHydrated || isInteractionLocked}
-            onClick={handleNewConversationRequest}
-            aria-label="Nova conversa"
-            title="Nova conversa"
-            className="nk-focus inline-flex size-11 items-center justify-center rounded-full border border-border-neutral bg-surface text-text-primary shadow-[0_8px_20px_-14px_rgba(23,29,33,0.7)] transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/25 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <PlusIcon aria-hidden="true" className="size-5" />
-            <span className="sr-only">Nova conversa</span>
-          </button>
-        </div>
-      </header>
-
       <section
         ref={conversationRef}
         aria-label="Conversa com a Assistente NK"
@@ -1329,9 +1337,9 @@ export function AssistantHome({
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none sticky top-0 z-20 -mb-12 h-12 bg-gradient-to-b from-app-background via-app-background/95 to-transparent"
+          className="pointer-events-none sticky top-0 z-20 -mb-20 h-20 bg-gradient-to-b from-app-background via-app-background/95 to-transparent lg:-mb-14 lg:h-14"
         />
-        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-5 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-6 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pb-12">
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-20 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-20 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pt-6 lg:pb-12">
           {!isHydrated ? (
             <p
               role="status"
@@ -1820,7 +1828,7 @@ export function AssistantHome({
         onCancel={() => {
           setIsNewConversationDialogOpen(false);
           window.requestAnimationFrame(() =>
-            newConversationButtonRef.current?.focus(),
+            newConversationReturnFocusRef.current?.focus(),
           );
         }}
         onConfirm={confirmNewConversation}

@@ -16,7 +16,11 @@ function orderLabel(count: number) {
   return `${quantityFormatter.format(count)} ${count === 1 ? "Pedido" : "Pedidos"}`;
 }
 
-export function SafisaPickupAlertBell() {
+export function SafisaPickupAlertBell({
+  tone = "dark",
+}: {
+  tone?: "dark" | "light";
+} = {}) {
   const {
     alerts,
     alertCount,
@@ -81,11 +85,17 @@ export function SafisaPickupAlertBell() {
         aria-expanded={isOpen}
         aria-controls={panelId}
         onClick={() => setIsOpen((current) => !current)}
-        className="nk-focus relative inline-flex size-11 items-center justify-center rounded-full border border-white/20 bg-brand-charcoal-soft/70 text-white shadow-[0_8px_18px_-14px_rgba(0,0,0,0.9)] transition hover:border-brand-gold hover:bg-white/10"
+        className={`nk-focus relative inline-flex size-11 items-center justify-center rounded-full transition ${
+          tone === "light"
+            ? "text-brand-charcoal hover:bg-app-background"
+            : "border border-white/20 bg-brand-charcoal-soft/70 text-white shadow-[0_8px_18px_-14px_rgba(0,0,0,0.9)] hover:border-brand-gold hover:bg-white/10"
+        }`}
       >
         <BellIcon className="size-5" />
         {badge && alertCount > 0 ? (
-          <span className="absolute -top-1 -right-1 flex min-w-5 items-center justify-center rounded-full border-2 border-brand-charcoal bg-brand-gold px-1 text-[0.6rem] leading-4 font-black text-brand-charcoal">
+          <span className={`absolute -top-1 -right-1 flex min-w-5 items-center justify-center rounded-full border-2 bg-brand-gold px-1 text-[0.6rem] leading-4 font-black text-brand-charcoal ${
+            tone === "light" ? "border-surface" : "border-brand-charcoal"
+          }`}>
             {badge}
           </span>
         ) : null}
