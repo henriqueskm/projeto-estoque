@@ -361,22 +361,37 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
         />
       </aside>
 
-      {isAssistantHome ? (
-        <div className="pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-50 flex items-center justify-between px-3 lg:hidden">
-          <button
-            ref={menuButtonRef}
-            type="button"
-            aria-label="Abrir menu principal"
-            aria-haspopup="dialog"
-            aria-expanded={isDrawerOpen}
-            onClick={() => setIsDrawerOpen(true)}
-            className="nk-focus pointer-events-auto inline-flex size-12 shrink-0 items-center justify-center rounded-full border border-border-neutral bg-surface text-brand-charcoal shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)] transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/30"
+      <div className="pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-50 flex items-center justify-between px-3 lg:hidden">
+        <button
+          ref={menuButtonRef}
+          type="button"
+          aria-label="Abrir menu principal"
+          aria-haspopup="dialog"
+          aria-expanded={isDrawerOpen}
+          onClick={() => setIsDrawerOpen(true)}
+          className="nk-focus pointer-events-auto inline-flex size-12 shrink-0 items-center justify-center rounded-full border border-border-neutral bg-surface text-brand-charcoal shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)] transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/30"
+        >
+          <MenuIcon className="size-6" />
+        </button>
+
+        {!isAssistantHome ? (
+          <Link
+            href="/"
+            aria-label="Ir para a Assistente NK"
+            className="nk-focus pointer-events-auto absolute left-1/2 flex h-12 max-w-[calc(100vw-12rem)] -translate-x-1/2 items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]"
           >
-            <MenuIcon className="size-6" />
-          </button>
-          <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-border-neutral bg-surface p-0.5 shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)]">
-            <SafisaPickupAlertBell tone="light" />
-            <span aria-hidden="true" className="h-6 w-px bg-border-neutral" />
+            <BrandMark
+              variant="full"
+              size="sm"
+              className="max-w-full justify-center"
+            />
+          </Link>
+        ) : null}
+
+        <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-border-neutral bg-surface p-0.5 shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)]">
+          <SafisaPickupAlertBell tone="light" />
+          <span aria-hidden="true" className="h-6 w-px bg-border-neutral" />
+          {isAssistantHome ? (
             <button
               type="button"
               aria-label="Nova conversa"
@@ -390,35 +405,18 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
             >
               <ComposeIcon className="size-5" />
             </button>
-          </div>
-        </div>
-      ) : (
-        <header className="sticky top-0 z-50 h-14 border-b border-brand-gold/20 bg-brand-charcoal px-3 text-white shadow-sm lg:hidden">
-          <div className="flex h-full items-center gap-3">
-            <button
-              ref={menuButtonRef}
-              type="button"
-              aria-label="Abrir menu principal"
-              aria-haspopup="dialog"
-              aria-expanded={isDrawerOpen}
-              onClick={() => setIsDrawerOpen(true)}
-              className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-white/20 bg-brand-charcoal-soft/70 text-white shadow-[0_8px_18px_-14px_rgba(0,0,0,0.9)] transition hover:border-brand-gold hover:bg-white/10"
-            >
-              <MenuIcon className="size-6" />
-            </button>
+          ) : (
             <Link
               href="/"
-              aria-label="Ir para o Assistente IA"
-              className="nk-focus min-w-0 rounded-full"
+              aria-label="Abrir Assistente NK"
+              title="Abrir Assistente NK"
+              className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-full text-brand-charcoal transition hover:bg-app-background"
             >
-              <BrandMark variant="full" size="sm" inverted />
+              <ComposeIcon className="size-5" />
             </Link>
-            <div className="ml-auto">
-              <SafisaPickupAlertBell />
-            </div>
-          </div>
-        </header>
-      )}
+          )}
+        </div>
+      </div>
 
       {isDrawerOpen ? (
         <div
@@ -428,14 +426,14 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
               closeDrawer(true);
             }
           }}
-          className="fixed inset-0 z-[90] bg-black/65 lg:hidden"
+          className="nk-mobile-nav-backdrop fixed inset-0 z-[90] bg-black/65 lg:hidden"
         >
           <div
             ref={drawerRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby={drawerTitleId}
-            className="flex h-full w-[min(20rem,calc(100vw-2rem))] flex-col border-r border-brand-gold/25 bg-brand-charcoal pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-white shadow-2xl"
+            className="nk-mobile-nav-enter flex h-full w-[min(20rem,calc(100vw-2rem))] flex-col border-r border-brand-gold/25 bg-brand-charcoal pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-white shadow-2xl"
           >
             <div className="flex min-h-16 items-center justify-between gap-3 border-b border-white/10 px-4 py-2">
               <div id={drawerTitleId}>

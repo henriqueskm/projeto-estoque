@@ -1327,7 +1327,7 @@ export function AssistantHome({
   return (
     <main
       onClickCapture={handleInternalNavigation}
-      className="relative flex h-dvh min-h-0 flex-col overflow-hidden"
+      className="relative -mt-16 flex h-dvh min-h-0 flex-col overflow-hidden lg:mt-0"
     >
       {isHydrated && messages.length === 0 ? (
         <div className="pointer-events-none fixed top-[max(0.5rem,env(safe-area-inset-top))] right-[7.25rem] left-[4.5rem] z-40 flex h-12 items-center justify-center lg:hidden">
@@ -1362,12 +1362,7 @@ export function AssistantHome({
           ) : messages.length === 0 ? (
             <div className="mx-auto w-full max-w-3xl">
               <div className="mb-6 flex flex-col items-center text-center sm:mb-8">
-                <BrandMark
-                  variant="full"
-                  size="lg"
-                  className="hidden justify-center lg:inline-flex"
-                />
-                <p className="text-xl font-black tracking-tight text-text-primary lg:mt-5 sm:text-2xl">
+                <p className="text-xl font-black tracking-tight text-text-primary sm:text-2xl">
                   {firstName ? `Olá, ${firstName}.` : "Olá."}
                 </p>
                 <p className="mt-1 max-w-xl text-sm font-semibold text-text-muted sm:text-base">

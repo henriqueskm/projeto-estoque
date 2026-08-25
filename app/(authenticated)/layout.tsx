@@ -28,7 +28,7 @@ export default async function AuthenticatedLayout({
               userName={profile.displayName}
               hasRegisteredName={profile.hasRegisteredName}
             />
-            <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-dvh lg:pl-64">
+            <div className="min-h-dvh pt-16 lg:pt-0 lg:pl-64">
               {children}
             </div>
             <AssistantFloatingLink />
