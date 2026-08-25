@@ -14,6 +14,7 @@ test("a new or restored empty conversation starts at its saved scroll position",
 
 test("Assistant shortcuts expose operations without shifting the conversation for a floating menu", () => {
   const home = read("components/assistant-home.tsx");
+  const sidebar = read("components/app-sidebar.tsx");
   const structured = read("components/assistant-structured-block.tsx");
 
   assert.match(home, /label: "Preparar entrada"/);
@@ -23,13 +24,45 @@ test("Assistant shortcuts expose operations without shifting the conversation fo
   assert.match(home, /prompt: "Dê saída manual\."/);
   assert.match(home, /context\?\.openOrderPhotoPicker/);
   assert.match(structured, /option\.id === "initial-order-photo"/);
-  assert.match(home, />\s*Nova conversa\s*</);
-  assert.match(home, /onClick=\{handleNewConversationRequest\}/);
+  assert.match(sidebar, /aria-label="Nova conversa"/);
+  assert.match(sidebar, /assistantNewConversationRequestEvent/);
+  assert.match(home, /addEventListener\([\s\S]*assistantNewConversationRequestEvent/);
   assert.doesNotMatch(home, /isConversationMenuOpen/);
   assert.doesNotMatch(home, /flex-col gap-4 pr-12/);
   assert.match(home, /role="log"/);
   assert.match(home, /aria-relevant="additions text"/);
   assert.doesNotMatch(home, /MicrophoneIcon/);
+});
+
+test("Assistant chat keeps transcription feedback below the composer controls", () => {
+  const home = read("components/assistant-home.tsx");
+  const sidebar = read("components/app-sidebar.tsx");
+  const voice = read("components/assistant-voice-dictation.tsx");
+
+  assert.match(home, /bg-gradient-to-b from-app-background\/75 via-app-background\/35 to-transparent/);
+  assert.match(home, /className="relative -mt-16 flex h-dvh min-h-0 flex-col overflow-hidden lg:mt-0"/);
+  assert.match(home, /isHydrated && messages\.length === 0/);
+  assert.match(home, /aria-label="Nova conversa"[\s\S]*lg:inline-flex/);
+  assert.match(home, /lg:pointer-events-none lg:absolute lg:inset-x-0 lg:bottom-0 lg:border-t-0 lg:bg-transparent/);
+  assert.match(home, /<AssistantVoiceDictation/);
+  assert.doesNotMatch(sidebar, /bg-brand-charcoal-soft\/70 text-white[\s\S]*<ComposeIcon/);
+  assert.match(home, /right-\[7\.25rem\] left-\[4\.5rem\]/);
+  assert.match(home, /bg-surface px-2 py-1/);
+  assert.doesNotMatch(home, /<header className=/);
+  assert.match(read("components/app-sidebar.tsx"), /isAssistantHome \? \(/);
+  assert.match(read("components/app-sidebar.tsx"), /!isAssistantHome \? \(/);
+  assert.match(read("app\/(authenticated)\/layout.tsx"), /min-h-dvh pt-16 lg:pt-0 lg:pl-64/);
+  assert.match(read("app\/globals.css"), /nk-mobile-nav-enter 260ms/);
+  assert.match(read("app\/globals.css"), /\.nk-mobile-nav-backdrop-enter/);
+  assert.match(read("app\/globals.css"), /nk-mobile-nav-exit 240ms/);
+  assert.match(read("components/app-sidebar.tsx"), /isDrawerClosing \? "nk-mobile-nav-exit"/);
+  assert.match(read("components/app-sidebar.tsx"), /right-\[7\.25rem\] left-\[4\.5rem\]/);
+  assert.match(read("components/app-sidebar.tsx"), /pointer-events-auto flex max-w-full items-center justify-center rounded-full/);
+  assert.match(read("components/app-sidebar.tsx"), /w-\[min\(17\.5rem,calc\(100vw-3\.5rem\)\)\]/);
+  assert.doesNotMatch(read("app\/(authenticated)\/layout.tsx"), /AssistantFloatingLink/);
+  assert.doesNotMatch(home, /Consultas e fotos de Pedido geram prévias/);
+  assert.match(voice, /order-last basis-full rounded-xl/);
+  assert.match(voice, /order-last basis-full px-1 text-xs leading-5 font-semibold text-red-800/);
 });
 
 test("Assistant confirmation states name the operation and keep mobile metrics legible", () => {

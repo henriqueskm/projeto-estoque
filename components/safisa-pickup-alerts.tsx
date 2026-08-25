@@ -16,7 +16,11 @@ function orderLabel(count: number) {
   return `${quantityFormatter.format(count)} ${count === 1 ? "Pedido" : "Pedidos"}`;
 }
 
-export function SafisaPickupAlertBell() {
+export function SafisaPickupAlertBell({
+  tone = "dark",
+}: {
+  tone?: "dark" | "light";
+} = {}) {
   const {
     alerts,
     alertCount,
@@ -81,11 +85,17 @@ export function SafisaPickupAlertBell() {
         aria-expanded={isOpen}
         aria-controls={panelId}
         onClick={() => setIsOpen((current) => !current)}
-        className="nk-focus relative inline-flex size-11 items-center justify-center rounded-xl border border-white/20 text-white transition hover:border-brand-gold hover:bg-white/10"
+        className={`nk-focus relative inline-flex size-11 items-center justify-center rounded-full transition ${
+          tone === "light"
+            ? "text-brand-charcoal hover:bg-app-background"
+            : "border border-white/20 bg-brand-charcoal-soft/70 text-white shadow-[0_8px_18px_-14px_rgba(0,0,0,0.9)] hover:border-brand-gold hover:bg-white/10"
+        }`}
       >
         <BellIcon className="size-5" />
         {badge && alertCount > 0 ? (
-          <span className="absolute -top-1 -right-1 flex min-w-5 items-center justify-center rounded-full border-2 border-brand-charcoal bg-brand-gold px-1 text-[0.6rem] leading-4 font-black text-brand-charcoal">
+          <span className={`absolute -top-1 -right-1 flex min-w-5 items-center justify-center rounded-full border-2 bg-brand-gold px-1 text-[0.6rem] leading-4 font-black text-brand-charcoal ${
+            tone === "light" ? "border-surface" : "border-brand-charcoal"
+          }`}>
             {badge}
           </span>
         ) : null}
@@ -96,7 +106,7 @@ export function SafisaPickupAlertBell() {
           id={panelId}
           role="dialog"
           aria-label="Retiradas Safisa"
-          className="fixed top-[calc(3.5rem+0.5rem)] right-3 left-3 z-[70] max-h-[min(34rem,calc(100dvh-5rem))] overflow-y-auto rounded-2xl border border-border-neutral bg-surface p-3 text-text-primary shadow-2xl sm:absolute sm:top-[calc(100%+0.5rem)] sm:right-0 sm:left-auto sm:w-[min(25rem,calc(100vw-2rem))] lg:right-auto lg:left-0"
+          className="fixed top-[calc(3.5rem+0.75rem)] right-3 z-[70] max-h-[min(34rem,calc(100dvh-5.5rem))] w-[min(21rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-border-neutral bg-surface p-3 text-text-primary shadow-2xl sm:absolute sm:top-[calc(100%+0.5rem)] sm:right-0 sm:w-[min(25rem,calc(100vw-2rem))] lg:right-auto lg:left-0"
         >
           <div className="flex items-start justify-between gap-3 border-b border-border-neutral pb-2.5">
             <div>

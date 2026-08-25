@@ -28,6 +28,8 @@ test("a captura gera JPEG local, permite revisar e limpa stream e URLs", () => {
   assert.match(camera, /streamRef\.current\?\.getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
   assert.match(camera, /URL\.revokeObjectURL/);
   assert.match(camera, /visibilitychange/);
+  assert.match(camera, /const startFrame = window\.requestAnimationFrame/);
+  assert.match(camera, /window\.cancelAnimationFrame\(startFrame\)/);
   assert.doesNotMatch(camera, /fetch\(|\/api\/assistant|prepareSupplierOrderPhoto/);
 });
 

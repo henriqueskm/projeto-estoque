@@ -136,6 +136,16 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+export function ComposeIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="M13.5 5.5 18.5 10.5" />
+      <path d="m4 20 4.2-1 10.9-10.9a2 2 0 0 0-2.8-2.8L5.4 16.2 4 20Z" />
+      <path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6" />
+    </svg>
+  );
+}
+
 export function TrashIcon(props: IconProps) {
   return (
     <svg {...commonProps} {...props}>

@@ -18,15 +18,18 @@ import { useAssistantConversation } from "@/components/assistant-conversation-pr
 import {
   CameraIcon,
   CloseIcon,
+  ComposeIcon,
   ImageIcon,
   PlusIcon,
   SendIcon,
 } from "@/components/icons";
 import { AssistantMessageContent } from "@/components/assistant-message-content";
 import { AssistantCameraCapture } from "@/components/assistant-camera-capture";
+import { AssistantVoiceDictation } from "@/components/assistant-voice-dictation";
 import { AssistantNewConversationDialog } from "@/components/assistant-new-conversation-dialog";
 import { AssistantRestoredMediaControl } from "@/components/assistant-restored-media-control";
 import { AssistantStructuredBlockView } from "@/components/assistant-structured-block";
+import { BrandMark } from "@/components/brand-mark";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { SafisaPickupAlertHomeSummary } from "@/components/safisa-pickup-alerts";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
@@ -62,6 +65,8 @@ import {
   type AssistantSupplierOrderFinalizationPreviewBlock,
   type AssistantSupplierOrderFinalizationResultBlock,
 } from "@/lib/assistant-types";
+import { appendAssistantVoiceTranscript } from "@/lib/assistant-voice-contract";
+import { assistantNewConversationRequestEvent } from "@/lib/assistant-ui-events";
 import {
   buildAssistantRecentConversation,
   parseAssistantConversationContext,
@@ -177,6 +182,7 @@ export function AssistantHome({
   const [attachment, setAttachment] = useState<LocalAttachment | null>(null);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
+  const [isVoiceBusy, setIsVoiceBusy] = useState(false);
   const [isNewConversationDialogOpen, setIsNewConversationDialogOpen] =
     useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -208,7 +214,7 @@ export function AssistantHome({
     useState<string | null>(null);
   const shouldRestoreFocusRef = useRef(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const newConversationButtonRef = useRef<HTMLButtonElement>(null);
+  const newConversationReturnFocusRef = useRef<HTMLElement | null>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
   const attachmentMenuFirstItemRef = useRef<HTMLButtonElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -217,7 +223,7 @@ export function AssistantHome({
   const firstName = profile.hasRegisteredName
     ? (profile.displayName.split(/\s+/).filter(Boolean)[0] ?? null)
     : null;
-  const isInteractionLocked = isPending || isRefreshingStock;
+  const isInteractionLocked = isPending || isRefreshingStock || isVoiceBusy;
   const isComposerLocked = !isHydrated || isInteractionLocked;
   const hasOperationalConfirmation = Boolean(
     confirmingPickupMessageId ||
@@ -229,6 +235,7 @@ export function AssistantHome({
   );
   const canSubmit =
     !isComposerLocked &&
+    !isVoiceBusy &&
     Boolean(
       attachment ? attachment.status === "ready" : draft.trim(),
     );
@@ -239,6 +246,26 @@ export function AssistantHome({
     ["Reparos", summary?.repairKitTotal],
     ["Peças", summary?.loosePartTotal],
   ] as const;
+
+  useEffect(() => {
+    function requestNewConversation() {
+      newConversationReturnFocusRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      handleNewConversationRequest();
+    }
+
+    window.addEventListener(
+      assistantNewConversationRequestEvent,
+      requestNewConversation,
+    );
+    return () =>
+      window.removeEventListener(
+        assistantNewConversationRequestEvent,
+        requestNewConversation,
+      );
+  });
 
   useEffect(() => {
     return () => {
@@ -1244,6 +1271,10 @@ export function AssistantHome({
   }
 
   function handleNewConversationRequest() {
+    if (!isHydrated || isInteractionLocked) {
+      return;
+    }
+
     if (messages.length > 0) {
       setIsNewConversationDialogOpen(true);
       return;
@@ -1253,6 +1284,21 @@ export function AssistantHome({
     setFeedback(null);
     setAttachment(null);
     window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
+  function appendVoiceTranscript(transcript: string) {
+    const nextDraft = appendAssistantVoiceTranscript(draft, transcript);
+    if (!nextDraft || nextDraft.length > assistantMessageMaxLength) {
+      setFeedback("A transcrição ficou muito longa para o campo de mensagem.");
+      return false;
+    }
+    setDraft(nextDraft);
+    setFeedback(null);
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      resizeTextarea();
+    });
+    return true;
   }
 
   function confirmNewConversation() {
@@ -1282,30 +1328,45 @@ export function AssistantHome({
   return (
     <main
       onClickCapture={handleInternalNavigation}
-      className="relative flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden lg:h-dvh"
+      className="relative -mt-16 flex h-dvh min-h-0 flex-col overflow-hidden lg:mt-0"
     >
-      <header className="shrink-0 border-b border-border-neutral/80 bg-app-background/95 px-4 py-2 backdrop-blur sm:px-6 lg:px-8">
-        <div className="mx-auto flex w-full max-w-3xl justify-end">
-          <button
-            ref={newConversationButtonRef}
-            type="button"
-            disabled={!isHydrated || isInteractionLocked}
-            onClick={handleNewConversationRequest}
-            className="nk-focus inline-flex min-h-10 items-center gap-2 rounded-xl border border-border-neutral bg-surface px-3 text-sm font-black text-text-primary shadow-sm transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/25 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <PlusIcon aria-hidden="true" className="size-4" />
-            Nova conversa
-          </button>
+      <button
+        type="button"
+        aria-label="Nova conversa"
+        title="Nova conversa"
+        onClick={() =>
+          window.dispatchEvent(
+            new Event(assistantNewConversationRequestEvent),
+          )
+        }
+        className="nk-focus fixed top-[max(1rem,env(safe-area-inset-top))] right-6 z-40 hidden size-12 items-center justify-center rounded-full border border-border-neutral bg-surface text-brand-charcoal shadow-[0_12px_30px_-18px_rgba(23,29,33,0.85)] transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/30 lg:inline-flex"
+      >
+        <ComposeIcon className="size-5" />
+      </button>
+
+      {isHydrated && messages.length === 0 ? (
+        <div className="pointer-events-none fixed top-[max(0.5rem,env(safe-area-inset-top))] right-[7.25rem] left-[4.5rem] z-40 flex h-12 items-center justify-center lg:hidden">
+          <div className="flex max-w-full items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]">
+            <BrandMark
+              variant="full"
+              size="sm"
+              className="max-w-full justify-center"
+            />
+          </div>
         </div>
-      </header>
+      ) : null}
 
       <section
         ref={conversationRef}
         aria-label="Conversa com a Assistente NK"
         onScroll={handleConversationScroll}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-4 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-5 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pb-12">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none sticky top-0 z-20 -mb-20 h-20 bg-gradient-to-b from-app-background/75 via-app-background/35 to-transparent lg:-mb-14 lg:h-14"
+        />
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-20 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-20 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pt-6 lg:pb-[calc(var(--assistant-composer-height,7rem)+1.5rem)]">
           {!isHydrated ? (
             <p
               role="status"
@@ -1315,11 +1376,11 @@ export function AssistantHome({
             </p>
           ) : messages.length === 0 ? (
             <div className="mx-auto w-full max-w-3xl">
-              <div className="mb-5 sm:mb-6">
+              <div className="mb-6 flex flex-col items-center text-center sm:mb-8">
                 <p className="text-xl font-black tracking-tight text-text-primary sm:text-2xl">
                   {firstName ? `Olá, ${firstName}.` : "Olá."}
                 </p>
-                <p className="mt-1 text-sm font-semibold text-text-muted sm:text-base">
+                <p className="mt-1 max-w-xl text-sm font-semibold text-text-muted sm:text-base">
                   Consulte o Estoque, prepare operações ou envie uma foto de
                   Pedido. Toda alteração exige confirmação explícita.
                 </p>
@@ -1629,11 +1690,11 @@ export function AssistantHome({
         </div>
       </section>
 
-      <div ref={composerRef} className="z-30 shrink-0 border-t border-border-neutral/80 bg-app-background/95 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-8">
+      <div ref={composerRef} className="z-30 shrink-0 border-t border-border-neutral/65 bg-gradient-to-t from-app-background via-app-background/95 to-app-background/80 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:pointer-events-none lg:absolute lg:inset-x-0 lg:bottom-0 lg:border-t-0 lg:bg-transparent lg:px-8 lg:pt-0 lg:pb-5 lg:backdrop-blur-none">
           <form
             onSubmit={handleSubmit}
-            aria-busy={isComposerLocked}
-            className="mx-auto w-full max-w-3xl rounded-2xl border border-border-neutral bg-surface p-2 shadow-[0_16px_42px_-26px_rgba(23,29,33,0.6)]"
+            aria-busy={isComposerLocked || isVoiceBusy}
+            className="mx-auto w-full max-w-3xl rounded-[1.35rem] border border-border-neutral bg-surface p-2 shadow-[0_16px_42px_-26px_rgba(23,29,33,0.6)] lg:pointer-events-auto"
           >
             {attachment ? (
               <div className="mb-2 flex items-center gap-3 rounded-xl bg-violet-50 p-2 pr-3">
@@ -1663,7 +1724,7 @@ export function AssistantHome({
                 </div>
                 <button
                   type="button"
-                  disabled={isComposerLocked}
+                  disabled={isComposerLocked || isVoiceBusy}
                   onClick={removeAttachment}
                   aria-label="Remover imagem anexada"
                   className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-text-muted transition hover:bg-white hover:text-red-800"
@@ -1673,19 +1734,19 @@ export function AssistantHome({
               </div>
             ) : null}
 
-            <div className="flex items-end gap-1.5 sm:gap-2">
+            <div className="flex flex-wrap items-end gap-1.5 sm:gap-2">
               <div className="relative shrink-0">
                 <button
                   ref={menuButtonRef}
                   type="button"
-                  disabled={isComposerLocked}
+                  disabled={isComposerLocked || isVoiceBusy}
                   aria-label="Adicionar imagem"
                   aria-expanded={isAttachmentMenuOpen}
                   aria-controls={attachmentMenuId}
                   onClick={() =>
                     setIsAttachmentMenuOpen((current) => !current)
                   }
-                  className="nk-focus inline-flex size-11 items-center justify-center rounded-xl bg-app-background text-text-primary transition hover:bg-brand-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
+                  className="nk-focus inline-flex size-11 items-center justify-center rounded-full bg-app-background text-text-primary transition hover:bg-brand-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <PlusIcon className="size-5" />
                 </button>
@@ -1731,7 +1792,7 @@ export function AssistantHome({
                   value={draft}
                   rows={1}
                   maxLength={assistantMessageMaxLength}
-                  disabled={isComposerLocked}
+                  disabled={isComposerLocked || isVoiceBusy}
                   placeholder="Digite uma mensagem..."
                   onChange={(event) => {
                     setDraft(event.target.value);
@@ -1742,6 +1803,14 @@ export function AssistantHome({
                   className="nk-field block max-h-32 min-h-11 w-full resize-none overflow-y-auto rounded-xl border px-3 py-2.5 text-sm leading-6 outline-none sm:text-base"
                 />
               </label>
+
+              <AssistantVoiceDictation
+                disabled={isComposerLocked || Boolean(attachment)}
+                cameraOpen={isCameraCaptureOpen}
+                onBusyChange={setIsVoiceBusy}
+                onRequestStart={() => setIsAttachmentMenuOpen(false)}
+                onTranscript={appendVoiceTranscript}
+              />
 
               <button
                 type="submit"
@@ -1778,10 +1847,6 @@ export function AssistantHome({
               onChange={(event) => void handleImageSelection(event, "gallery")}
             />
           </form>
-          <p className="mx-auto mt-1 max-w-3xl text-center text-[0.6rem] leading-4 font-semibold text-text-muted sm:mt-1.5 sm:text-[0.68rem]">
-            Consultas e fotos de Pedido geram prévias. Entradas, saídas,
-            montagens e retiradas só acontecem após confirmação explícita.
-          </p>
       </div>
 
       <AssistantNewConversationDialog
@@ -1789,7 +1854,7 @@ export function AssistantHome({
         onCancel={() => {
           setIsNewConversationDialogOpen(false);
           window.requestAnimationFrame(() =>
-            newConversationButtonRef.current?.focus(),
+            newConversationReturnFocusRef.current?.focus(),
           );
         }}
         onConfirm={confirmNewConversation}

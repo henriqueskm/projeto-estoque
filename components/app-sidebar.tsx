@@ -18,6 +18,7 @@ import {
   ChevronDownIcon,
   ClockIcon,
   CloseIcon,
+  ComposeIcon,
   InboundIcon,
   LogoutIcon,
   MenuIcon,
@@ -26,6 +27,7 @@ import {
   StatisticsIcon,
   StockIcon,
 } from "@/components/icons";
+import { assistantNewConversationRequestEvent } from "@/lib/assistant-ui-events";
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 type AppSidebarProps = {
@@ -255,25 +257,55 @@ function NavigationContent({
 
 export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
   const pathname = usePathname();
+  const isAssistantHome = pathname === "/";
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isDrawerClosing, setIsDrawerClosing] = useState(false);
   const [operationsExpanded, setOperationsExpanded] = useState(false);
   const drawerTitleId = useId();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const drawerCloseTimerRef = useRef<number | null>(null);
 
   useDocumentScrollLock(isDrawerOpen);
 
   const closeDrawer = useCallback((restoreFocus = false) => {
-    setIsDrawerOpen(false);
-
-    if (restoreFocus) {
-      window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+    if (!isDrawerOpen || isDrawerClosing) {
+      return;
     }
+
+    setIsDrawerClosing(true);
+    drawerCloseTimerRef.current = window.setTimeout(() => {
+      setIsDrawerOpen(false);
+      setIsDrawerClosing(false);
+      drawerCloseTimerRef.current = null;
+
+      if (restoreFocus) {
+        window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+      }
+    }, 240);
+  }, [isDrawerClosing, isDrawerOpen]);
+
+  const openDrawer = useCallback(() => {
+    if (drawerCloseTimerRef.current) {
+      window.clearTimeout(drawerCloseTimerRef.current);
+      drawerCloseTimerRef.current = null;
+    }
+
+    setIsDrawerClosing(false);
+    setIsDrawerOpen(true);
   }, []);
 
   useEffect(() => {
-    if (!isDrawerOpen) {
+    return () => {
+      if (drawerCloseTimerRef.current) {
+        window.clearTimeout(drawerCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isDrawerOpen || isDrawerClosing) {
       return;
     }
 
@@ -316,7 +348,7 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [closeDrawer, isDrawerOpen]);
+  }, [closeDrawer, isDrawerClosing, isDrawerOpen]);
 
   return (
     <>
@@ -343,31 +375,64 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
         />
       </aside>
 
-      <header className="sticky top-0 z-50 h-14 border-b border-brand-gold/20 bg-brand-charcoal px-3 text-white shadow-sm lg:hidden">
-        <div className="flex h-full items-center gap-3">
-          <button
-            ref={menuButtonRef}
-            type="button"
-            aria-label="Abrir menu principal"
-            aria-haspopup="dialog"
-            aria-expanded={isDrawerOpen}
-            onClick={() => setIsDrawerOpen(true)}
-            className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/20 text-white transition hover:border-brand-gold hover:bg-white/10"
-          >
-            <MenuIcon className="size-6" />
-          </button>
-          <Link
-            href="/"
-            aria-label="Ir para o Assistente IA"
-            className="nk-focus min-w-0 rounded-full"
-          >
-            <BrandMark variant="full" size="sm" inverted />
-          </Link>
-          <div className="ml-auto">
-            <SafisaPickupAlertBell />
+      <div className="pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-50 flex items-center justify-between px-3 lg:hidden">
+        <button
+          ref={menuButtonRef}
+          type="button"
+          aria-label="Abrir menu principal"
+          aria-haspopup="dialog"
+          aria-expanded={isDrawerOpen}
+          onClick={openDrawer}
+          className="nk-focus pointer-events-auto inline-flex size-12 shrink-0 items-center justify-center rounded-full border border-border-neutral bg-surface text-brand-charcoal shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)] transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/30"
+        >
+          <MenuIcon className="size-6" />
+        </button>
+
+        {!isAssistantHome ? (
+          <div className="pointer-events-none absolute right-[7.25rem] left-[4.5rem] flex h-12 items-center justify-center">
+            <Link
+              href="/"
+              aria-label="Ir para a Assistente NK"
+              className="nk-focus pointer-events-auto flex max-w-full items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]"
+            >
+              <BrandMark
+                variant="full"
+                size="sm"
+                className="max-w-full justify-center"
+              />
+            </Link>
           </div>
+        ) : null}
+
+        <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-border-neutral bg-surface p-0.5 shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)]">
+          <SafisaPickupAlertBell tone="light" />
+          <span aria-hidden="true" className="h-6 w-px bg-border-neutral" />
+          {isAssistantHome ? (
+            <button
+              type="button"
+              aria-label="Nova conversa"
+              title="Nova conversa"
+              onClick={() =>
+                window.dispatchEvent(
+                  new Event(assistantNewConversationRequestEvent),
+                )
+              }
+              className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-full text-brand-charcoal transition hover:bg-app-background"
+            >
+              <ComposeIcon className="size-5" />
+            </button>
+          ) : (
+            <Link
+              href="/"
+              aria-label="Abrir Assistente NK"
+              title="Abrir Assistente NK"
+              className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-full text-brand-charcoal transition hover:bg-app-background"
+            >
+              <ComposeIcon className="size-5" />
+            </Link>
+          )}
         </div>
-      </header>
+      </div>
 
       {isDrawerOpen ? (
         <div
@@ -377,14 +442,20 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
               closeDrawer(true);
             }
           }}
-          className="fixed inset-0 z-[90] bg-black/65 lg:hidden"
+          className={`fixed inset-0 z-[90] bg-black/65 lg:hidden ${
+            isDrawerClosing
+              ? "nk-mobile-nav-backdrop-exit"
+              : "nk-mobile-nav-backdrop-enter"
+          }`}
         >
           <div
             ref={drawerRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby={drawerTitleId}
-            className="flex h-full w-[min(20rem,calc(100vw-2rem))] flex-col border-r border-brand-gold/25 bg-brand-charcoal pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-white shadow-2xl"
+            className={`flex h-full w-[min(17.5rem,calc(100vw-3.5rem))] flex-col border-r border-brand-gold/25 bg-brand-charcoal pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-white shadow-2xl ${
+              isDrawerClosing ? "nk-mobile-nav-exit" : "nk-mobile-nav-enter"
+            }`}
           >
             <div className="flex min-h-16 items-center justify-between gap-3 border-b border-white/10 px-4 py-2">
               <div id={drawerTitleId}>
