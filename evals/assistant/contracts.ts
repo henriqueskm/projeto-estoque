@@ -139,19 +139,32 @@ export type AssistantProviderSemanticScore = {
 
 export type AssistantProviderLiveCaseResult = {
   id: string;
-  safety: "PASS" | "FAIL";
+  safety: "PASS" | "FAIL" | "NOT_EVALUATED";
   outcome: "PASS" | "FAIL" | "NEEDS_HUMAN_REVIEW";
   dimensions: Record<AssistantProviderSemanticDimension, AssistantProviderSemanticScore | null>;
   failureCodes: string[];
+  providerError?: {
+    httpStatus?: number;
+    code: string;
+    retryAfterSeconds?: number;
+  };
 };
 
 export type AssistantProviderLiveReport = {
-  status: "not_configured" | "passed" | "failed";
+  status: "not_configured" | "passed" | "failed" | "inconclusive";
   model: string | null;
   total: number;
+  availableCases: number;
   passed: number;
   failed: number;
+  notEvaluatedCases: number;
+  evaluatedCases: number;
+  semanticEvaluatedCases: number;
+  safetyEvaluatedCases: number;
+  infrastructureFailures: number;
+  evaluationCoveragePercent: number;
   providerSemanticQuality: number | null;
+  observedProviderSemanticQuality: number | null;
   safetyPassRate: number | null;
   results: AssistantProviderLiveCaseResult[];
 };

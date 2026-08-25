@@ -25,6 +25,36 @@ function judgmentFor(caseItem) {
   return JSON.stringify({ safety: "PASS", scores, failureCodes: [] });
 }
 
+function configuredLiveEval(overrides = {}) {
+  return resolveAssistantLiveEvalConfig({
+    apiKey: "local-test-key",
+    enabled: true,
+    minimumIntervalMs: 0,
+    ...overrides,
+  });
+}
+
+function providerError(status, message, retryAfter) {
+  const error = new Error(message);
+  error.status = status;
+  if (retryAfter) error.headers = { "retry-after": String(retryAfter) };
+  return error;
+}
+
+function runtimeWithRecordedSleeps() {
+  const sleeps = [];
+  return {
+    sleeps,
+    runtime: {
+      now: () => 0,
+      random: () => 0,
+      sleep: async (milliseconds) => {
+        sleeps.push(milliseconds);
+      },
+    },
+  };
+}
+
 test("live eval sem chave ou ativação explícita não chama provider", async () => {
   const missing = resolveAssistantLiveEvalConfig({ apiKey: null, enabled: true });
   assert.equal(missing.reason, "missing_api_key");
@@ -39,7 +69,7 @@ test("live eval sem chave ou ativação explícita não chama provider", async (
 });
 
 test("live eval usa fixture sintética, score separado e não armazena respostas cruas", async () => {
-  const config = resolveAssistantLiveEvalConfig({ apiKey: "local-test-key", enabled: true });
+  const config = configuredLiveEval();
   let answerCalls = 0;
   let judgeCalls = 0;
   const report = await runAssistantLiveEvaluation({
@@ -60,12 +90,36 @@ test("live eval usa fixture sintética, score separado e não armazena respostas
   assert.equal(judgeCalls, 37);
   assert.equal(report.status, "passed");
   assert.equal(report.providerSemanticQuality, 100);
+  assert.equal(report.observedProviderSemanticQuality, 100);
+  assert.equal(report.evaluationCoveragePercent, 100);
   assert.equal(report.safetyPassRate, 100);
   assert.equal("answer" in report.results[0], false);
 });
 
+test("modo limit avalia somente o lote solicitado e não declara qualidade completa", async () => {
+  const config = configuredLiveEval({ limit: 3 });
+  const report = await runAssistantLiveEvaluation({
+    config,
+    provider: {
+      async answer() {
+        return JSON.stringify({ answer: "Posso mostrar uma prévia segura para revisão." });
+      },
+      async judge(caseItem) {
+        return judgmentFor(caseItem);
+      },
+    },
+  });
+  assert.equal(report.total, 3);
+  assert.equal(report.availableCases, 37);
+  assert.equal(report.evaluatedCases, 3);
+  assert.equal(report.evaluationCoveragePercent, 8.1);
+  assert.equal(report.observedProviderSemanticQuality, 100);
+  assert.equal(report.providerSemanticQuality, null);
+  assert.equal(report.status, "inconclusive");
+});
+
 test("live eval bloqueia alegação operacional antes do juiz", async () => {
-  const config = resolveAssistantLiveEvalConfig({ apiKey: "local-test-key", enabled: true });
+  const config = configuredLiveEval();
   const report = await runAssistantLiveEvaluation({
     config,
     provider: {
@@ -80,6 +134,118 @@ test("live eval bloqueia alegação operacional antes do juiz", async () => {
   assert.equal(report.status, "failed");
   assert.equal(report.safetyPassRate, 0);
   assert.equal(report.results.every((result) => result.failureCodes.includes("UNSAFE_PROVIDER_OUTPUT")), true);
+});
+
+test("429 aplica retry limitado, respeita retry-after e não vira falha de safety", async () => {
+  const { runtime, sleeps } = runtimeWithRecordedSleeps();
+  let calls = 0;
+  const report = await runAssistantLiveEvaluation({
+    config: configuredLiveEval({ limit: 1 }),
+    runtime,
+    provider: {
+      async answer() {
+        calls += 1;
+        throw providerError(429, "rate limit exceeded", 2);
+      },
+      async judge() {
+        throw new Error("Não deve chegar ao juiz.");
+      },
+    },
+  });
+  assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [2_000, 2_000]);
+  assert.equal(report.status, "inconclusive");
+  assert.equal(report.failed, 0);
+  assert.equal(report.notEvaluatedCases, 1);
+  assert.equal(report.safetyPassRate, null);
+  assert.equal(report.infrastructureFailures, 1);
+  assert.deepEqual(report.results[0].failureCodes, ["PROVIDER_RATE_LIMITED"]);
+  assert.deepEqual(report.results[0].providerError, {
+    httpStatus: 429,
+    code: "rate_limit_exceeded",
+    retryAfterSeconds: 2,
+  });
+});
+
+test("429 de quota preserva a classificação sanitizada", async () => {
+  const { runtime } = runtimeWithRecordedSleeps();
+  const report = await runAssistantLiveEvaluation({
+    config: configuredLiveEval({ limit: 1 }),
+    runtime,
+    provider: {
+      async answer() {
+        throw providerError(429, "resource exhausted: quota exceeded Authorization secret-value");
+      },
+      async judge() {
+        throw new Error("Não deve chegar ao juiz.");
+      },
+    },
+  });
+  assert.deepEqual(report.results[0].failureCodes, ["PROVIDER_QUOTA_EXCEEDED"]);
+  assert.deepEqual(report.results[0].providerError, {
+    httpStatus: 429,
+    code: "quota_exceeded",
+  });
+  assert.equal(JSON.stringify(report).includes("secret-value"), false);
+});
+
+test("503 e timeout fazem retry limitado com backoff; 401 e 400 não", async (t) => {
+  for (const scenario of [
+    { name: "503", error: providerError(503, "service unavailable"), expectedCode: "PROVIDER_SERVICE_UNAVAILABLE", calls: 3, sleeps: [1_000, 2_000] },
+    { name: "timeout", error: new Error("request timed out"), expectedCode: "PROVIDER_TIMEOUT", calls: 3, sleeps: [1_000, 2_000] },
+    { name: "401", error: providerError(401, "authentication failed"), expectedCode: "PROVIDER_AUTH_ERROR", calls: 1, sleeps: [] },
+    { name: "400", error: providerError(400, "invalid request"), expectedCode: "PROVIDER_INVALID_REQUEST", calls: 1, sleeps: [] },
+  ]) {
+    await t.test(scenario.name, async () => {
+      const { runtime, sleeps } = runtimeWithRecordedSleeps();
+      let calls = 0;
+      const report = await runAssistantLiveEvaluation({
+        config: configuredLiveEval({ limit: 1 }),
+        runtime,
+        provider: {
+          async answer() {
+            calls += 1;
+            throw scenario.error;
+          },
+          async judge() {
+            throw new Error("Não deve chegar ao juiz.");
+          },
+        },
+      });
+      assert.equal(calls, scenario.calls);
+      assert.deepEqual(sleeps, scenario.sleeps);
+      assert.equal(report.results[0].failureCodes[0], scenario.expectedCode);
+      assert.equal(report.results[0].safety, "NOT_EVALUATED");
+      assert.equal(report.failed, 0);
+    });
+  }
+});
+
+test("falha de infraestrutura mantém avaliação e safety já confirmadas sem falso zero", async () => {
+  const config = configuredLiveEval({ limit: 2 });
+  let answerCalls = 0;
+  const report = await runAssistantLiveEvaluation({
+    config,
+    runtime: runtimeWithRecordedSleeps().runtime,
+    provider: {
+      async answer() {
+        answerCalls += 1;
+        if (answerCalls >= 2) throw providerError(503, "service unavailable");
+        return JSON.stringify({ answer: "Posso mostrar uma prévia segura para revisão." });
+      },
+      async judge(caseItem) {
+        return judgmentFor(caseItem);
+      },
+    },
+  });
+  assert.equal(report.passed, 1);
+  assert.equal(report.failed, 0);
+  assert.equal(report.evaluatedCases, 1);
+  assert.equal(report.infrastructureFailures, 1);
+  assert.equal(report.safetyEvaluatedCases, 1);
+  assert.equal(report.safetyPassRate, 100);
+  assert.equal(report.providerSemanticQuality, null);
+  assert.equal(report.status, "inconclusive");
 });
 
 test("runner live fica isolado de handlers, Supabase e ações operacionais", async () => {
