@@ -1,6 +1,7 @@
 export const pushSubscriptionBodyLimitBytes = 8 * 1024;
 
-const fcmTokenPattern = /^[A-Za-z0-9_:-]{20,4096}$/;
+const firebaseInstallationIdMaxLength = 512;
+const controlCharacterPattern = /[\u0000-\u001f\u007f]/;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -25,22 +26,27 @@ export function parsePushSubscriptionBody(value: unknown) {
   if (
     keys.length !== 2 ||
     !keys.includes("deviceId") ||
-    !keys.includes("fcmToken") ||
+    !keys.includes("firebaseInstallationId") ||
     typeof record.deviceId !== "string" ||
     !uuidPattern.test(record.deviceId) ||
-    typeof record.fcmToken !== "string" ||
-    !fcmTokenPattern.test(record.fcmToken)
+    typeof record.firebaseInstallationId !== "string" ||
+    record.firebaseInstallationId.trim().length === 0 ||
+    record.firebaseInstallationId.length > firebaseInstallationIdMaxLength ||
+    controlCharacterPattern.test(record.firebaseInstallationId)
   ) {
     return null;
   }
 
-  return { deviceId: record.deviceId, fcmToken: record.fcmToken };
+  return {
+    deviceId: record.deviceId,
+    firebaseInstallationId: record.firebaseInstallationId.trim(),
+  };
 }
 
 export async function readPushSubscriptionBody(
   request: Request,
 ): Promise<
-  | { data: { deviceId: string; fcmToken: string } }
+  | { data: { deviceId: string; firebaseInstallationId: string } }
   | { error: 400 | 413 | 415 }
 > {
   const contentType = request.headers

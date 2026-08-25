@@ -15,7 +15,7 @@ const ids = {
 const orderId = (suffix) => `30000000-0000-4000-8000-${String(100 + suffix).padStart(12, "0")}`;
 const lineId = (suffix) => `30000000-0000-4000-8000-${String(200 + suffix).padStart(12, "0")}`;
 const key = (suffix) => `30000000-0000-4000-8000-${String(300 + suffix).padStart(12, "0")}`;
-const token = (suffix) => `local-fcm-token:${String(suffix).padStart(32, "x")}`;
+const fid = (suffix) => `local-fid:${String(suffix).padStart(32, "x")}`;
 const deviceId = (suffix) => `30000000-0000-4000-8000-${String(400 + suffix).padStart(12, "0")}`;
 
 function psql(sql, { allowFailure = false } = {}) {
@@ -52,9 +52,12 @@ const itemId = psql("select id from public.items where is_active order by id lim
 assert.match(itemId, /^[0-9a-f-]{36}$/i);
 
 psql(`
-  truncate table public.push_notification_events, public.push_subscriptions;
-  delete from public.supplier_order_items where supplier_order_id in ('${orderId(1)}', '${orderId(2)}', '${orderId(3)}', '${orderId(4)}');
-  delete from public.supplier_orders where id in ('${orderId(1)}', '${orderId(2)}', '${orderId(3)}', '${orderId(4)}');
+  truncate table
+    public.push_notification_events,
+    public.push_subscriptions,
+    public.supplier_order_items,
+    public.supplier_orders
+  cascade;
   delete from public.safisa_portal_members where user_id = '${ids.safisa}';
   delete from public.profiles where id in ('${ids.internalA}', '${ids.internalB}', '${ids.inactive}', '${ids.safisa}');
   delete from auth.users where id in ('${ids.internalA}', '${ids.internalB}', '${ids.inactive}', '${ids.safisa}');
@@ -70,22 +73,25 @@ psql(`
     ('${ids.safisa}', 'Safisa Local', false);
 `);
 
-assert.match(asRole("anon", null, `select public.register_push_subscription('${deviceId(1)}', '${token(1)}')`, true), /permission denied|Authentication is required/i);
-asAuthenticatedFailure(ids.inactive, `select public.register_push_subscription('${deviceId(1)}', '${token(1)}')`, /active internal profile/i);
-asAuthenticated(ids.internalA, `select public.register_push_subscription('${deviceId(1)}', '${token(1)}')`);
-asAuthenticated(ids.internalA, `select public.register_push_subscription('${deviceId(1)}', '${token(2)}')`);
-assert.equal(number(`select count(*) from public.push_subscriptions where device_id = '${deviceId(1)}'`), 1, "token rotation updates the same device row");
-assert.equal(number(`select count(*) from public.push_subscriptions where fcm_token = '${token(1)}'`), 0);
-asAuthenticated(ids.internalA, `select public.register_push_subscription('${deviceId(1)}', '${token(1)}')`);
-assert.equal(number(`select count(*) from public.push_subscriptions where fcm_token = '${token(1)}'`), 1);
-assert.match(asRole("authenticated", ids.internalB, "select fcm_token from public.push_subscriptions", true), /permission denied/i);
+assert.match(asRole("anon", null, `select public.register_push_subscription('${deviceId(1)}', '${fid(1)}')`, true), /permission denied|Authentication is required/i);
+asAuthenticatedFailure(ids.inactive, `select public.register_push_subscription('${deviceId(1)}', '${fid(1)}')`, /active internal profile/i);
+asAuthenticatedFailure(ids.internalA, `select public.register_push_subscription('${deviceId(9)}', '')`, /Firebase installation ID is invalid/i);
+asAuthenticatedFailure(ids.internalA, `select public.register_push_subscription('${deviceId(9)}', repeat('x', 513))`, /Firebase installation ID is invalid/i);
+asAuthenticatedFailure(ids.internalA, `select public.register_push_subscription('${deviceId(9)}', 'fid' || chr(1))`, /Firebase installation ID is invalid/i);
+asAuthenticated(ids.internalA, `select public.register_push_subscription('${deviceId(1)}', '${fid(1)}')`);
+asAuthenticated(ids.internalA, `select public.register_push_subscription('${deviceId(1)}', '${fid(2)}')`);
+assert.equal(number(`select count(*) from public.push_subscriptions where device_id = '${deviceId(1)}'`), 1, "FID rotation updates the same device row");
+assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}'`), 0);
+asAuthenticated(ids.internalA, `select public.register_push_subscription('${deviceId(1)}', '${fid(1)}')`);
+assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}'`), 1);
+assert.match(asRole("authenticated", ids.internalB, "select firebase_installation_id from public.push_subscriptions", true), /permission denied/i);
 
-asAuthenticated(ids.internalB, `select public.register_push_subscription('${deviceId(1)}', '${token(1)}')`);
-assert.equal(psql(`select user_id from public.push_subscriptions where fcm_token = '${token(1)}'`), ids.internalB);
-assert.equal(asAuthenticated(ids.internalA, `select public.disable_push_subscription('${deviceId(1)}', '${token(1)}')`).includes('"disabled": false'), true);
-assert.equal(number(`select count(*) from public.push_subscriptions where fcm_token = '${token(1)}' and enabled`), 1);
-assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(1)}', '${token(1)}')`).includes('"disabled": true'), true);
-assert.equal(number(`select count(*) from public.push_subscriptions where fcm_token = '${token(1)}' and enabled`), 0);
+asAuthenticated(ids.internalB, `select public.register_push_subscription('${deviceId(1)}', '${fid(1)}')`);
+assert.equal(psql(`select user_id from public.push_subscriptions where firebase_installation_id = '${fid(1)}'`), ids.internalB);
+assert.equal(asAuthenticated(ids.internalA, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`).includes('"disabled": false'), true);
+assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}' and enabled`), 1);
+assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`).includes('"disabled": true'), true);
+assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}' and enabled`), 0);
 
 asAuthenticated(ids.internalA, `select public.set_safisa_portal_member_status('${ids.safisa}', true, '${key(1)}')`);
 psql(`

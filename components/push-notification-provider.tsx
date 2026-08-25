@@ -12,11 +12,12 @@ import {
 import { useSafisaPickupAlerts } from "@/components/safisa-pickup-alert-provider";
 import {
   browserSupportsFirebasePush,
-  deleteCurrentFirebasePushToken,
-  getCurrentFirebasePushToken,
   isFirebasePushConfigured,
-  requestFirebasePushToken,
+  requestFirebasePushPermission,
+  subscribeToFirebasePushRegistration,
   subscribeToForegroundPush,
+  unregisterFirebasePushInstallation,
+  waitForFirebasePushInstallation,
 } from "@/lib/firebase-push-client";
 import { isIosDevice, isStandaloneMode } from "@/lib/pwa-capabilities";
 
@@ -41,6 +42,8 @@ const PushNotificationContext =
   createContext<PushNotificationContextValue | null>(null);
 const localOptOutKey = "negocios-k:push-disabled";
 const localDeviceIdKey = "negocios-k:push-device-id";
+const localFirebaseInstallationIdKey =
+  "negocios-k:push-firebase-installation-id";
 
 function getDeviceId() {
   const existing = window.localStorage.getItem(localDeviceIdKey);
@@ -51,7 +54,28 @@ function getDeviceId() {
   return deviceId;
 }
 
-async function persistToken(token: string, method: "POST" | "DELETE") {
+function getStoredFirebaseInstallationId() {
+  return window.localStorage.getItem(localFirebaseInstallationIdKey);
+}
+
+function storeFirebaseInstallationId(firebaseInstallationId: string) {
+  window.localStorage.setItem(
+    localFirebaseInstallationIdKey,
+    firebaseInstallationId,
+  );
+}
+
+function removeStoredFirebaseInstallationId(firebaseInstallationId?: string) {
+  const stored = getStoredFirebaseInstallationId();
+  if (!firebaseInstallationId || stored === firebaseInstallationId) {
+    window.localStorage.removeItem(localFirebaseInstallationIdKey);
+  }
+}
+
+async function persistInstallation(
+  firebaseInstallationId: string,
+  method: "POST" | "DELETE",
+) {
   return fetch("/api/push-subscriptions", {
     method,
     credentials: "same-origin",
@@ -59,28 +83,38 @@ async function persistToken(token: string, method: "POST" | "DELETE") {
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ deviceId: getDeviceId(), fcmToken: token }),
+    body: JSON.stringify({
+      deviceId: getDeviceId(),
+      firebaseInstallationId,
+    }),
   });
+}
+
+async function registerAndPersistInstallation() {
+  const firebaseInstallationId = await waitForFirebasePushInstallation();
+  if (!firebaseInstallationId) return null;
+
+  const response = await persistInstallation(firebaseInstallationId, "POST");
+  if (!response.ok) return null;
+
+  storeFirebaseInstallationId(firebaseInstallationId);
+  return firebaseInstallationId;
 }
 
 export async function disablePushBeforeLogout() {
   try {
-    if (
-      !isFirebasePushConfigured() ||
-      typeof Notification === "undefined" ||
-      Notification.permission !== "granted"
-    ) {
-      return;
+    const firebaseInstallationId = getStoredFirebaseInstallationId();
+    if (firebaseInstallationId) {
+      const response = await persistInstallation(
+        firebaseInstallationId,
+        "DELETE",
+      );
+      if (!response.ok) return;
+      removeStoredFirebaseInstallationId(firebaseInstallationId);
     }
 
-    const token = await getCurrentFirebasePushToken();
-    if (!token) return;
-
-    const response = await persistToken(token, "DELETE");
-    if (response.ok) {
-      await deleteCurrentFirebasePushToken();
-      window.localStorage.setItem(localOptOutKey, "true");
-    }
+    await unregisterFirebasePushInstallation().catch(() => false);
+    window.localStorage.setItem(localOptOutKey, "true");
   } catch {
     // Push cleanup is best-effort and must never block logout.
   }
@@ -126,13 +160,8 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
       }
 
       try {
-        const token = await getCurrentFirebasePushToken();
-        if (!token) {
-          if (active) setState("error");
-          return;
-        }
-        const response = await persistToken(token, "POST");
-        if (active) setState(response.ok ? "granted" : "error");
+        const firebaseInstallationId = await registerAndPersistInstallation();
+        if (active) setState(firebaseInstallationId ? "granted" : "error");
       } catch {
         if (active) setState("error");
       }
@@ -147,18 +176,62 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     if (state !== "granted") return;
 
-    let unsubscribe: () => void = () => undefined;
     let active = true;
+    let stopRegistration: () => void = () => undefined;
+    let stopForeground: () => void = () => undefined;
+
+    void subscribeToFirebasePushRegistration({
+      async registered(firebaseInstallationId) {
+        try {
+          const response = await persistInstallation(
+            firebaseInstallationId,
+            "POST",
+          );
+          if (!active) return;
+          if (!response.ok) {
+            setState("error");
+            return;
+          }
+          storeFirebaseInstallationId(firebaseInstallationId);
+        } catch {
+          if (active) setState("error");
+        }
+      },
+      async unregistered(firebaseInstallationId) {
+        try {
+          const response = await persistInstallation(
+            firebaseInstallationId,
+            "DELETE",
+          );
+          if (!active) return;
+          if (!response.ok) {
+            setState("error");
+            return;
+          }
+          removeStoredFirebaseInstallationId(firebaseInstallationId);
+          setState("default");
+        } catch {
+          if (active) setState("error");
+        }
+      },
+    }).then((unsubscribe) => {
+      if (active) stopRegistration = unsubscribe;
+      else unsubscribe();
+    }).catch(() => {
+      if (active) setState("error");
+    });
+
     void subscribeToForegroundPush(() => void refreshAlerts()).then(
-      (nextUnsubscribe) => {
-        if (active) unsubscribe = nextUnsubscribe;
-        else nextUnsubscribe();
+      (unsubscribe) => {
+        if (active) stopForeground = unsubscribe;
+        else unsubscribe();
       },
     );
 
     return () => {
       active = false;
-      unsubscribe();
+      stopRegistration();
+      stopForeground();
     };
   }, [refreshAlerts, state]);
 
@@ -184,8 +257,10 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
         return;
       }
 
-      const token = await requestFirebasePushToken();
-      if (!token) {
+      if (
+        Notification.permission !== "granted" &&
+        !(await requestFirebasePushPermission())
+      ) {
         const permissionAfterRequest = Reflect.get(
           Notification,
           "permission",
@@ -194,8 +269,8 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
         return;
       }
 
-      const response = await persistToken(token, "POST");
-      if (!response.ok) {
+      const firebaseInstallationId = await registerAndPersistInstallation();
+      if (!firebaseInstallationId) {
         setState("error");
         return;
       }
@@ -214,20 +289,23 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     setIsWorking(true);
 
     try {
-      const token = await getCurrentFirebasePushToken();
-      if (!token) {
-        window.localStorage.setItem(localOptOutKey, "true");
-        setState("default");
-        return;
-      }
-
-      const response = await persistToken(token, "DELETE");
-      if (!response.ok) {
+      const firebaseInstallationId = getStoredFirebaseInstallationId();
+      if (!firebaseInstallationId) {
         setState("error");
         return;
       }
 
-      await deleteCurrentFirebasePushToken();
+      const response = await persistInstallation(
+        firebaseInstallationId,
+        "DELETE",
+      );
+      if (!response.ok) {
+        setState("error");
+        return;
+      }
+      removeStoredFirebaseInstallationId(firebaseInstallationId);
+
+      await unregisterFirebasePushInstallation().catch(() => false);
       window.localStorage.setItem(localOptOutKey, "true");
       setState("default");
     } catch {

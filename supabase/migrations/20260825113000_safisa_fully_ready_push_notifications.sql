@@ -6,16 +6,20 @@ create table public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   device_id uuid not null,
-  fcm_token text not null,
+  firebase_installation_id text not null,
   enabled boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
-  constraint push_subscriptions_fcm_token_not_blank
-    check (char_length(fcm_token) between 20 and 4096),
-  constraint push_subscriptions_fcm_token_format
-    check (fcm_token ~ '^[A-Za-z0-9_:-]+$'),
-  constraint push_subscriptions_fcm_token_key unique (fcm_token),
+  constraint push_subscriptions_firebase_installation_id_not_blank
+    check (
+      char_length(btrim(firebase_installation_id)) between 1 and 512
+      and firebase_installation_id = btrim(firebase_installation_id)
+    ),
+  constraint push_subscriptions_firebase_installation_id_format
+    check (firebase_installation_id !~ '[[:cntrl:]]'),
+  constraint push_subscriptions_firebase_installation_id_key
+    unique (firebase_installation_id),
   constraint push_subscriptions_device_id_key unique (device_id)
 );
 
@@ -69,7 +73,7 @@ grant select, update on table public.push_notification_events to service_role;
 
 create or replace function public.register_push_subscription(
   p_device_id uuid,
-  p_fcm_token text
+  p_firebase_installation_id text
 )
 returns jsonb
 language plpgsql
@@ -78,7 +82,8 @@ set search_path = ''
 as $$
 declare
   v_user_id uuid := auth.uid();
-  v_token text := nullif(btrim(p_fcm_token), '');
+  v_firebase_installation_id text :=
+    nullif(btrim(p_firebase_installation_id), '');
   v_subscription_id uuid;
 begin
   if v_user_id is null then
@@ -95,32 +100,32 @@ begin
   end if;
 
   if p_device_id is null
-    or v_token is null
-    or char_length(v_token) not between 20 and 4096
-    or v_token !~ '^[A-Za-z0-9_:-]+$' then
-    raise exception using errcode = '22023', message = 'The push token is invalid.';
+    or v_firebase_installation_id is null
+    or char_length(v_firebase_installation_id) > 512
+    or v_firebase_installation_id ~ '[[:cntrl:]]' then
+    raise exception using errcode = '22023', message = 'The Firebase installation ID is invalid.';
   end if;
 
   delete from public.push_subscriptions
-  where fcm_token = v_token
+  where firebase_installation_id = v_firebase_installation_id
     and device_id <> p_device_id;
 
   insert into public.push_subscriptions (
     user_id,
     device_id,
-    fcm_token,
+    firebase_installation_id,
     enabled,
     last_seen_at
   ) values (
     v_user_id,
     p_device_id,
-    v_token,
+    v_firebase_installation_id,
     true,
     now()
   )
   on conflict (device_id) do update
   set user_id = excluded.user_id,
-      fcm_token = excluded.fcm_token,
+      firebase_installation_id = excluded.firebase_installation_id,
       enabled = true,
       updated_at = now(),
       last_seen_at = now()
@@ -135,7 +140,7 @@ $$;
 
 create or replace function public.disable_push_subscription(
   p_device_id uuid,
-  p_fcm_token text
+  p_firebase_installation_id text
 )
 returns jsonb
 language plpgsql
@@ -144,7 +149,8 @@ set search_path = ''
 as $$
 declare
   v_user_id uuid := auth.uid();
-  v_token text := nullif(btrim(p_fcm_token), '');
+  v_firebase_installation_id text :=
+    nullif(btrim(p_firebase_installation_id), '');
   v_disabled boolean := false;
 begin
   if v_user_id is null then
@@ -161,10 +167,10 @@ begin
   end if;
 
   if p_device_id is null
-    or v_token is null
-    or char_length(v_token) not between 20 and 4096
-    or v_token !~ '^[A-Za-z0-9_:-]+$' then
-    raise exception using errcode = '22023', message = 'The push token is invalid.';
+    or v_firebase_installation_id is null
+    or char_length(v_firebase_installation_id) > 512
+    or v_firebase_installation_id ~ '[[:cntrl:]]' then
+    raise exception using errcode = '22023', message = 'The Firebase installation ID is invalid.';
   end if;
 
   update public.push_subscriptions
@@ -173,7 +179,7 @@ begin
       last_seen_at = now()
   where user_id = v_user_id
     and device_id = p_device_id
-    and fcm_token = v_token
+    and firebase_installation_id = v_firebase_installation_id
     and enabled
   returning true into v_disabled;
 
@@ -191,9 +197,9 @@ grant execute on function public.disable_push_subscription(uuid, text)
   to authenticated;
 
 comment on function public.register_push_subscription(uuid, text) is
-  'Registers or safely reassigns the current browser FCM token to the authenticated active internal profile.';
+  'Registers or safely reassigns the current browser Firebase Installation ID to the authenticated active internal profile.';
 comment on function public.disable_push_subscription(uuid, text) is
-  'Disables only the current active internal profile subscription matching the supplied browser FCM token.';
+  'Disables only the current active internal profile subscription matching the supplied browser Firebase Installation ID.';
 
 create or replace function private.enqueue_safisa_fully_ready_push()
 returns trigger
@@ -373,6 +379,6 @@ grant execute on function public.complete_safisa_fully_ready_push_event(uuid, te
   to service_role;
 
 comment on table public.push_subscriptions is
-  'Per-device optional FCM subscriptions for active internal NK users. Tokens are never exposed through normal readers.';
+  'Per-device optional FCM subscriptions for active internal NK users. Firebase Installation IDs are never exposed through normal readers.';
 comment on table public.push_notification_events is
   'Idempotent best-effort delivery events. Supabase state remains authoritative even when delivery fails.';

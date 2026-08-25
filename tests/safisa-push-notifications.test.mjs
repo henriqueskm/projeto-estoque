@@ -28,7 +28,7 @@ const eventFixture = {
 function subscription(index) {
   return {
     id: `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-    fcm_token: `token:${String(index).padStart(20, "x")}`,
+    firebase_installation_id: `fid-${String(index).padStart(20, "x")}`,
     profiles: { is_active: true },
   };
 }
@@ -100,8 +100,8 @@ function loadServiceWorker() {
 
 test("database contract isolates subscriptions and creates one transactional FULLY_READY event", () => {
   assert.match(migration, /create table public\.push_subscriptions/i);
-  assert.match(migration, /fcm_token text not null/i);
-  assert.match(migration, /unique \(fcm_token\)/i);
+  assert.match(migration, /firebase_installation_id text not null/i);
+  assert.match(migration, /unique \(firebase_installation_id\)/i);
   assert.match(migration, /device_id uuid not null/i);
   assert.match(migration, /unique \(device_id\)/i);
   assert.match(migration, /references public\.profiles\(id\) on delete cascade/i);
@@ -126,29 +126,62 @@ test("SQL FULLY_READY rule remains equivalent to the official TypeScript contrac
   assert.equal(getSafisaPickupAlertKind({ orderedQuantity: 10, cancelledQuantity: 2, readyQuantity: 8, readyWaitingPickupQuantity: 0 }), null);
 });
 
-test("subscription HTTP contract is exact, bounded, and same-origin", () => {
-  const token = "token:abcdefghijklmnopqrstuvwxyz";
+test("subscription HTTP contract accepts a conservative FID and remains exact, bounded, and same-origin", () => {
+  const firebaseInstallationId = "fid:abcdefghijklmnopqrstuvwxyz";
   const deviceId = "10000000-0000-4000-8000-000000000010";
-  assert.deepEqual(parsePushSubscriptionBody({ deviceId, fcmToken: token }), { deviceId, fcmToken: token });
-  assert.equal(parsePushSubscriptionBody({ deviceId, fcmToken: token, userId: "forbidden" }), null);
-  assert.equal(parsePushSubscriptionBody({ fcmToken: "short" }), null);
+  assert.deepEqual(
+    parsePushSubscriptionBody({ deviceId, firebaseInstallationId }),
+    { deviceId, firebaseInstallationId },
+  );
+  assert.equal(parsePushSubscriptionBody({ deviceId, firebaseInstallationId, userId: "forbidden" }), null);
+  assert.equal(parsePushSubscriptionBody({ deviceId, fcmToken: firebaseInstallationId }), null);
+  assert.equal(parsePushSubscriptionBody({ deviceId, firebaseInstallationId: "" }), null);
+  assert.equal(parsePushSubscriptionBody({ deviceId, firebaseInstallationId: `fid\u0000invalid` }), null);
+  assert.equal(parsePushSubscriptionBody({ deviceId, firebaseInstallationId: "x".repeat(513) }), null);
   assert.equal(isPushSubscriptionSameOrigin(new Request("https://nk.example/api/push-subscriptions", { headers: { Origin: "https://nk.example", "Sec-Fetch-Site": "same-origin" } })), true);
   assert.equal(isPushSubscriptionSameOrigin(new Request("https://nk.example/api/push-subscriptions", { headers: { Origin: "https://evil.example", "Sec-Fetch-Site": "cross-site" } })), false);
 });
 
-test("client uses the existing root service worker and requests permission only in the explicit enable flow", () => {
+test("client registers through FID callbacks using the existing worker and asks permission only in the explicit enable flow", () => {
   assert.match(clientSource, /getRegistration\("\/"\)/);
   assert.match(clientSource, /register\("\/sw\.js", \{ scope: "\/" \}\)/);
   assert.match(clientSource, /serviceWorkerRegistration: context\.registration/);
+  assert.match(clientSource, /onRegistered\(messaging, listeners\.registered\)/);
+  assert.match(clientSource, /onUnregistered\(/);
+  assert.match(clientSource, /await register\(context\.messaging/);
+  assert.match(clientSource, /await unregister\(context\.messaging\)/);
+  assert.doesNotMatch(clientSource, /\bgetToken\b|\bdeleteToken\b/);
   assert.doesNotMatch(clientSource, /firebase-messaging-sw\.js/);
-  const requestFunction = clientSource.slice(clientSource.indexOf("export async function requestFirebasePushToken"));
+  const requestFunction = clientSource.slice(clientSource.indexOf("export async function requestFirebasePushPermission"));
   assert.match(requestFunction, /Notification\.requestPermission\(\)/);
   const initialization = providerSource.slice(providerSource.indexOf("async function initialize"), providerSource.indexOf("const enable"));
-  assert.doesNotMatch(initialization, /requestFirebasePushToken\(/);
+  assert.doesNotMatch(initialization, /requestFirebasePushPermission\(/);
+  assert.match(providerSource, /firebaseInstallationId/);
+  assert.match(providerSource, /localFirebaseInstallationIdKey/);
+  assert.match(providerSource, /const response = await persistInstallation[\s\S]*if \(!response\.ok\)[\s\S]*setState\("granted"\)/);
   assert.match(providerSource, /isIosDevice\(\) && !isStandaloneMode\(\)/);
   assert.match(providerSource, /"denied"/);
   assert.match(providerSource, /"unsupported"/);
   assert.match(providerSource, /"not_configured"/);
+});
+
+test("FID rotation is persisted and disable updates the backend before unregistering", () => {
+  const registrationEffect = providerSource.slice(
+    providerSource.indexOf("subscribeToFirebasePushRegistration"),
+    providerSource.indexOf("const enable"),
+  );
+  assert.match(registrationEffect, /registered\(firebaseInstallationId\)[\s\S]*persistInstallation\([\s\S]*"POST"/);
+  assert.match(registrationEffect, /unregistered\(firebaseInstallationId\)[\s\S]*persistInstallation\([\s\S]*"DELETE"/);
+
+  const disableFlow = providerSource.slice(
+    providerSource.indexOf("const disable"),
+    providerSource.indexOf("const value"),
+  );
+  assert.ok(
+    disableFlow.indexOf('persistInstallation(') <
+      disableFlow.indexOf('unregisterFirebasePushInstallation()'),
+  );
+  assert.match(disableFlow, /if \(!response\.ok\) \{[\s\S]*setState\("error"\);[\s\S]*return;/);
 });
 
 test("service worker displays the approved push and derives an internal Pedido URL", async () => {
@@ -196,12 +229,29 @@ test("server dispatch succeeds once and records SENT", async () => {
   });
   assert.equal(result, "sent");
   assert.equal(messages.length, 1);
-  assert.equal(messages[0].tokens.length, 2);
+  assert.equal(messages[0].fids.length, 2);
+  assert.equal("tokens" in messages[0], false);
   assert.equal(messages[0].data.type, "SAFISA_FULLY_READY");
   assert.equal(admin.completed.at(-1).p_status, "SENT");
 });
 
-test("server dispatch handles no recipients, invalid tokens, partial multicast, failure, and timeout", async () => {
+test("server dispatch limits each multicast request to 500 FIDs", async () => {
+  const subscriptions = Array.from({ length: 501 }, (_, index) => subscription(index + 1));
+  const admin = fakeAdmin({ subscriptions });
+  const batchSizes = [];
+  const result = await dispatchSafisaFullyReadyPush(eventFixture.supplier_order_id, {
+    adminClient: admin.client,
+    async sendEachForMulticast(message) {
+      batchSizes.push(message.fids.length);
+      return batch(message.fids.map(() => ({ success: true })));
+    },
+  });
+
+  assert.equal(result, "sent");
+  assert.deepEqual(batchSizes, [500, 1]);
+});
+
+test("server dispatch handles no recipients, unregistered FIDs, partial multicast, failure, and timeout", async () => {
   let admin = fakeAdmin();
   assert.equal(await dispatchSafisaFullyReadyPush(eventFixture.supplier_order_id, {
     adminClient: admin.client,
@@ -220,6 +270,17 @@ test("server dispatch handles no recipients, invalid tokens, partial multicast, 
     },
   }), "sent");
   assert.deepEqual(admin.disabledIds, [subscription(2).id]);
+
+  admin = fakeAdmin({ subscriptions: [subscription(5)] });
+  assert.equal(await dispatchSafisaFullyReadyPush(eventFixture.supplier_order_id, {
+    adminClient: admin.client,
+    async sendEachForMulticast() {
+      return batch([
+        { success: false, error: { code: "messaging/invalid-argument" } },
+      ]);
+    },
+  }), "failed");
+  assert.deepEqual(admin.disabledIds, [], "INVALID_ARGUMENT alone never deletes a FID");
 
   admin = fakeAdmin({ subscriptions: [subscription(3)] });
   assert.equal(await dispatchSafisaFullyReadyPush(eventFixture.supplier_order_id, {

@@ -2,16 +2,19 @@
 
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import {
-  deleteToken,
   getMessaging,
-  getToken,
   isSupported,
   onMessage,
+  onRegistered,
+  onUnregistered,
+  register,
+  unregister,
   type Messaging,
 } from "firebase/messaging";
 import { canUseServiceWorker } from "@/lib/pwa-capabilities";
 
 const firebaseAppName = "negocios-k-push";
+const registrationTimeoutMs = 10_000;
 
 type FirebasePublicConfig = {
   apiKey: string;
@@ -20,6 +23,11 @@ type FirebasePublicConfig = {
   messagingSenderId: string;
   appId: string;
   vapidKey: string;
+};
+
+type RegistrationListeners = {
+  registered: (firebaseInstallationId: string) => void;
+  unregistered?: (firebaseInstallationId: string) => void;
 };
 
 function readFirebasePublicConfig(): FirebasePublicConfig | null {
@@ -73,6 +81,22 @@ async function getPushContext(): Promise<{
   };
 }
 
+function observeRegistration(
+  messaging: Messaging,
+  listeners: RegistrationListeners,
+) {
+  const stopRegistered = onRegistered(messaging, listeners.registered);
+  const stopUnregistered = onUnregistered(
+    messaging,
+    listeners.unregistered ?? (() => undefined),
+  );
+
+  return () => {
+    stopRegistered();
+    stopUnregistered();
+  };
+}
+
 export function isFirebasePushConfigured() {
   return readFirebasePublicConfig() !== null;
 }
@@ -85,7 +109,14 @@ export async function browserSupportsFirebasePush() {
   );
 }
 
-export async function getCurrentFirebasePushToken() {
+export async function requestFirebasePushPermission() {
+  if (typeof Notification === "undefined") return false;
+  return (await Notification.requestPermission()) === "granted";
+}
+
+export async function waitForFirebasePushInstallation(
+  timeoutMs = registrationTimeoutMs,
+) {
   if (
     typeof Notification === "undefined" ||
     Notification.permission !== "granted"
@@ -96,32 +127,65 @@ export async function getCurrentFirebasePushToken() {
   const context = await getPushContext();
   if (!context) return null;
 
-  const token = await getToken(context.messaging, {
-    vapidKey: context.vapidKey,
-    serviceWorkerRegistration: context.registration,
+  return new Promise<string>((resolve, reject) => {
+    let settled = false;
+    let stopObserving: () => void = () => undefined;
+
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      stopObserving();
+      clearTimeout(timer);
+      callback();
+    };
+
+    const timer = setTimeout(() => {
+      finish(() => reject(new Error("FID_REGISTRATION_TIMEOUT")));
+    }, timeoutMs);
+
+    stopObserving = observeRegistration(context.messaging, {
+      registered(firebaseInstallationId) {
+        finish(() => resolve(firebaseInstallationId));
+      },
+    });
+
+    void register(context.messaging, {
+      vapidKey: context.vapidKey,
+      serviceWorkerRegistration: context.registration,
+    }).catch((error: unknown) => {
+      finish(() => reject(error));
+    });
   });
-
-  return token || null;
 }
 
-export async function requestFirebasePushToken() {
-  if (typeof Notification === "undefined") return null;
+export async function subscribeToFirebasePushRegistration(
+  listeners: RegistrationListeners,
+) {
+  const context = await getPushContext();
+  if (!context) return () => undefined;
 
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") return null;
+  const stopObserving = observeRegistration(context.messaging, listeners);
+  try {
+    await register(context.messaging, {
+      vapidKey: context.vapidKey,
+      serviceWorkerRegistration: context.registration,
+    });
+  } catch (error) {
+    stopObserving();
+    throw error;
+  }
 
-  return getCurrentFirebasePushToken();
+  return stopObserving;
 }
 
-export async function deleteCurrentFirebasePushToken() {
+export async function unregisterFirebasePushInstallation() {
   const context = await getPushContext();
   if (!context) return false;
-  return deleteToken(context.messaging);
+  await unregister(context.messaging);
+  return true;
 }
 
-export async function subscribeToForegroundPush(
-  listener: () => void,
-) {
+export async function subscribeToForegroundPush(listener: () => void) {
   const context = await getPushContext();
   if (!context) return () => undefined;
 

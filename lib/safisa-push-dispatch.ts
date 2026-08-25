@@ -20,7 +20,7 @@ type PushEvent = {
 
 type Subscription = {
   id: string;
-  fcmToken: string;
+  firebaseInstallationId: string;
 };
 
 export type SafisaPushDispatchResult =
@@ -68,9 +68,14 @@ function parseSubscriptions(value: unknown): Subscription[] {
     const record = entry as Record<string, unknown>;
     return typeof record.id === "string" &&
       uuidPattern.test(record.id) &&
-      typeof record.fcm_token === "string" &&
-      record.fcm_token.length >= 20
-      ? [{ id: record.id, fcmToken: record.fcm_token }]
+      typeof record.firebase_installation_id === "string" &&
+      record.firebase_installation_id.trim().length > 0 &&
+      record.firebase_installation_id.length <= 512 &&
+      !/[\u0000-\u001f\u007f]/.test(record.firebase_installation_id)
+      ? [{
+          id: record.id,
+          firebaseInstallationId: record.firebase_installation_id,
+        }]
       : [];
   });
 }
@@ -82,11 +87,8 @@ function chunks<T>(values: T[], size: number) {
   );
 }
 
-function isInvalidTokenCode(code: string | undefined) {
-  return (
-    code === "messaging/registration-token-not-registered" ||
-    code === "messaging/invalid-registration-token"
-  );
+function isUnregisteredInstallationCode(code: string | undefined) {
+  return code === "messaging/registration-token-not-registered";
 }
 
 function sanitizedErrorCode(error: unknown) {
@@ -133,7 +135,9 @@ async function sendBatch(
 ) {
   return withTimeout(
     sender({
-      tokens: subscriptions.map((subscription) => subscription.fcmToken),
+      fids: subscriptions.map(
+        (subscription) => subscription.firebaseInstallationId,
+      ),
       data: {
         type: event.eventType,
         title: "Pedido pronto para retirada ✅",
@@ -175,7 +179,7 @@ export async function dispatchSafisaFullyReadyPush(
 
     const { data: subscriptionData, error: subscriptionError } = await adminClient
       .from("push_subscriptions")
-      .select("id, fcm_token, profiles!inner(is_active)")
+      .select("id, firebase_installation_id, profiles!inner(is_active)")
       .eq("enabled", true)
       .eq("profiles.is_active", true);
 
@@ -212,7 +216,7 @@ export async function dispatchSafisaFullyReadyPush(
       response.responses.forEach((result, index) => {
         if (result.success) return;
         const code = result.error?.code;
-        if (isInvalidTokenCode(code)) {
+        if (isUnregisteredInstallationCode(code)) {
           invalidSubscriptionIds.push(subscriptionChunk[index].id);
         } else if (code) {
           lastErrorCode = sanitizedErrorCode({ code });
@@ -236,7 +240,10 @@ export async function dispatchSafisaFullyReadyPush(
       adminClient,
       event.id,
       "FAILED",
-      lastErrorCode ?? (invalidSubscriptionIds.length ? "ALL_TOKENS_INVALID" : "FCM_DELIVERY_FAILED"),
+      lastErrorCode ??
+        (invalidSubscriptionIds.length
+          ? "ALL_INSTALLATIONS_UNREGISTERED"
+          : "FCM_DELIVERY_FAILED"),
     );
     return "failed";
   } catch {

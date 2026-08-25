@@ -19,6 +19,7 @@ Referências oficiais:
 - [Configurar FCM para Web](https://firebase.google.com/docs/cloud-messaging/web/get-started)
 - [Receber mensagens Web](https://firebase.google.com/docs/cloud-messaging/web/receive-messages)
 - [Enviar com o Admin SDK](https://firebase.google.com/docs/cloud-messaging/send/admin-sdk)
+- [Gerenciar registros por Firebase Installation ID](https://firebase.google.com/docs/cloud-messaging/manage-tokens)
 
 ## 2. Variáveis públicas
 
@@ -83,7 +84,13 @@ permissão inutilmente.
 - Push externo existe somente para `FULLY_READY`.
 - Falha, timeout, quota ou configuração ausente do Firebase nunca reverte uma
   atualização Safisa.
-- Tokens inválidos retornados pelo FCM são desativados sem serem registrados em
-  logs.
+- O navegador registra o dispositivo por Firebase Installation ID (FID) usando
+  `register`/`onRegistered`; o servidor envia por `fids`, sem depender do fluxo
+  legado `getToken`/`deleteToken`.
+- Um FID renovado é sincronizado com o backend e atualiza `last_seen_at` sem
+  duplicar a inscrição do dispositivo.
+- Instalações explicitamente não registradas pelo FCM são desativadas sem
+  registrar o identificador em logs. Erros genéricos como `INVALID_ARGUMENT`
+  não removem inscrições automaticamente.
 - O service worker raiz continua sendo `/sw.js`; não crie
   `firebase-messaging-sw.js` concorrente.

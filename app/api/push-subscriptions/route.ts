@@ -54,7 +54,7 @@ async function mutateSubscription(request: Request, operation: "register" | "dis
     : "disable_push_subscription";
   const { data, error } = await supabase.rpc(rpcName, {
     p_device_id: parsed.data.deviceId,
-    p_fcm_token: parsed.data.fcmToken,
+    p_firebase_installation_id: parsed.data.firebaseInstallationId,
   });
 
   if (error) {
