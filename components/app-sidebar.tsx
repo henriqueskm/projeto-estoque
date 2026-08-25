@@ -352,7 +352,7 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
             aria-haspopup="dialog"
             aria-expanded={isDrawerOpen}
             onClick={() => setIsDrawerOpen(true)}
-            className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/20 text-white transition hover:border-brand-gold hover:bg-white/10"
+            className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-white/20 bg-brand-charcoal-soft/70 text-white shadow-[0_8px_18px_-14px_rgba(0,0,0,0.9)] transition hover:border-brand-gold hover:bg-white/10"
           >
             <MenuIcon className="size-6" />
           </button>

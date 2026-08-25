@@ -81,7 +81,7 @@ export function SafisaPickupAlertBell() {
         aria-expanded={isOpen}
         aria-controls={panelId}
         onClick={() => setIsOpen((current) => !current)}
-        className="nk-focus relative inline-flex size-11 items-center justify-center rounded-xl border border-white/20 text-white transition hover:border-brand-gold hover:bg-white/10"
+        className="nk-focus relative inline-flex size-11 items-center justify-center rounded-full border border-white/20 bg-brand-charcoal-soft/70 text-white shadow-[0_8px_18px_-14px_rgba(0,0,0,0.9)] transition hover:border-brand-gold hover:bg-white/10"
       >
         <BellIcon className="size-5" />
         {badge && alertCount > 0 ? (

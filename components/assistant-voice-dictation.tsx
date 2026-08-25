@@ -362,7 +362,7 @@ export function AssistantVoiceDictation({
       </button>
 
       {state === "requesting_permission" || isRecording || state === "preparing_audio" || state === "transcribing" ? (
-        <div role="status" aria-live="polite" className="basis-full rounded-xl bg-app-background px-3 py-2 text-xs font-semibold text-text-muted">
+        <div role="status" aria-live="polite" className="order-last basis-full rounded-xl bg-app-background px-3 py-2 text-xs font-semibold text-text-muted">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span>
               {isRecording
@@ -398,7 +398,7 @@ export function AssistantVoiceDictation({
       ) : null}
 
       {state === "error" && message ? (
-        <p role="status" aria-live="polite" className="basis-full px-1 text-xs leading-5 font-semibold text-red-800">
+        <p role="status" aria-live="polite" className="order-last basis-full px-1 text-xs leading-5 font-semibold text-red-800">
           {message}
         </p>
       ) : null}

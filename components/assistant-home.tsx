@@ -28,6 +28,7 @@ import { AssistantVoiceDictation } from "@/components/assistant-voice-dictation"
 import { AssistantNewConversationDialog } from "@/components/assistant-new-conversation-dialog";
 import { AssistantRestoredMediaControl } from "@/components/assistant-restored-media-control";
 import { AssistantStructuredBlockView } from "@/components/assistant-structured-block";
+import { BrandMark } from "@/components/brand-mark";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { SafisaPickupAlertHomeSummary } from "@/components/safisa-pickup-alerts";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
@@ -1303,17 +1304,19 @@ export function AssistantHome({
       onClickCapture={handleInternalNavigation}
       className="relative flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden lg:h-dvh"
     >
-      <header className="shrink-0 border-b border-border-neutral/80 bg-app-background/95 px-4 py-2 backdrop-blur sm:px-6 lg:px-8">
+      <header className="shrink-0 border-b border-border-neutral/65 bg-app-background/85 px-4 py-2 backdrop-blur-md sm:px-6 lg:px-8">
         <div className="mx-auto flex w-full max-w-3xl justify-end">
           <button
             ref={newConversationButtonRef}
             type="button"
             disabled={!isHydrated || isInteractionLocked}
             onClick={handleNewConversationRequest}
-            className="nk-focus inline-flex min-h-10 items-center gap-2 rounded-xl border border-border-neutral bg-surface px-3 text-sm font-black text-text-primary shadow-sm transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/25 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Nova conversa"
+            title="Nova conversa"
+            className="nk-focus inline-flex size-11 items-center justify-center rounded-full border border-border-neutral bg-surface text-text-primary shadow-[0_8px_20px_-14px_rgba(23,29,33,0.7)] transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/25 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <PlusIcon aria-hidden="true" className="size-4" />
-            Nova conversa
+            <PlusIcon aria-hidden="true" className="size-5" />
+            <span className="sr-only">Nova conversa</span>
           </button>
         </div>
       </header>
@@ -1322,9 +1325,13 @@ export function AssistantHome({
         ref={conversationRef}
         aria-label="Conversa com a Assistente NK"
         onScroll={handleConversationScroll}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-4 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-5 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pb-12">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none sticky top-0 z-20 -mb-12 h-12 bg-gradient-to-b from-app-background via-app-background/95 to-transparent"
+        />
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-5 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-6 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pb-12">
           {!isHydrated ? (
             <p
               role="status"
@@ -1334,11 +1341,12 @@ export function AssistantHome({
             </p>
           ) : messages.length === 0 ? (
             <div className="mx-auto w-full max-w-3xl">
-              <div className="mb-5 sm:mb-6">
-                <p className="text-xl font-black tracking-tight text-text-primary sm:text-2xl">
+              <div className="mb-6 flex flex-col items-center text-center sm:mb-8">
+                <BrandMark variant="full" size="lg" className="justify-center" />
+                <p className="mt-5 text-xl font-black tracking-tight text-text-primary sm:text-2xl">
                   {firstName ? `Olá, ${firstName}.` : "Olá."}
                 </p>
-                <p className="mt-1 text-sm font-semibold text-text-muted sm:text-base">
+                <p className="mt-1 max-w-xl text-sm font-semibold text-text-muted sm:text-base">
                   Consulte o Estoque, prepare operações ou envie uma foto de
                   Pedido. Toda alteração exige confirmação explícita.
                 </p>
@@ -1648,11 +1656,11 @@ export function AssistantHome({
         </div>
       </section>
 
-      <div ref={composerRef} className="z-30 shrink-0 border-t border-border-neutral/80 bg-app-background/95 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-8">
+      <div ref={composerRef} className="z-30 shrink-0 border-t border-border-neutral/65 bg-gradient-to-t from-app-background via-app-background/95 to-app-background/80 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-8">
           <form
             onSubmit={handleSubmit}
             aria-busy={isComposerLocked || isVoiceBusy}
-            className="mx-auto w-full max-w-3xl rounded-2xl border border-border-neutral bg-surface p-2 shadow-[0_16px_42px_-26px_rgba(23,29,33,0.6)]"
+            className="mx-auto w-full max-w-3xl rounded-[1.35rem] border border-border-neutral bg-surface p-2 shadow-[0_16px_42px_-26px_rgba(23,29,33,0.6)]"
           >
             {attachment ? (
               <div className="mb-2 flex items-center gap-3 rounded-xl bg-violet-50 p-2 pr-3">
@@ -1704,7 +1712,7 @@ export function AssistantHome({
                   onClick={() =>
                     setIsAttachmentMenuOpen((current) => !current)
                   }
-                  className="nk-focus inline-flex size-11 items-center justify-center rounded-xl bg-app-background text-text-primary transition hover:bg-brand-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
+                  className="nk-focus inline-flex size-11 items-center justify-center rounded-full bg-app-background text-text-primary transition hover:bg-brand-gold-soft disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <PlusIcon className="size-5" />
                 </button>
@@ -1805,10 +1813,6 @@ export function AssistantHome({
               onChange={(event) => void handleImageSelection(event, "gallery")}
             />
           </form>
-          <p className="mx-auto mt-1 max-w-3xl text-center text-[0.6rem] leading-4 font-semibold text-text-muted sm:mt-1.5 sm:text-[0.68rem]">
-            Consultas e fotos de Pedido geram prévias. Entradas, saídas,
-            montagens e retiradas só acontecem após confirmação explícita.
-          </p>
       </div>
 
       <AssistantNewConversationDialog
