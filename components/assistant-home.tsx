@@ -1329,6 +1329,18 @@ export function AssistantHome({
       onClickCapture={handleInternalNavigation}
       className="relative flex h-dvh min-h-0 flex-col overflow-hidden"
     >
+      {isHydrated && messages.length === 0 ? (
+        <div className="pointer-events-none fixed top-[max(0.5rem,env(safe-area-inset-top))] right-[7.25rem] left-[4.5rem] z-40 flex h-12 items-center justify-center lg:hidden">
+          <div className="flex max-w-full items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]">
+            <BrandMark
+              variant="full"
+              size="sm"
+              className="max-w-full justify-center"
+            />
+          </div>
+        </div>
+      ) : null}
+
       <section
         ref={conversationRef}
         aria-label="Conversa com a Assistente NK"
@@ -1337,7 +1349,7 @@ export function AssistantHome({
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none sticky top-0 z-20 -mb-20 h-20 bg-gradient-to-b from-app-background via-app-background/95 to-transparent lg:-mb-14 lg:h-14"
+          className="pointer-events-none sticky top-0 z-20 -mb-20 h-20 bg-gradient-to-b from-app-background/75 via-app-background/35 to-transparent lg:-mb-14 lg:h-14"
         />
         <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-20 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-20 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pt-6 lg:pb-12">
           {!isHydrated ? (
@@ -1350,8 +1362,12 @@ export function AssistantHome({
           ) : messages.length === 0 ? (
             <div className="mx-auto w-full max-w-3xl">
               <div className="mb-6 flex flex-col items-center text-center sm:mb-8">
-                <BrandMark variant="full" size="lg" className="justify-center" />
-                <p className="mt-5 text-xl font-black tracking-tight text-text-primary sm:text-2xl">
+                <BrandMark
+                  variant="full"
+                  size="lg"
+                  className="hidden justify-center lg:inline-flex"
+                />
+                <p className="text-xl font-black tracking-tight text-text-primary lg:mt-5 sm:text-2xl">
                   {firstName ? `Olá, ${firstName}.` : "Olá."}
                 </p>
                 <p className="mt-1 max-w-xl text-sm font-semibold text-text-muted sm:text-base">

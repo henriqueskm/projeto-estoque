@@ -38,9 +38,11 @@ test("Assistant chat keeps transcription feedback below the composer controls", 
   const home = read("components/assistant-home.tsx");
   const voice = read("components/assistant-voice-dictation.tsx");
 
-  assert.match(home, /bg-gradient-to-b from-app-background via-app-background\/95 to-transparent/);
+  assert.match(home, /bg-gradient-to-b from-app-background\/75 via-app-background\/35 to-transparent/);
   assert.match(home, /className="relative flex h-dvh min-h-0 flex-col overflow-hidden"/);
-  assert.match(home, /<BrandMark variant="full" size="lg"/);
+  assert.match(home, /isHydrated && messages\.length === 0/);
+  assert.match(home, /right-\[7\.25rem\] left-\[4\.5rem\]/);
+  assert.match(home, /bg-surface px-2 py-1/);
   assert.doesNotMatch(home, /<header className=/);
   assert.match(read("components/app-sidebar.tsx"), /isAssistantHome \? \(/);
   assert.doesNotMatch(home, /Consultas e fotos de Pedido geram prévias/);

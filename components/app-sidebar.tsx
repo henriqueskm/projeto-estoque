@@ -370,11 +370,11 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
             aria-haspopup="dialog"
             aria-expanded={isDrawerOpen}
             onClick={() => setIsDrawerOpen(true)}
-            className="nk-focus pointer-events-auto inline-flex size-12 shrink-0 items-center justify-center rounded-full border border-border-neutral bg-surface/95 text-brand-charcoal shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)] backdrop-blur-md transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/30"
+            className="nk-focus pointer-events-auto inline-flex size-12 shrink-0 items-center justify-center rounded-full border border-border-neutral bg-surface text-brand-charcoal shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)] transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/30"
           >
             <MenuIcon className="size-6" />
           </button>
-          <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-border-neutral bg-surface/95 p-0.5 shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)] backdrop-blur-md">
+          <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-border-neutral bg-surface p-0.5 shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)]">
             <SafisaPickupAlertBell tone="light" />
             <span aria-hidden="true" className="h-6 w-px bg-border-neutral" />
             <button

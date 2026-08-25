@@ -106,7 +106,7 @@ export function SafisaPickupAlertBell({
           id={panelId}
           role="dialog"
           aria-label="Retiradas Safisa"
-          className="fixed top-[calc(3.5rem+0.5rem)] right-3 left-3 z-[70] max-h-[min(34rem,calc(100dvh-5rem))] overflow-y-auto rounded-2xl border border-border-neutral bg-surface p-3 text-text-primary shadow-2xl sm:absolute sm:top-[calc(100%+0.5rem)] sm:right-0 sm:left-auto sm:w-[min(25rem,calc(100vw-2rem))] lg:right-auto lg:left-0"
+          className="fixed top-[calc(3.5rem+0.75rem)] right-3 z-[70] max-h-[min(34rem,calc(100dvh-5.5rem))] w-[min(21rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-border-neutral bg-surface p-3 text-text-primary shadow-2xl sm:absolute sm:top-[calc(100%+0.5rem)] sm:right-0 sm:w-[min(25rem,calc(100vw-2rem))] lg:right-auto lg:left-0"
         >
           <div className="flex items-start justify-between gap-3 border-b border-border-neutral pb-2.5">
             <div>
