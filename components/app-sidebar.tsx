@@ -362,21 +362,6 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
           <BrandMark variant="full" size="sm" inverted />
         </Link>
           <SafisaPickupAlertBell />
-          {isAssistantHome ? (
-            <button
-              type="button"
-              aria-label="Nova conversa"
-              title="Nova conversa"
-              onClick={() =>
-                window.dispatchEvent(
-                  new Event(assistantNewConversationRequestEvent),
-                )
-              }
-              className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-white/20 bg-brand-charcoal-soft/70 text-white transition hover:border-brand-gold hover:bg-white/10"
-            >
-              <ComposeIcon className="size-5" />
-            </button>
-          ) : null}
         </div>
         <NavigationContent
           idSuffix="desktop"

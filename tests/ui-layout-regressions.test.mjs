@@ -36,11 +36,16 @@ test("Assistant shortcuts expose operations without shifting the conversation fo
 
 test("Assistant chat keeps transcription feedback below the composer controls", () => {
   const home = read("components/assistant-home.tsx");
+  const sidebar = read("components/app-sidebar.tsx");
   const voice = read("components/assistant-voice-dictation.tsx");
 
   assert.match(home, /bg-gradient-to-b from-app-background\/75 via-app-background\/35 to-transparent/);
   assert.match(home, /className="relative -mt-16 flex h-dvh min-h-0 flex-col overflow-hidden lg:mt-0"/);
   assert.match(home, /isHydrated && messages\.length === 0/);
+  assert.match(home, /aria-label="Nova conversa"[\s\S]*lg:inline-flex/);
+  assert.match(home, /lg:pointer-events-none lg:absolute lg:inset-x-0 lg:bottom-0 lg:border-t-0 lg:bg-transparent/);
+  assert.match(home, /<AssistantVoiceDictation/);
+  assert.doesNotMatch(sidebar, /bg-brand-charcoal-soft\/70 text-white[\s\S]*<ComposeIcon/);
   assert.match(home, /right-\[7\.25rem\] left-\[4\.5rem\]/);
   assert.match(home, /bg-surface px-2 py-1/);
   assert.doesNotMatch(home, /<header className=/);

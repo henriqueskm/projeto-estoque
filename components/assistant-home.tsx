@@ -18,6 +18,7 @@ import { useAssistantConversation } from "@/components/assistant-conversation-pr
 import {
   CameraIcon,
   CloseIcon,
+  ComposeIcon,
   ImageIcon,
   PlusIcon,
   SendIcon,
@@ -1329,6 +1330,20 @@ export function AssistantHome({
       onClickCapture={handleInternalNavigation}
       className="relative -mt-16 flex h-dvh min-h-0 flex-col overflow-hidden lg:mt-0"
     >
+      <button
+        type="button"
+        aria-label="Nova conversa"
+        title="Nova conversa"
+        onClick={() =>
+          window.dispatchEvent(
+            new Event(assistantNewConversationRequestEvent),
+          )
+        }
+        className="nk-focus fixed top-[max(1rem,env(safe-area-inset-top))] right-6 z-40 hidden size-12 items-center justify-center rounded-full border border-border-neutral bg-surface text-brand-charcoal shadow-[0_12px_30px_-18px_rgba(23,29,33,0.85)] transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/30 lg:inline-flex"
+      >
+        <ComposeIcon className="size-5" />
+      </button>
+
       {isHydrated && messages.length === 0 ? (
         <div className="pointer-events-none fixed top-[max(0.5rem,env(safe-area-inset-top))] right-[7.25rem] left-[4.5rem] z-40 flex h-12 items-center justify-center lg:hidden">
           <div className="flex max-w-full items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]">
@@ -1351,7 +1366,7 @@ export function AssistantHome({
           aria-hidden="true"
           className="pointer-events-none sticky top-0 z-20 -mb-20 h-20 bg-gradient-to-b from-app-background/75 via-app-background/35 to-transparent lg:-mb-14 lg:h-14"
         />
-        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-20 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-20 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pt-6 lg:pb-12">
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 pt-20 pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pt-20 sm:pb-[calc(var(--assistant-composer-height,7rem)+env(safe-area-inset-bottom)+1.25rem)] lg:px-8 lg:pt-6 lg:pb-[calc(var(--assistant-composer-height,7rem)+1.5rem)]">
           {!isHydrated ? (
             <p
               role="status"
@@ -1675,11 +1690,11 @@ export function AssistantHome({
         </div>
       </section>
 
-      <div ref={composerRef} className="z-30 shrink-0 border-t border-border-neutral/65 bg-gradient-to-t from-app-background via-app-background/95 to-app-background/80 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-8">
+      <div ref={composerRef} className="z-30 shrink-0 border-t border-border-neutral/65 bg-gradient-to-t from-app-background via-app-background/95 to-app-background/80 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:pointer-events-none lg:absolute lg:inset-x-0 lg:bottom-0 lg:border-t-0 lg:bg-transparent lg:px-8 lg:pt-0 lg:pb-5 lg:backdrop-blur-none">
           <form
             onSubmit={handleSubmit}
             aria-busy={isComposerLocked || isVoiceBusy}
-            className="mx-auto w-full max-w-3xl rounded-[1.35rem] border border-border-neutral bg-surface p-2 shadow-[0_16px_42px_-26px_rgba(23,29,33,0.6)]"
+            className="mx-auto w-full max-w-3xl rounded-[1.35rem] border border-border-neutral bg-surface p-2 shadow-[0_16px_42px_-26px_rgba(23,29,33,0.6)] lg:pointer-events-auto"
           >
             {attachment ? (
               <div className="mb-2 flex items-center gap-3 rounded-xl bg-violet-50 p-2 pr-3">
