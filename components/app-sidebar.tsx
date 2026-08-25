@@ -404,17 +404,19 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
         </button>
 
         {!isAssistantHome ? (
-          <Link
-            href="/"
-            aria-label="Ir para a Assistente NK"
-            className="nk-focus pointer-events-auto absolute right-[7.25rem] left-[4.5rem] flex h-12 items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]"
-          >
-            <BrandMark
-              variant="full"
-              size="sm"
-              className="max-w-full justify-center"
-            />
-          </Link>
+          <div className="pointer-events-none absolute right-[7.25rem] left-[4.5rem] flex h-12 items-center justify-center">
+            <Link
+              href="/"
+              aria-label="Ir para a Assistente NK"
+              className="nk-focus pointer-events-auto flex max-w-full items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]"
+            >
+              <BrandMark
+                variant="full"
+                size="sm"
+                className="max-w-full justify-center"
+              />
+            </Link>
+          </div>
         ) : null}
 
         <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-border-neutral bg-surface p-0.5 shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)]">

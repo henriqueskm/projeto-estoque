@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AssistantConversationProvider } from "@/components/assistant-conversation-provider";
-import { AssistantFloatingLink } from "@/components/assistant-floating-link";
 import { AuthenticatedProfileProvider } from "@/components/authenticated-profile-provider";
 import { SafisaPickupAlertProvider } from "@/components/safisa-pickup-alert-provider";
 import { requireActiveProfile } from "@/lib/auth";
@@ -31,7 +30,6 @@ export default async function AuthenticatedLayout({
             <div className="min-h-dvh pt-16 lg:pt-0 lg:pl-64">
               {children}
             </div>
-            <AssistantFloatingLink />
           </div>
         </AssistantConversationProvider>
       </SafisaPickupAlertProvider>
