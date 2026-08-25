@@ -115,14 +115,16 @@ export function AssistantCameraCapture({
     if (!isOpen) return;
 
     let disposed = false;
-    window.requestAnimationFrame(() => closeButtonRef.current?.focus());
-
-    void startCamera().then(() => {
-      if (disposed) stopStream();
+    const startFrame = window.requestAnimationFrame(() => {
+      closeButtonRef.current?.focus();
+      void startCamera().then(() => {
+        if (disposed) stopStream();
+      });
     });
 
     return () => {
       disposed = true;
+      window.cancelAnimationFrame(startFrame);
       stopStream();
     };
   }, [isOpen, startCamera, stopStream]);
