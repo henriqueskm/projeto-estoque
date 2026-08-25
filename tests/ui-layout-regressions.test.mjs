@@ -47,7 +47,12 @@ test("Assistant chat keeps transcription feedback below the composer controls", 
   assert.match(read("components/app-sidebar.tsx"), /isAssistantHome \? \(/);
   assert.match(read("components/app-sidebar.tsx"), /!isAssistantHome \? \(/);
   assert.match(read("app\/(authenticated)\/layout.tsx"), /min-h-dvh pt-16 lg:pt-0 lg:pl-64/);
-  assert.match(read("app\/globals.css"), /nk-mobile-nav-enter 220ms/);
+  assert.match(read("app\/globals.css"), /nk-mobile-nav-enter 260ms/);
+  assert.match(read("app\/globals.css"), /\.nk-mobile-nav-backdrop-enter/);
+  assert.match(read("app\/globals.css"), /nk-mobile-nav-exit 240ms/);
+  assert.match(read("components/app-sidebar.tsx"), /isDrawerClosing \? "nk-mobile-nav-exit"/);
+  assert.match(read("components/app-sidebar.tsx"), /right-\[7\.25rem\] left-\[4\.5rem\]/);
+  assert.match(read("components/app-sidebar.tsx"), /w-\[min\(17\.5rem,calc\(100vw-3\.5rem\)\)\]/);
   assert.doesNotMatch(home, /Consultas e fotos de Pedido geram prévias/);
   assert.match(voice, /order-last basis-full rounded-xl/);
   assert.match(voice, /order-last basis-full px-1 text-xs leading-5 font-semibold text-red-800/);

@@ -259,24 +259,53 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
   const pathname = usePathname();
   const isAssistantHome = pathname === "/";
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isDrawerClosing, setIsDrawerClosing] = useState(false);
   const [operationsExpanded, setOperationsExpanded] = useState(false);
   const drawerTitleId = useId();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const drawerCloseTimerRef = useRef<number | null>(null);
 
   useDocumentScrollLock(isDrawerOpen);
 
   const closeDrawer = useCallback((restoreFocus = false) => {
-    setIsDrawerOpen(false);
-
-    if (restoreFocus) {
-      window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+    if (!isDrawerOpen || isDrawerClosing) {
+      return;
     }
+
+    setIsDrawerClosing(true);
+    drawerCloseTimerRef.current = window.setTimeout(() => {
+      setIsDrawerOpen(false);
+      setIsDrawerClosing(false);
+      drawerCloseTimerRef.current = null;
+
+      if (restoreFocus) {
+        window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+      }
+    }, 240);
+  }, [isDrawerClosing, isDrawerOpen]);
+
+  const openDrawer = useCallback(() => {
+    if (drawerCloseTimerRef.current) {
+      window.clearTimeout(drawerCloseTimerRef.current);
+      drawerCloseTimerRef.current = null;
+    }
+
+    setIsDrawerClosing(false);
+    setIsDrawerOpen(true);
   }, []);
 
   useEffect(() => {
-    if (!isDrawerOpen) {
+    return () => {
+      if (drawerCloseTimerRef.current) {
+        window.clearTimeout(drawerCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isDrawerOpen || isDrawerClosing) {
       return;
     }
 
@@ -319,7 +348,7 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [closeDrawer, isDrawerOpen]);
+  }, [closeDrawer, isDrawerClosing, isDrawerOpen]);
 
   return (
     <>
@@ -368,7 +397,7 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
           aria-label="Abrir menu principal"
           aria-haspopup="dialog"
           aria-expanded={isDrawerOpen}
-          onClick={() => setIsDrawerOpen(true)}
+          onClick={openDrawer}
           className="nk-focus pointer-events-auto inline-flex size-12 shrink-0 items-center justify-center rounded-full border border-border-neutral bg-surface text-brand-charcoal shadow-[0_10px_28px_-16px_rgba(23,29,33,0.8)] transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/30"
         >
           <MenuIcon className="size-6" />
@@ -378,7 +407,7 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
           <Link
             href="/"
             aria-label="Ir para a Assistente NK"
-            className="nk-focus pointer-events-auto absolute left-1/2 flex h-12 max-w-[calc(100vw-12rem)] -translate-x-1/2 items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]"
+            className="nk-focus pointer-events-auto absolute right-[7.25rem] left-[4.5rem] flex h-12 items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]"
           >
             <BrandMark
               variant="full"
@@ -426,14 +455,20 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
               closeDrawer(true);
             }
           }}
-          className="nk-mobile-nav-backdrop fixed inset-0 z-[90] bg-black/65 lg:hidden"
+          className={`fixed inset-0 z-[90] bg-black/65 lg:hidden ${
+            isDrawerClosing
+              ? "nk-mobile-nav-backdrop-exit"
+              : "nk-mobile-nav-backdrop-enter"
+          }`}
         >
           <div
             ref={drawerRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby={drawerTitleId}
-            className="nk-mobile-nav-enter flex h-full w-[min(20rem,calc(100vw-2rem))] flex-col border-r border-brand-gold/25 bg-brand-charcoal pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-white shadow-2xl"
+            className={`flex h-full w-[min(17.5rem,calc(100vw-3.5rem))] flex-col border-r border-brand-gold/25 bg-brand-charcoal pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-white shadow-2xl ${
+              isDrawerClosing ? "nk-mobile-nav-exit" : "nk-mobile-nav-enter"
+            }`}
           >
             <div className="flex min-h-16 items-center justify-between gap-3 border-b border-white/10 px-4 py-2">
               <div id={drawerTitleId}>

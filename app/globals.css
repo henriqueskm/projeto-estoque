@@ -126,8 +126,8 @@ textarea {
 
 @keyframes nk-mobile-nav-enter {
   from {
-    opacity: 0.75;
-    transform: translateX(-1.25rem);
+    opacity: 0.86;
+    transform: translateX(-100%);
   }
 
   to {
@@ -136,12 +136,42 @@ textarea {
   }
 }
 
-.nk-mobile-nav-backdrop {
+@keyframes nk-mobile-nav-backdrop-exit {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes nk-mobile-nav-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0.86;
+    transform: translateX(-100%);
+  }
+}
+
+.nk-mobile-nav-backdrop-enter {
   animation: nk-mobile-nav-backdrop-enter 180ms ease-out;
 }
 
 .nk-mobile-nav-enter {
-  animation: nk-mobile-nav-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: nk-mobile-nav-enter 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nk-mobile-nav-backdrop-exit {
+  animation: nk-mobile-nav-backdrop-exit 240ms ease-in forwards;
+}
+
+.nk-mobile-nav-exit {
+  animation: nk-mobile-nav-exit 240ms cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
