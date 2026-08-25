@@ -24,6 +24,7 @@ import {
 } from "@/components/icons";
 import { AssistantMessageContent } from "@/components/assistant-message-content";
 import { AssistantCameraCapture } from "@/components/assistant-camera-capture";
+import { AssistantVoiceDictation } from "@/components/assistant-voice-dictation";
 import { AssistantNewConversationDialog } from "@/components/assistant-new-conversation-dialog";
 import { AssistantRestoredMediaControl } from "@/components/assistant-restored-media-control";
 import { AssistantStructuredBlockView } from "@/components/assistant-structured-block";
@@ -62,6 +63,7 @@ import {
   type AssistantSupplierOrderFinalizationPreviewBlock,
   type AssistantSupplierOrderFinalizationResultBlock,
 } from "@/lib/assistant-types";
+import { appendAssistantVoiceTranscript } from "@/lib/assistant-voice-contract";
 import {
   buildAssistantRecentConversation,
   parseAssistantConversationContext,
@@ -177,6 +179,7 @@ export function AssistantHome({
   const [attachment, setAttachment] = useState<LocalAttachment | null>(null);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
+  const [isVoiceBusy, setIsVoiceBusy] = useState(false);
   const [isNewConversationDialogOpen, setIsNewConversationDialogOpen] =
     useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -217,7 +220,7 @@ export function AssistantHome({
   const firstName = profile.hasRegisteredName
     ? (profile.displayName.split(/\s+/).filter(Boolean)[0] ?? null)
     : null;
-  const isInteractionLocked = isPending || isRefreshingStock;
+  const isInteractionLocked = isPending || isRefreshingStock || isVoiceBusy;
   const isComposerLocked = !isHydrated || isInteractionLocked;
   const hasOperationalConfirmation = Boolean(
     confirmingPickupMessageId ||
@@ -229,6 +232,7 @@ export function AssistantHome({
   );
   const canSubmit =
     !isComposerLocked &&
+    !isVoiceBusy &&
     Boolean(
       attachment ? attachment.status === "ready" : draft.trim(),
     );
@@ -1255,6 +1259,21 @@ export function AssistantHome({
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
+  function appendVoiceTranscript(transcript: string) {
+    const nextDraft = appendAssistantVoiceTranscript(draft, transcript);
+    if (!nextDraft || nextDraft.length > assistantMessageMaxLength) {
+      setFeedback("A transcrição ficou muito longa para o campo de mensagem.");
+      return false;
+    }
+    setDraft(nextDraft);
+    setFeedback(null);
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      resizeTextarea();
+    });
+    return true;
+  }
+
   function confirmNewConversation() {
     setIsNewConversationDialogOpen(false);
     setFeedback(null);
@@ -1632,7 +1651,7 @@ export function AssistantHome({
       <div ref={composerRef} className="z-30 shrink-0 border-t border-border-neutral/80 bg-app-background/95 px-4 pt-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6 sm:pt-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-8">
           <form
             onSubmit={handleSubmit}
-            aria-busy={isComposerLocked}
+            aria-busy={isComposerLocked || isVoiceBusy}
             className="mx-auto w-full max-w-3xl rounded-2xl border border-border-neutral bg-surface p-2 shadow-[0_16px_42px_-26px_rgba(23,29,33,0.6)]"
           >
             {attachment ? (
@@ -1663,7 +1682,7 @@ export function AssistantHome({
                 </div>
                 <button
                   type="button"
-                  disabled={isComposerLocked}
+                  disabled={isComposerLocked || isVoiceBusy}
                   onClick={removeAttachment}
                   aria-label="Remover imagem anexada"
                   className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-text-muted transition hover:bg-white hover:text-red-800"
@@ -1673,12 +1692,12 @@ export function AssistantHome({
               </div>
             ) : null}
 
-            <div className="flex items-end gap-1.5 sm:gap-2">
+            <div className="flex flex-wrap items-end gap-1.5 sm:gap-2">
               <div className="relative shrink-0">
                 <button
                   ref={menuButtonRef}
                   type="button"
-                  disabled={isComposerLocked}
+                  disabled={isComposerLocked || isVoiceBusy}
                   aria-label="Adicionar imagem"
                   aria-expanded={isAttachmentMenuOpen}
                   aria-controls={attachmentMenuId}
@@ -1731,7 +1750,7 @@ export function AssistantHome({
                   value={draft}
                   rows={1}
                   maxLength={assistantMessageMaxLength}
-                  disabled={isComposerLocked}
+                  disabled={isComposerLocked || isVoiceBusy}
                   placeholder="Digite uma mensagem..."
                   onChange={(event) => {
                     setDraft(event.target.value);
@@ -1742,6 +1761,14 @@ export function AssistantHome({
                   className="nk-field block max-h-32 min-h-11 w-full resize-none overflow-y-auto rounded-xl border px-3 py-2.5 text-sm leading-6 outline-none sm:text-base"
                 />
               </label>
+
+              <AssistantVoiceDictation
+                disabled={isComposerLocked || Boolean(attachment)}
+                cameraOpen={isCameraCaptureOpen}
+                onBusyChange={setIsVoiceBusy}
+                onRequestStart={() => setIsAttachmentMenuOpen(false)}
+                onTranscript={appendVoiceTranscript}
+              />
 
               <button
                 type="submit"

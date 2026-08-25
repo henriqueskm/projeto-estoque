@@ -11,6 +11,7 @@
     "test:safisa-pickup-alerts": "node --experimental-strip-types --test tests/safisa-pickup-alerts.test.mjs",
     "test:ui-layout": "node --test tests/ui-layout-regressions.test.mjs",
     "test:assistant-camera": "node --test tests/assistant-camera-capture.test.mjs",
+    "test:assistant-voice": "node --experimental-strip-types --test tests/assistant-voice-dictation.test.mjs",
     "test:public-site": "node --test tests/public-site.test.mjs",
     "test:commercial-proposal": "node --experimental-strip-types --test tests/commercial-proposal.test.mjs",
     "test:remotion-assistant-demo": "node --test tests/remotion-assistant-demo.test.mjs",
