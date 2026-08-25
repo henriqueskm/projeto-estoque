@@ -13,6 +13,7 @@ import {
   resetAssistantVoiceRateLimitForTests,
   takeAssistantVoiceTranscriptionSlot,
 } from "../lib/assistant-voice-rate-limit.ts";
+import { discardAssistantVoicePermissionResult } from "../lib/assistant-voice-permission-guard.ts";
 
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -69,6 +70,67 @@ test("aplica um limite curto por usuário sem persistir áudio ou transcrição"
   assert.equal(takeAssistantVoiceTranscriptionSlot("profile-a", 10_000), false);
   assert.equal(takeAssistantVoiceTranscriptionSlot("profile-b", 10_000), true);
   assert.equal(takeAssistantVoiceTranscriptionSlot("profile-a", 610_001), true);
+});
+
+test("descarta stream que chega após permissão ficar em background, sem iniciar recorder", () => {
+  const stoppedTracks = [];
+  const stream = {
+    getTracks: () => [
+      { stop: () => stoppedTracks.push("audio") },
+      { stop: () => stoppedTracks.push("video") },
+    ],
+  };
+  const discarded = discardAssistantVoicePermissionResult({
+    stream,
+    isMounted: true,
+    isCurrent: true,
+    state: "requesting_permission",
+    isHidden: true,
+  });
+
+  assert.equal(discarded, true);
+  assert.deepEqual(stoppedTracks, ["audio", "video"]);
+
+  const staleTracks = [];
+  assert.equal(
+    discardAssistantVoicePermissionResult({
+      stream: { getTracks: () => [{ stop: () => staleTracks.push("audio") }] },
+      isMounted: true,
+      isCurrent: false,
+      state: "requesting_permission",
+      isHidden: false,
+    }),
+    true,
+  );
+  assert.deepEqual(staleTracks, ["audio"]);
+});
+
+test("preserva a gravação visível e a proteção existente para recording em background", () => {
+  const stoppedTracks = [];
+  const stream = { getTracks: () => [{ stop: () => stoppedTracks.push("audio") }] };
+  assert.equal(
+    discardAssistantVoicePermissionResult({
+      stream,
+      isMounted: true,
+      isCurrent: true,
+      state: "requesting_permission",
+      isHidden: false,
+    }),
+    false,
+  );
+  assert.deepEqual(stoppedTracks, []);
+
+  const component = read("components/assistant-voice-dictation.tsx");
+  assert.match(component, /stateRef\.current === "requesting_permission"/);
+  assert.match(component, /if \(stateRef\.current !== "recording"\) return/);
+  assert.match(component, /document\.visibilityState === "hidden"/);
+  assert.match(component, /discardAssistantVoicePermissionResult\(/);
+  assert.match(component, /permissionRequestId === permissionRequestIdRef\.current/);
+  assert.ok(
+    component.indexOf("const permissionRequestWasDiscarded") <
+      component.indexOf("new MediaRecorder(stream"),
+  );
+  assert.match(component, /new MediaRecorder\(stream/);
 });
 
 test("a normalização no navegador gera WAV PCM mono e libera AudioContext", () => {

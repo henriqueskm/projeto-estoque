@@ -8,6 +8,7 @@ import {
   prepareAssistantVoiceAudio,
 } from "@/lib/assistant-voice-audio";
 import { assistantVoiceMaxDurationSeconds } from "@/lib/assistant-voice-contract";
+import { discardAssistantVoicePermissionResult } from "@/lib/assistant-voice-permission-guard";
 
 type AssistantVoiceDictationState =
   | "idle"
@@ -60,6 +61,7 @@ export function AssistantVoiceDictation({
   const elapsedTimerRef = useRef<number | null>(null);
   const limitTimerRef = useRef<number | null>(null);
   const processingIdRef = useRef(0);
+  const permissionRequestIdRef = useRef(0);
   const requestAbortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
 
@@ -211,14 +213,30 @@ export function AssistantVoiceDictation({
 
     onRequestStart();
     onBusyChange(true);
+    const permissionRequestId = permissionRequestIdRef.current + 1;
+    permissionRequestIdRef.current = permissionRequestId;
     setMessage(null);
     setElapsedSeconds(0);
     transition("requesting_permission");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const stillRequestingPermission = () => stateRef.current === "requesting_permission";
-      if (!mountedRef.current || !stillRequestingPermission()) {
-        stream.getTracks().forEach((track) => track.stop());
+      const permissionRequestWasDiscarded = discardAssistantVoicePermissionResult({
+        stream,
+        isMounted: mountedRef.current,
+        isCurrent: permissionRequestId === permissionRequestIdRef.current,
+        state: stateRef.current,
+        isHidden: document.visibilityState === "hidden",
+      });
+      if (permissionRequestWasDiscarded) {
+        if (
+          mountedRef.current &&
+          permissionRequestId === permissionRequestIdRef.current &&
+          stateRef.current === "requesting_permission" &&
+          document.visibilityState === "hidden"
+        ) {
+          setMessage("A gravação foi cancelada ao deixar o app em segundo plano.");
+          transition("error");
+        }
         return;
       }
       streamRef.current = stream;
@@ -291,7 +309,17 @@ export function AssistantVoiceDictation({
 
   useEffect(() => {
     function handleVisibilityChange() {
-      if (document.visibilityState !== "hidden" || stateRef.current !== "recording") return;
+      if (document.visibilityState !== "hidden") return;
+      if (stateRef.current === "requesting_permission") {
+        permissionRequestIdRef.current += 1;
+        clearTimers();
+        stopTracks();
+        chunksRef.current = [];
+        setMessage("A gravação foi cancelada ao deixar o app em segundo plano.");
+        transition("error");
+        return;
+      }
+      if (stateRef.current !== "recording") return;
       stopModeRef.current = "cancel";
       clearTimers();
       const recorder = recorderRef.current;
