@@ -15,6 +15,7 @@ const workerSource = read("public/sw.js");
 const clientSource = read("lib/firebase-push-client.ts");
 const providerSource = read("components/push-notification-provider.tsx");
 const actionsSource = read("app/safisa/actions.ts");
+const orderActionsSource = read("app/(authenticated)/pedidos/actions.ts");
 const sidebarSource = read("components/app-sidebar.tsx");
 
 const eventFixture = {
@@ -110,9 +111,11 @@ test("database contract isolates subscriptions and creates one transactional FUL
   assert.match(migration, /v_user_id uuid := auth\.uid\(\)/i);
   assert.match(migration, /on conflict \(device_id\) do update\s+set user_id = excluded\.user_id/i);
   assert.match(migration, /unique \(supplier_order_id, event_type\)/i);
-  assert.match(migration, /after update of ready_quantity/i);
+  assert.match(migration, /after update of ready_quantity, cancelled_quantity/i);
   assert.match(migration, /v_waiting_pickup_quantity > 0/i);
   assert.match(migration, /v_ready_quantity \+ v_cancelled_quantity = v_ordered_quantity/i);
+  assert.match(migration, /v_previous_cancelled_quantity\s*:=\s*v_cancelled_quantity - new\.cancelled_quantity \+ old\.cancelled_quantity/i);
+  assert.match(migration, /v_previous_ready_quantity \+ v_previous_cancelled_quantity = v_ordered_quantity/i);
   assert.match(migration, /on conflict \(supplier_order_id, event_type\) do nothing/i);
 });
 
@@ -239,6 +242,24 @@ test("Safisa mutations keep their own success result independent from push deliv
   assert.equal((actionsSource.match(/await dispatchSafisaFullyReadyPush\(input\.supplierOrderId\);/g) ?? []).length, 3);
   assert.doesNotMatch(actionsSource, /const\s+\w+\s*=\s*await dispatchSafisaFullyReadyPush/);
   assert.match(actionsSource, /await dispatchSafisaFullyReadyPush\(input\.supplierOrderId\);\s*revalidatePath\("\/safisa"\);\s*return \{ status: "success"/);
+});
+
+test("dispatcher contains configuration initialization inside its best-effort boundary", () => {
+  const dispatcherSource = read("lib/safisa-push-dispatch.ts");
+  const functionBody = dispatcherSource.slice(
+    dispatcherSource.indexOf("export async function dispatchSafisaFullyReadyPush"),
+  );
+  assert.match(functionBody, /try \{\s*const adminClient = suppliedDependencies\?\.adminClient \?\? createAdminClient\(\)/);
+  assert.match(functionBody, /catch \{\s*return "failed"/);
+});
+
+test("successful internal cancellation actions drain a possible event without changing RPC success", () => {
+  const cancellationWorker = orderActionsSource.slice(
+    orderActionsSource.indexOf("async function cancelSupplierOrderWithRpc"),
+    orderActionsSource.indexOf("export async function cancelSupplierOrder"),
+  );
+  assert.match(cancellationWorker, /if \(error\) return mapRpcError\(error\.code, error\.message\)/);
+  assert.match(cancellationWorker, /await dispatchSafisaFullyReadyPush\(normalized\.supplier_order_id\);\s*return finishMutation\(data\)/);
 });
 
 test("logout always proceeds after a bounded best-effort push cleanup", () => {

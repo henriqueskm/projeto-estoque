@@ -208,9 +208,11 @@ declare
   v_ready_quantity bigint;
   v_waiting_pickup_quantity bigint;
   v_previous_ready_quantity bigint;
+  v_previous_cancelled_quantity bigint;
   v_previous_waiting_pickup_quantity bigint;
 begin
-  if new.ready_quantity is not distinct from old.ready_quantity then
+  if new.ready_quantity is not distinct from old.ready_quantity
+    and new.cancelled_quantity is not distinct from old.cancelled_quantity then
     return new;
   end if;
 
@@ -239,6 +241,8 @@ begin
 
   v_previous_ready_quantity :=
     v_ready_quantity - new.ready_quantity + old.ready_quantity;
+  v_previous_cancelled_quantity :=
+    v_cancelled_quantity - new.cancelled_quantity + old.cancelled_quantity;
   v_previous_waiting_pickup_quantity :=
     v_waiting_pickup_quantity - new.ready_quantity + old.ready_quantity;
 
@@ -246,7 +250,7 @@ begin
     and v_ready_quantity + v_cancelled_quantity = v_ordered_quantity
     and not (
       v_previous_waiting_pickup_quantity > 0
-      and v_previous_ready_quantity + v_cancelled_quantity = v_ordered_quantity
+      and v_previous_ready_quantity + v_previous_cancelled_quantity = v_ordered_quantity
     ) then
     insert into public.push_notification_events (
       event_type,
@@ -265,7 +269,7 @@ end;
 $$;
 
 create trigger supplier_order_items_enqueue_fully_ready_push
-after update of ready_quantity
+after update of ready_quantity, cancelled_quantity
 on public.supplier_order_items
 for each row
 execute function private.enqueue_safisa_fully_ready_push();

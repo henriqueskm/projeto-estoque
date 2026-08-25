@@ -156,14 +156,14 @@ export async function dispatchSafisaFullyReadyPush(
 ): Promise<SafisaPushDispatchResult> {
   if (!uuidPattern.test(supplierOrderId)) return "failed";
 
-  const adminClient = suppliedDependencies?.adminClient ?? createAdminClient();
-  const messaging = suppliedDependencies ? null : getFirebaseAdminMessaging();
-  const sendEachForMulticast = suppliedDependencies?.sendEachForMulticast ??
-    messaging?.sendEachForMulticast.bind(messaging);
-
-  if (!adminClient || !sendEachForMulticast) return "not_configured";
-
   try {
+    const adminClient = suppliedDependencies?.adminClient ?? createAdminClient();
+    const messaging = suppliedDependencies ? null : getFirebaseAdminMessaging();
+    const sendEachForMulticast = suppliedDependencies?.sendEachForMulticast ??
+      messaging?.sendEachForMulticast.bind(messaging);
+
+    if (!adminClient || !sendEachForMulticast) return "not_configured";
+
     const { data: claimedData, error: claimError } = await adminClient.rpc(
       "claim_safisa_fully_ready_push_event",
       { p_supplier_order_id: supplierOrderId },

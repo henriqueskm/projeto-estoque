@@ -53,8 +53,8 @@ assert.match(itemId, /^[0-9a-f-]{36}$/i);
 
 psql(`
   truncate table public.push_notification_events, public.push_subscriptions;
-  delete from public.supplier_order_items where supplier_order_id in ('${orderId(1)}', '${orderId(2)}', '${orderId(3)}');
-  delete from public.supplier_orders where id in ('${orderId(1)}', '${orderId(2)}', '${orderId(3)}');
+  delete from public.supplier_order_items where supplier_order_id in ('${orderId(1)}', '${orderId(2)}', '${orderId(3)}', '${orderId(4)}');
+  delete from public.supplier_orders where id in ('${orderId(1)}', '${orderId(2)}', '${orderId(3)}', '${orderId(4)}');
   delete from public.safisa_portal_members where user_id = '${ids.safisa}';
   delete from public.profiles where id in ('${ids.internalA}', '${ids.internalB}', '${ids.inactive}', '${ids.safisa}');
   delete from auth.users where id in ('${ids.internalA}', '${ids.internalB}', '${ids.inactive}', '${ids.safisa}');
@@ -92,7 +92,8 @@ psql(`
   insert into public.supplier_orders (id, negotiation_number, order_date, created_by, created_by_name_snapshot) values
     ('${orderId(1)}', '990001', current_date, '${ids.internalA}', 'Internal A'),
     ('${orderId(2)}', '990002', current_date, '${ids.internalA}', 'Internal A'),
-    ('${orderId(3)}', '990003', current_date, '${ids.internalA}', 'Internal A');
+    ('${orderId(3)}', '990003', current_date, '${ids.internalA}', 'Internal A'),
+    ('${orderId(4)}', '990004', current_date, '${ids.internalA}', 'Internal A');
   insert into public.supplier_order_items (
     id, supplier_order_id, item_id, code_snapshot, description_snapshot,
     item_type_snapshot, ordered_quantity, ready_quantity, picked_quantity,
@@ -101,7 +102,8 @@ psql(`
     ('${lineId(1)}', '${orderId(1)}', '${itemId}', 'LOCAL-1', 'Produto local parcial', 'ITEM', 10, 0, 0, 0, 0, 0),
     ('${lineId(2)}', '${orderId(2)}', '${itemId}', 'LOCAL-2A', 'Produto local completo A', 'ITEM', 5, 0, 0, 0, 0, 0),
     ('${lineId(3)}', '${orderId(2)}', '${itemId}', 'LOCAL-2B', 'Produto local completo B', 'ITEM', 5, 0, 0, 0, 0, 1),
-    ('${lineId(4)}', '${orderId(3)}', '${itemId}', 'LOCAL-3', 'Produto local cancelado', 'ITEM', 10, 0, 0, 0, 2, 0);
+    ('${lineId(4)}', '${orderId(3)}', '${itemId}', 'LOCAL-3', 'Produto local cancelado', 'ITEM', 10, 0, 0, 0, 2, 0),
+    ('${lineId(5)}', '${orderId(4)}', '${itemId}', 'LOCAL-4', 'Produto local cancelamento completa', 'ITEM', 10, 8, 0, 0, 0, 0);
 `);
 
 asAuthenticated(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(1)}', 3, '${key(2)}')`);
@@ -116,6 +118,12 @@ assert.equal(number(`select count(*) from public.push_notification_events where 
 
 asAuthenticated(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(4)}', 8, '${key(5)}')`);
 assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(3)}'`), 1, "cancelled quantity participates in FULLY_READY");
+
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(4)}'`), 0, "ready 8 of 10 remains PARTIALLY_READY");
+psql(`update public.supplier_order_items set cancelled_quantity = 2 where id = '${lineId(5)}'`);
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(4)}' and event_type = 'SAFISA_FULLY_READY'`), 1, "cancellation-only transition enqueues FULLY_READY");
+psql(`update public.supplier_order_items set cancelled_quantity = 2 where id = '${lineId(5)}'`);
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(4)}'`), 1, "cancellation transition replay remains idempotent");
 
 assert.match(asRole("authenticated", ids.internalA, `select public.claim_safisa_fully_ready_push_event('${orderId(2)}')`, true), /permission denied/i);
 const claimed = asRole("service_role", null, `select public.claim_safisa_fully_ready_push_event('${orderId(2)}')`);
