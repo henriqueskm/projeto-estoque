@@ -2,7 +2,6 @@ import { GoogleGenAI, type Interactions } from "@google/genai";
 import {
   assistantVoiceMaxTranscriptLength,
   assistantVoiceMimeType,
-  assistantVoiceSampleRate,
 } from "@/lib/assistant-voice-contract";
 import {
   diagnoseGeminiProviderError,
@@ -106,7 +105,6 @@ export async function transcribeAssistantVoiceWithGemini(input: {
           type: "audio",
           data: Buffer.from(input.bytes).toString("base64"),
           mime_type: assistantVoiceMimeType,
-          sample_rate: assistantVoiceSampleRate,
         },
       ],
     },

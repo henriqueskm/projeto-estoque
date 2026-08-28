@@ -4,7 +4,10 @@ import test from "node:test";
 
 import {
   appendAssistantVoiceTranscript,
+  assistantVoiceBitsPerSample,
+  assistantVoiceChannels,
   assistantVoiceMaxDurationSeconds,
+  assistantVoiceMimeType,
   assistantVoiceSampleRate,
   readAssistantVoiceWavInfo,
   validateAssistantVoiceWav,
@@ -22,36 +25,58 @@ import {
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-function pcmWav({ seconds = 1, sampleRate = assistantVoiceSampleRate } = {}) {
-  const samples = Math.round(seconds * sampleRate);
-  const bytes = new Uint8Array(44 + samples * 2);
+function pcmWav({
+  seconds = 1,
+  sampleRate = assistantVoiceSampleRate,
+  channels = assistantVoiceChannels,
+  bitsPerSample = assistantVoiceBitsPerSample,
+} = {}) {
+  const blockAlign = channels * (bitsPerSample / 8);
+  const dataBytes = Math.round(seconds * sampleRate) * blockAlign;
+  const bytes = new Uint8Array(44 + dataBytes);
   const view = new DataView(bytes.buffer);
   for (const [offset, value] of [[0, "RIFF"], [8, "WAVE"], [12, "fmt "], [36, "data"]]) {
     for (let index = 0; index < value.length; index += 1) {
       view.setUint8(offset + index, value.charCodeAt(index));
     }
   }
-  view.setUint32(4, 36 + samples * 2, true);
+  view.setUint32(4, 36 + dataBytes, true);
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
+  view.setUint16(22, channels, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  view.setUint32(40, samples * 2, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  view.setUint32(40, dataBytes, true);
   return bytes;
 }
 
 test("aceita somente WAV PCM mono de 16 kHz até sessenta segundos", () => {
-  const valid = pcmWav({ seconds: 60 });
-  assert.equal(readAssistantVoiceWavInfo(valid)?.durationSeconds, 60);
+  const valid = pcmWav({ seconds: assistantVoiceMaxDurationSeconds });
+  assert.deepEqual(readAssistantVoiceWavInfo(valid), {
+    channels: assistantVoiceChannels,
+    sampleRate: assistantVoiceSampleRate,
+    bitsPerSample: assistantVoiceBitsPerSample,
+    dataBytes: assistantVoiceMaxDurationSeconds * assistantVoiceSampleRate * 2,
+    durationSeconds: assistantVoiceMaxDurationSeconds,
+  });
   assert.equal(validateAssistantVoiceWav(valid).ok, true);
-  assert.deepEqual(validateAssistantVoiceWav(pcmWav({ seconds: 60.1 })), {
+  assert.deepEqual(validateAssistantVoiceWav(pcmWav({
+    seconds: assistantVoiceMaxDurationSeconds + 0.1,
+  })), {
     ok: false,
     reason: "duration",
   });
   assert.deepEqual(validateAssistantVoiceWav(pcmWav({ sampleRate: 44_100 })), {
+    ok: false,
+    reason: "format",
+  });
+  assert.deepEqual(validateAssistantVoiceWav(pcmWav({ channels: 2 })), {
+    ok: false,
+    reason: "format",
+  });
+  assert.deepEqual(validateAssistantVoiceWav(pcmWav({ bitsPerSample: 8 })), {
     ok: false,
     reason: "format",
   });
@@ -204,8 +229,10 @@ test("o provider é transcritor estruturado, server-side e sem ferramentas ou re
   assert.match(provider, /gemini-3\.7-flash/);
   assert.match(provider, /process\.env\.GEMINI_API_KEY/);
   assert.match(provider, /type: "audio"/);
+  assert.match(provider, /data: Buffer\.from\(input\.bytes\)\.toString\("base64"\)/);
   assert.match(provider, /mime_type: assistantVoiceMimeType/);
-  assert.match(provider, /sample_rate: assistantVoiceSampleRate/);
+  assert.equal(assistantVoiceMimeType, "audio/wav");
+  assert.doesNotMatch(provider, /sample_rate\s*:/);
   assert.doesNotMatch(provider, /channels\s*:/);
   assert.match(provider, /store: false/);
   assert.match(provider, /tool_choice: "none"/);
