@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { dispatchSafisaFullyReadyPush } from "@/lib/safisa-push-dispatch";
 import { createClient } from "@/lib/supabase/server";
 import {
   supplierOrderStatuses,
@@ -1101,7 +1102,10 @@ async function cancelSupplierOrderWithRpc(
       p_idempotency_key: normalized.idempotency_key,
     });
 
-    return error ? mapRpcError(error.code, error.message) : finishMutation(data);
+    if (error) return mapRpcError(error.code, error.message);
+
+    await dispatchSafisaFullyReadyPush(normalized.supplier_order_id);
+    return finishMutation(data);
   } catch {
     return actionError(
       "Não foi possível cancelar o pedido agora. Tente novamente.",

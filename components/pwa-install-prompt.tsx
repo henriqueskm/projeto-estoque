@@ -8,6 +8,11 @@ import {
   useState,
 } from "react";
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
+import {
+  canUseServiceWorker,
+  isIosDevice,
+  isStandaloneMode,
+} from "@/lib/pwa-capabilities";
 
 type InstallChoice = {
   outcome: "accepted" | "dismissed";
@@ -19,27 +24,9 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<InstallChoice>;
 };
 
-type NavigatorWithStandalone = Navigator & {
-  standalone?: boolean;
-};
-
 type InstallMode = "browser" | "ios" | null;
 
 const sessionDismissalKey = "negocios-k:pwa-install-dismissed";
-
-function isStandaloneMode() {
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (navigator as NavigatorWithStandalone).standalone === true
-  );
-}
-
-function isIosDevice() {
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
-}
 
 export function PwaInstallPrompt() {
   const [installEvent, setInstallEvent] =
@@ -60,11 +47,7 @@ export function PwaInstallPrompt() {
   }, []);
 
   useEffect(() => {
-    const canRegisterServiceWorker =
-      "serviceWorker" in navigator &&
-      (window.isSecureContext || window.location.hostname === "localhost");
-
-    if (canRegisterServiceWorker) {
+    if (canUseServiceWorker()) {
       void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
 

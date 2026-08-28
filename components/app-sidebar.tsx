@@ -13,6 +13,7 @@ import {
 import { logout } from "@/app/auth/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { SafisaPickupAlertBell } from "@/components/safisa-pickup-alerts";
+import { disablePushBeforeLogout } from "@/components/push-notification-provider";
 import {
   AssistantIcon,
   ChevronDownIcon,
@@ -42,6 +43,42 @@ type NavigationContentProps = AppSidebarProps & {
   onToggleOperations: () => void;
   onNavigate?: () => void;
 };
+
+function PushAwareLogoutForm() {
+  const allowSubmitRef = useRef(false);
+  const isPreparingRef = useRef(false);
+
+  return (
+    <form
+      action={logout}
+      data-assistant-session-logout
+      onSubmit={(event) => {
+        if (allowSubmitRef.current) return;
+
+        event.preventDefault();
+        if (isPreparingRef.current) return;
+
+        isPreparingRef.current = true;
+        const form = event.currentTarget;
+        const cleanupDeadline = new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 1_200);
+        });
+        void Promise.race([disablePushBeforeLogout(), cleanupDeadline]).finally(() => {
+          allowSubmitRef.current = true;
+          form.requestSubmit();
+        });
+      }}
+    >
+      <button
+        type="submit"
+        className="nk-focus mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-black text-red-200 transition hover:bg-red-950/45 hover:text-white"
+      >
+        <LogoutIcon className="size-5" />
+        Sair
+      </button>
+    </form>
+  );
+}
 
 function isCurrentSection(pathname: string, href: string) {
   if (href === "/") {
@@ -241,15 +278,7 @@ function NavigationContent({
             </Link>
           </div>
         </div>
-        <form action={logout} data-assistant-session-logout>
-          <button
-            type="submit"
-            className="nk-focus mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-black text-red-200 transition hover:bg-red-950/45 hover:text-white"
-          >
-            <LogoutIcon className="size-5" />
-            Sair
-          </button>
-        </form>
+        <PushAwareLogoutForm />
       </div>
     </div>
   );

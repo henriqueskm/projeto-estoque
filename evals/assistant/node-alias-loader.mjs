@@ -11,6 +11,13 @@ async function existing(url) {
 }
 
 export async function resolve(specifier, context, nextResolve) {
+  if (specifier === "server-only") {
+    return {
+      url: "data:text/javascript,export%20{}",
+      shortCircuit: true,
+    };
+  }
+
   if (specifier.startsWith("@/")) {
     const target = new URL(`../../${specifier.slice(2)}.ts`, import.meta.url);
     return nextResolve(target.href, context);

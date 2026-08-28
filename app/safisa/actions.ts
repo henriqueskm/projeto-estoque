@@ -11,6 +11,7 @@ import {
 } from "@/lib/safisa-portal-data";
 import { maximumReadyQuantity } from "@/lib/safisa-portal-readiness";
 import type { SafisaActionResult } from "@/lib/safisa-portal-types";
+import { dispatchSafisaFullyReadyPush } from "@/lib/safisa-push-dispatch";
 
 export type SafisaLoginState = {
   error?: string;
@@ -141,6 +142,7 @@ export async function incrementSafisaReadyQuantity(
     });
     if (error) return mapMutationError(error);
 
+    await dispatchSafisaFullyReadyPush(input.supplierOrderId);
     revalidatePath("/safisa");
     return { status: "success", message: `${input.incrementQuantity} unidade(s) informada(s) como pronta(s).` };
   } catch (error) {
@@ -178,6 +180,7 @@ export async function markSafisaRemainingReady(
     });
     if (error) return mapMutationError(error);
 
+    await dispatchSafisaFullyReadyPush(input.supplierOrderId);
     revalidatePath("/safisa");
     return { status: "success", message: "Todo o restante foi informado como pronto." };
   } catch (error) {
@@ -246,6 +249,7 @@ export async function correctSafisaReadyQuantity(
       return result;
     }
 
+    await dispatchSafisaFullyReadyPush(input.supplierOrderId);
     revalidatePath("/safisa");
     return { status: "success", message: "Quantidade pronta corrigida com auditoria." };
   } catch (error) {
