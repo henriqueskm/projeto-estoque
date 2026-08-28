@@ -11,6 +11,10 @@ const actions = read("app/safisa/actions.ts");
 const proxy = read("lib/supabase/proxy.ts");
 const portal = read("components/safisa-portal.tsx");
 const auth = read("lib/safisa-auth.ts");
+const page = read("app/safisa/page.tsx");
+const markAllReadyMigration = read(
+  "supabase/migrations/20260827140000_safisa_mark_all_order_ready.sql",
+);
 
 test("portal uses a separate server-side membership guard", () => {
   assert.match(auth, /listSafisaOrders\(supabase\)/);
@@ -20,16 +24,20 @@ test("portal uses a separate server-side membership guard", () => {
   assert.match(proxy, /"\/safisa\/login"/);
 });
 
-test("mutations call only the two fixed Safisa readiness RPCs", () => {
+test("mutations call only fixed Safisa readiness RPCs", () => {
   assert.equal((actions.match(/\.rpc\("increment_safisa_ready_quantity"/g) ?? []).length, 2);
   assert.equal((actions.match(/\.rpc\("correct_safisa_ready_quantity"/g) ?? []).length, 1);
+  assert.equal((actions.match(/\.rpc\("mark_safisa_order_remaining_ready"/g) ?? []).length, 1);
   assert.doesNotMatch(actions, /rpcName|tableName|service_role|SUPABASE_SERVICE/);
   assert.match(portal, /crypto\.randomUUID\(\)/);
   assert.match(actions, /p_idempotency_key: input\.idempotencyKey/);
 });
 
 test("mark remaining reloads official order and calculates a delta", () => {
-  const section = actions.slice(actions.indexOf("export async function markSafisaRemainingReady"), actions.indexOf("export async function correctSafisaReadyQuantity"));
+  const section = actions.slice(
+    actions.indexOf("export async function markSafisaRemainingReady"),
+    actions.indexOf("export async function markSafisaOrderRemainingReady"),
+  );
   assert.match(section, /getSafisaOrder\(supabase, input\.supplierOrderId\)/);
   assert.match(section, /p_increment_quantity: line\.waitingReadyQuantity/);
   assert.doesNotMatch(section, /ready_quantity\s*:/);
@@ -50,8 +58,69 @@ test("client prevents double submit and exposes accessible states", () => {
   assert.match(portal, /aria-live="polite"/);
   assert.match(portal, /role="dialog"/);
   assert.match(portal, /aria-modal="true"/);
-  assert.match(portal, /Informar como pronto/);
+  assert.match(portal, /Informar quantidade/);
+  assert.match(portal, /Dar todo o Pedido como pronto/);
+  assert.match(portal, /Concluir este item/);
   assert.match(portal, /Corrigir quantidade pronta/);
+});
+
+test("mobile turns a selected order into a focused operational view", () => {
+  assert.match(portal, /selectedOrder && "hidden lg:block"/);
+  assert.match(portal, /← Todos os pedidos/);
+  assert.match(portal, /lg:grid-cols-\[22rem_minmax\(0,1fr\)\]/);
+});
+
+test("order navigation provides immediate feedback and warms the selected detail", () => {
+  assert.match(portal, /router\.prefetch\(orderHref\(orderId\)\)/);
+  assert.match(portal, /onPointerEnter=\{\(\) => warmOrder/);
+  assert.match(portal, /onTouchStart=\{\(\) => warmOrder/);
+  assert.match(portal, /openingOrderId/);
+});
+
+test("opening a selected order overlaps its detail read with completed-list loading", () => {
+  assert.match(page, /const completedOrderListPromise = listSafisaOrders\(supabase, "COMPLETED"\)/);
+  assert.match(page, /selectedOrder = await getSafisaOrder\(supabase, pedido\)/);
+  assert.match(page, /const completedOrderList = await completedOrderListPromise/);
+  assert.match(page, /events: \[\]/);
+});
+
+test("mark all ready is a confirmed order-level action above the line controls", () => {
+  assert.match(portal, /kind: "order"/);
+  assert.match(portal, /Dar todo o Pedido como pronto/);
+  assert.match(portal, /Dar todo o Pedido como pronto\?/);
+  assert.match(portal, /pendingLineCount/);
+  assert.ok(
+    portal.indexOf("Dar todo o Pedido como pronto") <
+      portal.indexOf("Concluir este item"),
+  );
+  assert.match(actions, /p_increment_quantity: line\.waitingReadyQuantity/);
+  assert.match(actions, /markSafisaOrderRemainingReady/);
+  assert.match(actions, /mark_safisa_order_remaining_ready/);
+});
+
+test("mark all ready is atomic, idempotent, audited, and Safisa-only", () => {
+  assert.match(
+    markAllReadyMigration,
+    /create function private\.mark_safisa_order_remaining_ready\([\s\S]*?security invoker[\s\S]*?set search_path = ''/i,
+  );
+  assert.match(
+    markAllReadyMigration,
+    /create function public\.mark_safisa_order_remaining_ready\([\s\S]*?security definer[\s\S]*?set search_path = ''/i,
+  );
+  assert.match(markAllReadyMigration, /private\.require_active_safisa_member\(\)/);
+  assert.match(markAllReadyMigration, /private\.safisa_portal_existing_result\(/);
+  assert.match(markAllReadyMigration, /for update;/i);
+  assert.match(markAllReadyMigration, /order by order_item\.id[\s\S]*?for update;/i);
+  assert.match(
+    markAllReadyMigration,
+    /update public\.supplier_order_items[\s\S]*?set ready_quantity = ordered_quantity - cancelled_quantity/i,
+  );
+  assert.match(markAllReadyMigration, /READY_QUANTITIES_ALL_MARKED/);
+  assert.match(
+    markAllReadyMigration,
+    /grant execute on function public\.mark_safisa_order_remaining_ready[\s\S]*?to authenticated/i,
+  );
+  assert.doesNotMatch(markAllReadyMigration, /service_role|insert into public\.supplier_orders/i);
 });
 
 test("partially ready lines with all current ready units picked remain partial", () => {

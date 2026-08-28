@@ -10,14 +10,13 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 export default async function SafisaPage({ searchParams }: Props) {
   const session = await requireSafisaSession();
   const supabase = await createClient();
-  const completedOrderList = await listSafisaOrders(supabase, "COMPLETED");
   const { pedido } = await searchParams;
+  const completedOrderListPromise = listSafisaOrders(supabase, "COMPLETED");
   let selectedOrder: SafisaOrderDetail | null = null;
   let loadMessage: string | undefined;
 
   if (pedido) {
-    const allOrders = [...session.orderList.orders, ...completedOrderList.orders];
-    if (!UUID_PATTERN.test(pedido) || !allOrders.some((order) => order.supplierOrderId === pedido)) {
+    if (!UUID_PATTERN.test(pedido)) {
       loadMessage = "Este pedido não está disponível para sua conta.";
     } else {
       try {
@@ -27,13 +26,22 @@ export default async function SafisaPage({ searchParams }: Props) {
       }
     }
   }
+  const completedOrderList = await completedOrderListPromise;
+  const portalOrder = selectedOrder
+    ? {
+        ...selectedOrder,
+        // O histórico não é exibido neste painel operacional; não o serializamos
+        // para o cliente enquanto o contrato de leitura ainda o retorna.
+        events: [],
+      }
+    : null;
 
   return (
     <SafisaPortal
       displayName={session.displayName}
       activeOrders={session.orderList.orders}
       completedOrders={completedOrderList.orders}
-      selectedOrder={selectedOrder}
+      selectedOrder={portalOrder}
       loadMessage={loadMessage}
     />
   );

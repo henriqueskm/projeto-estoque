@@ -300,7 +300,7 @@ test("server dispatch handles no recipients, unregistered FIDs, partial multicas
 });
 
 test("Safisa mutations keep their own success result independent from push delivery", () => {
-  assert.equal((actionsSource.match(/await dispatchSafisaFullyReadyPush\(input\.supplierOrderId\);/g) ?? []).length, 3);
+  assert.equal((actionsSource.match(/await dispatchSafisaFullyReadyPush\(input\.supplierOrderId\);/g) ?? []).length, 4);
   assert.doesNotMatch(actionsSource, /const\s+\w+\s*=\s*await dispatchSafisaFullyReadyPush/);
   assert.match(actionsSource, /await dispatchSafisaFullyReadyPush\(input\.supplierOrderId\);\s*revalidatePath\("\/safisa"\);\s*return \{ status: "success"/);
 });

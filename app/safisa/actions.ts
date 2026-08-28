@@ -188,6 +188,36 @@ export async function markSafisaRemainingReady(
   }
 }
 
+export async function markSafisaOrderRemainingReady(
+  input: unknown,
+): Promise<SafisaActionResult> {
+  if (
+    !isExactObject(input, ["idempotencyKey", "supplierOrderId"]) ||
+    !isUuid(input.idempotencyKey) ||
+    !isUuid(input.supplierOrderId)
+  ) {
+    return { status: "error", message: "Pedido inválido." };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("mark_safisa_order_remaining_ready", {
+      p_supplier_order_id: input.supplierOrderId,
+      p_idempotency_key: input.idempotencyKey,
+    });
+    if (error) return mapMutationError(error);
+
+    await dispatchSafisaFullyReadyPush(input.supplierOrderId);
+    revalidatePath("/safisa");
+    return {
+      status: "success",
+      message: "Todos os itens restantes do pedido foram informados como prontos.",
+    };
+  } catch (error) {
+    return safeActionError(error);
+  }
+}
+
 export async function correctSafisaReadyQuantity(
   input: unknown,
 ): Promise<SafisaActionResult> {
