@@ -12,6 +12,7 @@ import {
 import { maximumReadyQuantity } from "@/lib/safisa-portal-readiness";
 import type { SafisaActionResult } from "@/lib/safisa-portal-types";
 import { dispatchSafisaFullyReadyPush } from "@/lib/safisa-push-dispatch";
+import { mapSafisaMutationError } from "@/lib/safisa-action-errors";
 
 export type SafisaLoginState = {
   error?: string;
@@ -40,28 +41,6 @@ function safeActionError(error: unknown): SafisaActionResult {
   }
   if (error instanceof SafisaPortalDataError) {
     return { status: "error", message: error.message };
-  }
-  return {
-    status: "error",
-    message: "Não foi possível concluir a operação. Tente novamente.",
-  };
-}
-
-function mapMutationError(error: { code?: string; message?: string }): SafisaActionResult {
-  if (error.code === "40001" || error.message?.includes("version_conflict")) {
-    return {
-      status: "conflict",
-      message: "Este pedido foi atualizado por outra pessoa. Os dados foram recarregados.",
-    };
-  }
-  if (error.code === "42501" || error.code === "28000") {
-    return { status: "error", message: "Seu acesso ao Portal Safisa não está ativo." };
-  }
-  if (error.code === "22023") {
-    return {
-      status: "error",
-      message: "Os dados do pedido mudaram ou a quantidade informada não é mais válida.",
-    };
   }
   return {
     status: "error",
@@ -140,7 +119,7 @@ export async function incrementSafisaReadyQuantity(
       p_increment_quantity: input.incrementQuantity,
       p_idempotency_key: input.idempotencyKey,
     });
-    if (error) return mapMutationError(error);
+    if (error) return mapSafisaMutationError(error);
 
     await dispatchSafisaFullyReadyPush(input.supplierOrderId);
     revalidatePath("/safisa");
@@ -178,7 +157,7 @@ export async function markSafisaRemainingReady(
       p_increment_quantity: line.waitingReadyQuantity,
       p_idempotency_key: input.idempotencyKey,
     });
-    if (error) return mapMutationError(error);
+    if (error) return mapSafisaMutationError(error);
 
     await dispatchSafisaFullyReadyPush(input.supplierOrderId);
     revalidatePath("/safisa");
@@ -201,11 +180,19 @@ export async function markSafisaOrderRemainingReady(
 
   try {
     const supabase = await createClient();
+    const order = await getSafisaOrder(supabase, input.supplierOrderId);
+    if (order.isReadOnly) {
+      return {
+        status: "error",
+        message: "Este pedido está encerrado e permite somente consulta.",
+      };
+    }
+
     const { error } = await supabase.rpc("mark_safisa_order_remaining_ready", {
       p_supplier_order_id: input.supplierOrderId,
       p_idempotency_key: input.idempotencyKey,
     });
-    if (error) return mapMutationError(error);
+    if (error) return mapSafisaMutationError(error);
 
     await dispatchSafisaFullyReadyPush(input.supplierOrderId);
     revalidatePath("/safisa");
@@ -274,7 +261,7 @@ export async function correctSafisaReadyQuantity(
       p_idempotency_key: input.idempotencyKey,
     });
     if (error) {
-      const result = mapMutationError(error);
+      const result = mapSafisaMutationError(error);
       if (result.status === "conflict") revalidatePath("/safisa");
       return result;
     }
