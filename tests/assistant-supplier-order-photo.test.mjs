@@ -478,8 +478,58 @@ test("400, autenticação, modelo e 429 não acionam fallback", async () => {
   }
 });
 
-test("resposta primária inválida não aciona fallback depois de uma chamada válida", async () => {
+test("JSON inválido de Interactions aciona um único fallback e retorna o contrato normal", async () => {
   const provider = providerClient({ interactionResponse: { output_text: "not-json" } });
+  const result = await extractSupplierOrderPhotoWithProvider({
+    bytes: new Uint8Array([2]),
+    mimeType: "image/png",
+    model: "gemini-3.7-flash",
+    client: provider.client,
+  });
+
+  assert.deepEqual(result.extraction, validExtraction);
+  assert.equal(result.providerPath, "interactions->generateContent");
+  assert.equal(result.fallbackUsed, true);
+  assert.equal(result.providerAttempts[0]?.internalCode, "PROVIDER_INVALID_JSON");
+  assert.equal(provider.calls.interactions.length, 1);
+  assert.equal(provider.calls.generateContent.length, 1);
+});
+
+test("schema inválido e saída vazia de Interactions não acionam fallback", async () => {
+  const cases = [
+    [{ output_text: JSON.stringify({ documentType: "supplier_order" }) }, "PROVIDER_SCHEMA_INVALID"],
+    [{ output_text: "" }, "PROVIDER_EMPTY_OUTPUT"],
+  ];
+
+  for (const [interactionResponse, expectedCode] of cases) {
+    const provider = providerClient({ interactionResponse });
+    await assert.rejects(
+      () => extractSupplierOrderPhotoWithProvider({
+        bytes: new Uint8Array([2]),
+        mimeType: "image/png",
+        model: "gemini-3.7-flash",
+        client: provider.client,
+      }),
+      (error) => {
+        assert.equal(error instanceof SupplierOrderPhotoProviderError, true);
+        assert.equal(error.internalCode, expectedCode);
+        assert.equal(error.providerPath, "interactions");
+        assert.equal(error.fallbackUsed, false);
+        return true;
+      },
+    );
+    assert.equal(provider.calls.interactions.length, 1);
+    assert.equal(provider.calls.generateContent.length, 0);
+  }
+});
+
+test("fallback após JSON inválido mantém duas chamadas e não expõe resposta bruta", async () => {
+  const rawProviderContent = "Pedido secreto Base64 cGVkaWRvLXNlY3JldG8=";
+  const provider = providerClient({
+    interactionResponse: { output_text: `{invalid ${rawProviderContent}` },
+    fallbackError: providerHttpError(500),
+  });
+
   await assert.rejects(
     () => extractSupplierOrderPhotoWithProvider({
       bytes: new Uint8Array([2]),
@@ -488,15 +538,19 @@ test("resposta primária inválida não aciona fallback depois de uma chamada v�
       client: provider.client,
     }),
     (error) => {
-      assert.equal(error instanceof SupplierOrderPhotoProviderError, true);
-      assert.equal(error.internalCode, "PROVIDER_INVALID_JSON");
-      assert.equal(error.providerPath, "interactions");
-      assert.equal(error.fallbackUsed, false);
+      assert.equal(error.providerPath, "interactions->generateContent");
+      assert.equal(error.fallbackUsed, true);
+      assert.deepEqual(error.providerAttempts.map((attempt) => attempt.internalCode), [
+        "PROVIDER_INVALID_JSON",
+        "PROVIDER_SERVER",
+      ]);
+      assert.doesNotMatch(JSON.stringify(error), new RegExp(rawProviderContent, "i"));
       return true;
     },
   );
+
   assert.equal(provider.calls.interactions.length, 1);
-  assert.equal(provider.calls.generateContent.length, 0);
+  assert.equal(provider.calls.generateContent.length, 1);
 });
 
 test("falha das duas chamadas encerra em duas tentativas e guarda só diagnósticos seguros", async () => {

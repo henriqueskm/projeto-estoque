@@ -20,7 +20,7 @@ export type SupplierOrderPhotoProviderPath =
 
 export type SupplierOrderPhotoProviderAttempt = GeminiProviderDiagnostics & {
   path: "interactions" | "generateContent";
-  internalCode: GeminiProviderFailureCode;
+  internalCode: SupplierOrderPhotoProviderInternalCode;
 };
 
 export type SupplierOrderPhotoProviderTrace = {
@@ -152,7 +152,7 @@ function providerAttempt(
 ): SupplierOrderPhotoProviderAttempt {
   return {
     path,
-    internalCode: error.internalCode as GeminiProviderFailureCode,
+    internalCode: error.internalCode,
     providerStatus: error.providerStatus,
     providerErrorName: error.providerErrorName,
     providerErrorCode: error.providerErrorCode,
@@ -226,7 +226,9 @@ function parseProviderExtraction(options: {
 }
 
 function shouldUseGenerateContentFallback(error: SupplierOrderPhotoProviderError) {
-  return error.internalCode === "PROVIDER_SERVER" || error.internalCode === "PROVIDER_TIMEOUT";
+  return error.internalCode === "PROVIDER_SERVER"
+    || error.internalCode === "PROVIDER_TIMEOUT"
+    || error.internalCode === "PROVIDER_INVALID_JSON";
 }
 
 class SupplierOrderPhotoDeadlineError extends Error {
@@ -320,9 +322,8 @@ export async function extractSupplierOrderPhotoWithProvider(options: {
 
   try {
     const interactionsAbortController = new AbortController();
-    let response;
     try {
-      response = await runWithApplicationDeadline({
+      const response = await runWithApplicationDeadline({
         deadlineAt: interactionsDeadlineAt,
         onDeadline: () => interactionsAbortController.abort(),
         run: () => options.client.interactions.create(
@@ -348,6 +349,18 @@ export async function extractSupplierOrderPhotoWithProvider(options: {
           },
         ),
       });
+      return {
+        extraction: parseProviderExtraction({
+          output: response.output_text,
+          model: options.model,
+          providerPath: "interactions",
+          fallbackUsed: false,
+          providerAttempts: [],
+        }),
+        providerPath: "interactions",
+        fallbackUsed: false,
+        providerAttempts: [],
+      };
     } catch (error) {
       const primaryError = classifySupplierOrderPhotoProviderError(error, options.model);
       if (!shouldUseGenerateContentFallback(primaryError)) {
@@ -431,19 +444,6 @@ export async function extractSupplierOrderPhotoWithProvider(options: {
         });
       }
     }
-
-    return {
-      extraction: parseProviderExtraction({
-        output: response.output_text,
-        model: options.model,
-        providerPath: "interactions",
-        fallbackUsed: false,
-        providerAttempts: [],
-      }),
-      providerPath: "interactions",
-      fallbackUsed: false,
-      providerAttempts: [],
-    };
   } finally {
     clearTimeout(totalTimeout);
   }
