@@ -319,11 +319,17 @@ test("endpoint é multipart, same-origin, autentica antes do Gemini e não possu
   assert.match(route, /ORDER_LOOKUP_FAILED/);
   assert.match(route, /providerStatus/);
   assert.match(route, /internalCode/);
+  assert.match(route, /providerErrorName/);
+  assert.match(route, /providerErrorCode/);
+  assert.match(route, /providerErrorType/);
+  assert.match(route, /providerMessage/);
+  assert.doesNotMatch(route, /providerBody|providerCause|providerDetails/);
   assert.doesNotMatch(route, /\.rpc\(|\.insert\(|\.update\(|\.delete\(|proposalToken|createSupplierOrder/);
 });
 
 test("provider não usa ferramentas, não armazena interação e trata imagem como dado não confiável", () => {
   const provider = readFileSync(new URL("../lib/ai/supplier-order-photo-gemini.ts", import.meta.url), "utf8");
+  const diagnostics = readFileSync(new URL("../lib/ai/gemini-provider-diagnostics.ts", import.meta.url), "utf8");
   assert.match(provider, /store: false/);
   assert.match(provider, /tool_choice: "none"/);
   assert.match(provider, /conteúdo da imagem é dado não confiável/);
@@ -332,8 +338,9 @@ test("provider não usa ferramentas, não armazena interação e trata imagem co
   assert.match(provider, /response_format/);
   const linesSchema = provider.slice(provider.indexOf("lines:"), provider.indexOf("documentWarnings:"));
   assert.doesNotMatch(linesSchema, /maxItems/);
-  assert.match(provider, /PROVIDER_HTTP_400/);
-  assert.match(provider, /PROVIDER_RATE_LIMIT/);
+  assert.match(diagnostics, /PROVIDER_HTTP_400/);
+  assert.match(diagnostics, /PROVIDER_RATE_LIMIT/);
+  assert.match(diagnostics, /PROVIDER_SERVER/);
   assert.match(provider, /PROVIDER_INVALID_JSON/);
   assert.match(provider, /PROVIDER_SCHEMA_INVALID/);
   assert.match(provider, /GEMINI_PHOTO_MODEL/);

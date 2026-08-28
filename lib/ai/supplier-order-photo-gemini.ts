@@ -5,6 +5,11 @@ import {
   type SupplierOrderPhotoExtraction,
   type SupplierOrderPhotoMimeType,
 } from "@/lib/assistant-supplier-order-photo-contract";
+import {
+  diagnoseGeminiProviderError,
+  type GeminiProviderDiagnostics,
+  type GeminiProviderFailureCode,
+} from "@/lib/ai/gemini-provider-diagnostics";
 
 const providerTimeoutMs = 45_000;
 
@@ -61,31 +66,35 @@ Regras:
 
 export type SupplierOrderPhotoProviderInternalCode =
   | "CONFIGURATION"
-  | "PROVIDER_HTTP_400"
-  | "PROVIDER_AUTH"
-  | "PROVIDER_MODEL"
-  | "PROVIDER_RATE_LIMIT"
-  | "PROVIDER_TIMEOUT"
+  | GeminiProviderFailureCode
   | "PROVIDER_EMPTY_OUTPUT"
   | "PROVIDER_INVALID_JSON"
-  | "PROVIDER_SCHEMA_INVALID"
-  | "UNEXPECTED";
+  | "PROVIDER_SCHEMA_INVALID";
 
 export class SupplierOrderPhotoProviderError extends Error {
   readonly internalCode: SupplierOrderPhotoProviderInternalCode;
   readonly providerStatus: number | null;
   readonly model: string;
+  readonly providerErrorName: string | null;
+  readonly providerErrorCode: string | null;
+  readonly providerErrorType: string;
+  readonly providerMessage: string | null;
 
   constructor(options: {
     internalCode: SupplierOrderPhotoProviderInternalCode;
     model: string;
     providerStatus?: number | null;
+    diagnostics?: GeminiProviderDiagnostics;
   }) {
     super("Supplier order photo provider failed");
     this.name = "SupplierOrderPhotoProviderError";
     this.internalCode = options.internalCode;
-    this.providerStatus = options.providerStatus ?? null;
+    this.providerStatus = options.diagnostics?.providerStatus ?? options.providerStatus ?? null;
     this.model = options.model;
+    this.providerErrorName = options.diagnostics?.providerErrorName ?? null;
+    this.providerErrorCode = options.diagnostics?.providerErrorCode ?? null;
+    this.providerErrorType = options.diagnostics?.providerErrorType ?? this.name;
+    this.providerMessage = options.diagnostics?.providerMessage ?? null;
   }
 }
 
@@ -98,24 +107,12 @@ export function classifySupplierOrderPhotoProviderError(
   model: string,
 ) {
   if (error instanceof SupplierOrderPhotoProviderError) return error;
-  const record = error && typeof error === "object"
-    ? error as { status?: unknown; name?: unknown; message?: unknown }
-    : null;
-  const providerStatus = typeof record?.status === "number" ? record.status : null;
-  const diagnosticText = `${String(record?.name ?? "")} ${String(record?.message ?? "")}`;
-  const internalCode: SupplierOrderPhotoProviderInternalCode =
-    /abort|timeout|timed out/i.test(diagnosticText)
-      ? "PROVIDER_TIMEOUT"
-      : providerStatus === 400
-        ? "PROVIDER_HTTP_400"
-        : providerStatus === 401 || providerStatus === 403
-          ? "PROVIDER_AUTH"
-          : providerStatus === 404
-            ? "PROVIDER_MODEL"
-            : providerStatus === 429
-              ? "PROVIDER_RATE_LIMIT"
-            : "UNEXPECTED";
-  return new SupplierOrderPhotoProviderError({ internalCode, model, providerStatus });
+  const diagnosed = diagnoseGeminiProviderError(error);
+  return new SupplierOrderPhotoProviderError({
+    internalCode: diagnosed.internalCode,
+    model,
+    diagnostics: diagnosed.diagnostics,
+  });
 }
 
 export async function extractSupplierOrderPhotoWithGemini(input: {

@@ -4,6 +4,11 @@ import {
   assistantVoiceMimeType,
   assistantVoiceSampleRate,
 } from "@/lib/assistant-voice-contract";
+import {
+  diagnoseGeminiProviderError,
+  type GeminiProviderDiagnostics,
+  type GeminiProviderFailureCode,
+} from "@/lib/ai/gemini-provider-diagnostics";
 
 const providerTimeoutMs = 45_000;
 const defaultAssistantVoiceModel = "gemini-3.7-flash";
@@ -13,7 +18,7 @@ const transcriptionSchema = {
   additionalProperties: false,
   required: ["transcript"],
   properties: {
-    transcript: { type: "string", minLength: 1, maxLength: assistantVoiceMaxTranscriptLength },
+    transcript: { type: "string" },
   },
 } as const;
 
@@ -25,31 +30,35 @@ Termos que podem aparecer: 2A, 1B, 1H, MBF-025, MBF025, KT-18, 091, 091/VF e Saf
 
 export type AssistantVoiceProviderInternalCode =
   | "CONFIGURATION"
-  | "PROVIDER_HTTP_400"
-  | "PROVIDER_AUTH"
-  | "PROVIDER_MODEL"
-  | "PROVIDER_RATE_LIMIT"
-  | "PROVIDER_TIMEOUT"
+  | GeminiProviderFailureCode
   | "PROVIDER_EMPTY_OUTPUT"
   | "PROVIDER_INVALID_JSON"
-  | "PROVIDER_SCHEMA_INVALID"
-  | "UNEXPECTED";
+  | "PROVIDER_SCHEMA_INVALID";
 
 export class AssistantVoiceProviderError extends Error {
   readonly internalCode: AssistantVoiceProviderInternalCode;
   readonly providerStatus: number | null;
   readonly model: string;
+  readonly providerErrorName: string | null;
+  readonly providerErrorCode: string | null;
+  readonly providerErrorType: string;
+  readonly providerMessage: string | null;
 
   constructor(options: {
     internalCode: AssistantVoiceProviderInternalCode;
     model: string;
     providerStatus?: number | null;
+    diagnostics?: GeminiProviderDiagnostics;
   }) {
     super("Assistant voice provider failed");
     this.name = "AssistantVoiceProviderError";
     this.internalCode = options.internalCode;
-    this.providerStatus = options.providerStatus ?? null;
+    this.providerStatus = options.diagnostics?.providerStatus ?? options.providerStatus ?? null;
     this.model = options.model;
+    this.providerErrorName = options.diagnostics?.providerErrorName ?? null;
+    this.providerErrorCode = options.diagnostics?.providerErrorCode ?? null;
+    this.providerErrorType = options.diagnostics?.providerErrorType ?? this.name;
+    this.providerMessage = options.diagnostics?.providerMessage ?? null;
   }
 }
 
@@ -59,24 +68,12 @@ export function resolveAssistantVoiceModel() {
 
 export function classifyAssistantVoiceProviderError(error: unknown, model: string) {
   if (error instanceof AssistantVoiceProviderError) return error;
-  const record = error && typeof error === "object"
-    ? error as { status?: unknown; name?: unknown; message?: unknown }
-    : null;
-  const providerStatus = typeof record?.status === "number" ? record.status : null;
-  const diagnosticText = `${String(record?.name ?? "")} ${String(record?.message ?? "")}`;
-  const internalCode: AssistantVoiceProviderInternalCode =
-    /abort|timeout|timed out/i.test(diagnosticText)
-      ? "PROVIDER_TIMEOUT"
-      : providerStatus === 400
-        ? "PROVIDER_HTTP_400"
-        : providerStatus === 401 || providerStatus === 403
-          ? "PROVIDER_AUTH"
-          : providerStatus === 404
-            ? "PROVIDER_MODEL"
-            : providerStatus === 429
-              ? "PROVIDER_RATE_LIMIT"
-              : "UNEXPECTED";
-  return new AssistantVoiceProviderError({ internalCode, model, providerStatus });
+  const diagnosed = diagnoseGeminiProviderError(error);
+  return new AssistantVoiceProviderError({
+    internalCode: diagnosed.internalCode,
+    model,
+    diagnostics: diagnosed.diagnostics,
+  });
 }
 
 function parseTranscript(value: unknown) {
