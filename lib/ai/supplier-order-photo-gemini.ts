@@ -229,6 +229,56 @@ function shouldUseGenerateContentFallback(error: SupplierOrderPhotoProviderError
   return error.internalCode === "PROVIDER_SERVER" || error.internalCode === "PROVIDER_TIMEOUT";
 }
 
+class SupplierOrderPhotoDeadlineError extends Error {
+  constructor() {
+    super("Supplier order photo provider deadline exceeded");
+    this.name = "AbortError";
+  }
+}
+
+function remainingDeadlineMs(deadlineAt: number) {
+  return Math.max(0, deadlineAt - Date.now());
+}
+
+function runWithApplicationDeadline<T>(options: {
+  deadlineAt: number;
+  onDeadline: () => void;
+  run: () => Promise<T>;
+}): Promise<T> {
+  const remainingMs = remainingDeadlineMs(options.deadlineAt);
+  if (remainingMs <= 0) {
+    options.onDeadline();
+    return Promise.reject(new SupplierOrderPhotoDeadlineError());
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      options.onDeadline();
+      reject(new SupplierOrderPhotoDeadlineError());
+    }, remainingMs);
+
+    Promise.resolve()
+      .then(options.run)
+      .then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          resolve(value);
+        },
+        (error: unknown) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          reject(error);
+        },
+      );
+  });
+}
+
 export async function extractSupplierOrderPhotoWithProvider(options: {
   bytes: Uint8Array;
   mimeType: SupplierOrderPhotoMimeType;
@@ -243,8 +293,16 @@ export async function extractSupplierOrderPhotoWithProvider(options: {
     totalBudgetMs,
   );
   const startedAt = Date.now();
+  const totalDeadlineAt = startedAt + totalBudgetMs;
+  const interactionsDeadlineAt = Math.min(
+    startedAt + interactionsBudgetMs,
+    totalDeadlineAt,
+  );
   const totalAbortController = new AbortController();
-  const totalTimeout = setTimeout(() => totalAbortController.abort(), totalBudgetMs);
+  const totalTimeout = setTimeout(
+    () => totalAbortController.abort(),
+    remainingDeadlineMs(totalDeadlineAt),
+  );
   const encodedImage = Buffer.from(options.bytes).toString("base64");
   const interactionInput: Interactions.Step[] = [
     {
@@ -262,14 +320,12 @@ export async function extractSupplierOrderPhotoWithProvider(options: {
 
   try {
     const interactionsAbortController = new AbortController();
-    const interactionsTimeout = setTimeout(
-      () => interactionsAbortController.abort(),
-      interactionsBudgetMs,
-    );
+    let response;
     try {
-      let response;
-      try {
-        response = await options.client.interactions.create(
+      response = await runWithApplicationDeadline({
+        deadlineAt: interactionsDeadlineAt,
+        onDeadline: () => interactionsAbortController.abort(),
+        run: () => options.client.interactions.create(
           {
             model: options.model,
             store: false,
@@ -290,23 +346,41 @@ export async function extractSupplierOrderPhotoWithProvider(options: {
             maxRetries: 0,
             fetchOptions: { signal: interactionsAbortController.signal },
           },
-        );
-      } catch (error) {
-        const primaryError = classifySupplierOrderPhotoProviderError(error, options.model);
-        if (!shouldUseGenerateContentFallback(primaryError)) {
-          const primaryAttempt = providerAttempt("interactions", primaryError);
-          throw providerErrorWithFlow({
-            error: primaryError,
-            providerPath: "interactions",
-            fallbackUsed: false,
-            providerAttempts: [primaryAttempt],
-          });
-        }
-
+        ),
+      });
+    } catch (error) {
+      const primaryError = classifySupplierOrderPhotoProviderError(error, options.model);
+      if (!shouldUseGenerateContentFallback(primaryError)) {
         const primaryAttempt = providerAttempt("interactions", primaryError);
-        const remainingBudgetMs = Math.max(1, totalBudgetMs - (Date.now() - startedAt));
-        try {
-          const fallbackResponse = await options.client.models.generateContent({
+        throw providerErrorWithFlow({
+          error: primaryError,
+          providerPath: "interactions",
+          fallbackUsed: false,
+          providerAttempts: [primaryAttempt],
+        });
+      }
+
+      const primaryAttempt = providerAttempt("interactions", primaryError);
+      const remainingBudgetMs = remainingDeadlineMs(totalDeadlineAt);
+      if (remainingBudgetMs <= 0) {
+        totalAbortController.abort();
+        const deadlineError = classifySupplierOrderPhotoProviderError(
+          new SupplierOrderPhotoDeadlineError(),
+          options.model,
+        );
+        throw providerErrorWithFlow({
+          error: deadlineError,
+          providerPath: "interactions",
+          fallbackUsed: false,
+          providerAttempts: [primaryAttempt],
+        });
+      }
+
+      try {
+        const fallbackResponse = await runWithApplicationDeadline({
+          deadlineAt: totalDeadlineAt,
+          onDeadline: () => totalAbortController.abort(),
+          run: () => options.client.models.generateContent({
             model: options.model,
             contents: [
               {
@@ -328,50 +402,48 @@ export async function extractSupplierOrderPhotoWithProvider(options: {
                 retryOptions: { attempts: 1 },
               },
             },
-          });
-          return {
-            extraction: parseProviderExtraction({
-              output: fallbackResponse.text,
-              model: options.model,
-              providerPath: "interactions->generateContent",
-              fallbackUsed: true,
-              providerAttempts: [primaryAttempt],
-            }),
+          }),
+        });
+        return {
+          extraction: parseProviderExtraction({
+            output: fallbackResponse.text,
+            model: options.model,
             providerPath: "interactions->generateContent",
             fallbackUsed: true,
             providerAttempts: [primaryAttempt],
-          };
-        } catch (fallbackError) {
-          if (fallbackError instanceof SupplierOrderPhotoProviderError) throw fallbackError;
-          const classifiedFallback = classifySupplierOrderPhotoProviderError(
-            fallbackError,
-            options.model,
-          );
-          const fallbackAttempt = providerAttempt("generateContent", classifiedFallback);
-          throw providerErrorWithFlow({
-            error: classifiedFallback,
-            providerPath: "interactions->generateContent",
-            fallbackUsed: true,
-            providerAttempts: [primaryAttempt, fallbackAttempt],
-          });
-        }
+          }),
+          providerPath: "interactions->generateContent",
+          fallbackUsed: true,
+          providerAttempts: [primaryAttempt],
+        };
+      } catch (fallbackError) {
+        if (fallbackError instanceof SupplierOrderPhotoProviderError) throw fallbackError;
+        const classifiedFallback = classifySupplierOrderPhotoProviderError(
+          fallbackError,
+          options.model,
+        );
+        const fallbackAttempt = providerAttempt("generateContent", classifiedFallback);
+        throw providerErrorWithFlow({
+          error: classifiedFallback,
+          providerPath: "interactions->generateContent",
+          fallbackUsed: true,
+          providerAttempts: [primaryAttempt, fallbackAttempt],
+        });
       }
+    }
 
-      return {
-        extraction: parseProviderExtraction({
-          output: response.output_text,
-          model: options.model,
-          providerPath: "interactions",
-          fallbackUsed: false,
-          providerAttempts: [],
-        }),
+    return {
+      extraction: parseProviderExtraction({
+        output: response.output_text,
+        model: options.model,
         providerPath: "interactions",
         fallbackUsed: false,
         providerAttempts: [],
-      };
-    } finally {
-      clearTimeout(interactionsTimeout);
-    }
+      }),
+      providerPath: "interactions",
+      fallbackUsed: false,
+      providerAttempts: [],
+    };
   } finally {
     clearTimeout(totalTimeout);
   }

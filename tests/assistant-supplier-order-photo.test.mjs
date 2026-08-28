@@ -596,6 +596,169 @@ test("orçamento total aborta o segundo caminho sem ultrapassar duas chamadas", 
   assert.equal(Date.now() - startedAt < 500, true);
 });
 
+test("hard deadline de Interactions aciona fallback mesmo quando o provider ignora o signal", async () => {
+  const calls = { interactions: 0, generateContent: 0 };
+  const client = {
+    interactions: {
+      create: async () => {
+        calls.interactions += 1;
+        return new Promise(() => {});
+      },
+    },
+    models: {
+      generateContent: async () => {
+        calls.generateContent += 1;
+        return { text: JSON.stringify(validExtraction) };
+      },
+    },
+  };
+
+  const result = await extractSupplierOrderPhotoWithProvider({
+    bytes: new Uint8Array([1]),
+    mimeType: "image/jpeg",
+    model: "gemini-3.7-flash",
+    client,
+    totalBudgetMs: 80,
+    interactionsBudgetMs: 15,
+  });
+
+  assert.equal(result.providerPath, "interactions->generateContent");
+  assert.equal(result.fallbackUsed, true);
+  assert.equal(result.providerAttempts[0]?.internalCode, "PROVIDER_TIMEOUT");
+  assert.deepEqual(calls, { interactions: 1, generateContent: 1 });
+});
+
+test("hard deadline total rejeita fallback pendente que ignora timeout e AbortSignal", async () => {
+  const secret = "pedido-ultrassecreto-base64";
+  const calls = { interactions: 0, generateContent: 0 };
+  const client = {
+    interactions: {
+      create: async () => {
+        calls.interactions += 1;
+        throw providerHttpError(500, `server error ${secret}`);
+      },
+    },
+    models: {
+      generateContent: async () => {
+        calls.generateContent += 1;
+        return new Promise(() => {});
+      },
+    },
+  };
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    () => extractSupplierOrderPhotoWithProvider({
+      bytes: new Uint8Array([2]),
+      mimeType: "image/jpeg",
+      model: "gemini-3.7-flash",
+      client,
+      totalBudgetMs: 30,
+      interactionsBudgetMs: 10,
+    }),
+    (error) => {
+      assert.equal(error instanceof SupplierOrderPhotoProviderError, true);
+      assert.equal(error.internalCode, "PROVIDER_TIMEOUT");
+      assert.equal(error.providerPath, "interactions->generateContent");
+      assert.equal(error.fallbackUsed, true);
+      assert.equal(error.providerAttempts.length, 2);
+      assert.doesNotMatch(JSON.stringify(error), new RegExp(secret, "i"));
+      return true;
+    },
+  );
+
+  assert.deepEqual(calls, { interactions: 1, generateContent: 1 });
+  assert.equal(Date.now() - startedAt < 250, true);
+});
+
+test("fallback não inicia quando Interactions consome o deadline total ignorando cancelamento", async () => {
+  const calls = { interactions: 0, generateContent: 0 };
+  const client = {
+    interactions: {
+      create: async () => {
+        calls.interactions += 1;
+        return new Promise(() => {});
+      },
+    },
+    models: {
+      generateContent: async () => {
+        calls.generateContent += 1;
+        return { text: JSON.stringify(validExtraction) };
+      },
+    },
+  };
+
+  await assert.rejects(
+    () => extractSupplierOrderPhotoWithProvider({
+      bytes: new Uint8Array([3]),
+      mimeType: "image/jpeg",
+      model: "gemini-3.7-flash",
+      client,
+      totalBudgetMs: 25,
+      interactionsBudgetMs: 100,
+    }),
+    (error) => {
+      assert.equal(error instanceof SupplierOrderPhotoProviderError, true);
+      assert.equal(error.internalCode, "PROVIDER_TIMEOUT");
+      assert.equal(error.providerPath, "interactions");
+      assert.equal(error.fallbackUsed, false);
+      return true;
+    },
+  );
+
+  assert.deepEqual(calls, { interactions: 1, generateContent: 0 });
+});
+
+test("Promise atrasada é absorvida após o deadline sem rejeição não tratada ou nova chamada", async () => {
+  const calls = { interactions: 0, generateContent: 0 };
+  let rejectLateProvider;
+  const lateProvider = new Promise((_resolve, reject) => {
+    rejectLateProvider = reject;
+  });
+  const client = {
+    interactions: {
+      create: async () => {
+        calls.interactions += 1;
+        throw providerHttpError(500);
+      },
+    },
+    models: {
+      generateContent: async () => {
+        calls.generateContent += 1;
+        return lateProvider;
+      },
+    },
+  };
+  const unhandled = [];
+  const onUnhandled = (error) => unhandled.push(error);
+  process.on("unhandledRejection", onUnhandled);
+
+  try {
+    await assert.rejects(
+      () => extractSupplierOrderPhotoWithProvider({
+        bytes: new Uint8Array([4]),
+        mimeType: "image/jpeg",
+        model: "gemini-3.7-flash",
+        client,
+        totalBudgetMs: 20,
+        interactionsBudgetMs: 10,
+      }),
+      (error) => {
+        assert.equal(error.internalCode, "PROVIDER_TIMEOUT");
+        assert.equal(error.providerPath, "interactions->generateContent");
+        return true;
+      },
+    );
+
+    rejectLateProvider(new Error("late provider rejection"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(unhandled, []);
+    assert.deepEqual(calls, { interactions: 1, generateContent: 1 });
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+});
+
 test("composer envia somente o arquivo, não persiste blob/base64 e não oferece Criar Pedido", () => {
   const home = readFileSync(new URL("../components/assistant-home.tsx", import.meta.url), "utf8");
   const view = readFileSync(new URL("../components/assistant-structured-block.tsx", import.meta.url), "utf8");
