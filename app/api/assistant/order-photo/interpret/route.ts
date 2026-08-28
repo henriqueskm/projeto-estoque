@@ -14,6 +14,7 @@ import {
   extractSupplierOrderPhotoWithGemini,
   resolveSupplierOrderPhotoModel,
   SupplierOrderPhotoProviderError,
+  type SupplierOrderPhotoProviderTrace,
   type SupplierOrderPhotoProviderInternalCode,
 } from "@/lib/ai/supplier-order-photo-gemini";
 import { loadSupplierOrderPhotoCatalog, SupplierOrderPhotoCatalogError } from "@/lib/assistant-supplier-order-photo-catalog";
@@ -105,8 +106,19 @@ export async function POST(request: Request) {
   }
 
   try {
+    let providerTrace: SupplierOrderPhotoProviderTrace = {
+      providerPath: "interactions",
+      fallbackUsed: false,
+      providerAttempts: [],
+    };
     const block = await interpretSupplierOrderPhoto({
-      extract: () => extractSupplierOrderPhotoWithGemini({ bytes, mimeType: validation.mimeType }),
+      extract: async () => {
+        return extractSupplierOrderPhotoWithGemini({
+          bytes,
+          mimeType: validation.mimeType,
+          onProviderTrace: (trace) => { providerTrace = trace; },
+        });
+      },
       loadCatalog: async () => {
         try { return await loadSupplierOrderPhotoCatalog(supabase); }
         catch (error) {
@@ -139,6 +151,9 @@ export async function POST(request: Request) {
     });
     console.info("assistant_order_photo", {
       outcome: block.state,
+      providerPath: providerTrace.providerPath,
+      fallbackUsed: providerTrace.fallbackUsed,
+      providerAttempts: providerTrace.providerAttempts,
       mimeType: validation.mimeType,
       sizeBytes: file.size,
       durationMs: Date.now() - startedAt,
@@ -156,6 +171,9 @@ export async function POST(request: Request) {
       providerErrorCode: providerError?.providerErrorCode ?? null,
       providerErrorType: providerError?.providerErrorType ?? null,
       providerMessage: providerError?.providerMessage ?? null,
+      providerPath: providerError?.providerPath ?? "interactions",
+      fallbackUsed: providerError?.fallbackUsed ?? false,
+      providerAttempts: providerError?.providerAttempts ?? [],
       model: providerError?.model ?? resolveSupplierOrderPhotoModel(),
       mimeType: validation.mimeType,
       sizeBytes: file.size,

@@ -11,7 +11,29 @@ import {
   type GeminiProviderFailureCode,
 } from "@/lib/ai/gemini-provider-diagnostics";
 
-const providerTimeoutMs = 45_000;
+export const supplierOrderPhotoProviderTotalBudgetMs = 45_000;
+export const supplierOrderPhotoInteractionsBudgetMs = 22_000;
+
+export type SupplierOrderPhotoProviderPath =
+  | "interactions"
+  | "interactions->generateContent";
+
+export type SupplierOrderPhotoProviderAttempt = GeminiProviderDiagnostics & {
+  path: "interactions" | "generateContent";
+  internalCode: GeminiProviderFailureCode;
+};
+
+export type SupplierOrderPhotoProviderTrace = {
+  providerPath: SupplierOrderPhotoProviderPath;
+  fallbackUsed: boolean;
+  providerAttempts: SupplierOrderPhotoProviderAttempt[];
+};
+
+export type SupplierOrderPhotoProviderResult = SupplierOrderPhotoProviderTrace & {
+  extraction: SupplierOrderPhotoExtraction;
+};
+
+type SupplierOrderPhotoGeminiClient = Pick<GoogleGenAI, "interactions" | "models">;
 
 const extractionSchema = {
   type: "object",
@@ -79,12 +101,18 @@ export class SupplierOrderPhotoProviderError extends Error {
   readonly providerErrorCode: string | null;
   readonly providerErrorType: string;
   readonly providerMessage: string | null;
+  readonly providerPath: SupplierOrderPhotoProviderPath;
+  readonly fallbackUsed: boolean;
+  readonly providerAttempts: SupplierOrderPhotoProviderAttempt[];
 
   constructor(options: {
     internalCode: SupplierOrderPhotoProviderInternalCode;
     model: string;
     providerStatus?: number | null;
     diagnostics?: GeminiProviderDiagnostics;
+    providerPath?: SupplierOrderPhotoProviderPath;
+    fallbackUsed?: boolean;
+    providerAttempts?: SupplierOrderPhotoProviderAttempt[];
   }) {
     super("Supplier order photo provider failed");
     this.name = "SupplierOrderPhotoProviderError";
@@ -95,6 +123,9 @@ export class SupplierOrderPhotoProviderError extends Error {
     this.providerErrorCode = options.diagnostics?.providerErrorCode ?? null;
     this.providerErrorType = options.diagnostics?.providerErrorType ?? this.name;
     this.providerMessage = options.diagnostics?.providerMessage ?? null;
+    this.providerPath = options.providerPath ?? "interactions";
+    this.fallbackUsed = options.fallbackUsed ?? false;
+    this.providerAttempts = options.providerAttempts ?? [];
   }
 }
 
@@ -115,19 +146,106 @@ export function classifySupplierOrderPhotoProviderError(
   });
 }
 
-export async function extractSupplierOrderPhotoWithGemini(input: {
+function providerAttempt(
+  path: SupplierOrderPhotoProviderAttempt["path"],
+  error: SupplierOrderPhotoProviderError,
+): SupplierOrderPhotoProviderAttempt {
+  return {
+    path,
+    internalCode: error.internalCode as GeminiProviderFailureCode,
+    providerStatus: error.providerStatus,
+    providerErrorName: error.providerErrorName,
+    providerErrorCode: error.providerErrorCode,
+    providerErrorType: error.providerErrorType,
+    providerMessage: error.providerMessage,
+  };
+}
+
+function providerErrorWithFlow(options: {
+  error: SupplierOrderPhotoProviderError;
+  providerPath: SupplierOrderPhotoProviderPath;
+  fallbackUsed: boolean;
+  providerAttempts: SupplierOrderPhotoProviderAttempt[];
+}) {
+  return new SupplierOrderPhotoProviderError({
+    internalCode: options.error.internalCode,
+    model: options.error.model,
+    diagnostics: {
+      providerStatus: options.error.providerStatus,
+      providerErrorName: options.error.providerErrorName,
+      providerErrorCode: options.error.providerErrorCode,
+      providerErrorType: options.error.providerErrorType,
+      providerMessage: options.error.providerMessage,
+    },
+    providerPath: options.providerPath,
+    fallbackUsed: options.fallbackUsed,
+    providerAttempts: options.providerAttempts,
+  });
+}
+
+function parseProviderExtraction(options: {
+  output: string | undefined;
+  model: string;
+  providerPath: SupplierOrderPhotoProviderPath;
+  fallbackUsed: boolean;
+  providerAttempts: SupplierOrderPhotoProviderAttempt[];
+}) {
+  const output = options.output?.trim();
+  if (!output) {
+    throw new SupplierOrderPhotoProviderError({
+      internalCode: "PROVIDER_EMPTY_OUTPUT",
+      model: options.model,
+      providerPath: options.providerPath,
+      fallbackUsed: options.fallbackUsed,
+      providerAttempts: options.providerAttempts,
+    });
+  }
+  let rawExtraction: unknown;
+  try {
+    rawExtraction = JSON.parse(output);
+  } catch {
+    throw new SupplierOrderPhotoProviderError({
+      internalCode: "PROVIDER_INVALID_JSON",
+      model: options.model,
+      providerPath: options.providerPath,
+      fallbackUsed: options.fallbackUsed,
+      providerAttempts: options.providerAttempts,
+    });
+  }
+  const extraction = parseSupplierOrderPhotoExtraction(rawExtraction);
+  if (!extraction) {
+    throw new SupplierOrderPhotoProviderError({
+      internalCode: "PROVIDER_SCHEMA_INVALID",
+      model: options.model,
+      providerPath: options.providerPath,
+      fallbackUsed: options.fallbackUsed,
+      providerAttempts: options.providerAttempts,
+    });
+  }
+  return extraction;
+}
+
+function shouldUseGenerateContentFallback(error: SupplierOrderPhotoProviderError) {
+  return error.internalCode === "PROVIDER_SERVER" || error.internalCode === "PROVIDER_TIMEOUT";
+}
+
+export async function extractSupplierOrderPhotoWithProvider(options: {
   bytes: Uint8Array;
   mimeType: SupplierOrderPhotoMimeType;
-}): Promise<SupplierOrderPhotoExtraction> {
-  const model = resolveSupplierOrderPhotoModel();
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new SupplierOrderPhotoProviderError({ internalCode: "CONFIGURATION", model });
-  }
-
-  const client = new GoogleGenAI({ apiKey });
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), providerTimeoutMs);
+  model: string;
+  client: SupplierOrderPhotoGeminiClient;
+  totalBudgetMs?: number;
+  interactionsBudgetMs?: number;
+}): Promise<SupplierOrderPhotoProviderResult> {
+  const totalBudgetMs = options.totalBudgetMs ?? supplierOrderPhotoProviderTotalBudgetMs;
+  const interactionsBudgetMs = Math.min(
+    options.interactionsBudgetMs ?? supplierOrderPhotoInteractionsBudgetMs,
+    totalBudgetMs,
+  );
+  const startedAt = Date.now();
+  const totalAbortController = new AbortController();
+  const totalTimeout = setTimeout(() => totalAbortController.abort(), totalBudgetMs);
+  const encodedImage = Buffer.from(options.bytes).toString("base64");
   const interactionInput: Interactions.Step[] = [
     {
       type: "user_input",
@@ -135,57 +253,155 @@ export async function extractSupplierOrderPhotoWithGemini(input: {
         { type: "text", text: "Extraia os campos visuais deste documento conforme o schema estrito." },
         {
           type: "image",
-          data: Buffer.from(input.bytes).toString("base64"),
-          mime_type: input.mimeType,
+          data: encodedImage,
+          mime_type: options.mimeType,
         },
       ],
     },
   ];
 
   try {
-    let response;
+    const interactionsAbortController = new AbortController();
+    const interactionsTimeout = setTimeout(
+      () => interactionsAbortController.abort(),
+      interactionsBudgetMs,
+    );
     try {
-      response = await client.interactions.create(
-        {
-          model,
-          store: false,
-          system_instruction: systemInstruction,
-          input: interactionInput,
-          response_format: {
-            type: "text",
-            mime_type: "application/json",
-            schema: extractionSchema,
+      let response;
+      try {
+        response = await options.client.interactions.create(
+          {
+            model: options.model,
+            store: false,
+            system_instruction: systemInstruction,
+            input: interactionInput,
+            response_format: {
+              type: "text",
+              mime_type: "application/json",
+              schema: extractionSchema,
+            },
+            generation_config: {
+              max_output_tokens: 4_000,
+              tool_choice: "none",
+            },
           },
-          generation_config: {
-            max_output_tokens: 4_000,
-            tool_choice: "none",
+          {
+            timeout: interactionsBudgetMs,
+            maxRetries: 0,
+            fetchOptions: { signal: interactionsAbortController.signal },
           },
-        },
-        {
-          timeout: providerTimeoutMs,
-          maxRetries: 0,
-          fetchOptions: { signal: abortController.signal },
-        },
-      );
-    } catch (error) {
-      throw classifySupplierOrderPhotoProviderError(error, model);
+        );
+      } catch (error) {
+        const primaryError = classifySupplierOrderPhotoProviderError(error, options.model);
+        if (!shouldUseGenerateContentFallback(primaryError)) {
+          const primaryAttempt = providerAttempt("interactions", primaryError);
+          throw providerErrorWithFlow({
+            error: primaryError,
+            providerPath: "interactions",
+            fallbackUsed: false,
+            providerAttempts: [primaryAttempt],
+          });
+        }
+
+        const primaryAttempt = providerAttempt("interactions", primaryError);
+        const remainingBudgetMs = Math.max(1, totalBudgetMs - (Date.now() - startedAt));
+        try {
+          const fallbackResponse = await options.client.models.generateContent({
+            model: options.model,
+            contents: [
+              {
+                inlineData: {
+                  mimeType: options.mimeType,
+                  data: encodedImage,
+                },
+              },
+              { text: "Extraia os campos visuais deste documento conforme o schema estrito." },
+            ],
+            config: {
+              systemInstruction,
+              maxOutputTokens: 4_000,
+              responseMimeType: "application/json",
+              responseJsonSchema: extractionSchema,
+              abortSignal: totalAbortController.signal,
+              httpOptions: {
+                timeout: remainingBudgetMs,
+                retryOptions: { attempts: 1 },
+              },
+            },
+          });
+          return {
+            extraction: parseProviderExtraction({
+              output: fallbackResponse.text,
+              model: options.model,
+              providerPath: "interactions->generateContent",
+              fallbackUsed: true,
+              providerAttempts: [primaryAttempt],
+            }),
+            providerPath: "interactions->generateContent",
+            fallbackUsed: true,
+            providerAttempts: [primaryAttempt],
+          };
+        } catch (fallbackError) {
+          if (fallbackError instanceof SupplierOrderPhotoProviderError) throw fallbackError;
+          const classifiedFallback = classifySupplierOrderPhotoProviderError(
+            fallbackError,
+            options.model,
+          );
+          const fallbackAttempt = providerAttempt("generateContent", classifiedFallback);
+          throw providerErrorWithFlow({
+            error: classifiedFallback,
+            providerPath: "interactions->generateContent",
+            fallbackUsed: true,
+            providerAttempts: [primaryAttempt, fallbackAttempt],
+          });
+        }
+      }
+
+      return {
+        extraction: parseProviderExtraction({
+          output: response.output_text,
+          model: options.model,
+          providerPath: "interactions",
+          fallbackUsed: false,
+          providerAttempts: [],
+        }),
+        providerPath: "interactions",
+        fallbackUsed: false,
+        providerAttempts: [],
+      };
+    } finally {
+      clearTimeout(interactionsTimeout);
     }
-    const output = response.output_text?.trim();
-    if (!output) {
-      throw new SupplierOrderPhotoProviderError({ internalCode: "PROVIDER_EMPTY_OUTPUT", model });
-    }
-    let rawExtraction: unknown;
-    try {
-      rawExtraction = JSON.parse(output);
-    } catch {
-      throw new SupplierOrderPhotoProviderError({ internalCode: "PROVIDER_INVALID_JSON", model });
-    }
-    const parsed = parseSupplierOrderPhotoExtraction(rawExtraction);
-    if (!parsed) {
-      throw new SupplierOrderPhotoProviderError({ internalCode: "PROVIDER_SCHEMA_INVALID", model });
-    }
-    return parsed;
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(totalTimeout);
   }
+}
+
+export async function extractSupplierOrderPhotoWithGemini(input: {
+  bytes: Uint8Array;
+  mimeType: SupplierOrderPhotoMimeType;
+  onProviderTrace?: (trace: SupplierOrderPhotoProviderTrace) => void;
+}): Promise<SupplierOrderPhotoExtraction> {
+  const model = resolveSupplierOrderPhotoModel();
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new SupplierOrderPhotoProviderError({ internalCode: "CONFIGURATION", model });
+  }
+
+  const client = new GoogleGenAI({
+    apiKey,
+    httpOptions: { retryOptions: { attempts: 1 } },
+  });
+  const result = await extractSupplierOrderPhotoWithProvider({
+    bytes: input.bytes,
+    mimeType: input.mimeType,
+    model,
+    client,
+  });
+  input.onProviderTrace?.({
+    providerPath: result.providerPath,
+    fallbackUsed: result.fallbackUsed,
+    providerAttempts: result.providerAttempts,
+  });
+  return result.extraction;
 }

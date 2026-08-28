@@ -205,9 +205,12 @@ test("o provider é transcritor estruturado, server-side e sem ferramentas ou re
   assert.match(provider, /process\.env\.GEMINI_API_KEY/);
   assert.match(provider, /type: "audio"/);
   assert.match(provider, /mime_type: assistantVoiceMimeType/);
+  assert.match(provider, /sample_rate: assistantVoiceSampleRate/);
+  assert.doesNotMatch(provider, /channels\s*:/);
   assert.match(provider, /store: false/);
   assert.match(provider, /tool_choice: "none"/);
   assert.match(provider, /maxRetries: 0/);
+  assert.doesNotMatch(provider, /models\.generateContent|fallback/i);
   assert.match(provider, /required: \["transcript"\]/);
   assert.doesNotMatch(provider, /minLength|maxLength/);
   assert.match(diagnostics, /PROVIDER_SERVER/);

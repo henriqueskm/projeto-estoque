@@ -107,7 +107,6 @@ export async function transcribeAssistantVoiceWithGemini(input: {
           data: Buffer.from(input.bytes).toString("base64"),
           mime_type: assistantVoiceMimeType,
           sample_rate: assistantVoiceSampleRate,
-          channels: 1,
         },
       ],
     },
