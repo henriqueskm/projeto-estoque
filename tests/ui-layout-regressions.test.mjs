@@ -107,9 +107,9 @@ test("purchase recommendations use a compact market-list layout", () => {
 test("inventory headers stay directly below the mobile header and at the desktop top", () => {
   const workspace = read("app/(authenticated)/estoque/inventory-workspace.tsx");
 
-  assert.match(workspace, /sticky top-14/);
+  assert.match(workspace, /top-\[calc\(max\(0\.5rem,env\(safe-area-inset-top\)\)\+3\.5rem\)\]/);
   assert.match(workspace, /lg:top-0/);
-  assert.doesNotMatch(workspace, /sticky top-16/);
+  assert.doesNotMatch(workspace, /sticky top-14/);
 });
 
 test("order dialogs use a restrained entry transition and integrated visual surface", () => {
@@ -128,19 +128,21 @@ test("order dialogs use a restrained entry transition and integrated visual surf
   assert.match(globals, /animation: nk-dialog-enter 180ms/);
 });
 
-test("wide order dialogs stay proportionate and keep item controls near their metrics", () => {
+test("wide order dialogs stay proportionate and render a compact operational table", () => {
   const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
+  const detail = orders.slice(orders.indexOf('aria-labelledby={`${titleId}-items`}'));
 
   assert.match(orders, /max-w-\[61\.25rem\]/);
   assert.match(orders, /max-h-\[min\(46rem,calc\(100dvh-1rem\)\)\]/);
-  assert.match(orders, /grid-cols-3 gap-2 text-xs/);
-  assert.match(orders, /Cód\./);
-  assert.match(orders, /sm:grid-cols-\[minmax\(0,1fr\)_auto\]/);
-  assert.match(orders, /sm:justify-end/);
-  assert.match(orders, /bg-gradient-to-b from-sky-600 to-sky-700/);
+  assert.match(detail, /role="table"/);
+  assert.match(detail, /<span role="columnheader">Cód\.<\/span>/);
+  assert.match(detail, /<span role="columnheader">Descrição dos Produtos<\/span>/);
+  assert.match(detail, /<span role="columnheader" className="text-right">Qtde\.<\/span>/);
+  assert.match(detail, /<span role="columnheader" className="text-right">Retirado<\/span>/);
+  assert.match(detail, /grid-cols-\[minmax\(3\.25rem,0\.72fr\)_minmax\(0,2\.8fr\)_minmax\(2\.5rem,0\.5fr\)_minmax\(3\.4rem,0\.68fr\)\]/);
 });
 
-test("order detail preserves its layout while compacting only the pickup information and action", () => {
+test("order detail keeps pickup state readable while exposing only the global pickup action", () => {
   const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
   const detail = orders.slice(orders.indexOf('aria-labelledby={`${titleId}-items`}'));
 
@@ -148,10 +150,16 @@ test("order detail preserves its layout while compacting only the pickup informa
   assert.doesNotMatch(detail, /Pronto pela Safisa:/);
   assert.doesNotMatch(detail, /Disponível para retirar:/);
   assert.match(detail, /item\.readyWaitingPickupQuantity/);
-  assert.match(detail, /\{isPending && pendingItemId === item\.id[\s\S]*\? "Retirando\.\.\."[\s\S]*: "Retirar"\}/);
-  assert.match(detail, /aria-label="Confirmar retirada e entrada automática no estoque"/);
-  assert.match(detail, /title="Confirmar retirada e entrada automática no estoque"/);
-  assert.doesNotMatch(detail, /Confirmar retirada \+ entrada/);
+  assert.match(detail, /data-pickup-state=/);
+  assert.match(detail, /item\.pickedQuantity === item\.orderedQuantity/);
+  assert.match(detail, /item\.pickedQuantity > 0 && !fullyPicked/);
+  assert.match(detail, /fullyPicked \? "bg-emerald-50\/55" : "bg-white"/);
+  assert.match(detail, /<PickupReadyIcon/);
+  assert.match(detail, /Retirar prontos/);
+  assert.doesNotMatch(detail, /Nova retirada/);
+  assert.doesNotMatch(detail, /<CompactQuantityControl/);
+  assert.doesNotMatch(detail, /Confirmar retirada e entrada automática no estoque/);
+  assert.match(orders, /waitingStockQuantity: readOnly \? 0 : order\.waitingStockQuantity/);
 });
 
 test("order detail opens available item images from the code without an eye button", () => {
@@ -164,7 +172,7 @@ test("order detail opens available item images from the code without an eye butt
   assert.match(detail, /<OrderItemImageCode/);
   assert.doesNotMatch(detail, /<OrderItemImageButton/);
   assert.match(orders, /triggerLabel={`Ver imagem do Cód\. \$\{code\}`}/);
-  assert.match(orders, /Cód\. \{code\}/);
+  assert.match(orders, /triggerText=\{code\}/);
   assert.match(image, /triggerVariant === "code-link"/);
   assert.match(image, /underline-offset-4/);
   assert.match(compatibleImages, /triggerVariant === "code-link"/);

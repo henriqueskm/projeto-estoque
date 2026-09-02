@@ -18,6 +18,7 @@ type CompatibleKitImagesProps = {
   options: CompatibleKitImageOption[];
   openOnMount?: boolean;
   triggerLabel?: string;
+  triggerText?: string;
   triggerVariant?: "icon-button" | "assistant-action" | "code-link";
 };
 
@@ -26,6 +27,7 @@ export function CompatibleKitImages({
   options,
   openOnMount = false,
   triggerLabel,
+  triggerText,
   triggerVariant = "icon-button",
 }: CompatibleKitImagesProps) {
   const [isOpen, setIsOpen] = useState(
@@ -114,7 +116,9 @@ export function CompatibleKitImages({
         openOnMount={openOnMount}
         triggerLabel={actionLabel}
         triggerText={
-          triggerVariant === "code-link" ? `Cód. ${kitCode}` : undefined
+          triggerVariant === "code-link"
+            ? (triggerText ?? `Cód. ${kitCode}`)
+            : undefined
         }
         triggerVariant={triggerVariant}
       />
@@ -145,7 +149,7 @@ export function CompatibleKitImages({
         {triggerVariant === "assistant-action" ? (
           "Ver fotos"
         ) : triggerVariant === "code-link" ? (
-          `Cód. ${kitCode}`
+          (triggerText ?? `Cód. ${kitCode}`)
         ) : (
           <EyeIcon className="size-4" />
         )}
