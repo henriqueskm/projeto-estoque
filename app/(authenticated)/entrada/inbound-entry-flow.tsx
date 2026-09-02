@@ -170,7 +170,7 @@ function OptionBadge({ option }: { option: InboundCatalogOption }) {
 }
 
 const catalogHeaderClassName =
-  "sticky top-16 z-30 bg-brand-charcoal px-2 py-2.5 text-[0.65rem] font-black uppercase tracking-wide text-slate-200 sm:px-3 sm:text-xs";
+  "bg-brand-charcoal px-2 py-2.5 text-[0.65rem] font-black uppercase tracking-wide text-slate-200 first:rounded-tl-xl last:rounded-tr-xl sm:px-3 sm:text-xs lg:sticky lg:top-0 lg:z-30";
 
 function CatalogAddButton({
   code,
@@ -221,7 +221,7 @@ function PhysicalCatalogTable({
   onAdd: (item: InboundPhysicalItem) => void;
 }) {
   return (
-    <div className="relative mt-4 rounded-xl border border-emerald-200 bg-surface shadow-sm">
+    <div className="relative -mx-3 mt-3 overflow-hidden bg-surface sm:mx-0 sm:rounded-xl sm:border sm:border-emerald-200 sm:shadow-sm lg:overflow-visible">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
           Itens disponíveis para adicionar à entrada
@@ -305,7 +305,7 @@ function CommercialCatalogTable({
   onAdd: (option: InboundCommercialCode) => void;
 }) {
   return (
-    <div className="relative mt-4 rounded-xl border border-violet-200 bg-surface shadow-sm">
+    <div className="relative -mx-3 mt-3 overflow-hidden bg-surface sm:mx-0 sm:rounded-xl sm:border sm:border-violet-200 sm:shadow-sm lg:overflow-visible">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
           Servos com kit disponíveis para adicionar à entrada
@@ -1345,22 +1345,19 @@ export function InboundEntryFlow({
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
-        <div className="min-w-0 rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6">
+        <div className="min-w-0 sm:rounded-3xl sm:border sm:border-border-neutral sm:bg-surface sm:p-6 sm:shadow-sm">
           <div>
-            <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
-              Etapa 1 de 2
-            </p>
-            <h2 className="mt-1 text-xl font-black text-text-primary">
+            <h2 className="text-xl font-black text-text-primary">
               Selecione peças ou Servos com kit
             </h2>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-brand-gold/40 bg-brand-gold-soft/55 p-4 text-sm font-bold text-brand-charcoal">
+          <div className="mt-3 px-1 text-xs leading-5 font-semibold text-text-muted sm:mt-5 sm:rounded-2xl sm:border sm:border-brand-gold/40 sm:bg-brand-gold-soft/55 sm:p-4 sm:text-sm sm:font-bold sm:text-brand-charcoal">
             Use o código comercial quando o Servo chegar com kit. Se
             as peças chegarem separadas, adicione os códigos físicos.
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-4 space-y-3 sm:mt-5">
             <StockFlowSection
               id="inbound-separate-section"
               title="Item separado"
