@@ -1,6 +1,10 @@
 import {
   assistantOrderPhotoJson, authenticateAssistantOrderPhotoRequest, readExactJson,
 } from "@/lib/assistant-order-photo-route";
+import {
+  assessSupplierOrderPhotoLoosePartCode,
+  loadSupplierOrderPhotoCatalog,
+} from "@/lib/assistant-supplier-order-photo-catalog";
 
 function friendlyError(message: string) {
   if (/commercial configuration/i.test(message)) return "Este código já pertence a um código comercial.";
@@ -19,6 +23,24 @@ export async function POST(request: Request) {
   const description = typeof body?.description === "string" ? body.description.trim() : "";
   if (!code || code.length > 120 || !description || description.length > 500) {
     return assistantOrderPhotoJson({ error: "Informe código e descrição válidos." }, 400);
+  }
+  try {
+    const assessment = assessSupplierOrderPhotoLoosePartCode(
+      await loadSupplierOrderPhotoCatalog(auth.supabase),
+      code,
+    );
+    if (!assessment.allowed && assessment.resolution.kind === "FOUND") {
+      return assistantOrderPhotoJson({
+        error: `O Cód. ${assessment.resolution.target.code} já pertence ao catálogo oficial. Selecione esse produto na revisão.`,
+      }, 409);
+    }
+    if (!assessment.allowed && assessment.resolution.kind === "AMBIGUOUS") {
+      return assistantOrderPhotoJson({
+        error: "Este código pertence a uma família conhecida. Defina o produto oficial correto na revisão.",
+      }, 409);
+    }
+  } catch {
+    return assistantOrderPhotoJson({ error: "Não foi possível validar o catálogo agora." }, 503);
   }
   const { data, error } = await auth.supabase.rpc("create_loose_part", {
     p_code: code, p_description: description,

@@ -7,25 +7,13 @@ import type {
   SupplierOrderPhotoCreatePreparation,
 } from "./assistant-supplier-order-photo-create-contract.ts";
 import type { SupplierOrderPhotoCatalogTarget } from "./assistant-supplier-order-photo.ts";
+import { resolveSupplierOrderPhotoCatalogCode } from "@/lib/assistant-supplier-order-photo-catalog-resolution";
 import type {
   SupplierOrderPhotoCreateProposalPayload,
   SupplierOrderPhotoCreateTokenVerification,
 } from "./ai/supplier-order-photo-create-token.ts";
 
 const supplierOrderPhotoCreateMaxLines = 100;
-
-function resolveSupplierOrderPhotoCatalogCode(
-  catalog: SupplierOrderPhotoCatalogTarget[],
-  code: string,
-) {
-  const normalized = code.trim().toLocaleUpperCase("pt-BR");
-  const matches = catalog.filter(
-    (target) => target.code.trim().toLocaleUpperCase("pt-BR") === normalized,
-  );
-  return matches.length === 1 ? { kind: "FOUND" as const, target: matches[0] }
-    : matches.length === 0 ? { kind: "NOT_FOUND" as const }
-      : { kind: "AMBIGUOUS" as const };
-}
 
 export type SupplierOrderPhotoCreateExistingOrder = {
   id: string;

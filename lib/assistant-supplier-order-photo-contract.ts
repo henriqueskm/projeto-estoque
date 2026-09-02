@@ -58,6 +58,10 @@ export type AssistantSupplierOrderPhotoPreviewLine = {
   descriptionMatch: "MATCH" | "NOT_PRESENT" | "CONFLICT" | "UNCERTAIN";
   warning: string | null;
   consolidatedLineCount: number;
+  catalogOptions: Array<{
+    code: string;
+    description: string;
+  }>;
 };
 
 export type AssistantSupplierOrderPhotoPreviewBlock = {
@@ -387,6 +391,7 @@ export function parseAssistantSupplierOrderPhotoPreviewBlock(
     if (!isRecord(raw) || !hasExactKeys(raw, [
       "rawCode", "displayCode", "description", "rawDescription", "quantity",
       "resolution", "blockingReasons", "descriptionMatch", "warning", "consolidatedLineCount",
+      "catalogOptions",
     ])) return null;
     const rawCode = parseNullableText(raw.rawCode, 120);
     const displayCode = parseNullableText(raw.displayCode, 120);
@@ -404,14 +409,24 @@ export function parseAssistantSupplierOrderPhotoPreviewBlock(
         "DESCRIPTION_CONFLICT", "QUANTITY_MISSING", "VISUAL_REVIEW",
       ].includes(String(reason))) ||
       !["MATCH", "NOT_PRESENT", "CONFLICT", "UNCERTAIN"].includes(String(raw.descriptionMatch)) ||
-      !Number.isSafeInteger(raw.consolidatedLineCount) || (raw.consolidatedLineCount as number) < 1
+      !Number.isSafeInteger(raw.consolidatedLineCount) || (raw.consolidatedLineCount as number) < 1 ||
+      !Array.isArray(raw.catalogOptions) || raw.catalogOptions.length > supplierOrderPhotoMaxLines
     ) return null;
+    const catalogOptions: AssistantSupplierOrderPhotoPreviewLine["catalogOptions"] = [];
+    for (const option of raw.catalogOptions) {
+      if (!isRecord(option) || !hasExactKeys(option, ["code", "description"])) return null;
+      const code = parseNullableText(option.code, 120);
+      const optionDescription = parseNullableText(option.description, 500);
+      if (!code || !optionDescription) return null;
+      catalogOptions.push({ code, description: optionDescription });
+    }
     lines.push({ rawCode, displayCode, description, rawDescription,
       quantity: raw.quantity as number | null,
       resolution: raw.resolution as AssistantSupplierOrderPhotoPreviewLine["resolution"],
       blockingReasons: raw.blockingReasons as AssistantSupplierOrderPhotoPreviewLine["blockingReasons"],
       descriptionMatch: raw.descriptionMatch as AssistantSupplierOrderPhotoPreviewLine["descriptionMatch"],
-      warning, consolidatedLineCount: raw.consolidatedLineCount as number });
+      warning, consolidatedLineCount: raw.consolidatedLineCount as number,
+      catalogOptions });
   }
   const total = lines.reduce((sum, line) => sum + (line.quantity ?? 0), 0);
   if (total !== value.totalQuantity) return null;

@@ -2,6 +2,7 @@ import { physicalItemTypes } from "@/lib/inbound-types";
 import type { createClient } from "@/lib/supabase/server";
 import type { SupplierOrderPhotoCatalogTarget } from "@/lib/assistant-supplier-order-photo";
 export {
+  assessSupplierOrderPhotoLoosePartCode,
   normalizeSupplierOrderPhotoCode,
   resolveSupplierOrderPhotoCatalogCode,
 } from "@/lib/assistant-supplier-order-photo-catalog-resolution";

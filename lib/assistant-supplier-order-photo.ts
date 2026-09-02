@@ -2,6 +2,7 @@ import type {
   AssistantSupplierOrderPhotoPreviewBlock,
   SupplierOrderPhotoExtraction,
 } from "./assistant-supplier-order-photo-contract.ts";
+import { resolveSupplierOrderPhotoCatalogCode } from "@/lib/assistant-supplier-order-photo-catalog-resolution";
 
 export type SupplierOrderPhotoCatalogTarget = {
   identity: string;
@@ -24,10 +25,6 @@ export type SupplierOrderPhotoDependencies = {
   loadCatalog: () => Promise<SupplierOrderPhotoCatalogTarget[]>;
   findExistingOrder: (negotiationNumber: string) => Promise<SupplierOrderPhotoExistingOrder | null>;
 };
-
-function normalizeCode(value: string) {
-  return value.trim().toLocaleUpperCase("pt-BR");
-}
 
 function normalizeDescription(value: string) {
   return value
@@ -141,36 +138,29 @@ export async function interpretSupplierOrderPhoto(
       ? dependencies.findExistingOrder(negotiationNumber as string)
       : Promise.resolve(null),
   ]);
-  const targetsByCode = new Map<string, SupplierOrderPhotoCatalogTarget[]>();
-  for (const target of catalog) {
-    const code = normalizeCode(target.code);
-    const matches = targetsByCode.get(code) ?? [];
-    matches.push(target);
-    targetsByCode.set(code, matches);
-  }
-
   const nonStockWarnings: string[] = [];
-  const productLines = extraction.lines.filter((line) => {
-    const candidates = line.rawCode ? (targetsByCode.get(normalizeCode(line.rawCode)) ?? []) : [];
+  const productLines = extraction.lines.flatMap((line) => {
+    const catalogResolution = line.rawCode
+      ? resolveSupplierOrderPhotoCatalogCode(catalog, line.rawCode)
+      : { kind: "NOT_FOUND" as const };
     const role = classifySupplierOrderPhotoLineRole({
       rawDescription: line.rawDescription,
-      hasExactCatalogMatch: candidates.length > 0,
+      hasExactCatalogMatch: catalogResolution.kind !== "NOT_FOUND",
     });
-    if (role === "PRODUCT") return true;
+    if (role === "PRODUCT") return [{ line, catalogResolution }];
     const label = [line.rawCode, line.rawDescription].filter(Boolean).join(" — ");
     nonStockWarnings.push(`Frete/encargo não incluído nos itens${label ? `: ${label}` : ""}.`);
-    return false;
+    return [];
   });
 
-  const resolved = productLines.map((line) => {
-    const candidates = line.rawCode ? (targetsByCode.get(normalizeCode(line.rawCode)) ?? []) : [];
-    const target = candidates.length === 1 ? candidates[0] : null;
+  const resolved = productLines.map(({ line, catalogResolution }) => {
+    const target = catalogResolution.kind === "FOUND" ? catalogResolution.target : null;
     const match = target ? descriptionMatch(line.rawDescription, target.description) : "UNCERTAIN";
     const modelNeedsReview = line.needsReview && !isInformationalAnnotationWarning(line.warning);
     const blockingReasons: AssistantSupplierOrderPhotoPreviewBlock["lines"][number]["blockingReasons"] = [];
     if (!line.rawCode) blockingReasons.push("CODE_MISSING");
-    else if (candidates.length === 0) blockingReasons.push("CODE_NOT_FOUND");
-    else if (candidates.length > 1) blockingReasons.push("CODE_AMBIGUOUS");
+    else if (catalogResolution.kind === "NOT_FOUND") blockingReasons.push("CODE_NOT_FOUND");
+    else if (catalogResolution.kind === "AMBIGUOUS") blockingReasons.push("CODE_AMBIGUOUS");
     const codeIsUncertain = modelNeedsReview && line.rawCode && isCodeUncertainWarning(line.warning);
     if (codeIsUncertain) blockingReasons.push("CODE_UNCERTAIN");
     if (!line.quantity) blockingReasons.push("QUANTITY_MISSING");
@@ -182,10 +172,10 @@ export async function interpretSupplierOrderPhoto(
       line.warning ??
       (!line.rawCode
         ? "O código não pôde ser lido."
-        : candidates.length === 0
+        : catalogResolution.kind === "NOT_FOUND"
           ? `O Cód. ${line.rawCode} não foi identificado no catálogo.`
-          : candidates.length > 1
-            ? `O Cód. ${line.rawCode} possui mais de uma correspondência.`
+          : catalogResolution.kind === "AMBIGUOUS"
+            ? `O Cód. ${line.rawCode} pertence a uma família com mais de um produto oficial.`
             : !line.quantity
               ? "A quantidade não pôde ser lida com segurança."
               : match === "CONFLICT"
@@ -206,6 +196,11 @@ export async function interpretSupplierOrderPhoto(
         descriptionMatch: match,
         warning,
         consolidatedLineCount: 1,
+        catalogOptions: catalogResolution.kind === "AMBIGUOUS"
+          ? [...catalogResolution.candidates]
+            .sort((left, right) => left.code.localeCompare(right.code, "pt-BR"))
+            .map((candidate) => ({ code: candidate.code, description: candidate.description }))
+          : [],
       },
     };
   });
