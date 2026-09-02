@@ -20,7 +20,6 @@ import {
   createSupplierOrderStockEntryAction,
   finalizeSupplierOrder,
   markSupplierOrderAllPicked,
-  setSupplierOrderItemPickedQuantity,
   updateSupplierOrder,
 } from "@/app/(authenticated)/pedidos/actions";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
@@ -37,7 +36,6 @@ import {
 import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { getSafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";
-import { maximumSafisaPickupQuantity } from "@/lib/safisa-portal-readiness";
 import { getSupplierOrderGlobalActionVisibility } from "@/lib/supplier-order-global-actions";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type {
@@ -200,6 +198,7 @@ function OrderItemImageCode({
         kitCode={code}
         options={compatibleKitImages}
         triggerLabel={`Ver imagem do Cód. ${code}`}
+        triggerText={code}
         triggerVariant="code-link"
       />
     );
@@ -211,7 +210,7 @@ function OrderItemImageCode({
         commercialCodes={[code]}
         imageUrl={imageUrl}
         triggerLabel={`Ver imagem do Cód. ${code}`}
-        triggerText={`Cód. ${code}`}
+        triggerText={code}
         triggerVariant="code-link"
       />
     );
@@ -219,76 +218,27 @@ function OrderItemImageCode({
 
   return (
     <span className="pt-0.5 font-mono text-xs font-black text-text-primary sm:text-sm">
-      Cód. {code}
+      {code}
     </span>
   );
 }
 
-function ItemQuantityIndicators({
-  cancelledQuantity,
-  orderedQuantity,
-  pickedQuantity,
-  waitingPickupQuantity,
-}: {
-  cancelledQuantity: number;
-  orderedQuantity: number;
-  pickedQuantity: number;
-  waitingPickupQuantity: number;
-}) {
-  const indicators = [
-    {
-      label: "Solicitado",
-      value: orderedQuantity,
-      className: "text-text-primary",
-    },
-    {
-      label: "Retirado",
-      value: pickedQuantity,
-      className: "text-emerald-700",
-    },
-    ...(cancelledQuantity > 0
-      ? [
-          {
-            label: "Cancelado",
-            value: cancelledQuantity,
-            className: "text-red-700",
-          },
-        ]
-      : []),
-    ...(waitingPickupQuantity > 0 || cancelledQuantity === 0
-      ? [
-          {
-            label: "Falta",
-            value: waitingPickupQuantity,
-            className: "text-amber-800",
-          },
-        ]
-      : []),
-  ];
-
+function PickupReadyIcon({ className = "size-5" }: { className?: string }) {
   return (
-    <dl
-      className="flex min-w-0 flex-wrap items-baseline gap-y-0.5 text-xs leading-5 sm:text-sm"
-      aria-label="Resumo das quantidades do item"
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
     >
-      {indicators.map((indicator, index) => (
-        <div
-          key={indicator.label}
-          className={`inline-flex items-baseline gap-1 whitespace-nowrap ${
-            index > 0
-              ? "ml-2 border-l border-border-neutral pl-2"
-              : ""
-          }`}
-        >
-          <dt className="font-semibold text-text-muted">
-            {indicator.label}:
-          </dt>
-          <dd className={`font-mono font-black ${indicator.className}`}>
-            {quantityFormatter.format(indicator.value)}
-          </dd>
-        </div>
-      ))}
-    </dl>
+      <path d="m3.5 7.5 8.5-4 8.5 4-8.5 4-8.5-4Z" />
+      <path d="M3.5 7.5v8.8L12 20.5l3.2-1.6M12 11.5v4" />
+      <path d="m16.2 16.6 1.5 1.5 3-3.2" />
+    </svg>
   );
 }
 
@@ -2197,9 +2147,10 @@ function ConfirmationDialog({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const isCancellation = kind !== "MARK_ALL";
+  const markAllQuantity = order.readyWaitingPickupQuantity;
   const title =
     kind === "MARK_ALL"
-      ? "Retirar tudo que está pronto"
+      ? "Retirar prontos"
       : kind === "CANCEL"
         ? "Excluir pedido"
         : "Excluir saldo restante";
@@ -2279,7 +2230,7 @@ function ConfirmationDialog({
           className="text-sm leading-6 font-semibold text-text-muted"
         >
           {kind === "MARK_ALL"
-            ? "Retirar somente as quantidades informadas como prontas pela Safisa? As novas unidades retiradas entrarão automaticamente no Estoque."
+            ? `${quantityFormatter.format(markAllQuantity)} ${markAllQuantity === 1 ? "unidade pronta será retirada" : "unidades prontas serão retiradas"}. As novas unidades entrarão automaticamente no Estoque.`
             : kind === "CANCEL"
               ? "Este pedido será removido das listas ativas e mantido no histórico. As quantidades ainda intocadas serão canceladas."
               : "Este saldo restante será removido das listas ativas e mantido no histórico. As quantidades já retiradas serão preservadas."}
@@ -2891,18 +2842,12 @@ function OrderDetailsDialog({
   const headerActionsRef = useRef<HTMLDivElement>(null);
   const headerActionsButtonRef = useRef<HTMLButtonElement>(null);
   const firstHeaderActionRef = useRef<HTMLButtonElement>(null);
-  const pickedKeysRef = useRef<Record<string, string>>({});
-  const [pickedDrafts, setPickedDrafts] = useState<Record<string, number>>(
-    () => Object.fromEntries(items.map((item) => [item.id, item.pickedQuantity])),
-  );
   const [confirmation, setConfirmation] =
     useState<ConfirmationKind | null>(null);
   const [finalizing, setFinalizing] = useState(false);
   const [stockEntryOpen, setStockEntryOpen] = useState(false);
   const [headerActionsOpen, setHeaderActionsOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pendingItemId, setPendingItemId] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending] = useTransition();
 
   const closeHeaderActions = useCallback((restoreFocus = true) => {
     setHeaderActionsOpen(false);
@@ -3044,7 +2989,6 @@ function OrderDetailsDialog({
   const canEdit =
     !readOnly &&
     (order.status === "PENDING" || order.status === "PARTIAL");
-  const canChangePickup = canEdit;
   const canMarkAll =
     !readOnly &&
     order.status !== "CANCELLED" &&
@@ -3067,7 +3011,7 @@ function OrderDetailsDialog({
   const globalActionVisibility = getSupplierOrderGlobalActionVisibility({
     canMarkAll,
     readyWaitingPickupQuantity: order.readyWaitingPickupQuantity,
-    waitingStockQuantity: order.waitingStockQuantity,
+    waitingStockQuantity: readOnly ? 0 : order.waitingStockQuantity,
   });
   const hasHeaderActions =
     canEdit || canCancelFull || canCancelRemaining || canFinalize;
@@ -3218,71 +3162,6 @@ function OrderDetailsDialog({
     </>
   ) : null;
 
-  function updatePicked(item: SupplierOrderItem, nextValue: number) {
-    const minimum = item.pickedQuantity;
-    const maximum = maximumSafisaPickupQuantity(
-      item.orderedQuantity,
-      item.cancelledQuantity,
-      item.readyQuantity,
-    );
-    const bounded = Math.max(minimum, Math.min(maximum, nextValue));
-
-    delete pickedKeysRef.current[item.id];
-    setError(null);
-    setPickedDrafts((current) => ({ ...current, [item.id]: bounded }));
-  }
-
-  function savePicked(item: SupplierOrderItem) {
-    const value = pickedDrafts[item.id] ?? item.pickedQuantity;
-    const minimum = item.pickedQuantity;
-    const maximum = maximumSafisaPickupQuantity(
-      item.orderedQuantity,
-      item.cancelledQuantity,
-      item.readyQuantity,
-    );
-
-    if (
-      !Number.isInteger(value) ||
-      value < minimum ||
-      value > maximum
-    ) {
-      setError(
-        "A retirada já registrada não pode ser reduzida, e o novo total não pode ultrapassar o que a Safisa informou como pronto.",
-      );
-      return;
-    }
-
-    const idempotencyKey =
-      pickedKeysRef.current[item.id] ?? crypto.randomUUID();
-    pickedKeysRef.current[item.id] = idempotencyKey;
-    setPendingItemId(item.id);
-    setError(null);
-
-    startTransition(async () => {
-      const result = await setSupplierOrderItemPickedQuantity({
-        supplier_order_item_id: item.id,
-        picked_quantity: value,
-        description: null,
-        idempotency_key: idempotencyKey,
-      });
-
-      setPendingItemId(null);
-
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-
-      delete pickedKeysRef.current[item.id];
-      const automaticEntry = result.receipt.automaticStockEntry;
-      onMutated(
-        automaticEntry
-          ? `${quantityFormatter.format(automaticEntry.quantity)} ${automaticEntry.quantity === 1 ? "unidade retirada e adicionada" : "unidades retiradas e adicionadas"} automaticamente ao estoque para o Cód. ${item.codeSnapshot}.`
-          : `Retirada de ${item.codeSnapshot} atualizada. Confira a atualização do estoque.`,
-      );
-    });
-  }
-
   return (
     <DialogShell
       title={`Pedido ${order.negotiationNumber}`}
@@ -3319,44 +3198,36 @@ function OrderDetailsDialog({
         </div>
 
         <section
-          className="border-b border-border-neutral px-3 py-2 sm:px-4 sm:py-2.5"
+          className={`border-b border-border-neutral px-3 py-3 sm:px-4 ${
+            order.status === "COMPLETED" ? "bg-emerald-50/35" : "bg-white"
+          }`}
           aria-labelledby={`${titleId}-progress`}
         >
-          <h3
-            id={`${titleId}-progress`}
-            className="sr-only"
-          >
-            Progresso geral
-          </h3>
-          <dl className="grid grid-cols-3 gap-2 text-xs sm:max-w-md sm:gap-3">
+          <div className="flex items-end justify-between gap-4">
             <div>
-              <dt className="font-semibold text-text-muted">Solicitado</dt>
-              <dd className="font-mono text-sm font-black text-text-primary sm:text-base">
-                {quantityFormatter.format(order.orderedQuantity)}
-              </dd>
+              <h3
+                id={`${titleId}-progress`}
+                className="text-[0.68rem] font-black tracking-[0.14em] text-text-muted uppercase"
+              >
+                Progresso da retirada
+              </h3>
+              <p className="mt-0.5 text-sm font-black text-text-primary sm:text-base">
+                <span className="font-mono">
+                  {quantityFormatter.format(order.pickedQuantity)}
+                </span>{" "}
+                de{" "}
+                <span className="font-mono">
+                  {quantityFormatter.format(order.orderedQuantity)}
+                </span>{" "}
+                unidades
+              </p>
             </div>
-            <div>
-              <dt className="font-semibold text-text-muted">Retirado</dt>
-              <dd className="font-mono text-sm font-black text-emerald-700 sm:text-base">
-                {quantityFormatter.format(order.pickedQuantity)}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-text-muted">Faltam</dt>
-              <dd className="font-mono text-sm font-black text-amber-800 sm:text-base">
-                {quantityFormatter.format(order.waitingPickupQuantity)}
-              </dd>
-            </div>
-          </dl>
-          <div className="mt-1 flex items-center justify-between gap-3 font-mono text-[0.68rem] font-black text-text-primary sm:text-xs">
-            <span>
-              {quantityFormatter.format(order.pickedQuantity)}/
-              {quantityFormatter.format(order.orderedQuantity)}
-            </span>
-            <span>{Math.round(order.pickupPercentage)}%</span>
+            <strong className="font-mono text-lg font-black text-emerald-800 sm:text-xl">
+              {Math.round(order.pickupPercentage)}%
+            </strong>
           </div>
           <div
-            className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200"
+            className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={order.orderedQuantity}
@@ -3373,6 +3244,11 @@ function OrderDetailsDialog({
               }}
             />
           </div>
+          {order.waitingPickupQuantity > 0 ? (
+            <p className="mt-1.5 text-xs font-bold text-amber-900">
+              Faltam {quantityFormatter.format(order.waitingPickupQuantity)} unidade(s).
+            </p>
+          ) : null}
           {order.cancelledQuantity > 0 ? (
             <p className="mt-1 text-xs font-bold text-red-800">
               {quantityFormatter.format(order.cancelledQuantity)} unidades
@@ -3429,45 +3305,69 @@ function OrderDetailsDialog({
         ) : null}
 
         <section
-          className="px-3 py-2 sm:px-4 sm:py-2.5"
+          className="px-3 py-3 sm:px-4"
           aria-labelledby={`${titleId}-items`}
         >
-          <h3
-            id={`${titleId}-items`}
-            className="text-base font-black text-text-primary sm:text-lg"
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-[0.64rem] font-black tracking-[0.15em] text-brand-gold-ink uppercase">
+                Ordem de produção
+              </p>
+              <h3
+                id={`${titleId}-items`}
+                className="text-base font-black text-text-primary sm:text-lg"
+              >
+                Descrição dos Produtos
+              </h3>
+            </div>
+            <span className="font-mono text-xs font-black text-text-muted">
+              {items.length} {items.length === 1 ? "item" : "itens"}
+            </span>
+          </div>
+
+          <div
+            role="table"
+            aria-label={`Itens do Pedido ${order.negotiationNumber}`}
+            className="mt-2 overflow-hidden rounded-xl border border-border-neutral bg-white"
           >
-            Itens do pedido
-          </h3>
-          <div className="mt-1.5 divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral bg-white">
+            <div
+              role="row"
+              className="grid grid-cols-[minmax(3.25rem,0.72fr)_minmax(0,2.8fr)_minmax(2.5rem,0.5fr)_minmax(3.4rem,0.68fr)] gap-x-2 border-b border-brand-charcoal/15 bg-brand-charcoal px-2.5 py-2 text-[0.6rem] font-black tracking-[0.08em] text-white uppercase sm:grid-cols-[minmax(5rem,0.72fr)_minmax(0,3fr)_minmax(4rem,0.55fr)_minmax(4.75rem,0.68fr)] sm:px-3 sm:text-[0.66rem]"
+            >
+              <span role="columnheader">Cód.</span>
+              <span role="columnheader">Descrição dos Produtos</span>
+              <span role="columnheader" className="text-right">Qtde.</span>
+              <span role="columnheader" className="text-right">Retirado</span>
+            </div>
             {items.map((item) => {
-              const minimum = item.pickedQuantity;
-              const maximum = maximumSafisaPickupQuantity(
-                item.orderedQuantity,
-                item.cancelledQuantity,
-                item.readyQuantity,
-              );
-              const pickedValue =
-                pickedDrafts[item.id] ?? item.pickedQuantity;
-              const changed = pickedValue !== item.pickedQuantity;
-              const pickupDelta = Math.max(
-                pickedValue - item.pickedQuantity,
-                0,
-              );
               const code =
                 item.commercialCodeSnapshot ?? item.codeSnapshot;
+              const fullyPicked =
+                item.orderedQuantity > 0 &&
+                item.pickedQuantity === item.orderedQuantity;
+              const partiallyPicked =
+                item.pickedQuantity > 0 && !fullyPicked;
 
               return (
-                <article key={item.id} className="px-2.5 py-2 sm:px-3 sm:py-2.5">
-                  <div className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-x-1.5">
-                    <span className="rounded-full bg-app-background px-1.5 py-0.5 text-[0.58rem] font-black text-text-muted uppercase sm:text-[0.62rem]">
-                      {compactItemTypeLabel(item.itemTypeSnapshot)}
-                    </span>
+                <div
+                  key={item.id}
+                  role="row"
+                  data-pickup-state={
+                    fullyPicked ? "complete" : partiallyPicked ? "partial" : "pending"
+                  }
+                  className={`grid grid-cols-[minmax(3.25rem,0.72fr)_minmax(0,2.8fr)_minmax(2.5rem,0.5fr)_minmax(3.4rem,0.68fr)] gap-x-2 border-b border-border-neutral px-2.5 py-2.5 last:border-b-0 sm:grid-cols-[minmax(5rem,0.72fr)_minmax(0,3fr)_minmax(4rem,0.55fr)_minmax(4.75rem,0.68fr)] sm:px-3 ${
+                    fullyPicked ? "bg-emerald-50/55" : "bg-white"
+                  }`}
+                >
+                  <div role="cell" className="min-w-0 self-start text-xs font-black text-brand-gold-ink sm:text-sm">
                     <OrderItemImageCode
                       code={code}
                       imageUrl={item.imageUrl}
                       compatibleKitImages={item.compatibleKitImages}
                     />
-                    <p className="min-w-0 break-words text-xs leading-4 font-semibold text-text-primary sm:text-sm sm:leading-5">
+                  </div>
+                  <div role="cell" className="min-w-0">
+                    <p className="break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
                       {item.descriptionSnapshot}
                       {item.modelSnapshot &&
                       !normalizeSearch(item.descriptionSnapshot).includes(
@@ -3475,98 +3375,46 @@ function OrderDetailsDialog({
                       )
                         ? ` · ${item.modelSnapshot}`
                         : ""}
-                      {item.notes ? (
-                        <span className="font-medium text-text-muted">
-                          {" "}
-                          · Obs.: {item.notes}
-                        </span>
-                      ) : null}
                     </p>
-                  </div>
-
-                  <div
-                    className={`mt-1.5 grid min-w-0 items-end gap-x-3 gap-y-1.5 ${
-                      canChangePickup
-                        ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto]"
-                        : "grid-cols-1"
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <ItemQuantityIndicators
-                        cancelledQuantity={item.cancelledQuantity}
-                        orderedQuantity={item.orderedQuantity}
-                        pickedQuantity={item.pickedQuantity}
-                        waitingPickupQuantity={
-                          item.waitingPickupQuantity
-                        }
-                      />
-                      {item.readyWaitingPickupQuantity > 0 ? (
-                        <p className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[0.68rem] leading-4 font-bold text-emerald-900 sm:text-xs">
-                          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-emerald-600" />
-                          Pronto para retirar: {" "}
-                          <strong className="font-mono font-black">
-                            {quantityFormatter.format(
-                              item.readyWaitingPickupQuantity,
-                            )}
-                          </strong>
-                        </p>
-                      ) : (
-                        <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                          Pronto para retirar:{" "}
-                          <strong className="font-mono font-black">0</strong>
-                        </p>
-                      )}
-                      {item.waitingStockQuantity > 0 ? (
-                        <p className="mt-0.5 text-[0.68rem] leading-4 font-semibold text-amber-900 sm:text-xs">
-                          Pendente antigo de entrada:{" "}
-                          <strong className="font-mono font-black">
-                            {quantityFormatter.format(
-                              item.waitingStockQuantity,
-                            )}
-                          </strong>
-                        </p>
-                      ) : null}
-                    </div>
-
-                    {canChangePickup ? (
-                      <div className="flex flex-wrap items-end justify-start gap-1.5 sm:justify-end">
-                        <div>
-                          <span className="mb-0.5 block text-[0.58rem] font-black text-text-muted uppercase">
-                            Nova retirada
-                          </span>
-                          <CompactQuantityControl
-                            label={`Quantidade retirada de ${code}`}
-                            minimum={minimum}
-                            maximum={maximum}
-                            value={pickedValue}
-                            disabled={isPending}
-                            onChange={(value) =>
-                              updatePicked(item, value)
-                            }
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          aria-label="Confirmar retirada e entrada automática no estoque"
-                          title="Confirmar retirada e entrada automática no estoque"
-                          disabled={!changed || isPending}
-                          onClick={() => savePicked(item)}
-                          className="nk-focus inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-sky-800/20 bg-gradient-to-b from-sky-600 to-sky-700 px-2.5 text-[0.68rem] font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:from-sky-700 hover:to-sky-800 hover:shadow disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-none disabled:bg-slate-300 disabled:text-slate-600 disabled:shadow-none"
-                        >
-                          <CheckIcon aria-hidden="true" className="size-3" />
-                          {isPending && pendingItemId === item.id
-                            ? "Retirando..."
-                            : "Retirar"}
-                        </button>
-                        {pickupDelta > 0 ? (
-                          <p className="basis-full text-left text-[0.68rem] font-black text-emerald-800 sm:text-right">
-                            Retirar agora: {quantityFormatter.format(pickupDelta)} · Entrada automática no estoque: +{quantityFormatter.format(pickupDelta)}
-                          </p>
-                        ) : null}
-                      </div>
+                    {item.notes ? (
+                      <p className="mt-0.5 break-words text-[0.68rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                        Obs.: {item.notes}
+                      </p>
                     ) : null}
                   </div>
-                </article>
+                  <div role="cell" className="text-right font-mono text-xs font-black text-text-primary sm:text-sm">
+                    {quantityFormatter.format(item.orderedQuantity)}
+                  </div>
+                  <div
+                    role="cell"
+                    className={`flex items-center justify-end gap-1 text-right font-mono text-xs font-black sm:text-sm ${
+                      fullyPicked
+                        ? "text-emerald-800"
+                        : partiallyPicked
+                          ? "text-brand-gold-ink"
+                          : "text-text-muted/65"
+                    }`}
+                  >
+                    {fullyPicked ? <CheckIcon aria-hidden="true" className="size-3.5 shrink-0" /> : null}
+                    {quantityFormatter.format(item.pickedQuantity)}
+                  </div>
+                  {item.readyWaitingPickupQuantity > 0 ? (
+                    <p className="col-start-2 col-end-5 mt-1 inline-flex items-center gap-1 text-[0.68rem] leading-4 font-bold text-emerald-800 sm:text-xs">
+                      <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-emerald-600" />
+                      Pronto para retirar: {quantityFormatter.format(item.readyWaitingPickupQuantity)}
+                    </p>
+                  ) : null}
+                  {item.cancelledQuantity > 0 ? (
+                    <p className="col-start-2 col-end-5 mt-1 text-[0.68rem] font-bold text-red-800 sm:text-xs">
+                      Cancelado: {quantityFormatter.format(item.cancelledQuantity)}
+                    </p>
+                  ) : null}
+                  {item.waitingStockQuantity > 0 ? (
+                    <p className="col-start-2 col-end-5 mt-1 text-[0.68rem] font-bold text-amber-900 sm:text-xs">
+                      Pendente antigo de entrada: {quantityFormatter.format(item.waitingStockQuantity)}
+                    </p>
+                  ) : null}
+                </div>
               );
             })}
           </div>
@@ -3604,15 +3452,6 @@ function OrderDetailsDialog({
           </section>
         ) : null}
 
-        {error ? (
-          <p
-            role="alert"
-            className="mx-4 mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900 sm:mx-5"
-          >
-            {error}
-          </p>
-        ) : null}
-
         {globalActionVisibility.showDock ? (
           <div
             data-testid="supplier-order-action-dock"
@@ -3624,9 +3463,10 @@ function OrderDetailsDialog({
                   type="button"
                   disabled={isPending}
                   onClick={() => setConfirmation("MARK_ALL")}
-                  className="nk-focus min-h-10 min-w-0 rounded-xl border border-emerald-700 bg-emerald-700 px-3 text-center text-xs leading-tight font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300 disabled:text-slate-600 sm:px-4 sm:text-sm"
+                  className="nk-focus inline-flex min-h-10 min-w-0 items-center justify-center gap-2 rounded-xl border border-brand-charcoal bg-brand-charcoal px-3 text-center text-xs leading-tight font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300 disabled:text-slate-600 sm:px-4 sm:text-sm"
                 >
-                  Retirar tudo que está pronto
+                  <PickupReadyIcon className="size-4 shrink-0 text-emerald-300" />
+                  Retirar prontos
                 </button>
               ) : null}
               {globalActionVisibility.showStockEntry ? (
@@ -3634,7 +3474,6 @@ function OrderDetailsDialog({
                   type="button"
                   disabled={isPending}
                   onClick={() => {
-                    setError(null);
                     setStockEntryOpen(true);
                   }}
                   className="nk-focus min-h-10 min-w-0 rounded-xl border border-brand-charcoal/25 bg-white px-3 text-center text-xs leading-tight font-black text-text-primary transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/35 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 sm:px-4 sm:text-sm"

@@ -263,13 +263,19 @@ test("UI and Assistant describe one compound operation without a second stock RP
   const blocks = readFileSync("components/assistant-structured-block.tsx", "utf8");
   const types = readFileSync("lib/assistant-types.ts", "utf8");
   const orders = readFileSync("app/(authenticated)/pedidos/orders-workspace.tsx", "utf8");
+  const actions = readFileSync("app/(authenticated)/pedidos/actions.ts", "utf8");
 
   assert.match(assistant, /item!\.readyQuantity/);
   assert.doesNotMatch(assistant, /create_supplier_order_stock_entry/);
   assert.doesNotMatch(execution, /create_supplier_order_stock_entry/);
   assert.match(types, /Confirmar retirada \+ entrada/);
   assert.match(blocks, /Pendente antigo de entrada/);
-  assert.match(orders, /const minimum = item\.pickedQuantity/g);
-  assert.match(orders, /Retirar tudo que está pronto/);
+  assert.match(actions, /export async function setSupplierOrderItemPickedQuantity/);
+  assert.match(actions, /set_supplier_order_item_picked_quantity/);
+  assert.match(orders, /Retirar prontos/);
+  assert.doesNotMatch(
+    orders.slice(orders.indexOf('aria-labelledby={`${titleId}-items`}')),
+    /Nova retirada|<CompactQuantityControl/,
+  );
   assert.match(orders, /Entrada automática no estoque/);
 });
