@@ -393,6 +393,8 @@ function SupplierOrderPhotoPreview({
           <div className="divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral">
             {block.lines.map((line, index) => {
               const hasCodeBlocker = line.blockingReasons.some((reason) => reason.startsWith("CODE_"));
+              const hasCatalogAmbiguity = line.blockingReasons.includes("CODE_AMBIGUOUS") &&
+                line.catalogOptions.length > 0;
               const canCreateDirectly = line.blockingReasons.includes("CODE_NOT_FOUND") &&
                 !line.blockingReasons.includes("CODE_UNCERTAIN") && Boolean(line.rawCode);
               return (
@@ -423,7 +425,29 @@ function SupplierOrderPhotoPreview({
                     {line.resolution === "IDENTIFIED" ? "ℹ" : "⚠"} {line.warning}
                   </p>
                 ) : null}
-                {line.resolution === "NEEDS_REVIEW" && hasCodeBlocker ? (
+                {line.resolution === "NEEDS_REVIEW" && hasCatalogAmbiguity ? (
+                  <fieldset className="mt-3 space-y-2">
+                    <legend className="text-xs font-black text-text-primary">Definir produto</legend>
+                    <div className="grid gap-2">
+                      {line.catalogOptions.map((option) => (
+                        <button
+                          key={`${option.code}-${option.description}`}
+                          type="button"
+                          disabled={disabled || isSubmitting}
+                          onClick={() => {
+                            if (!onUpdate) return;
+                            onUpdate(updateSupplierOrderPhotoPreviewLine(block, index, option));
+                            setNotice(`Cód. ${option.code} definido para a linha da foto.`);
+                          }}
+                          className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-surface px-3 py-2 text-left transition hover:border-violet-300 hover:bg-violet-50 disabled:opacity-50"
+                        >
+                          <strong className="block text-xs text-violet-800">Cód. {option.code}</strong>
+                          <span className="mt-0.5 block text-xs font-semibold text-text-muted">{option.description}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                ) : line.resolution === "NEEDS_REVIEW" && hasCodeBlocker ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" disabled={disabled || isSubmitting} onClick={(event) => {
                       triggerRef.current = event.currentTarget;

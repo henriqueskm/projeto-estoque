@@ -115,7 +115,7 @@ test("bloco plenamente resolvido gera input sem descrição nem IDs do browser",
     warnings: ["Frete omitido"], existingOrder: null, fallbackText: "Prévia",
     lines: [{ rawCode: "10a", displayCode: "10A", description: "Oficial", rawDescription: "OCR",
       quantity: 2, resolution: "IDENTIFIED", blockingReasons: [], descriptionMatch: "MATCH",
-      warning: null, consolidatedLineCount: 1 }],
+      warning: null, consolidatedLineCount: 1, catalogOptions: [] }],
   };
   assert.deepEqual(createSupplierOrderPhotoPrepareInputFromPreview(preview), {
     negotiationNumber: "0040959", orderDate: "2026-08-13", lines: [{ code: "10A", quantity: 2 }],

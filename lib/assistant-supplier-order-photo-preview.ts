@@ -48,6 +48,7 @@ export function updateSupplierOrderPhotoPreviewLine(
         resolution: "NEEDS_REVIEW",
         descriptionMatch: "UNCERTAIN",
         warning: "Código não cadastrado.",
+        catalogOptions: [],
       };
     }
     return {
@@ -60,6 +61,7 @@ export function updateSupplierOrderPhotoPreviewLine(
       warning: remaining.includes("QUANTITY_MISSING")
         ? "A identidade foi confirmada, mas a quantidade ainda precisa de revisão."
         : null,
+      catalogOptions: [],
     };
   });
   return recalculate({ ...block, lines });

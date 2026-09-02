@@ -19,7 +19,14 @@ export async function POST(request: Request) {
       return assistantOrderPhotoJson({ status: "FOUND", code: result.target.code, description: result.target.description }, 200);
     }
     if (result.kind === "AMBIGUOUS") {
-      return assistantOrderPhotoJson({ status: "AMBIGUOUS", error: "Este código possui mais de uma correspondência e precisa de revisão." }, 409);
+      return assistantOrderPhotoJson({
+        status: "AMBIGUOUS",
+        error: "Este código possui mais de uma correspondência e precisa de revisão.",
+        options: result.candidates.map((candidate) => ({
+          code: candidate.code,
+          description: candidate.description,
+        })),
+      }, 409);
     }
     return assistantOrderPhotoJson({ status: "NOT_FOUND", code }, 200);
   } catch {
