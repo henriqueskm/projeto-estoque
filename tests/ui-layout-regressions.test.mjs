@@ -80,6 +80,18 @@ test("Assistant confirmation states name the operation and keep mobile metrics l
   );
 });
 
+test("Assistant manual stock batches render one compact preview table and one confirmation", () => {
+  const structured = read("components/assistant-structured-block.tsx");
+
+  assert.match(structured, /function ManualStockEntryBatchTable/);
+  assert.match(structured, /function ManualStockOutputBatchTable/);
+  assert.match(structured, /<caption className="sr-only">Itens da entrada manual<\/caption>/);
+  assert.match(structured, /<caption className="sr-only">Itens da saída manual<\/caption>/);
+  assert.match(structured, /Cód\. \/ descrição/);
+  assert.match(structured, /Uma única confirmação aplicará o lote inteiro/);
+  assert.match(structured, /Uma única confirmação validará e aplicará o lote inteiro/);
+});
+
 test("purchase recommendations use a compact market-list layout", () => {
   const structured = read("components/assistant-structured-block.tsx");
   const recommendations = structured.slice(

@@ -7,6 +7,7 @@ import type {
   AssistantManualStockOutputConfirmationResult,
   AssistantManualStockOutputPreviewBlock,
   AssistantManualStockOutputResultBlock,
+  AssistantManualStockBatchSelectionLine,
   AssistantStockOutputSelection,
   AssistantStockOutputTarget,
 } from "@/lib/assistant-types";
@@ -21,6 +22,7 @@ import {
 } from "@/lib/ai/manual-stock-output-action-token";
 import {
   createManualStockOutputIdentitySelection,
+  type ManualStockOutputBatchLineRequest,
   type ManualStockOutputRequest,
 } from "@/lib/ai/manual-stock-output-routing";
 import {
@@ -29,6 +31,15 @@ import {
 } from "@/lib/assistant-stock-output-data";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeServoModel } from "@/lib/servo-model-search";
+import {
+  consolidateResolvedManualStockLines,
+  requiresManualStockIdentityChoice,
+} from "@/lib/ai/manual-stock-list-routing.mjs";
+import {
+  buildOutboundPreview,
+  type OutboundPreviewInputLine,
+} from "@/lib/outbound-preview";
+import type { OutboundCatalogOption } from "@/lib/outbound-types";
 
 export { ASSISTANT_MANUAL_STOCK_OUTPUT_DESCRIPTION };
 
@@ -111,6 +122,315 @@ function createPreviewForTarget(
     contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
 }
 
+type ManualStockOutputBatchSelection = Extract<
+  AssistantStockOutputSelection,
+  { action: "manual_stock_output_batch" }
+>;
+
+function createOutputBatchSelection(
+  lines: AssistantManualStockBatchSelectionLine[],
+): ManualStockOutputBatchSelection {
+  return { action: "manual_stock_output_batch", lines };
+}
+
+function updateOutputBatchLine(
+  lines: AssistantManualStockBatchSelectionLine[],
+  index: number,
+  update: Partial<AssistantManualStockBatchSelectionLine>,
+) {
+  return lines.map((line, lineIndex) => lineIndex === index ? { ...line, ...update } : line);
+}
+
+function toOutboundCatalogOption(
+  target: AssistantStockOutputTarget,
+): OutboundCatalogOption | null {
+  if (target.kind === "ITEM") {
+    const itemType = target.typeLabel === "Servo"
+      ? "SERVO"
+      : target.typeLabel === "Kit de instalação"
+        ? "INSTALLATION_KIT"
+        : target.typeLabel === "Kit de reparo"
+          ? "REPAIR_KIT"
+          : "LOOSE_PART";
+
+    return {
+      kind: "ITEM",
+      id: target.targetId,
+      code: target.displayCode,
+      description: target.description,
+      itemType,
+      model: null,
+      balance: target.currentStock,
+    };
+  }
+
+  if (!target.configurationId || !target.servo || !target.installationKit) {
+    return null;
+  }
+
+  return {
+    kind: "COMMERCIAL_CODE",
+    commercialCodeId: target.targetId,
+    code: target.displayCode,
+    configurationId: target.configurationId,
+    description: target.description,
+    imageUrl: null,
+    assembledBalance: target.currentStock,
+    aliases: target.aliases,
+    servo: {
+      id: target.servo.id,
+      code: target.servo.code,
+      description: target.servo.description,
+      balance: target.servo.currentStock,
+      model: null,
+    },
+    installationKit: {
+      id: target.installationKit.id,
+      code: target.installationKit.code,
+      description: target.installationKit.description,
+      balance: target.installationKit.currentStock,
+    },
+  };
+}
+
+function buildManualStockOutputBatchProjection(
+  lines: Array<{ target: AssistantStockOutputTarget; quantity: number }>,
+) {
+  const previewInput: OutboundPreviewInputLine[] = [];
+  for (const line of lines) {
+    const option = toOutboundCatalogOption(line.target);
+    if (!option) return null;
+    previewInput.push({ option, quantity: line.quantity });
+  }
+  return buildOutboundPreview(previewInput);
+}
+
+function createOutputBatchIdentityClarification(
+  lines: AssistantManualStockBatchSelectionLine[],
+  index: number,
+): AssistantChatSuccess {
+  const line = lines[index];
+  const displayQuery = normalizeServoModel(line.targetQuery)?.replace(/^([A-Z]+)(\d+)$/, "$1-$2") || line.targetQuery;
+  const block: AssistantClarificationBlock = {
+    kind: "assistant_clarification",
+    title: `Defina o tipo do item ${index + 1}`,
+    message: `${displayQuery} pode representar um Servo sem kit ou um Servo com kit. A lista inteira continuará em revisão.`,
+    options: [
+      {
+        id: `output-batch-${index + 1}-item`,
+        label: "Servo sem kit",
+        prompt: `Definir ${displayQuery} como Servo sem kit`,
+        category: "inventory",
+        stockOutputSelection: createOutputBatchSelection(updateOutputBatchLine(lines, index, {
+          requestedIdentity: "ITEM",
+          requiresIdentityChoice: false,
+        })),
+      },
+      {
+        id: `output-batch-${index + 1}-configuration`,
+        label: "Servo com kit",
+        prompt: `Definir ${displayQuery} como Servo com kit`,
+        category: "inventory",
+        stockOutputSelection: createOutputBatchSelection(updateOutputBatchLine(lines, index, {
+          requestedIdentity: "COMMERCIAL_CODE",
+          requiresIdentityChoice: false,
+        })),
+      },
+      { id: "output-cancel", label: "Cancelar", prompt: "Cancelar esta saída.", category: "inventory" },
+    ],
+    fallbackText: "Escolha o tipo desse item para continuar revisando a lista.",
+  };
+  return { message: block.fallbackText, structuredBlock: block };
+}
+
+function createOutputBatchTargetClarification(
+  lines: AssistantManualStockBatchSelectionLine[],
+  index: number,
+  targets: AssistantStockOutputTarget[],
+): AssistantChatSuccess {
+  const visibleTargets = targets.slice(0, 5);
+  const block: AssistantClarificationBlock = {
+    kind: "assistant_clarification",
+    title: `Defina o produto do item ${index + 1}`,
+    message: targets.length > visibleTargets.length
+      ? `Há ${targets.length} resultados para ${lines[index].targetQuery}. Escolha uma das opções visíveis ou envie a lista novamente com o Cód. exato.`
+      : `Há mais de um resultado para ${lines[index].targetQuery}. Escolha o produto correto para continuar.`,
+    options: [
+      ...visibleTargets.map((target, targetIndex) => ({
+        id: `output-batch-${index + 1}-target-${targetIndex + 1}`,
+        label: `Cód. ${target.aliases.join(" / ") || target.displayCode}`.slice(0, 60),
+        prompt: `Definir produto · Cód. ${target.displayCode}`,
+        description: target.description.slice(0, 180),
+        category: "inventory" as const,
+        stockOutputSelection: createOutputBatchSelection(updateOutputBatchLine(lines, index, {
+          targetId: target.targetId,
+          targetKind: target.kind,
+          requiresIdentityChoice: false,
+        })),
+      })),
+      { id: "output-cancel", label: "Cancelar", prompt: "Cancelar esta saída.", category: "inventory" as const },
+    ],
+    fallbackText: "Escolha o produto correto para continuar revisando a lista.",
+  };
+  return { message: block.fallbackText, structuredBlock: block };
+}
+
+async function createManualStockOutputBatchPreview(
+  lines: AssistantManualStockBatchSelectionLine[],
+  context: { userId: string; profileName: string | null },
+): Promise<AssistantChatSuccess> {
+  if (!uuidPattern.test(context.userId) || !manualStockOutputProfileHasName(context.profileName)) {
+    return answer(errorBlock("Perfil incompleto", "Seu perfil precisa ter um nome cadastrado antes de registrar uma saída."));
+  }
+
+  const identityIndex = lines.findIndex((line) =>
+    !line.targetId && (
+      line.requiresIdentityChoice ||
+      requiresManualStockIdentityChoice(line.targetQuery, line.requestedIdentity)
+    ));
+  if (identityIndex >= 0) return createOutputBatchIdentityClarification(lines, identityIndex);
+
+  const supabase = await createClient();
+  const selectedLineMap = new Map<string, { kind: "ITEM" | "COMMERCIAL_CODE"; targetId: string }>();
+  lines.filter((line) => line.targetId && line.targetKind).forEach((line) => {
+    selectedLineMap.set(`${line.targetKind}:${line.targetId}`, { kind: line.targetKind!, targetId: line.targetId! });
+  });
+  const selectedLines = Array.from(selectedLineMap.values());
+  const selected = selectedLines.length
+    ? await loadManualStockOutputTargetsByIds(supabase, selectedLines)
+    : { targets: new Map<string, AssistantStockOutputTarget>(), failed: false };
+  const unresolved = await Promise.all(lines.filter((line) => !line.targetId).map((line) =>
+    resolveManualStockOutputTargets(supabase, line.targetQuery, line.requestedIdentity)));
+  if (selected.failed || unresolved.some((result) => result.failed)) {
+    return answer(errorBlock("Consulta indisponível", "Não foi possível validar todos os itens da lista agora. Nenhuma saída foi executada."));
+  }
+
+  let unresolvedIndex = 0;
+  const resolvedTargets: AssistantStockOutputTarget[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.targetId && line.targetKind) {
+      const target = selected.targets.get(`${line.targetKind}:${line.targetId}`);
+      if (!target) return answer(errorBlock("Alvo indisponível", `O item ${index + 1} não está mais ativo. A lista inteira foi bloqueada.`));
+      resolvedTargets.push(target);
+      continue;
+    }
+    const result = unresolved[unresolvedIndex++];
+    if (!result.targets.length) {
+      return answer(errorBlock("Item não encontrado", `Não encontrei o item ${index + 1}, ${line.targetQuery}. A lista inteira foi bloqueada e nenhuma saída foi executada.`));
+    }
+    if (result.targets.length > 1) return createOutputBatchTargetClarification(lines, index, result.targets);
+    resolvedTargets.push(result.targets[0]);
+  }
+
+  const consolidatedLines = consolidateResolvedManualStockLines(lines.map((line, index) => {
+    const target = resolvedTargets[index];
+    return {
+      identityKey: target.kind === "COMMERCIAL_CODE" ? `CONFIG:${target.configurationId ?? target.targetId}` : `ITEM:${target.targetId}`,
+      target,
+      quantity: line.quantity,
+    };
+  }));
+  if (!consolidatedLines.length) return answer(errorBlock("Lista inválida", "As quantidades da lista excedem o limite seguro. Nenhuma saída foi executada."));
+  const batchProjection = buildManualStockOutputBatchProjection(consolidatedLines);
+  if (!batchProjection) {
+    return answer(errorBlock("Consulta indisponível", "Não foi possível validar todos os componentes da lista agora. Nenhuma saída foi executada."));
+  }
+  if (!batchProjection.isValid) {
+    return answer(errorBlock(
+      "Estoque insuficiente",
+      `${batchProjection.errors[0] ?? "O estoque não atende a lista informada."} A lista inteira foi bloqueada e nenhuma saída foi executada.`,
+    ));
+  }
+  const itemProjectionById = new Map(batchProjection.itemLines.map((line) => [line.option.id, line]));
+  const commercialProjectionById = new Map(
+    batchProjection.commercialLines.map((line) => [line.option.commercialCodeId, line]),
+  );
+  const resolvedLines = consolidatedLines.map(({ target, quantity }) => {
+    if (target.kind === "ITEM") {
+      const projection = itemProjectionById.get(target.targetId);
+      return {
+        target,
+        quantity,
+        projection: {
+          estimatedStockAfter: projection?.predictedBalance ?? target.currentStock - quantity,
+          autoAssembledQuantity: 0,
+        },
+      };
+    }
+    const projection = commercialProjectionById.get(target.targetId);
+    const autoAssembledQuantity = projection?.autoAssembledQuantity ?? 0;
+    return {
+      target,
+      quantity,
+      projection: {
+        estimatedStockAfter: target.currentStock + autoAssembledQuantity - quantity,
+        autoAssembledQuantity,
+      },
+    };
+  });
+
+  const signed = createManualStockOutputProposalToken({
+    userId: context.userId,
+    lines: resolvedLines.map(({ target, quantity }) => ({ kind: target.kind, targetId: target.targetId, quantity })),
+    idempotencyKey: randomUUID(),
+  }, process.env.ASSISTANT_ACTION_SIGNING_SECRET?.trim() ?? "");
+  if (!signed) return answer(errorBlock("Ação indisponível", "A confirmação operacional da Assistente ainda não está configurada."));
+
+  const totalQuantity = resolvedLines.reduce((sum, line) => sum + line.quantity, 0);
+  const totalAutoAssemblyQuantity = resolvedLines.reduce((sum, line) => sum + line.projection.autoAssembledQuantity, 0);
+  const regeneratePrompt = `Saída manual:\n${resolvedLines.map(({ target, quantity }) => `${quantity} do ${target.displayCode}`).join("\n")}`;
+  const block: AssistantManualStockOutputPreviewBlock = {
+    kind: "manual_stock_output_preview",
+    action: "manual_stock_output",
+    state: "pending",
+    title: "Confirmar saída manual",
+    message: "Revise todos os itens. Os saldos serão relidos antes de aplicar o lote inteiro.",
+    proposalToken: signed.token,
+    expiresAt: new Date(signed.payload.expiresAt * 1000).toISOString(),
+    lines: resolvedLines.map(({ target, quantity, projection }) => ({
+      target,
+      outputQuantity: quantity,
+      estimatedStockAfter: projection.estimatedStockAfter,
+      autoAssembledQuantity: projection.autoAssembledQuantity,
+    })),
+    totalQuantity,
+    totalAutoAssemblyQuantity,
+    confirmLabel: "Confirmar saída",
+    cancelLabel: "Cancelar",
+    regeneratePrompt,
+  };
+  return {
+    message: block.message,
+    structuredBlock: block,
+    contextItemQuery: null,
+    contextItemReferenceKind: null,
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+  };
+}
+
+export function createAssistantManualStockOutputBatchPreview(
+  requests: ManualStockOutputBatchLineRequest[],
+  context: { userId: string; profileName: string | null },
+) {
+  return createManualStockOutputBatchPreview(requests.map((request) => ({
+    quantity: request.quantity,
+    targetQuery: request.targetQuery,
+    requestedIdentity: request.requestedIdentity,
+    targetId: null,
+    targetKind: null,
+    requiresIdentityChoice: request.requiresIdentityChoice,
+  })), context);
+}
+
+export function createAssistantManualStockOutputBatchPreviewFromSelection(
+  selection: ManualStockOutputBatchSelection,
+  context: { userId: string; profileName: string | null },
+) {
+  return createManualStockOutputBatchPreview(selection.lines, context);
+}
+
 export async function createAssistantManualStockOutputPreview(
   request: ManualStockOutputRequest,
   context: { userId: string; profileName: string | null },
@@ -130,7 +450,7 @@ export async function createAssistantManualStockOutputPreview(
 }
 
 export async function createAssistantManualStockOutputPreviewFromSelection(
-  selection: AssistantStockOutputSelection,
+  selection: Exclude<AssistantStockOutputSelection, { action: "manual_stock_output_batch" }>,
   context: { userId: string; profileName: string | null },
 ): Promise<AssistantChatSuccess> {
   if (selection.action === "manual_stock_output_identity") {
@@ -174,7 +494,10 @@ export async function confirmAssistantManualStockOutput(proposalToken: string): 
   const targets = payload.lines.map((line) => before.targets.get(`${line.kind}:${line.targetId}`));
   if (before.failed || targets.some((target) => !target)) return { block: errorBlock("Alvo indisponível",
     "Um item ou código comercial não está mais ativo. Gere uma nova prévia."), contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
-  if (payload.lines.some((line, index) => line.quantity > targets[index]!.availableStock)) {
+  const currentProjection = buildManualStockOutputBatchProjection(
+    payload.lines.map((line, index) => ({ target: targets[index]!, quantity: line.quantity })),
+  );
+  if (!currentProjection || !currentProjection.isValid) {
     return { block: errorBlock("Estoque insuficiente", "O saldo mudou e não atende mais à saída. Gere uma nova prévia."), contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
   }
   const existingBatch = await supabase.from("movement_batches").select("id")

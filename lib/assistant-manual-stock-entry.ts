@@ -6,16 +6,25 @@ import type {
   AssistantClarificationBlock,
   AssistantManualStockEntryConfirmationResult,
   AssistantManualStockEntryPreviewBlock,
+  AssistantManualStockBatchSelectionLine,
   AssistantManualStockEntryResultBlock,
   AssistantStockEntrySelection,
   AssistantStockEntryTarget,
 } from "@/lib/assistant-types";
 import { createManualStockEntryProposalToken, verifyManualStockEntryProposalToken } from "@/lib/ai/stock-entry-action-tokens";
-import { createManualStockEntryIdentitySelection, type ManualStockEntryRequest } from "@/lib/ai/manual-stock-entry-routing";
+import {
+  createManualStockEntryIdentitySelection,
+  type ManualStockEntryBatchLineRequest,
+  type ManualStockEntryRequest,
+} from "@/lib/ai/manual-stock-entry-routing";
 import { loadManualStockEntryTargetsByIds, resolveManualStockEntryTargets } from "@/lib/assistant-stock-entry-data";
 import { createClient } from "@/lib/supabase/server";
 import { ASSISTANT_MANUAL_STOCK_ENTRY_DESCRIPTION } from "@/lib/ai/manual-stock-entry-contract";
 import { normalizeServoModel } from "@/lib/servo-model-search";
+import {
+  consolidateResolvedManualStockLines,
+  requiresManualStockIdentityChoice,
+} from "@/lib/ai/manual-stock-list-routing.mjs";
 
 export { ASSISTANT_MANUAL_STOCK_ENTRY_DESCRIPTION };
 
@@ -108,6 +117,210 @@ function createManualStockEntryPreviewForTarget(
   return { message: block.message, structuredBlock: block, contextItemQuery: target.displayCode,
     contextItemReferenceKind: "CATALOG_CODE",
     contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
+}
+
+type ManualStockEntryBatchSelection = Extract<
+  AssistantStockEntrySelection,
+  { action: "manual_stock_entry_batch" }
+>;
+
+function createEntryBatchSelection(
+  lines: AssistantManualStockBatchSelectionLine[],
+): ManualStockEntryBatchSelection {
+  return { action: "manual_stock_entry_batch", lines };
+}
+
+function updateEntryBatchLine(
+  lines: AssistantManualStockBatchSelectionLine[],
+  index: number,
+  update: Partial<AssistantManualStockBatchSelectionLine>,
+) {
+  return lines.map((line, lineIndex) => lineIndex === index ? { ...line, ...update } : line);
+}
+
+function createEntryBatchIdentityClarification(
+  lines: AssistantManualStockBatchSelectionLine[],
+  index: number,
+): AssistantChatSuccess {
+  const line = lines[index];
+  const displayQuery = normalizeServoModel(line.targetQuery)?.replace(/^([A-Z]+)(\d+)$/, "$1-$2") || line.targetQuery;
+  const block: AssistantClarificationBlock = {
+    kind: "assistant_clarification",
+    title: `Defina o tipo do item ${index + 1}`,
+    message: `${displayQuery} pode representar um Servo sem kit ou um Servo com kit. A lista inteira continuará em revisão.`,
+    options: [
+      {
+        id: `entry-batch-${index + 1}-item`,
+        label: "Servo sem kit",
+        prompt: `Definir ${displayQuery} como Servo sem kit`,
+        category: "inventory",
+        stockEntrySelection: createEntryBatchSelection(updateEntryBatchLine(lines, index, {
+          requestedIdentity: "ITEM",
+          requiresIdentityChoice: false,
+        })),
+      },
+      {
+        id: `entry-batch-${index + 1}-configuration`,
+        label: "Servo com kit",
+        prompt: `Definir ${displayQuery} como Servo com kit`,
+        category: "inventory",
+        stockEntrySelection: createEntryBatchSelection(updateEntryBatchLine(lines, index, {
+          requestedIdentity: "COMMERCIAL_CODE",
+          requiresIdentityChoice: false,
+        })),
+      },
+      { id: "entry-cancel", label: "Cancelar", prompt: "Cancelar esta entrada.", category: "inventory" },
+    ],
+    fallbackText: "Escolha o tipo desse item para continuar revisando a lista.",
+  };
+  return { message: block.fallbackText, structuredBlock: block };
+}
+
+function createEntryBatchTargetClarification(
+  lines: AssistantManualStockBatchSelectionLine[],
+  index: number,
+  targets: AssistantStockEntryTarget[],
+): AssistantChatSuccess {
+  const visibleTargets = targets.slice(0, 5);
+  const block: AssistantClarificationBlock = {
+    kind: "assistant_clarification",
+    title: `Defina o produto do item ${index + 1}`,
+    message: targets.length > visibleTargets.length
+      ? `Há ${targets.length} resultados para ${lines[index].targetQuery}. Escolha uma das opções visíveis ou envie a lista novamente com o Cód. exato.`
+      : `Há mais de um resultado para ${lines[index].targetQuery}. Escolha o produto correto para continuar.`,
+    options: [
+      ...visibleTargets.map((target, targetIndex) => ({
+        id: `entry-batch-${index + 1}-target-${targetIndex + 1}`,
+        label: `Cód. ${target.aliases.join(" / ") || target.displayCode}`.slice(0, 60),
+        prompt: `Definir produto · Cód. ${target.displayCode}`,
+        description: target.description.slice(0, 180),
+        category: "inventory" as const,
+        stockEntrySelection: createEntryBatchSelection(updateEntryBatchLine(lines, index, {
+          targetId: target.targetId,
+          targetKind: target.kind,
+          requiresIdentityChoice: false,
+        })),
+      })),
+      { id: "entry-cancel", label: "Cancelar", prompt: "Cancelar esta entrada.", category: "inventory" as const },
+    ],
+    fallbackText: "Escolha o produto correto para continuar revisando a lista.",
+  };
+  return { message: block.fallbackText, structuredBlock: block };
+}
+
+async function createManualStockEntryBatchPreview(
+  lines: AssistantManualStockBatchSelectionLine[],
+  context: { userId: string; profileName: string | null },
+): Promise<AssistantChatSuccess> {
+  if (!uuidPattern.test(context.userId) || !context.profileName?.trim()) {
+    return answer(errorBlock("Perfil incompleto", "Seu perfil precisa ter um nome cadastrado antes de registrar uma entrada."));
+  }
+
+  const identityIndex = lines.findIndex((line) =>
+    !line.targetId && (
+      line.requiresIdentityChoice ||
+      requiresManualStockIdentityChoice(line.targetQuery, line.requestedIdentity)
+    ));
+  if (identityIndex >= 0) return createEntryBatchIdentityClarification(lines, identityIndex);
+
+  const supabase = await createClient();
+  const selectedLineMap = new Map<string, { kind: "ITEM" | "COMMERCIAL_CODE"; targetId: string }>();
+  lines.filter((line) => line.targetId && line.targetKind).forEach((line) => {
+    selectedLineMap.set(`${line.targetKind}:${line.targetId}`, { kind: line.targetKind!, targetId: line.targetId! });
+  });
+  const selectedLines = Array.from(selectedLineMap.values());
+  const selected = selectedLines.length
+    ? await loadManualStockEntryTargetsByIds(supabase, selectedLines)
+    : { targets: new Map<string, AssistantStockEntryTarget>(), failed: false };
+  const unresolved = await Promise.all(lines.filter((line) => !line.targetId).map((line) =>
+    resolveManualStockEntryTargets(supabase, line.targetQuery, line.requestedIdentity)));
+  if (selected.failed || unresolved.some((result) => result.failed)) {
+    return answer(errorBlock("Consulta indisponível", "Não foi possível validar todos os itens da lista agora. Nenhuma entrada foi executada."));
+  }
+
+  let unresolvedIndex = 0;
+  const resolvedTargets: AssistantStockEntryTarget[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.targetId && line.targetKind) {
+      const target = selected.targets.get(`${line.targetKind}:${line.targetId}`);
+      if (!target) return answer(errorBlock("Alvo indisponível", `O item ${index + 1} não está mais ativo. A lista inteira foi bloqueada.`));
+      resolvedTargets.push(target);
+      continue;
+    }
+    const result = unresolved[unresolvedIndex++];
+    if (!result.targets.length) {
+      return answer(errorBlock("Item não encontrado", `Não encontrei o item ${index + 1}, ${line.targetQuery}. A lista inteira foi bloqueada e nenhuma entrada foi executada.`));
+    }
+    if (result.targets.length > 1) return createEntryBatchTargetClarification(lines, index, result.targets);
+    resolvedTargets.push(result.targets[0]);
+  }
+
+  const resolvedLines = consolidateResolvedManualStockLines(lines.map((line, index) => {
+    const target = resolvedTargets[index];
+    return {
+      identityKey: target.kind === "COMMERCIAL_CODE" ? `CONFIG:${target.configurationId ?? target.targetId}` : `ITEM:${target.targetId}`,
+      target,
+      quantity: line.quantity,
+    };
+  }));
+  if (!resolvedLines.length) return answer(errorBlock("Lista inválida", "As quantidades da lista excedem o limite seguro. Nenhuma entrada foi executada."));
+  const signed = createManualStockEntryProposalToken({
+    userId: context.userId,
+    lines: resolvedLines.map(({ target, quantity }) => ({ kind: target.kind, targetId: target.targetId, quantity })),
+    idempotencyKey: randomUUID(),
+  }, process.env.ASSISTANT_ACTION_SIGNING_SECRET?.trim() ?? "");
+  if (!signed) return answer(errorBlock("Ação indisponível", "A confirmação operacional da Assistente ainda não está configurada."));
+
+  const totalQuantity = resolvedLines.reduce((sum, line) => sum + line.quantity, 0);
+  const regeneratePrompt = `Entrada manual:\n${resolvedLines.map(({ target, quantity }) => `${quantity} do ${target.displayCode}`).join("\n")}`;
+  const block: AssistantManualStockEntryPreviewBlock = {
+    kind: "manual_stock_entry_preview",
+    action: "manual_stock_entry",
+    state: "pending",
+    title: "Confirmar entrada manual",
+    message: "Revise todos os itens. Os saldos atuais serão relidos antes de aplicar o lote inteiro.",
+    proposalToken: signed.token,
+    expiresAt: new Date(signed.payload.expiresAt * 1000).toISOString(),
+    lines: resolvedLines.map(({ target, quantity }) => ({
+      target,
+      entryQuantity: quantity,
+      estimatedStockAfter: target.currentStock + quantity,
+    })),
+    totalQuantity,
+    confirmLabel: "Confirmar entrada",
+    cancelLabel: "Cancelar",
+    regeneratePrompt,
+  };
+  return {
+    message: block.message,
+    structuredBlock: block,
+    contextItemQuery: null,
+    contextItemReferenceKind: null,
+    contextSupplierOrderId: null,
+    contextSupplierOrderCatalogCode: null,
+  };
+}
+
+export function createAssistantManualStockEntryBatchPreview(
+  requests: ManualStockEntryBatchLineRequest[],
+  context: { userId: string; profileName: string | null },
+) {
+  return createManualStockEntryBatchPreview(requests.map((request) => ({
+    quantity: request.quantity,
+    targetQuery: request.targetQuery,
+    requestedIdentity: request.requestedIdentity,
+    targetId: null,
+    targetKind: null,
+    requiresIdentityChoice: request.requiresIdentityChoice,
+  })), context);
+}
+
+export function createAssistantManualStockEntryBatchPreviewFromSelection(
+  selection: ManualStockEntryBatchSelection,
+  context: { userId: string; profileName: string | null },
+) {
+  return createManualStockEntryBatchPreview(selection.lines, context);
 }
 
 export async function createAssistantManualStockEntryPreview(

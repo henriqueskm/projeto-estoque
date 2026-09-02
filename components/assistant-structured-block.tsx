@@ -2253,6 +2253,76 @@ function StockEntryTargetHeader({ target }: { target: AssistantStockEntryTarget 
   );
 }
 
+function ManualStockEntryBatchTable({
+  lines,
+}: {
+  lines: AssistantManualStockEntryPreviewBlock["lines"];
+}) {
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-violet-200 bg-white">
+      <table className="w-full table-fixed text-left text-xs">
+        <caption className="sr-only">Itens da entrada manual</caption>
+        <thead className="bg-violet-50 text-[0.62rem] font-black tracking-wide text-violet-900 uppercase">
+          <tr>
+            <th className="w-[46%] px-2.5 py-2">Cód. / descrição</th>
+            <th className="px-1.5 py-2 text-center">Qtde.</th>
+            <th className="px-1.5 py-2 text-center">Atual</th>
+            <th className="px-1.5 py-2 text-center">Após</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border-neutral">
+          {lines.map((line) => (
+            <tr key={`${line.target.kind}-${line.target.targetId}`}>
+              <td className="px-2.5 py-2.5 align-top">
+                <span className="block font-mono font-black text-text-primary">{line.target.displayCode}</span>
+                <span className="mt-0.5 block line-clamp-2 leading-4 font-semibold text-text-muted">{line.target.description}</span>
+              </td>
+              <td className="px-1.5 py-2.5 text-center align-top font-black text-emerald-800">{quantityFormatter.format(line.entryQuantity)}</td>
+              <td className="px-1.5 py-2.5 text-center align-top font-bold text-text-muted">{quantityFormatter.format(line.target.currentStock)}</td>
+              <td className="px-1.5 py-2.5 text-center align-top font-black text-text-primary">{quantityFormatter.format(line.estimatedStockAfter)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ManualStockOutputBatchTable({
+  lines,
+}: {
+  lines: AssistantManualStockOutputPreviewBlock["lines"];
+}) {
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-red-200 bg-white">
+      <table className="w-full table-fixed text-left text-xs">
+        <caption className="sr-only">Itens da saída manual</caption>
+        <thead className="bg-red-50 text-[0.62rem] font-black tracking-wide text-red-900 uppercase">
+          <tr>
+            <th className="w-[46%] px-2.5 py-2">Cód. / descrição</th>
+            <th className="px-1.5 py-2 text-center">Qtde.</th>
+            <th className="px-1.5 py-2 text-center">Atual</th>
+            <th className="px-1.5 py-2 text-center">Após</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border-neutral">
+          {lines.map((line) => (
+            <tr key={`${line.target.kind}-${line.target.targetId}`}>
+              <td className="px-2.5 py-2.5 align-top">
+                <span className="block font-mono font-black text-text-primary">{line.target.displayCode}</span>
+                <span className="mt-0.5 block line-clamp-2 leading-4 font-semibold text-text-muted">{line.target.description}</span>
+              </td>
+              <td className="px-1.5 py-2.5 text-center align-top font-black text-red-800">{quantityFormatter.format(line.outputQuantity)}</td>
+              <td className="px-1.5 py-2.5 text-center align-top font-bold text-text-muted">{quantityFormatter.format(line.target.currentStock)}</td>
+              <td className="px-1.5 py-2.5 text-center align-top font-black text-text-primary">{quantityFormatter.format(line.estimatedStockAfter)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function StockEntryPreview({
   block,
   disabled,
@@ -2290,7 +2360,9 @@ function StockEntryPreview({
       {block.kind === "supplier_order_stock_entry_preview" ? (
         <div className="mt-3"><PickupOrderHeader order={block.order} /></div>
       ) : null}
-      <div className="mt-3 grid gap-2">
+      {block.kind === "manual_stock_entry_preview" && lines.length > 1 ? (
+        <ManualStockEntryBatchTable lines={lines} />
+      ) : <div className="mt-3 grid gap-2">
         {lines.map((line) => {
           const orderLine = "orderedQuantity" in line ? line : null;
           return (
@@ -2312,10 +2384,10 @@ function StockEntryPreview({
             </article>
           );
         })}
-      </div>
+      </div>}
       {block.kind === "manual_stock_entry_preview" ? (
         <p className="mt-3 text-xs font-semibold text-text-muted">
-          Esta entrada será registrada como uma entrada manual confirmada pela Assistente NK.
+          {quantityFormatter.format(block.lines.length)} item{block.lines.length === 1 ? "" : "s"} · {quantityFormatter.format(block.totalQuantity)} unidade{block.totalQuantity === 1 ? "" : "s"}. Uma única confirmação aplicará o lote inteiro.
         </p>
       ) : (
         <p className="mt-3 text-xs font-semibold text-text-muted">
@@ -2399,7 +2471,7 @@ function StockOutputPreview({ block, disabled, confirming, onConfirm, onCancel, 
     <p className="text-[0.65rem] font-black tracking-[0.12em] text-red-800 uppercase">Ação operacional</p>
     <h3 className="text-base font-black text-text-primary sm:text-lg">{expired ? "Prévia expirada" : block.title}</h3>
     <p className="mt-1 text-xs font-semibold text-text-muted sm:text-sm">{expired ? "Gere uma nova prévia com os saldos atuais." : block.message}</p>
-    <div className="mt-3 grid gap-2">
+    {block.lines.length > 1 ? <ManualStockOutputBatchTable lines={block.lines} /> : <div className="mt-3 grid gap-2">
       {block.lines.map((line) => <article key={`${line.target.kind}-${line.target.targetId}`} className="rounded-xl border border-red-200 bg-red-50/35 p-3">
         <StockEntryTargetHeader target={line.target} />
         <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
@@ -2413,8 +2485,13 @@ function StockOutputPreview({ block, disabled, confirming, onConfirm, onCancel, 
           </> : "O saldo montado atual atende esta saída; nenhuma montagem automática está prevista."}
         </div> : null}
       </article>)}
-    </div>
-    <p className="mt-3 text-xs font-semibold text-text-muted">Esta saída será registrada como uma saída manual confirmada pela Assistente NK. O banco fará a validação final.</p>
+    </div>}
+    {block.lines.length > 1 ? block.lines.filter((line) => line.autoAssembledQuantity > 0).map((line) => (
+      <p key={`assembly-${line.target.targetId}`} className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-semibold text-amber-950">
+        Cód. {line.target.displayCode}: montagem automática prevista de {quantityFormatter.format(line.autoAssembledQuantity)} unidade{line.autoAssembledQuantity === 1 ? "" : "s"}.
+      </p>
+    )) : null}
+    <p className="mt-3 text-xs font-semibold text-text-muted">{quantityFormatter.format(block.lines.length)} item{block.lines.length === 1 ? "" : "s"} · {quantityFormatter.format(block.totalQuantity)} unidade{block.totalQuantity === 1 ? "" : "s"}. Uma única confirmação validará e aplicará o lote inteiro.</p>
     {expired ? <button type="button" disabled={disabled || !onPromptSelect} onClick={() => onPromptSelect?.(block.regeneratePrompt)}
       className="nk-focus mt-4 min-h-11 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:opacity-50">Gerar nova prévia</button>
       : <>

@@ -39,6 +39,7 @@ import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
 import { routeSupplierOrderPickupAction } from "@/lib/ai/supplier-order-pickup-routing";
 import { routeSupplierOrderStockEntryAction } from "@/lib/ai/supplier-order-stock-entry-routing";
 import { routeManualStockEntryAction } from "@/lib/ai/manual-stock-entry-routing";
+import { hasMixedManualStockIntent } from "@/lib/ai/manual-stock-list-routing.mjs";
 import {
   getOperationalConfirmationGuard,
   hasOperationalConfirmationText,
@@ -54,11 +55,15 @@ import {
 } from "@/lib/assistant-supplier-order-stock-entry";
 import {
   createAssistantManualStockEntryPreview,
+  createAssistantManualStockEntryBatchPreview,
+  createAssistantManualStockEntryBatchPreviewFromSelection,
   createAssistantManualStockEntryPreviewFromSelection,
   createManualStockEntryAmbiguity,
 } from "@/lib/assistant-manual-stock-entry";
 import {
   createAssistantManualStockOutputPreview,
+  createAssistantManualStockOutputBatchPreview,
+  createAssistantManualStockOutputBatchPreviewFromSelection,
   createAssistantManualStockOutputPreviewFromSelection,
   createManualStockOutputAmbiguity,
 } from "@/lib/assistant-manual-stock-output";
@@ -1159,6 +1164,18 @@ export async function answerAssistantQuestion(
     return { message: operationalConfirmationGuard };
   }
 
+  if (
+    hasMixedManualStockIntent(message) &&
+    (manualStockEntryRoute.kind !== "NOT_MANUAL_STOCK_ENTRY" ||
+      manualStockOutputRoute.kind !== "NOT_MANUAL_STOCK_OUTPUT")
+  ) {
+    return {
+      message: "A mesma lista não pode misturar entrada e saída. Envie uma operação de entrada ou uma operação de saída por vez.",
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+
   if (statisticsRoute.kind === "QUERY") {
     return answerAssistantStatistics(statisticsRoute.request);
   }
@@ -1306,6 +1323,13 @@ export async function answerAssistantQuestion(
     return answerServoModelInventoryAction(block, inventoryAction);
   }
 
+  if (stockEntrySelection?.action === "manual_stock_entry_batch") {
+    return createAssistantManualStockEntryBatchPreviewFromSelection(
+      stockEntrySelection,
+      { userId, profileName },
+    );
+  }
+
   if (stockEntrySelection?.action === "manual_stock_entry_identity") {
     return createAssistantManualStockEntryPreview(
       {
@@ -1345,6 +1369,13 @@ export async function answerAssistantQuestion(
       message: block.fallbackText,
       structuredBlock: block,
     };
+  }
+
+  if (stockOutputSelection?.action === "manual_stock_output_batch") {
+    return createAssistantManualStockOutputBatchPreviewFromSelection(
+      stockOutputSelection,
+      { userId, profileName },
+    );
   }
 
   if (stockOutputSelection) {
@@ -1456,6 +1487,13 @@ export async function answerAssistantQuestion(
     return createManualStockOutputAmbiguity(manualStockOutputRoute.quantity, manualStockOutputRoute.targetQuery);
   }
 
+  if (manualStockOutputRoute.kind === "BATCH_ACTION") {
+    return createAssistantManualStockOutputBatchPreview(
+      manualStockOutputRoute.lines,
+      { userId, profileName },
+    );
+  }
+
   if (manualStockOutputRoute.kind === "ACTION") {
     return createAssistantManualStockOutputPreview(manualStockOutputRoute.request, { userId, profileName });
   }
@@ -1494,6 +1532,13 @@ export async function answerAssistantQuestion(
     return createManualStockEntryAmbiguity(
       manualStockEntryRoute.quantity,
       manualStockEntryRoute.targetQuery,
+    );
+  }
+
+  if (manualStockEntryRoute.kind === "BATCH_ACTION") {
+    return createAssistantManualStockEntryBatchPreview(
+      manualStockEntryRoute.lines,
+      { userId, profileName },
     );
   }
 
