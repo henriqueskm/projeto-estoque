@@ -7,36 +7,29 @@ export default async function InboundPage() {
   const catalog = await getInboundCatalog();
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+    <main className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-7 lg:px-8">
       <Link
         href="/"
-        className="nk-focus mb-6 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-black text-text-primary transition hover:bg-brand-gold-soft"
+        className="nk-focus mb-3 inline-flex min-h-10 items-center gap-2 rounded-xl px-2 text-sm font-black text-text-primary transition hover:bg-brand-gold-soft sm:mb-4"
       >
         <ArrowLeftIcon className="size-5" />
         Voltar para o início
       </Link>
 
-      <section className="nk-industrial-grid relative mb-6 overflow-hidden rounded-3xl border border-brand-gold/25 bg-brand-charcoal p-5 text-white shadow-xl shadow-brand-charcoal/10 sm:p-7">
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-1.5 bg-emerald-600"
-        />
-        <div className="flex items-start gap-4">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-100 ring-1 ring-emerald-300/30 sm:size-14">
-            <InboundIcon className="size-7" />
-          </span>
-          <div>
-            <p className="text-xs font-black tracking-[0.18em] text-brand-gold uppercase">
-              NK Servos · Estoque
-            </p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">
-              Entrada manual
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-200 sm:text-base">
-              Registre peças recebidas separadas e Servos com kit por código
-              comercial na mesma operação.
-            </p>
-          </div>
+      <section className="mb-5 flex items-center gap-3 border-b border-border-neutral pb-4 sm:mb-6 sm:gap-4 sm:pb-5">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800 sm:size-12">
+          <InboundIcon className="size-6" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[0.68rem] font-black tracking-[0.16em] text-brand-gold-ink uppercase sm:text-xs">
+            Estoque
+          </p>
+          <h1 className="text-2xl font-black tracking-tight text-text-primary sm:text-3xl">
+            Entrada manual
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm font-semibold text-text-muted">
+            Selecione itens e informe as quantidades recebidas.
+          </p>
         </div>
       </section>
 

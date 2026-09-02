@@ -39,7 +39,7 @@ export function StockFlowSection({
           onClick={onToggle}
           aria-expanded={isOpen}
           aria-controls={panelId}
-          className={`nk-focus flex min-h-18 w-full items-center justify-between gap-4 px-4 py-3 text-left transition hover:bg-app-background sm:px-5 ${
+          className={`nk-focus flex min-h-16 w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-app-background sm:min-h-18 sm:px-5 sm:py-3 ${
             allowStickyContent
               ? isOpen
                 ? "rounded-t-2xl"
@@ -71,7 +71,7 @@ export function StockFlowSection({
           id={panelId}
           role="region"
           aria-labelledby={id}
-          className="border-t border-border-neutral p-4 sm:p-5"
+          className="border-t border-border-neutral p-3 sm:p-5"
         >
           {children}
         </div>

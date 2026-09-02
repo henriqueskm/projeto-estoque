@@ -104,12 +104,41 @@ test("purchase recommendations use a compact market-list layout", () => {
   assert.doesNotMatch(recommendations, /rounded-xl border border-border-neutral bg-white p-3/);
 });
 
-test("inventory headers stay directly below the mobile header and at the desktop top", () => {
+test("inventory table headers scroll naturally on mobile and remain sticky on desktop", () => {
   const workspace = read("app/(authenticated)/estoque/inventory-workspace.tsx");
+  const headerClass = workspace.match(
+    /const stickyHeaderClassName =\s*\n\s*"([^"]+)"/,
+  )?.[1] ?? "";
 
-  assert.match(workspace, /top-\[calc\(max\(0\.5rem,env\(safe-area-inset-top\)\)\+3\.5rem\)\]/);
-  assert.match(workspace, /lg:top-0/);
-  assert.doesNotMatch(workspace, /sticky top-14/);
+  assert.doesNotMatch(headerClass, /(^|\s)sticky(\s|$)/);
+  assert.match(headerClass, /lg:sticky lg:top-0 lg:z-30/);
+  assert.match(headerClass, /first:rounded-tl-lg last:rounded-tr-lg/);
+  assert.doesNotMatch(headerClass, /safe-area-inset-top/);
+});
+
+test("manual stock flows use wider mobile tables without sticky mobile headers", () => {
+  const inbound = read("app/(authenticated)/entrada/inbound-entry-flow.tsx");
+  const outbound = read("app/(authenticated)/saida/outbound-entry-flow.tsx");
+  const inboundPage = read("app/(authenticated)/entrada/page.tsx");
+  const outboundPage = read("app/(authenticated)/saida/page.tsx");
+
+  for (const flow of [inbound, outbound]) {
+    const headerClass = flow.match(
+      /const catalogHeaderClassName =\s*\n\s*"([^"]+)"/,
+    )?.[1] ?? "";
+
+    assert.doesNotMatch(headerClass, /(^|\s)sticky(\s|$)/);
+    assert.doesNotMatch(headerClass, /top-16/);
+    assert.match(headerClass, /lg:sticky lg:top-0 lg:z-30/);
+    assert.match(headerClass, /first:rounded-tl-xl last:rounded-tr-xl/);
+    assert.match(flow, /-mx-3 mt-3 overflow-hidden bg-surface/);
+    assert.match(flow, /sm:rounded-3xl sm:border sm:border-border-neutral/);
+  }
+
+  assert.doesNotMatch(inboundPage, /nk-industrial-grid/);
+  assert.doesNotMatch(outboundPage, /nk-industrial-grid/);
+  assert.match(inboundPage, /Selecione itens e informe as quantidades recebidas\./);
+  assert.match(outboundPage, /Selecione itens, confira os saldos e revise antes de confirmar\./);
 });
 
 test("order dialogs use a restrained entry transition and integrated visual surface", () => {

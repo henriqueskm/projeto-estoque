@@ -133,7 +133,7 @@ function OptionBadge({ option }: { option: OutboundCatalogOption }) {
 }
 
 const catalogHeaderClassName =
-  "sticky top-16 z-30 bg-brand-charcoal px-2 py-2.5 text-[0.65rem] font-black uppercase tracking-wide text-slate-200 sm:px-3 sm:text-xs";
+  "bg-brand-charcoal px-2 py-2.5 text-[0.65rem] font-black uppercase tracking-wide text-slate-200 first:rounded-tl-xl last:rounded-tr-xl sm:px-3 sm:text-xs lg:sticky lg:top-0 lg:z-30";
 
 function CatalogAddButton({
   code,
@@ -183,7 +183,7 @@ function PhysicalCatalogTable({
   onAdd: (item: OutboundPhysicalItem) => void;
 }) {
   return (
-    <div className="relative mt-4 rounded-xl border border-red-200 bg-surface shadow-sm">
+    <div className="relative -mx-3 mt-3 overflow-hidden bg-surface sm:mx-0 sm:rounded-xl sm:border sm:border-red-200 sm:shadow-sm lg:overflow-visible">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
           Itens disponíveis para adicionar à saída
@@ -267,7 +267,7 @@ function CommercialCatalogTable({
   onAdd: (option: OutboundCommercialCode) => void;
 }) {
   return (
-    <div className="relative mt-4 rounded-xl border border-violet-200 bg-surface shadow-sm">
+    <div className="relative -mx-3 mt-3 overflow-hidden bg-surface sm:mx-0 sm:rounded-xl sm:border sm:border-violet-200 sm:shadow-sm lg:overflow-visible">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
           Servos com kit disponíveis para adicionar à saída
@@ -1175,17 +1175,14 @@ export function OutboundEntryFlow({
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
-        <div className="rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6">
+        <div className="sm:rounded-3xl sm:border sm:border-border-neutral sm:bg-surface sm:p-6 sm:shadow-sm">
           <div>
-            <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
-              Etapa 1 de 2
-            </p>
-            <h2 className="mt-1 text-xl font-black text-text-primary">
+            <h2 className="text-xl font-black text-text-primary">
               Selecione itens ou códigos
             </h2>
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-4 space-y-3 sm:mt-5">
             <StockFlowSection
               id="outbound-separate-section"
               title="Item separado"
