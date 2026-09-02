@@ -1,7 +1,18 @@
+import {
+  hasInvalidManualStockListQuantity,
+  manualStockListMaximumLines,
+  requiresManualStockIdentityChoice,
+  splitManualStockList,
+} from "./manual-stock-list-routing.mjs";
+
 export type ManualStockOutputRequest = {
   quantity: number;
   targetQuery: string;
   requestedIdentity: "ITEM" | "COMMERCIAL_CODE" | null;
+};
+
+export type ManualStockOutputBatchLineRequest = ManualStockOutputRequest & {
+  requiresIdentityChoice: boolean;
 };
 
 export type ManualStockOutputRoute =
@@ -10,6 +21,7 @@ export type ManualStockOutputRoute =
   | { kind: "CANCEL" }
   | { kind: "INVALID"; message: string }
   | { kind: "AMBIGUOUS_TARGET"; quantity: number; targetQuery: string }
+  | { kind: "BATCH_ACTION"; lines: ManualStockOutputBatchLineRequest[] }
   | { kind: "ACTION"; request: ManualStockOutputRequest };
 
 const maximumInteger = 2_147_483_647;
@@ -80,11 +92,43 @@ export function routeManualStockOutputAction(rawMessage: string): ManualStockOut
     return { kind: "CANCEL" };
   }
   if (/\bpedido\b/.test(message)) return { kind: "NOT_MANUAL_STOCK_OUTPUT" };
-  if (!commandPattern.test(rawMessage)) return { kind: "NOT_MANUAL_STOCK_OUTPUT" };
-  if (/-\s*\d+\s+unidades?\b/.test(message) || /\b\d+[,.]\d+\s+unidades?\b/.test(message) || /\b\d{11,}\b/.test(message)) {
+  const commandMatch = commandPattern.exec(rawMessage);
+  if (!commandMatch) return { kind: "NOT_MANUAL_STOCK_OUTPUT" };
+  if (hasInvalidManualStockListQuantity(message)) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a saída manual." };
   }
-  const withoutCommand = rawMessage.replace(commandPattern, "");
+  const withoutCommand = rawMessage.slice(commandMatch[0].length);
+  const listParts = splitManualStockList(withoutCommand);
+  if (listParts?.length === 0) {
+    return {
+      kind: "INVALID",
+      message: `Envie no máximo ${manualStockListMaximumLines} itens por saída manual.`,
+    };
+  }
+  if (listParts) {
+    const lines: ManualStockOutputBatchLineRequest[] = [];
+    for (const part of listParts) {
+      const routed = routeManualStockOutputAction(`Baixa ${part}`);
+      if (routed.kind === "ACTION") {
+        lines.push({ ...routed.request, requiresIdentityChoice: false });
+        continue;
+      }
+      if (routed.kind === "AMBIGUOUS_TARGET") {
+        lines.push({
+          quantity: routed.quantity,
+          targetQuery: routed.targetQuery,
+          requestedIdentity: null,
+          requiresIdentityChoice: true,
+        });
+        continue;
+      }
+      return {
+        kind: "INVALID",
+        message: `Revise a linha "${part.slice(0, 80)}". Informe uma quantidade inteira positiva e um código ou modelo.`,
+      };
+    }
+    return { kind: "BATCH_ACTION", lines };
+  }
   const quantityMatch = extractQuantity(withoutCommand);
   const quantity = quantityMatch?.quantity ?? null;
   if (!quantityMatch || !quantity || !Number.isSafeInteger(quantity) || quantity > maximumInteger) {
@@ -99,7 +143,7 @@ export function routeManualStockOutputAction(rawMessage: string): ManualStockOut
     : /\b(sem kit|kit de instalacao|kit de reparo|peca|avulso|avulsa)\b/.test(message)
       ? "ITEM" as const
       : null;
-  if (!requestedIdentity && /\bmbf\s*-?\s*\d+/i.test(message)) {
+  if (requiresManualStockIdentityChoice(message, requestedIdentity)) {
     return { kind: "AMBIGUOUS_TARGET", quantity, targetQuery };
   }
   return { kind: "ACTION", request: { quantity, targetQuery, requestedIdentity } };

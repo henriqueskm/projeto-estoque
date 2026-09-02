@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { createManualStockEntryProposalToken, createSupplierOrderStockEntryProposalToken, verifyManualStockEntryProposalToken, verifySupplierOrderStockEntryProposalToken } from "../lib/ai/stock-entry-action-tokens.ts";
@@ -12,6 +13,10 @@ import {
 import { handleStockEntryActionRequest, parseStockEntryActionBody, stockEntryRequestIsSameOrigin } from "../lib/ai/stock-entry-http-contract.ts";
 import { ASSISTANT_MANUAL_STOCK_ENTRY_DESCRIPTION } from "../lib/ai/manual-stock-entry-contract.ts";
 import { expireStockEntryPreview } from "../lib/ai/assistant-action-persistence.ts";
+import {
+  consolidateResolvedManualStockLines,
+  hasMixedManualStockIntent,
+} from "../lib/ai/manual-stock-list-routing.mjs";
 
 const secret = "local-test-secret-with-at-least-thirty-two-characters";
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -70,6 +75,64 @@ test("roteia entradas manuais claras e esclarece modelo ambíguo", () => {
   assert.equal(routeManualStockEntryAction("Dê entrada em 2 MBF-015.").kind, "AMBIGUOUS_FLOW");
   assert.equal(routeManualStockEntryAction("Dê entrada em 0 unidades do KT-29.").kind, "INVALID");
   assert.equal(routeManualStockEntryAction("Dê entrada em -2 unidades do KT-29.").kind, "INVALID");
+});
+
+test("roteia listas de entrada por linhas, vírgulas e ponto e vírgula", () => {
+  const expected = [
+    { quantity: 5, targetQuery: "2A", requestedIdentity: null, requiresIdentityChoice: false },
+    { quantity: 3, targetQuery: "6F", requestedIdentity: null, requiresIdentityChoice: false },
+    { quantity: 2, targetQuery: "KT-18", requestedIdentity: null, requiresIdentityChoice: false },
+  ];
+  for (const phrase of [
+    "Dar entrada:\n5 do 2A\n3 do 6F\n2 do KT-18",
+    "entrada de 5 do 2A; 3 do 6F; 2 do KT-18",
+    "entrada de 5 do 2A, 3 do 6F e 2 do KT-18",
+  ]) {
+    assert.deepEqual(routeManualStockEntryAction(phrase), {
+      kind: "BATCH_ACTION",
+      lines: expected,
+    }, phrase);
+  }
+});
+
+test("lista de entrada preserva ambiguidades e bloqueia linha inválida", () => {
+  const ambiguous = routeManualStockEntryAction("Entrada:\n2 do MBF-015\n1 do KT-18");
+  assert.equal(ambiguous.kind, "BATCH_ACTION");
+  assert.deepEqual(ambiguous.lines[0], {
+    quantity: 2,
+    targetQuery: "MBF-015",
+    requestedIdentity: null,
+    requiresIdentityChoice: true,
+  });
+  assert.equal(routeManualStockEntryAction("Entrada:\n2 do 2A\n0 do 6F").kind, "INVALID");
+  assert.equal(routeManualStockEntryAction("Entrada:\n2 do 2A\n1,5 do 6F").kind, "INVALID");
+});
+
+test("consolida repetições somente depois da identidade resolvida", () => {
+  const targetA = { id: "2A" };
+  const targetB = { id: "6F" };
+  assert.deepEqual(consolidateResolvedManualStockLines([
+    { identityKey: "CONFIG:2A", target: targetA, quantity: 2 },
+    { identityKey: "CONFIG:2A", target: targetA, quantity: 1 },
+    { identityKey: "CONFIG:6F", target: targetB, quantity: 3 },
+  ]), [
+    { target: targetA, quantity: 3 },
+    { target: targetB, quantity: 3 },
+  ]);
+});
+
+test("mistura explícita de entrada e saída exige esclarecimento", () => {
+  assert.equal(hasMixedManualStockIntent("Dar entrada de 2 do 2A e dar baixa de 1 do 6F"), true);
+  assert.equal(hasMixedManualStockIntent("Entrada:\n2 do 2A\nSaída:\n1 do 6F"), true);
+  assert.equal(hasMixedManualStockIntent("Dar entrada de 2 do 2A e 1 do 6F"), false);
+});
+
+test("entrada em lote mantém uma única confirmação RPC atômica", () => {
+  const source = readFileSync(new URL("../lib/assistant-manual-stock-entry.ts", import.meta.url), "utf8");
+  assert.equal((source.match(/\.rpc\("stock_inbound_lines"/g) ?? []).length, 1);
+  assert.match(source, /p_lines: payload\.lines\.map/);
+  assert.match(source, /idempotencyKey: randomUUID\(\)/);
+  assert.match(source, /Não encontrei o item .*A lista inteira foi bloqueada/);
 });
 
 test("atalho de entrada manual pede os detalhes sem cair no fluxo de Pedido", () => {

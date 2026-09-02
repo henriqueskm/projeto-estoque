@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -24,6 +25,8 @@ import {
   manualStockOutputProfileHasName,
 } from "../lib/ai/manual-stock-output-contract.ts";
 import { expireStockEntryPreview } from "../lib/ai/assistant-action-persistence.ts";
+import { consolidateResolvedManualStockLines } from "../lib/ai/manual-stock-list-routing.mjs";
+import { buildOutboundPreview } from "../lib/outbound-preview.ts";
 
 const secret = "local-test-secret-with-at-least-thirty-two-characters";
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -47,6 +50,80 @@ test("roteia saídas manuais determinísticas", () => {
     assert.equal(result.request.targetQuery, query, phrase);
     assert.equal(result.request.quantity, quantity, phrase);
   }
+});
+
+test("roteia listas de saída por linhas e frase natural", () => {
+  const expected = [
+    { quantity: 2, targetQuery: "2A", requestedIdentity: null, requiresIdentityChoice: false },
+    { quantity: 1, targetQuery: "5C", requestedIdentity: null, requiresIdentityChoice: false },
+    { quantity: 3, targetQuery: "091", requestedIdentity: null, requiresIdentityChoice: false },
+  ];
+  for (const phrase of [
+    "Baixa:\n2 do 2A\n1 do 5C\n3 do 091",
+    "baixa 2 do 2A, 1 do 5C e 3 do 091",
+  ]) {
+    assert.deepEqual(routeManualStockOutputAction(phrase), {
+      kind: "BATCH_ACTION",
+      lines: expected,
+    }, phrase);
+  }
+});
+
+test("lista de saída preserva ambiguidade e rejeita quantidades inseguras", () => {
+  const ambiguous = routeManualStockOutputAction("Baixa:\n2 do MBF-015\n1 do 091");
+  assert.equal(ambiguous.kind, "BATCH_ACTION");
+  assert.equal(ambiguous.lines[0].requiresIdentityChoice, true);
+  for (const phrase of [
+    "Baixa:\n2 do 2A\n0 do 091",
+    "Baixa:\n2 do 2A\n-1 do 091",
+    "Baixa:\n2 do 2A\n1,5 do 091",
+  ]) {
+    assert.equal(routeManualStockOutputAction(phrase).kind, "INVALID", phrase);
+  }
+});
+
+test("saída em lote consolida alvos repetidos sem misturar identidades", () => {
+  const item = { id: "091" };
+  const configuration = { id: "2A" };
+  assert.deepEqual(consolidateResolvedManualStockLines([
+    { identityKey: "ITEM:091", target: item, quantity: 2 },
+    { identityKey: "CONFIG:2A", target: configuration, quantity: 1 },
+    { identityKey: "ITEM:091", target: item, quantity: 3 },
+  ]), [
+    { target: item, quantity: 5 },
+    { target: configuration, quantity: 1 },
+  ]);
+});
+
+test("saída em lote bloqueia antes da única RPC e preserva revalidação", () => {
+  const source = readFileSync(new URL("../lib/assistant-manual-stock-output.ts", import.meta.url), "utf8");
+  assert.equal((source.match(/\.rpc\("stock_outbound_items"/g) ?? []).length, 1);
+  assert.match(source, /const currentProjection = buildManualStockOutputBatchProjection/);
+  assert.match(source, /A lista inteira foi bloqueada e nenhuma saída foi executada/);
+  assert.match(source, /buildOutboundPreview/);
+});
+
+test("planejamento em lote bloqueia disputa conjunta pelos mesmos componentes", () => {
+  const servo = { id: "servo-1", code: "5", description: "Servo", balance: 3, model: "MBF-040" };
+  const installationKit = { id: "kit-1", code: "KT-18", description: "Kit", balance: 3 };
+  const commercialBase = {
+    kind: "COMMERCIAL_CODE",
+    configurationId: "configuration-1",
+    description: "Servo com kit",
+    imageUrl: null,
+    assembledBalance: 0,
+    aliases: [],
+    servo,
+    installationKit,
+  };
+  const preview = buildOutboundPreview([
+    { option: { ...commercialBase, commercialCodeId: "code-1", code: "5A" }, quantity: 2 },
+    { option: { ...commercialBase, commercialCodeId: "code-2", code: "5B" }, quantity: 2 },
+  ]);
+
+  assert.equal(preview.isValid, false);
+  assert.equal(preview.autoAssembledQuantity, 4);
+  assert.match(preview.errors.join(" "), /Saldo insuficiente de 5/);
 });
 
 test("atalho de saída manual não cai na retirada por Pedido", () => {

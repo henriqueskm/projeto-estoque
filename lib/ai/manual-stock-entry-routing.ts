@@ -1,7 +1,18 @@
+import {
+  hasInvalidManualStockListQuantity,
+  manualStockListMaximumLines,
+  requiresManualStockIdentityChoice,
+  splitManualStockList,
+} from "./manual-stock-list-routing.mjs";
+
 export type ManualStockEntryRequest = {
   quantity: number;
   targetQuery: string;
   requestedIdentity: "ITEM" | "COMMERCIAL_CODE" | null;
+};
+
+export type ManualStockEntryBatchLineRequest = ManualStockEntryRequest & {
+  requiresIdentityChoice: boolean;
 };
 
 export type ManualStockEntryRoute =
@@ -11,6 +22,7 @@ export type ManualStockEntryRoute =
   | { kind: "MISSING_QUANTITY"; targetQuery: string | null }
   | { kind: "INVALID"; message: string }
   | { kind: "AMBIGUOUS_FLOW"; quantity: number; targetQuery: string }
+  | { kind: "BATCH_ACTION"; lines: ManualStockEntryBatchLineRequest[] }
   | { kind: "ACTION"; request: ManualStockEntryRequest };
 
 const maximumInteger = 2_147_483_647;
@@ -137,11 +149,42 @@ export function routeManualStockEntryAction(rawMessage: string): ManualStockEntr
       ? { kind: "ACTION", request: detailsReply }
       : { kind: "NOT_MANUAL_STOCK_ENTRY" };
   }
-  if (/(?:^|\s)-\s*\d+(?:\s+unidades?)?\b/.test(message) || /\b\d+[,.]\d+(?:\s+unidades?)?\b/.test(message) || /\b\d{11,}\b/.test(message)) {
+  if (hasInvalidManualStockListQuantity(message)) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a entrada manual." };
   }
 
   const messageWithoutCommand = rawMessage.slice(commandMatch[0].length);
+  const listParts = splitManualStockList(messageWithoutCommand);
+  if (listParts?.length === 0) {
+    return {
+      kind: "INVALID",
+      message: `Envie no máximo ${manualStockListMaximumLines} itens por entrada manual.`,
+    };
+  }
+  if (listParts) {
+    const lines: ManualStockEntryBatchLineRequest[] = [];
+    for (const part of listParts) {
+      const routed = routeManualStockEntryAction(`Dê entrada ${part}`);
+      if (routed.kind === "ACTION") {
+        lines.push({ ...routed.request, requiresIdentityChoice: false });
+        continue;
+      }
+      if (routed.kind === "AMBIGUOUS_FLOW") {
+        lines.push({
+          quantity: routed.quantity,
+          targetQuery: routed.targetQuery,
+          requestedIdentity: null,
+          requiresIdentityChoice: true,
+        });
+        continue;
+      }
+      return {
+        kind: "INVALID",
+        message: `Revise a linha "${part.slice(0, 80)}". Informe uma quantidade inteira positiva e um código ou modelo.`,
+      };
+    }
+    return { kind: "BATCH_ACTION", lines };
+  }
   const quantityMatch = extractManualStockEntryQuantity(messageWithoutCommand);
   const quantity = quantityMatch?.quantity ?? null;
   if (!quantityMatch) {
@@ -166,7 +209,7 @@ export function routeManualStockEntryAction(rawMessage: string): ManualStockEntr
       ? "ITEM" as const
       : null;
 
-  if (!requestedIdentity && /\bmbf\s*-?\s*\d+/i.test(message)) {
+  if (requiresManualStockIdentityChoice(message, requestedIdentity)) {
     return { kind: "AMBIGUOUS_FLOW", quantity, targetQuery };
   }
 

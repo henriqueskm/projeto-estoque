@@ -118,6 +118,10 @@ export type AssistantStockEntrySelection =
       targetId: string;
       quantity: number;
       targetKind: "ITEM" | "COMMERCIAL_CODE";
+    }
+  | {
+      action: "manual_stock_entry_batch";
+      lines: AssistantManualStockBatchSelectionLine[];
     };
 
 export type AssistantStockOutputSelection =
@@ -132,7 +136,20 @@ export type AssistantStockOutputSelection =
       targetId: string;
       quantity: number;
       targetKind: "ITEM" | "COMMERCIAL_CODE";
+    }
+  | {
+      action: "manual_stock_output_batch";
+      lines: AssistantManualStockBatchSelectionLine[];
     };
+
+export type AssistantManualStockBatchSelectionLine = {
+  quantity: number;
+  targetQuery: string;
+  requestedIdentity: "ITEM" | "COMMERCIAL_CODE" | null;
+  targetId: string | null;
+  targetKind: "ITEM" | "COMMERCIAL_CODE" | null;
+  requiresIdentityChoice: boolean;
+};
 
 export type AssistantConfigurationAssemblySelection = {
   action: "configuration_assembly_target";
@@ -835,6 +852,10 @@ const stockEntryUuidPattern =
 
 export function parseAssistantStockEntrySelection(value: unknown): AssistantStockEntrySelection | null {
   if (!isRecord(value)) return null;
+  if (value.action === "manual_stock_entry_batch" && Object.keys(value).length === 2) {
+    const lines = parseAssistantManualStockBatchSelectionLines(value.lines);
+    return lines ? { action: value.action, lines } : null;
+  }
   if (!isNonnegativeInteger(value.quantity) || value.quantity === 0) return null;
   if (value.action === "manual_stock_entry_target" && Object.keys(value).length === 4 &&
     typeof value.targetId === "string" && stockEntryUuidPattern.test(value.targetId) &&
@@ -854,7 +875,12 @@ export function parseAssistantStockEntrySelection(value: unknown): AssistantStoc
 }
 
 export function parseAssistantStockOutputSelection(value: unknown): AssistantStockOutputSelection | null {
-  if (!isRecord(value) || !isNonnegativeInteger(value.quantity) || value.quantity === 0) return null;
+  if (!isRecord(value)) return null;
+  if (value.action === "manual_stock_output_batch" && Object.keys(value).length === 2) {
+    const lines = parseAssistantManualStockBatchSelectionLines(value.lines);
+    return lines ? { action: value.action, lines } : null;
+  }
+  if (!isNonnegativeInteger(value.quantity) || value.quantity === 0) return null;
   if (value.action === "manual_stock_output_target" && Object.keys(value).length === 4 &&
     typeof value.targetId === "string" && stockEntryUuidPattern.test(value.targetId) &&
     (value.targetKind === "ITEM" || value.targetKind === "COMMERCIAL_CODE")) {
@@ -867,6 +893,38 @@ export function parseAssistantStockOutputSelection(value: unknown): AssistantSto
     return { action: value.action, targetQuery, quantity: value.quantity, targetKind: value.targetKind };
   }
   return null;
+}
+
+function parseAssistantManualStockBatchSelectionLines(
+  value: unknown,
+): AssistantManualStockBatchSelectionLine[] | null {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 12) return null;
+  const lines: AssistantManualStockBatchSelectionLine[] = [];
+  let totalQuantity = 0;
+  for (const raw of value) {
+    if (!isRecord(raw) || Object.keys(raw).length !== 6 ||
+      !isNonnegativeInteger(raw.quantity) || raw.quantity === 0 ||
+      typeof raw.targetQuery !== "string" || !raw.targetQuery.trim() ||
+      raw.targetQuery.length > assistantQueryMaxLength ||
+      ![null, "ITEM", "COMMERCIAL_CODE"].includes(raw.requestedIdentity as never) ||
+      typeof raw.requiresIdentityChoice !== "boolean") return null;
+    const hasTargetId = typeof raw.targetId === "string" && stockEntryUuidPattern.test(raw.targetId);
+    const hasTargetKind = raw.targetKind === "ITEM" || raw.targetKind === "COMMERCIAL_CODE";
+    if ((raw.targetId !== null && !hasTargetId) || (raw.targetKind !== null && !hasTargetKind) ||
+      hasTargetId !== hasTargetKind || (hasTargetId && raw.requiresIdentityChoice) ||
+      (hasTargetKind && raw.requestedIdentity !== null && raw.requestedIdentity !== raw.targetKind)) return null;
+    totalQuantity += raw.quantity;
+    if (!Number.isSafeInteger(totalQuantity) || totalQuantity > 2_147_483_647) return null;
+    lines.push({
+      quantity: raw.quantity,
+      targetQuery: raw.targetQuery.trim(),
+      requestedIdentity: raw.requestedIdentity as "ITEM" | "COMMERCIAL_CODE" | null,
+      targetId: hasTargetId ? (raw.targetId as string).toLowerCase() : null,
+      targetKind: hasTargetKind ? raw.targetKind as "ITEM" | "COMMERCIAL_CODE" : null,
+      requiresIdentityChoice: raw.requiresIdentityChoice,
+    });
+  }
+  return lines;
 }
 
 export function parseAssistantConfigurationAssemblySelection(
@@ -2140,7 +2198,7 @@ function parseOperationalPreviewBase(
         typeof value.expiresAt !== "string" || Number.isNaN(Date.parse(value.expiresAt))
       : value.proposalToken !== null || value.expiresAt !== null) ||
     value.confirmLabel !== confirmLabel || value.cancelLabel !== "Cancelar" ||
-    typeof value.regeneratePrompt !== "string" || !value.regeneratePrompt.trim() || value.regeneratePrompt.length > 240 ||
+    typeof value.regeneratePrompt !== "string" || !value.regeneratePrompt.trim() || value.regeneratePrompt.length > assistantMessageMaxLength ||
     !isNonnegativeInteger(value.totalQuantity) || value.totalQuantity === 0
   ) return null;
   return {
