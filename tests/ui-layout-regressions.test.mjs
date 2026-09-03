@@ -12,18 +12,16 @@ test("a new or restored empty conversation starts at its saved scroll position",
   assert.doesNotMatch(home, /scrollTop > 0 \? scrollTop : conversation\.scrollHeight/);
 });
 
-test("Assistant shortcuts expose operations without shifting the conversation for a floating menu", () => {
+test("proactive Assistant attention replaces shortcuts without shifting the conversation", () => {
   const home = read("components/assistant-home.tsx");
+  const attention = read("components/assistant-attention-summary.tsx");
   const sidebar = read("components/app-sidebar.tsx");
-  const structured = read("components/assistant-structured-block.tsx");
 
-  assert.match(home, /label: "Preparar entrada"/);
-  assert.match(home, /label: "Preparar saída"/);
-  assert.match(home, /label: "Analisar foto de Pedido"/);
-  assert.match(home, /prompt: "Dê entrada manual\."/);
-  assert.match(home, /prompt: "Dê saída manual\."/);
-  assert.match(home, /context\?\.openOrderPhotoPicker/);
-  assert.match(structured, /option\.id === "initial-order-photo"/);
+  assert.match(home, /AssistantAttentionSummaryView/);
+  assert.match(attention, /Tudo em dia por aqui/);
+  assert.match(attention, /O que precisa da minha atenção hoje\?/);
+  assert.match(attention, /Ver detalhes/);
+  assert.doesNotMatch(home, /initialSuggestions|Como posso ajudar\?/);
   assert.match(sidebar, /aria-label="Nova conversa"/);
   assert.match(sidebar, /assistantNewConversationRequestEvent/);
   assert.match(home, /addEventListener\([\s\S]*assistantNewConversationRequestEvent/);

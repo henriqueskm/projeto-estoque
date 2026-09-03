@@ -5,13 +5,13 @@ import { AuthenticatedProfileProvider } from "@/components/authenticated-profile
 import { SafisaPickupAlertProvider } from "@/components/safisa-pickup-alert-provider";
 import { PushNotificationProvider } from "@/components/push-notification-provider";
 import { requireActiveProfile } from "@/lib/auth";
-import { loadSafisaPickupAlerts } from "@/lib/safisa-pickup-alerts";
+import { loadCurrentSafisaPickupAlerts } from "@/lib/safisa-pickup-alerts";
 
 export default async function AuthenticatedLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   const profile = await requireActiveProfile();
-  const safisaPickupAlerts = await loadSafisaPickupAlerts();
+  const safisaPickupAlerts = await loadCurrentSafisaPickupAlerts();
 
   return (
     <AuthenticatedProfileProvider

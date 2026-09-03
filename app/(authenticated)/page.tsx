@@ -1,13 +1,13 @@
 import { AssistantHome } from "@/components/assistant-home";
-import { loadHomeData } from "@/lib/home-data";
+import { loadAssistantAttention } from "@/lib/assistant-attention-data";
 
 export default async function HomePage() {
-  const homeResult = await loadHomeData();
+  const attentionResult = await loadAssistantAttention();
 
   return (
     <AssistantHome
-      summary={homeResult.data?.summary ?? null}
-      stockError={homeResult.error}
+      attention={attentionResult.data}
+      attentionError={attentionResult.error}
     />
   );
 }

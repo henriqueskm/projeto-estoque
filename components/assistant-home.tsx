@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
@@ -24,6 +23,7 @@ import {
   SendIcon,
 } from "@/components/icons";
 import { AssistantMessageContent } from "@/components/assistant-message-content";
+import { AssistantAttentionSummaryView } from "@/components/assistant-attention-summary";
 import { AssistantCameraCapture } from "@/components/assistant-camera-capture";
 import { AssistantVoiceDictation } from "@/components/assistant-voice-dictation";
 import { AssistantNewConversationDialog } from "@/components/assistant-new-conversation-dialog";
@@ -31,7 +31,6 @@ import { AssistantRestoredMediaControl } from "@/components/assistant-restored-m
 import { AssistantStructuredBlockView } from "@/components/assistant-structured-block";
 import { BrandMark } from "@/components/brand-mark";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
-import { SafisaPickupAlertHomeSummary } from "@/components/safisa-pickup-alerts";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
 import {
   AssistantPhotoPreparationError,
@@ -43,7 +42,6 @@ import {
   type AssistantChatRequest,
   type AssistantChatError,
   type AssistantChatSuccess,
-  type AssistantClarificationBlock,
   type AssistantSupplierOrderPickupPreviewBlock,
   type AssistantSupplierOrderPickupConfirmationResult,
   type AssistantSupplierOrderPickupResultBlock,
@@ -72,11 +70,11 @@ import {
   parseAssistantConversationContext,
   parseAssistantConversationalText,
 } from "@/lib/assistant-conversation";
-import type { StockSummary } from "@/lib/home-data";
+import type { AssistantAttentionSummary } from "@/lib/assistant-attention";
 
 type AssistantHomeProps = {
-  summary: StockSummary | null;
-  stockError: string | null;
+  attention: AssistantAttentionSummary | null;
+  attentionError: string | null;
 };
 
 type LocalAttachment = {
@@ -100,68 +98,13 @@ const supplierOrderPickupProgressLabels: Record<
   refreshing: "Atualizando Pedido...",
 };
 
-const initialSuggestions: AssistantClarificationBlock = {
-  kind: "assistant_clarification",
-  title: "Como posso ajudar?",
-  message:
-    "Consulte dados, prepare uma operação ou envie uma foto de Pedido. Toda alteração exige revisão e confirmação.",
-  options: [
-    {
-      id: "initial-inventory-overview",
-      label: "Consultar Estoque",
-      prompt: "Como está o Estoque?",
-      category: "inventory",
-    },
-    {
-      id: "initial-stock-entry",
-      label: "Preparar entrada",
-      prompt: "Dê entrada manual.",
-      category: "inventory",
-    },
-    {
-      id: "initial-stock-output",
-      label: "Preparar saída",
-      prompt: "Dê saída manual.",
-      category: "inventory",
-    },
-    {
-      id: "initial-order-active",
-      label: "Ver Pedidos",
-      prompt: "Mostre meus Pedidos em andamento.",
-      category: "supplier_orders",
-    },
-    {
-      id: "initial-order-pickup",
-      label: "Preparar retirada",
-      prompt: "Quais Pedidos ainda têm itens para retirar?",
-      category: "supplier_orders",
-    },
-    {
-      id: "initial-order-photo",
-      label: "Analisar foto de Pedido",
-      prompt: "Quero analisar uma foto de Pedido.",
-      category: "media",
-    },
-    {
-      id: "initial-replenishment",
-      label: "Ver o que comprar",
-      prompt: "O que preciso comprar?",
-      category: "replenishment",
-    },
-  ],
-  fallbackText:
-    "Posso consultar Estoque e Pedidos, preparar operações e analisar fotos de Pedido.",
-};
-
-const quantityFormatter = new Intl.NumberFormat("pt-BR");
-
 function isStructuredAssistantMessage(content: string) {
   return /(^|\n)\s*(?:[-*+]\s+|\d+[.)]\s+)/m.test(content);
 }
 
 export function AssistantHome({
-  summary,
-  stockError,
+  attention,
+  attentionError,
 }: AssistantHomeProps) {
   const router = useRouter();
   const profile = useAuthenticatedProfile();
@@ -239,14 +182,6 @@ export function AssistantHome({
     Boolean(
       attachment ? attachment.status === "ready" : draft.trim(),
     );
-  const stockItems = [
-    ["Servos com kit", summary?.completeBoxesTotal],
-    ["Servos", summary?.looseServoTotal],
-    ["Kits", summary?.looseKitTotal],
-    ["Reparos", summary?.repairKitTotal],
-    ["Peças", summary?.loosePartTotal],
-  ] as const;
-
   useEffect(() => {
     function requestNewConversation() {
       newConversationReturnFocusRef.current =
@@ -1375,76 +1310,11 @@ export function AssistantHome({
               Restaurando sua conversa...
             </p>
           ) : messages.length === 0 ? (
-            <div className="mx-auto w-full max-w-3xl">
-              <div className="mb-6 flex flex-col items-center text-center sm:mb-8">
-                <p className="text-xl font-black tracking-tight text-text-primary sm:text-2xl">
-                  {firstName ? `Olá, ${firstName}.` : "Olá."}
-                </p>
-                <p className="mt-1 max-w-xl text-sm font-semibold text-text-muted sm:text-base">
-                  Consulte o Estoque, prepare operações ou envie uma foto de
-                  Pedido. Toda alteração exige confirmação explícita.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-border-neutral bg-surface p-3 shadow-sm sm:p-4">
-                <AssistantStructuredBlockView
-                  block={initialSuggestions}
-                  disabled={isInteractionLocked}
-                  onPromptSelect={(prompt, context) => {
-                    if (context?.openOrderPhotoPicker) {
-                      setIsAttachmentMenuOpen(true);
-                      window.requestAnimationFrame(() =>
-                        attachmentMenuFirstItemRef.current?.focus(),
-                      );
-                      return;
-                    }
-                    void sendAssistantMessage(prompt);
-                  }}
-                />
-              </div>
-
-              <SafisaPickupAlertHomeSummary />
-
-              <Link
-                href="/estoque"
-                className="nk-focus mt-4 flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border-neutral bg-surface px-3 py-2 text-xs font-bold text-text-muted transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/25"
-              >
-                <strong className="text-text-primary">
-                  Resumo do estoque
-                </strong>
-                {stockError ? (
-                  <span className="text-red-800">
-                    Indisponível no momento
-                  </span>
-                ) : (
-                  <>
-                    <span>
-                      {stockItems
-                        .map(
-                          ([label, value]) =>
-                            `${quantityFormatter.format(value ?? 0)} ${label.toLocaleLowerCase("pt-BR")}`,
-                        )
-                        .join(" · ")}
-                    </span>
-                    <span className="text-orange-900">
-                      {quantityFormatter.format(
-                        summary?.lowStockItems ?? 0,
-                      )}{" "}
-                      baixos
-                    </span>
-                    <span className="text-red-800">
-                      {quantityFormatter.format(
-                        summary?.outOfStockItems ?? 0,
-                      )}{" "}
-                      zerados
-                    </span>
-                  </>
-                )}
-                <span className="ml-auto text-brand-gold-ink">
-                  Abrir Estoque
-                </span>
-              </Link>
-            </div>
+            <AssistantAttentionSummaryView
+              attention={attention}
+              attentionError={attentionError}
+              firstName={firstName}
+            />
           ) : (
             <div
               role="log"
