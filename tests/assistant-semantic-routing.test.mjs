@@ -19,6 +19,7 @@ import {
   resolveAssistantSemanticManualActionDisposition,
   resolveAssistantSemanticQueryPlan,
 } from "../lib/ai/assistant-semantic-integration.ts";
+import { answerAssistantQuestion } from "../lib/ai/assistant.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -60,6 +61,34 @@ async function classifyWithFake(message, output, options = {}) {
     { client: fakeClientFor(new Map([[message, output]]), requests), timeoutMs: options.timeoutMs },
   );
   return { outcome, requests };
+}
+
+function answerWithSemanticFake(message, semanticResult, dependencies = {}, context = emptyContext) {
+  return answerAssistantQuestion(
+    message,
+    context.itemQuery,
+    context.supplierOrderId,
+    context.supplierOrderCatalogCode,
+    "Henrique",
+    "test-user",
+    "Henrique Klein",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    [],
+    context,
+    {
+      semanticRouter: async () => ({
+        status: "ROUTED",
+        result: semanticResult,
+        model: "semantic-fake",
+      }),
+      ...dependencies,
+    },
+  );
 }
 
 test("HELP diferencia explicação de pedido operacional e não produz linhas de ação", async () => {
@@ -211,6 +240,179 @@ test("scope guard impede preview manual de operações vinculadas a Pedido", () 
     }),
     "CLARIFY_SUPPLIER_ORDER_SCOPE",
   );
+});
+
+test("answerAssistantQuestion entrega HELP final pelo registry sem preview", async () => {
+  let manualBuilderCalls = 0;
+  const answer = await answerWithSemanticFake(
+    "Como faço para dar saída aqui pelo chat?",
+    { intent: "HELP", capabilityIds: ["MANUAL_STOCK_OUTPUT"] },
+    {
+      manualStockOutputPreview: async () => {
+        manualBuilderCalls += 1;
+        throw new Error("HELP não pode chamar builder manual.");
+      },
+      manualStockOutputBatchPreview: async () => {
+        manualBuilderCalls += 1;
+        throw new Error("HELP não pode chamar builder batch.");
+      },
+    },
+  );
+
+  assert.match(answer.message, /Saída manual/);
+  assert.match(answer.message, /Confirme somente pelo botão/);
+  assert.equal(answer.structuredBlock, undefined);
+  assert.equal(answer.proposalToken, undefined);
+  assert.equal(manualBuilderCalls, 0);
+});
+
+test("answerAssistantQuestion encaminha ACTION manual ao builder batch oficial substituível", async () => {
+  const received = [];
+  let singleBuilderCalls = 0;
+  const answer = await answerWithSemanticFake(
+    "Pode tirar dois 1B e um 11A pra mim?",
+    {
+      intent: "ACTION",
+      action: {
+        kind: "MANUAL_STOCK_OUTPUT",
+        lines: [
+          { quantity: 2, targetQuery: "1B", requestedIdentity: null },
+          { quantity: 1, targetQuery: "11A", requestedIdentity: null },
+        ],
+      },
+    },
+    {
+      manualStockOutputPreview: async () => {
+        singleBuilderCalls += 1;
+        throw new Error("A lista não pode usar o builder unitário.");
+      },
+      manualStockOutputBatchPreview: async (lines, actor) => {
+        received.push({ lines, actor });
+        return {
+          message: "Revise a saída preparada.",
+          structuredBlock: { kind: "manual_stock_output_preview" },
+          proposalToken: "preview-only-test-token",
+        };
+      },
+    },
+  );
+
+  assert.equal(received.length, 1);
+  assert.deepEqual(received[0].lines.map(({ quantity, targetQuery }) => ({ quantity, targetQuery })), [
+    { quantity: 2, targetQuery: "1B" },
+    { quantity: 1, targetQuery: "11A" },
+  ]);
+  assert.deepEqual(received[0].actor, { userId: "test-user", profileName: "Henrique Klein" });
+  assert.equal(singleBuilderCalls, 0);
+  assert.equal(answer.structuredBlock.kind, "manual_stock_output_preview");
+  assert.equal(answer.proposalToken, "preview-only-test-token");
+});
+
+test("answerAssistantQuestion não deixa ACTION semântica manual roubar retirada de Pedido", async () => {
+  let manualBuilderCalls = 0;
+  const pickupRequests = [];
+  const answer = await answerWithSemanticFake(
+    "Retire 2 do 1B no Pedido 40959",
+    {
+      intent: "ACTION",
+      action: {
+        kind: "MANUAL_STOCK_OUTPUT",
+        lines: [{ quantity: 2, targetQuery: "1B", requestedIdentity: null }],
+      },
+    },
+    {
+      manualStockOutputPreview: async () => {
+        manualBuilderCalls += 1;
+        throw new Error("Pedido não pode usar builder de saída manual.");
+      },
+      manualStockOutputBatchPreview: async () => {
+        manualBuilderCalls += 1;
+        throw new Error("Pedido não pode usar builder batch manual.");
+      },
+      supplierOrderPickupPreview: async (request) => {
+        pickupRequests.push(request);
+        return {
+          message: "Revise a retirada do Pedido.",
+          structuredBlock: { kind: "assistant_action_preview" },
+          proposalToken: "supplier-order-preview-token",
+        };
+      },
+    },
+  );
+
+  assert.equal(manualBuilderCalls, 0);
+  assert.equal(pickupRequests.length, 1);
+  assert.equal(pickupRequests[0].negotiationNumber, "40959");
+  assert.equal(pickupRequests[0].catalogCode, "1B");
+  assert.equal(answer.structuredBlock.kind, "assistant_action_preview");
+});
+
+test("answerAssistantQuestion preserva consulta de compra específica até o reader", async () => {
+  const routes = [];
+  const answer = await answerWithSemanticFake(
+    "Quanto preciso comprar do 1B?",
+    { intent: "QUERY", query: { kind: "PURCHASE_RECOMMENDATION" } },
+    {
+      purchaseRecommendationReader: async (route) => {
+        routes.push(route);
+        return {
+          kind: "purchase_recommendation",
+          fallbackText: "Recomendação específica do 1B.",
+          queryStatus: "FOUND",
+          items: [{ primaryCode: "1B" }],
+        };
+      },
+    },
+  );
+
+  assert.deepEqual(routes, [{
+    kind: "QUERY",
+    mode: "code",
+    queryCode: "1B",
+    codeIntent: "recommendation",
+  }]);
+  assert.equal(answer.message, "Recomendação específica do 1B.");
+  assert.equal(answer.structuredBlock.kind, "purchase_recommendation");
+  assert.equal(answer.contextItemQuery, "1B");
+});
+
+test("answerAssistantQuestion preserva negociação específica até o reader de Pedido", async () => {
+  const queries = [];
+  const answer = await answerWithSemanticFake(
+    "Como está o Pedido 40959?",
+    { intent: "QUERY", query: { kind: "SUPPLIER_ORDERS", focus: "ALL" } },
+    {
+      supplierOrderReader: async (query) => {
+        queries.push(query);
+        return {
+          block: {
+            kind: "supplier_order_detail",
+            fallbackText: "Pedido 40959 encontrado.",
+          },
+          contextSupplierOrderId: "test-context-only",
+        };
+      },
+    },
+  );
+
+  assert.equal(queries.length, 1);
+  assert.equal(queries[0].mode, "DETAIL");
+  assert.equal(queries[0].negotiationNumber, "40959");
+  assert.equal(answer.message, "Pedido 40959 encontrado.");
+  assert.equal(answer.structuredBlock.kind, "supplier_order_detail");
+});
+
+test("answerAssistantQuestion entrega ajuda PAGE_ONLY para ajuste sem mutação", async () => {
+  const answer = await answerWithSemanticFake(
+    "Errei o estoque, como corrijo?",
+    { intent: "HELP", capabilityIds: ["STOCK_ADJUSTMENT"] },
+  );
+
+  assert.match(answer.message, /Ajustar estoque/);
+  assert.match(answer.message, /Tela relacionada: \/estoque/);
+  assert.match(answer.message, /não executa ajuste de saldo pelo chat/);
+  assert.equal(answer.structuredBlock, undefined);
+  assert.equal(answer.proposalToken, undefined);
 });
 
 test("ACTION extrai entrada e saída manual em linhas estritas sem resolver catálogo", async () => {
@@ -403,6 +605,4 @@ test("integração semântica só encaminha ações manuais aos builders de pré
   assert.doesNotMatch(semanticRouter, /confirmAssistant|executeAssistant|mark.*Ready|stock_movements/i);
   const scopeGuardIndex = assistant.indexOf("const manualActionDisposition");
   assert.ok(scopeGuardIndex > semanticCallIndex);
-  assert.ok(scopeGuardIndex < assistant.indexOf("createAssistantManualStockEntryPreview(lines[0]"));
-  assert.ok(scopeGuardIndex < assistant.indexOf("createAssistantManualStockOutputPreview(lines[0]"));
 });

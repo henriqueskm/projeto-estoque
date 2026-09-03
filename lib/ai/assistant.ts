@@ -116,10 +116,20 @@ import type {
   AssistantSuggestedFollowUp,
   AssistantStockSummaryResult,
 } from "@/lib/assistant-types";
+
 import {
   extractServoModelCandidate,
   normalizeServoModel,
 } from "@/lib/servo-model-search";
+
+export type AssistantQuestionDependencies = Partial<{
+  semanticRouter: typeof routeAssistantMessageSemantically;
+  purchaseRecommendationReader: typeof consultAssistantPurchaseRecommendations;
+  supplierOrderReader: typeof consultAssistantSupplierOrders;
+  manualStockOutputPreview: typeof createAssistantManualStockOutputPreview;
+  manualStockOutputBatchPreview: typeof createAssistantManualStockOutputBatchPreview;
+  supplierOrderPickupPreview: typeof createAssistantSupplierOrderPickupPreview;
+}>;
 
 type AssistantServiceErrorCode =
   | "CONFIGURATION"
@@ -131,9 +141,12 @@ type AssistantServiceErrorCode =
   | "UPSTREAM";
 
 export class AssistantServiceError extends Error {
-  constructor(public readonly code: AssistantServiceErrorCode) {
+  public readonly code: AssistantServiceErrorCode;
+
+  constructor(code: AssistantServiceErrorCode) {
     super(`Assistant service failed: ${code}.`);
     this.name = "AssistantServiceError";
+    this.code = code;
   }
 }
 
@@ -1129,6 +1142,7 @@ async function answerSemanticQuery(
   lastItemQuery: string | null,
   lastSupplierOrderId: string | null,
   lastSupplierOrderCatalogCode: string | null,
+  dependencies: AssistantQuestionDependencies,
 ): Promise<AssistantChatSuccess | null> {
   const plan = resolveAssistantSemanticQueryPlan({
     message,
@@ -1169,7 +1183,8 @@ async function answerSemanticQuery(
       };
     }
     const block = await executeStockQuery(() =>
-      consultAssistantPurchaseRecommendations(recommendationRoute),
+      (dependencies.purchaseRecommendationReader ??
+        consultAssistantPurchaseRecommendations)(recommendationRoute),
     );
     return {
       message: block.fallbackText,
@@ -1196,7 +1211,8 @@ async function answerSemanticQuery(
       };
     }
     const result = await executeStockQuery(() =>
-      consultAssistantSupplierOrders(supplierOrderRoute.query),
+      (dependencies.supplierOrderReader ??
+        consultAssistantSupplierOrders)(supplierOrderRoute.query),
     );
     return {
       message: result.block.fallbackText,
@@ -1265,6 +1281,7 @@ export async function answerAssistantQuestion(
   configurationDisassemblySelection: AssistantConfigurationDisassemblySelection | null,
   recentConversation: AssistantRecentConversationMessage[],
   conversationContext: AssistantConversationContext,
+  dependencies: AssistantQuestionDependencies = {},
 ): Promise<AssistantChatSuccess> {
   const supplierOrderStockEntryRoute =
     routeSupplierOrderStockEntryAction(message);
@@ -1555,7 +1572,7 @@ export async function answerAssistantQuestion(
     pickupRoute.kind === "CANCEL_PICKUP_ACTION";
   const semanticOutcome = bypassSemanticRouter
     ? null
-    : await routeAssistantMessageSemantically({
+    : await (dependencies.semanticRouter ?? routeAssistantMessageSemantically)({
         message,
         recentConversation,
         conversationContext,
@@ -1581,6 +1598,7 @@ export async function answerAssistantQuestion(
         lastItemQuery,
         lastSupplierOrderId,
         lastSupplierOrderCatalogCode,
+        dependencies,
       );
       if (semanticAnswer) return semanticAnswer;
     }
@@ -1642,8 +1660,10 @@ export async function answerAssistantQuestion(
           );
         }
         return lines.length === 1
-          ? createAssistantManualStockOutputPreview(lines[0], { userId, profileName })
-          : createAssistantManualStockOutputBatchPreview(lines, { userId, profileName });
+          ? (dependencies.manualStockOutputPreview ??
+              createAssistantManualStockOutputPreview)(lines[0], { userId, profileName })
+          : (dependencies.manualStockOutputBatchPreview ??
+              createAssistantManualStockOutputBatchPreview)(lines, { userId, profileName });
       }
     }
 
@@ -1856,7 +1876,8 @@ export async function answerAssistantQuestion(
   }
 
   if (pickupRoute.kind === "PICKUP_ACTION") {
-    return createAssistantSupplierOrderPickupPreview(
+    return (dependencies.supplierOrderPickupPreview ??
+      createAssistantSupplierOrderPickupPreview)(
       pickupRoute.request.catalogCode || !lastSupplierOrderCatalogCode
         ? pickupRoute.request
         : { ...pickupRoute.request, catalogCode: lastSupplierOrderCatalogCode },
