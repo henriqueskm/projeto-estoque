@@ -18,8 +18,16 @@ export async function resolve(specifier, context, nextResolve) {
     };
   }
 
+  if (specifier.startsWith("next/") && !/\.[cm]?[jt]sx?$/u.test(specifier)) {
+    return nextResolve(`${specifier}.js`, context);
+  }
+
   if (specifier.startsWith("@/")) {
-    const target = new URL(`../../${specifier.slice(2)}.ts`, import.meta.url);
+    const relative = specifier.slice(2);
+    const target = new URL(
+      `../../${relative}${/\.[cm]?[jt]sx?$/u.test(relative) ? "" : ".ts"}`,
+      import.meta.url,
+    );
     return nextResolve(target.href, context);
   }
 

@@ -32,6 +32,7 @@
     "test:assistant-photo-order-create": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/assistant-photo-order-create.test.mjs",
     "test:assistant-context": "node --experimental-strip-types --test tests/assistant-contextual-conversation.test.mjs",
     "test:assistant-natural-language-evals": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/assistant-natural-language-evals.test.mjs",
+    "test:assistant-semantic-routing": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/assistant-semantic-routing.test.mjs",
     "test:assistant-live-evals": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/assistant-live-evals.test.mjs",
     "eval:assistant:quick": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs evals/assistant/cli.ts",
     "eval:assistant": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs evals/assistant/cli.ts --write",
