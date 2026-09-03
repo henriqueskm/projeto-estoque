@@ -1,0 +1,35 @@
+{
+  "procedureVersion": 1,
+  "projectName": "EstoqueNK",
+  "projectRef": "isdjboconmwaqipjrjvp",
+  "databaseName": "postgres",
+  "sourceMainSha": "12e6e5838bb905332232cbf724df46f6aa9bc810",
+  "migrationCount": 31,
+  "latestMigration": "20260828234000",
+  "migrationFingerprint": "5843cb4219454f0e066bf219ec588843",
+  "schemaFingerprint": "2837e6e57d7431cb0bf00782a371bb07",
+  "catalogFingerprint": "1dcebe6122e26da78d48eaaa1f544466",
+  "catalogCounts": {
+    "items": 107,
+    "servoModels": 22,
+    "installationKits": 74,
+    "repairKits": 5,
+    "looseParts": 6,
+    "configurations": 80,
+    "commercialCodes": 80,
+    "compatibilities": 22
+  },
+  "authUsers": 3,
+  "profiles": 3,
+  "safisaMemberships": 1,
+  "bucketId": "commercial-catalog-images",
+  "referencedImages": 76,
+  "storageObjects": 76,
+  "dynamicItems": [
+    { "id": "313a920b-5b6c-4132-b342-3fdd69fc4aa1", "code": "067" },
+    { "id": "523fe146-cde0-4db8-a609-33002c15a3aa", "code": "091" },
+    { "id": "815db224-67b7-41a5-9fbb-f3fb38514972", "code": "091/VF" },
+    { "id": "efce5819-0fe5-4766-8856-29924fdc3fcd", "code": "7 INV" },
+    { "id": "e0c7fc9e-56bb-45cd-a60a-fc424b8c6127", "code": "SUB071" }
+  ]
+}
