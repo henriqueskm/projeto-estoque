@@ -69,6 +69,65 @@ test("roteia listas de saída por linhas e frase natural", () => {
   }
 });
 
+test("aceita introduções naturais antes de listas de saída", () => {
+  const threeLines = [
+    { quantity: 2, targetQuery: "1B", requestedIdentity: null, requiresIdentityChoice: false },
+    { quantity: 2, targetQuery: "1E", requestedIdentity: null, requiresIdentityChoice: false },
+    { quantity: 1, targetQuery: "11A", requestedIdentity: null, requiresIdentityChoice: false },
+  ];
+  for (const phrase of [
+    "quero dar baixa nessa lista\n2 do 1B\n2 do 1E\n1 do 11A",
+    "quero dar baixa nessa lista:\n2 unidades do 1B\n2 unidades do 1E\n1 unidade do 11A",
+  ]) {
+    assert.deepEqual(routeManualStockOutputAction(phrase), {
+      kind: "BATCH_ACTION",
+      lines: threeLines,
+    }, phrase);
+  }
+
+  assert.deepEqual(routeManualStockOutputAction("dar baixa na lista abaixo:\n2 do 1B\n2 do 1E"), {
+    kind: "BATCH_ACTION",
+    lines: threeLines.slice(0, 2),
+  });
+  assert.deepEqual(routeManualStockOutputAction("baixa dos seguintes itens:\n2 do 1B\n1 do 11A"), {
+    kind: "BATCH_ACTION",
+    lines: [threeLines[0], threeLines[2]],
+  });
+});
+
+test("saída em lista aceita hífen separador sem quebrar código com hífen", () => {
+  assert.deepEqual(
+    routeManualStockOutputAction("quero dar baixa nessa lista:\n2 - 1B\n2 - 1E\n1 - 11A\n2 - KT-18"),
+    {
+      kind: "BATCH_ACTION",
+      lines: [
+        { quantity: 2, targetQuery: "1B", requestedIdentity: null, requiresIdentityChoice: false },
+        { quantity: 2, targetQuery: "1E", requestedIdentity: null, requiresIdentityChoice: false },
+        { quantity: 1, targetQuery: "11A", requestedIdentity: null, requiresIdentityChoice: false },
+        { quantity: 2, targetQuery: "KT-18", requestedIdentity: null, requiresIdentityChoice: false },
+      ],
+    },
+  );
+  assert.deepEqual(routeManualStockOutputAction("baixa 2 - KT-18"), {
+    kind: "ACTION",
+    request: { quantity: 2, targetQuery: "KT-18", requestedIdentity: null },
+  });
+});
+
+test("introdução explícita de saída com lista inválida não cai no item único", () => {
+  const result = routeManualStockOutputAction("quero dar baixa nessa lista:\nitem sem quantidade");
+  assert.equal(result.kind, "INVALID");
+  assert.match(result.message, /Revise a lista de saída/);
+});
+
+test("saída preserva item único e limite de doze linhas", () => {
+  assert.equal(routeManualStockOutputAction("baixa 2 do 1B").kind, "ACTION");
+  const twelveLines = Array.from({ length: 12 }, (_, index) => `1 do ${index + 1}A`).join("\n");
+  const thirteenLines = `${twelveLines}\n1 do 13A`;
+  assert.equal(routeManualStockOutputAction(`baixa nessa lista:\n${twelveLines}`).kind, "BATCH_ACTION");
+  assert.equal(routeManualStockOutputAction(`baixa nessa lista:\n${thirteenLines}`).kind, "INVALID");
+});
+
 test("lista de saída preserva ambiguidade e rejeita quantidades inseguras", () => {
   const ambiguous = routeManualStockOutputAction("Baixa:\n2 do MBF-015\n1 do 091");
   assert.equal(ambiguous.kind, "BATCH_ACTION");
@@ -183,6 +242,7 @@ test("qualificadores com e sem kit restringem a identidade", () => {
 test("quantidades inválidas são rejeitadas", () => {
   assert.equal(routeManualStockOutputAction("Retire 0 unidades do 1H.").kind, "INVALID");
   assert.equal(routeManualStockOutputAction("Retire -2 unidades do 1H.").kind, "INVALID");
+  assert.equal(routeManualStockOutputAction("Retire - 2 unidades do 1H.").kind, "INVALID");
   assert.equal(routeManualStockOutputAction("Retire o 1H.").kind, "INVALID");
 });
 

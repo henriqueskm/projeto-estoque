@@ -16,6 +16,7 @@ import { expireStockEntryPreview } from "../lib/ai/assistant-action-persistence.
 import {
   consolidateResolvedManualStockLines,
   hasMixedManualStockIntent,
+  splitManualStockList,
 } from "../lib/ai/manual-stock-list-routing.mjs";
 
 const secret = "local-test-secret-with-at-least-thirty-two-characters";
@@ -75,6 +76,7 @@ test("roteia entradas manuais claras e esclarece modelo ambíguo", () => {
   assert.equal(routeManualStockEntryAction("Dê entrada em 2 MBF-015.").kind, "AMBIGUOUS_FLOW");
   assert.equal(routeManualStockEntryAction("Dê entrada em 0 unidades do KT-29.").kind, "INVALID");
   assert.equal(routeManualStockEntryAction("Dê entrada em -2 unidades do KT-29.").kind, "INVALID");
+  assert.equal(routeManualStockEntryAction("Dê entrada em - 2 unidades do KT-29.").kind, "INVALID");
 });
 
 test("roteia listas de entrada por linhas, vírgulas e ponto e vírgula", () => {
@@ -93,6 +95,75 @@ test("roteia listas de entrada por linhas, vírgulas e ponto e vírgula", () => 
       lines: expected,
     }, phrase);
   }
+});
+
+test("aceita introduções naturais antes de listas de entrada", () => {
+  const shortExpected = [
+    { quantity: 2, targetQuery: "1B", requestedIdentity: null, requiresIdentityChoice: false },
+    { quantity: 3, targetQuery: "KT-18", requestedIdentity: null, requiresIdentityChoice: false },
+    { quantity: 1, targetQuery: "11A", requestedIdentity: null, requiresIdentityChoice: false },
+  ];
+  for (const phrase of [
+    "quero dar entrada nessa lista\n2 do 1B\n3 do KT-18\n1 do 11A",
+    "quero dar entrada nessa lista:\n2 unidades do 1B\n3 unidades do KT-18\n1 unidade do 11A",
+    "dar entrada na lista abaixo:\n2 do 1B\n3 do KT-18\n1 do 11A",
+    "entrada dos seguintes itens:\n2 do 1B\n3 do KT-18\n1 do 11A",
+  ]) {
+    assert.deepEqual(routeManualStockEntryAction(phrase), {
+      kind: "BATCH_ACTION",
+      lines: shortExpected,
+    }, phrase);
+  }
+});
+
+test("entrada em lista aceita hífen separador sem quebrar código com hífen", () => {
+  assert.deepEqual(
+    routeManualStockEntryAction("quero dar entrada nessa lista:\n2 - 1B\n3 - KT-18\n1 - 11A"),
+    {
+      kind: "BATCH_ACTION",
+      lines: [
+        { quantity: 2, targetQuery: "1B", requestedIdentity: null, requiresIdentityChoice: false },
+        { quantity: 3, targetQuery: "KT-18", requestedIdentity: null, requiresIdentityChoice: false },
+        { quantity: 1, targetQuery: "11A", requestedIdentity: null, requiresIdentityChoice: false },
+      ],
+    },
+  );
+  assert.deepEqual(routeManualStockEntryAction("entrada 2 - KT-18"), {
+    kind: "ACTION",
+    request: { quantity: 2, targetQuery: "KT-18", requestedIdentity: null },
+  });
+});
+
+test("helper compartilhado remove somente introduções reconhecidas diante de uma lista", () => {
+  for (const introduction of [
+    "nessa lista",
+    "nesta lista",
+    "na lista",
+    "na lista abaixo",
+    "os seguintes itens",
+    "dos seguintes itens",
+    "destes itens",
+  ]) {
+    assert.deepEqual(splitManualStockList(`${introduction}:\n2 do 1B\n1 - KT-18`), [
+      "2 do 1B",
+      "1 do KT-18",
+    ], introduction);
+  }
+  assert.equal(splitManualStockList("nesta lista de produtos"), null);
+});
+
+test("introdução explícita de entrada com lista inválida não cai no item único", () => {
+  const result = routeManualStockEntryAction("quero dar entrada nessa lista:\nitem sem quantidade");
+  assert.equal(result.kind, "INVALID");
+  assert.match(result.message, /Revise a lista de entrada/);
+});
+
+test("entrada preserva item único e limite de doze linhas", () => {
+  assert.equal(routeManualStockEntryAction("entrada de 2 do 1B").kind, "ACTION");
+  const twelveLines = Array.from({ length: 12 }, (_, index) => `1 do ${index + 1}A`).join("\n");
+  const thirteenLines = `${twelveLines}\n1 do 13A`;
+  assert.equal(routeManualStockEntryAction(`entrada nessa lista:\n${twelveLines}`).kind, "BATCH_ACTION");
+  assert.equal(routeManualStockEntryAction(`entrada nessa lista:\n${thirteenLines}`).kind, "INVALID");
 });
 
 test("lista de entrada preserva ambiguidades e bloqueia linha inválida", () => {

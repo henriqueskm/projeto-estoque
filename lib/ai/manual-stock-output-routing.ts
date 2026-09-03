@@ -1,4 +1,5 @@
 import {
+  hasManualStockListIntroduction,
   hasInvalidManualStockListQuantity,
   manualStockListMaximumLines,
   requiresManualStockIdentityChoice,
@@ -70,6 +71,7 @@ function cleanTarget(value: string, quantityMatch: QuantityMatch) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^(?:(?:em|no|na|do|da|de|mais)\s+)+/iu, "")
+    .replace(/^-\s+(?=\S)/u, "")
     .trim();
 }
 
@@ -94,10 +96,10 @@ export function routeManualStockOutputAction(rawMessage: string): ManualStockOut
   if (/\bpedido\b/.test(message)) return { kind: "NOT_MANUAL_STOCK_OUTPUT" };
   const commandMatch = commandPattern.exec(rawMessage);
   if (!commandMatch) return { kind: "NOT_MANUAL_STOCK_OUTPUT" };
-  if (hasInvalidManualStockListQuantity(message)) {
+  const withoutCommand = rawMessage.slice(commandMatch[0].length);
+  if (hasInvalidManualStockListQuantity(withoutCommand)) {
     return { kind: "INVALID", message: "Informe uma quantidade inteira e positiva para a saída manual." };
   }
-  const withoutCommand = rawMessage.slice(commandMatch[0].length);
   const listParts = splitManualStockList(withoutCommand);
   if (listParts?.length === 0) {
     return {
@@ -128,6 +130,12 @@ export function routeManualStockOutputAction(rawMessage: string): ManualStockOut
       };
     }
     return { kind: "BATCH_ACTION", lines };
+  }
+  if (hasManualStockListIntroduction(withoutCommand)) {
+    return {
+      kind: "INVALID",
+      message: "Revise a lista de saída. Informe cada item em uma linha com quantidade inteira positiva e código ou modelo.",
+    };
   }
   const quantityMatch = extractQuantity(withoutCommand);
   const quantity = quantityMatch?.quantity ?? null;
