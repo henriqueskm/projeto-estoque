@@ -88,6 +88,10 @@ import {
   type AssistantSemanticResult,
 } from "@/lib/ai/assistant-semantic-router";
 import {
+  resolveAssistantSemanticManualActionDisposition,
+  resolveAssistantSemanticQueryPlan,
+} from "@/lib/ai/assistant-semantic-integration";
+import {
   customerFacingInventoryLabels,
   formatCompleteServoKitLabel,
   formatLooseServoLabel,
@@ -1121,12 +1125,22 @@ function semanticClarificationMessage(
 
 async function answerSemanticQuery(
   query: AssistantSemanticQuery,
+  message: string,
+  lastItemQuery: string | null,
   lastSupplierOrderId: string | null,
   lastSupplierOrderCatalogCode: string | null,
 ): Promise<AssistantChatSuccess | null> {
-  if (query.kind === "INVENTORY_ITEM") {
+  const plan = resolveAssistantSemanticQueryPlan({
+    message,
+    semanticQuery: query,
+    lastItemQuery,
+    lastSupplierOrderId,
+    lastSupplierOrderCatalogCode,
+  });
+
+  if (plan.kind === "INVENTORY_ITEM") {
     const summaryBlock = await executeStockQuery(() =>
-      consultAssistantInventoryItemSummary(query.targetQuery, query.metric),
+      consultAssistantInventoryItemSummary(plan.queryCode, plan.metric),
     );
     return {
       message: summaryBlock.fallbackText,
@@ -1142,45 +1156,47 @@ async function answerSemanticQuery(
     };
   }
 
-  if (query.kind === "LOW_STOCK") {
-    const alertsBlock = await executeStockQuery(consultAssistantLowStock);
-    return { message: alertsBlock.fallbackText, structuredBlock: alertsBlock };
-  }
-
-  if (query.kind === "PURCHASE_RECOMMENDATION") {
+  if (plan.kind === "PURCHASE_RECOMMENDATION") {
+    const recommendationRoute = plan.route;
+    if (recommendationRoute.kind === "CLARIFICATION") {
+      const block = createPurchaseRecommendationClarificationBlock(recommendationRoute.queryCode);
+      return {
+        message: block.fallbackText,
+        structuredBlock: block,
+        contextItemQuery: null,
+        contextSupplierOrderId: null,
+        contextSupplierOrderCatalogCode: null,
+      };
+    }
     const block = await executeStockQuery(() =>
-      consultAssistantPurchaseRecommendations({
-        kind: "QUERY",
-        mode: "buy_now",
-        queryCode: null,
-        codeIntent: null,
-      }),
+      consultAssistantPurchaseRecommendations(recommendationRoute),
     );
     return {
       message: block.fallbackText,
       structuredBlock: block,
-      contextItemQuery: null,
-      contextItemReferenceKind: null,
+      contextItemQuery:
+        block.queryStatus === "FOUND" ? (block.items[0]?.primaryCode ?? null) : null,
+      contextItemReferenceKind:
+        block.queryStatus === "FOUND" ? "CATALOG_CODE" : null,
       contextSupplierOrderId: null,
       contextSupplierOrderCatalogCode: null,
     };
   }
 
-  if (query.kind === "SUPPLIER_ORDERS") {
-    const canonicalQuestion = query.focus === "WAITING_PICKUP"
-      ? "Quais Pedidos têm retirada pendente?"
-      : query.focus === "WAITING_STOCK"
-        ? "Quais Pedidos têm entrada pendente no estoque?"
-        : "Mostre os Pedidos em andamento.";
-    const routed = routeSupplierOrderQuestion(
-      canonicalQuestion,
-      lastSupplierOrderId,
-      new Date(),
-      lastSupplierOrderCatalogCode,
-    );
-    if (routed.kind !== "ORDER_QUERY") return null;
+  if (plan.kind === "SUPPLIER_ORDERS") {
+    const supplierOrderRoute = plan.route;
+    if (supplierOrderRoute.kind === "NEEDS_ORDER_CONTEXT") {
+      const block = createSupplierOrderClarificationBlock(false);
+      return {
+        message: block.fallbackText,
+        structuredBlock: block,
+        contextItemQuery: null,
+        contextSupplierOrderId: null,
+        contextSupplierOrderCatalogCode: null,
+      };
+    }
     const result = await executeStockQuery(() =>
-      consultAssistantSupplierOrders(routed.query),
+      consultAssistantSupplierOrders(supplierOrderRoute.query),
     );
     return {
       message: result.block.fallbackText,
@@ -1188,37 +1204,44 @@ async function answerSemanticQuery(
       contextItemQuery: null,
       contextItemReferenceKind: null,
       contextSupplierOrderId: result.contextSupplierOrderId,
-      contextSupplierOrderCatalogCode: routed.query.catalogCode,
+      contextSupplierOrderCatalogCode: supplierOrderRoute.query.catalogCode,
     };
   }
 
-  if (query.kind === "STATISTICS") {
-    if (!query.period) {
+  const semanticQuery = plan.query;
+
+  if (semanticQuery.kind === "LOW_STOCK") {
+    const alertsBlock = await executeStockQuery(consultAssistantLowStock);
+    return { message: alertsBlock.fallbackText, structuredBlock: alertsBlock };
+  }
+
+  if (semanticQuery.kind === "STATISTICS") {
+    if (!semanticQuery.period) {
       return {
         message: "As Estatísticas atuais trabalham com os últimos 7, 30 ou 90 dias. Qual período você quer consultar?",
         contextItemQuery: null,
         contextItemReferenceKind: null,
         contextSupplierOrderId: null,
         contextSupplierOrderCatalogCode: null,
-        contextLastIntent: query.statisticsIntent,
+        contextLastIntent: semanticQuery.statisticsIntent,
         contextSuggestedFollowUp: null,
         contextStatisticsPeriod: null,
-        contextStatisticsIntent: query.statisticsIntent,
+        contextStatisticsIntent: semanticQuery.statisticsIntent,
         contextStatisticsCode:
-          query.statisticsIntent === "CODE_OUTBOUND" ? query.targetQuery : null,
+          semanticQuery.statisticsIntent === "CODE_OUTBOUND" ? semanticQuery.targetQuery : null,
       };
     }
-    if (query.statisticsIntent === "CODE_OUTBOUND" && !query.targetQuery) {
+    if (semanticQuery.statisticsIntent === "CODE_OUTBOUND" && !semanticQuery.targetQuery) {
       return { message: "Qual código você deseja consultar nas Estatísticas?" };
     }
     return answerAssistantStatistics({
-      intent: query.statisticsIntent,
-      period: query.period,
-      code: query.statisticsIntent === "CODE_OUTBOUND" ? query.targetQuery : null,
+      intent: semanticQuery.statisticsIntent,
+      period: semanticQuery.period,
+      code: semanticQuery.statisticsIntent === "CODE_OUTBOUND" ? semanticQuery.targetQuery : null,
     });
   }
 
-  if (query.kind === "STOCK_SUMMARY") {
+  if (semanticQuery.kind === "STOCK_SUMMARY") {
     const summary = await executeStockQuery(consultAssistantStockSummary);
     return { message: formatStockSummary(summary) };
   }
@@ -1554,6 +1577,8 @@ export async function answerAssistantQuestion(
     if (semanticResult.intent === "QUERY") {
       const semanticAnswer = await answerSemanticQuery(
         semanticResult.query,
+        message,
+        lastItemQuery,
         lastSupplierOrderId,
         lastSupplierOrderCatalogCode,
       );
@@ -1565,48 +1590,61 @@ export async function answerAssistantQuestion(
       (semanticResult.action.kind === "MANUAL_STOCK_ENTRY" ||
         semanticResult.action.kind === "MANUAL_STOCK_OUTPUT")
     ) {
-      if (hasMixedManualStockIntent(message)) {
+      const manualActionDisposition = resolveAssistantSemanticManualActionDisposition({
+        message,
+        conversationContext,
+      });
+      if (manualActionDisposition === "CLARIFY_SUPPLIER_ORDER_SCOPE") {
         return {
-          message: "A mesma lista não pode misturar entrada e saída. Envie uma operação de entrada ou uma operação de saída por vez.",
-          contextSupplierOrderId: null,
-          contextSupplierOrderCatalogCode: null,
+          message: "Essa operação parece estar relacionada a um Pedido. Informe a negociação e diga se deseja registrar uma retirada ou uma entrada vinculada ao Pedido.",
         };
       }
-      if (!isSemanticManualActionPreparationAllowed(message)) {
-        return {
-          message: "Não preparei nenhuma operação. Se você quiser realizar uma entrada ou saída, faça um pedido direto informando quantidade e código.",
-        };
-      }
+      if (manualActionDisposition === "DEFER_TO_SUPPLIER_ORDER_PIPELINE") {
+        // The existing supplier-order routers and preview builders remain authoritative.
+      } else {
+        if (hasMixedManualStockIntent(message)) {
+          return {
+            message: "A mesma lista não pode misturar entrada e saída. Envie uma operação de entrada ou uma operação de saída por vez.",
+            contextSupplierOrderId: null,
+            contextSupplierOrderCatalogCode: null,
+          };
+        }
+        if (!isSemanticManualActionPreparationAllowed(message)) {
+          return {
+            message: "Não preparei nenhuma operação. Se você quiser realizar uma entrada ou saída, faça um pedido direto informando quantidade e código.",
+          };
+        }
 
-      const lines = semanticResult.action.lines.map((line) => ({
-        ...line,
-        requiresIdentityChoice: requiresManualStockIdentityChoice(
-          line.targetQuery,
-          line.requestedIdentity,
-        ),
-      }));
+        const lines = semanticResult.action.lines.map((line) => ({
+          ...line,
+          requiresIdentityChoice: requiresManualStockIdentityChoice(
+            line.targetQuery,
+            line.requestedIdentity,
+          ),
+        }));
 
-      if (semanticResult.action.kind === "MANUAL_STOCK_ENTRY") {
+        if (semanticResult.action.kind === "MANUAL_STOCK_ENTRY") {
+          if (lines.length === 1 && lines[0].requiresIdentityChoice) {
+            return createManualStockEntryAmbiguity(
+              lines[0].quantity,
+              lines[0].targetQuery,
+            );
+          }
+          return lines.length === 1
+            ? createAssistantManualStockEntryPreview(lines[0], { userId, profileName })
+            : createAssistantManualStockEntryBatchPreview(lines, { userId, profileName });
+        }
+
         if (lines.length === 1 && lines[0].requiresIdentityChoice) {
-          return createManualStockEntryAmbiguity(
+          return createManualStockOutputAmbiguity(
             lines[0].quantity,
             lines[0].targetQuery,
           );
         }
         return lines.length === 1
-          ? createAssistantManualStockEntryPreview(lines[0], { userId, profileName })
-          : createAssistantManualStockEntryBatchPreview(lines, { userId, profileName });
+          ? createAssistantManualStockOutputPreview(lines[0], { userId, profileName })
+          : createAssistantManualStockOutputBatchPreview(lines, { userId, profileName });
       }
-
-      if (lines.length === 1 && lines[0].requiresIdentityChoice) {
-        return createManualStockOutputAmbiguity(
-          lines[0].quantity,
-          lines[0].targetQuery,
-        );
-      }
-      return lines.length === 1
-        ? createAssistantManualStockOutputPreview(lines[0], { userId, profileName })
-        : createAssistantManualStockOutputBatchPreview(lines, { userId, profileName });
     }
 
     if (semanticResult.intent === "CLARIFY") {

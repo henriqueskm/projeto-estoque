@@ -11,9 +11,14 @@ import {
   routeAssistantMessageSemantically,
 } from "../lib/ai/assistant-semantic-router.ts";
 import {
+  assistantCapabilities,
   buildAssistantCapabilityHelp,
   isAssistantCapabilityId,
 } from "../lib/ai/assistant-capabilities.ts";
+import {
+  resolveAssistantSemanticManualActionDisposition,
+  resolveAssistantSemanticQueryPlan,
+} from "../lib/ai/assistant-semantic-integration.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -64,6 +69,7 @@ test("HELP diferencia explicação de pedido operacional e não produz linhas de
     ["se eu quiser baixar 2 do 1B, como faço?", "MANUAL_STOCK_OUTPUT"],
     ["como funciona a montagem?", "CONFIGURATION_ASSEMBLY"],
     ["o que você consegue fazer?", "ASSISTANT_OVERVIEW"],
+    ["errei o saldo, como corrijo?", "STOCK_ADJUSTMENT"],
   ];
   for (const [message, capabilityId] of cases) {
     const { outcome } = await classifyWithFake(message, {
@@ -89,6 +95,122 @@ test("capability registry responde somente com capacidades e restrições reais"
   const overview = buildAssistantCapabilityHelp(["ASSISTANT_OVERVIEW"]);
   assert.match(overview, /O que a Assistente NK consegue fazer/);
   assert.match(overview, /Toda alteração operacional gera uma prévia/);
+  assert.equal(
+    assistantCapabilities.find(({ id }) => id === "CONFIGURATION_ASSEMBLY")?.page,
+    "/estoque",
+  );
+  assert.equal(
+    assistantCapabilities.find(({ id }) => id === "CONFIGURATION_DISASSEMBLY")?.page,
+    "/estoque",
+  );
+  const adjustmentHelp = buildAssistantCapabilityHelp(["STOCK_ADJUSTMENT"]);
+  assert.match(adjustmentHelp, /Ajustar estoque/);
+  assert.match(adjustmentHelp, /não executa ajuste de saldo pelo chat/);
+  assert.match(adjustmentHelp, /Tela relacionada: \/estoque/);
+});
+
+test("pipeline semântico preserva todas as rotas ricas de recomendação de compra", () => {
+  const cases = [
+    ["Quanto preciso comprar do 1B?", "code", "1B", "recommendation"],
+    ["O 1B já está comprado/em Pedido?", "code", "1B", "pending"],
+    ["O que já foi comprado?", "already_ordered", null, null],
+    ["Quais produtos estão sem estoque mínimo?", "missing_minimum", null, null],
+    ["O que preciso comprar?", "buy_now", null, null],
+  ];
+
+  for (const [message, mode, queryCode, codeIntent] of cases) {
+    const plan = resolveAssistantSemanticQueryPlan({
+      message,
+      semanticQuery: { kind: "PURCHASE_RECOMMENDATION" },
+      lastItemQuery: null,
+      lastSupplierOrderId: null,
+      lastSupplierOrderCatalogCode: null,
+    });
+    assert.equal(plan.kind, "PURCHASE_RECOMMENDATION", message);
+    assert.equal(plan.source, "DETERMINISTIC", message);
+    assert.deepEqual(plan.route, {
+      kind: "QUERY",
+      mode,
+      queryCode,
+      codeIntent,
+    }, message);
+  }
+});
+
+test("pipeline semântico preserva negociação, código e pendências de Pedidos", () => {
+  const cases = [
+    {
+      message: "Como está o Pedido 40959?",
+      focus: "ALL",
+      verify(query) {
+        assert.equal(query.mode, "DETAIL");
+        assert.equal(query.negotiationNumber, "40959");
+      },
+    },
+    {
+      message: "Tenho 1B nos Pedidos?",
+      focus: "ALL",
+      verify(query) {
+        assert.equal(query.catalogCode, "1B");
+      },
+    },
+    {
+      message: "O que falta retirar dos Pedidos?",
+      focus: "WAITING_PICKUP",
+      verify(query) {
+        assert.equal(query.hasWaitingPickup, true);
+        assert.equal(query.lineFocus, "WAITING_PICKUP");
+      },
+    },
+    {
+      message: "Quais Pedidos têm entrada pendente?",
+      focus: "WAITING_STOCK",
+      verify(query) {
+        assert.equal(query.hasWaitingStock, true);
+        assert.equal(query.lineFocus, "WAITING_STOCK");
+      },
+    },
+  ];
+
+  for (const { message, focus, verify } of cases) {
+    const plan = resolveAssistantSemanticQueryPlan({
+      message,
+      semanticQuery: { kind: "SUPPLIER_ORDERS", focus },
+      lastItemQuery: null,
+      lastSupplierOrderId: null,
+      lastSupplierOrderCatalogCode: null,
+      now: new Date("2026-09-03T12:00:00-03:00"),
+    });
+    assert.equal(plan.kind, "SUPPLIER_ORDERS", message);
+    assert.equal(plan.route.kind, "ORDER_QUERY", message);
+    verify(plan.route.query);
+  }
+});
+
+test("scope guard impede preview manual de operações vinculadas a Pedido", () => {
+  const cases = [
+    ["Retire 2 do 1B no Pedido 40959", "DEFER_TO_SUPPLIER_ORDER_PIPELINE"],
+    ["Dê entrada em 2 do 1B no Pedido 40959", "DEFER_TO_SUPPLIER_ORDER_PIPELINE"],
+    ["Baixe 2 do 1B", "ALLOW_MANUAL_PREVIEW"],
+  ];
+  for (const [message, expected] of cases) {
+    assert.equal(
+      resolveAssistantSemanticManualActionDisposition({
+        message,
+        conversationContext: emptyContext,
+      }),
+      expected,
+      message,
+    );
+  }
+
+  assert.equal(
+    resolveAssistantSemanticManualActionDisposition({
+      message: "Coloque 2 do 1B",
+      conversationContext: { ...emptyContext, topic: "SUPPLIER_ORDER" },
+    }),
+    "CLARIFY_SUPPLIER_ORDER_SCOPE",
+  );
 });
 
 test("ACTION extrai entrada e saída manual em linhas estritas sem resolver catálogo", async () => {
@@ -267,6 +389,8 @@ test("integração semântica só encaminha ações manuais aos builders de pré
   assert.match(assistant, /createAssistantManualStockEntry(?:Batch)?Preview/);
   assert.match(assistant, /createAssistantManualStockOutput(?:Batch)?Preview/);
   assert.match(assistant, /requiresManualStockIdentityChoice/);
+  assert.match(assistant, /resolveAssistantSemanticQueryPlan/);
+  assert.match(assistant, /resolveAssistantSemanticManualActionDisposition/);
   assert.doesNotMatch(semanticRouter, /\.rpc\(|createClient\(|proposalToken|idempotencyKey/);
   assert.doesNotMatch(semanticRouter, /SUPABASE_SERVICE_ROLE_KEY|NEXT_PUBLIC_GEMINI/);
   const semanticCallIndex = assistant.indexOf("const semanticOutcome");
@@ -277,4 +401,8 @@ test("integração semântica só encaminha ações manuais aos builders de pré
   assert.ok(assistant.indexOf("if (configurationDisassemblySelection)") < semanticCallIndex);
   assert.match(assistant, /Boolean\(selectedSupplierOrderItemId\)[\s\S]*routeAssistantMessageSemantically/);
   assert.doesNotMatch(semanticRouter, /confirmAssistant|executeAssistant|mark.*Ready|stock_movements/i);
+  const scopeGuardIndex = assistant.indexOf("const manualActionDisposition");
+  assert.ok(scopeGuardIndex > semanticCallIndex);
+  assert.ok(scopeGuardIndex < assistant.indexOf("createAssistantManualStockEntryPreview(lines[0]"));
+  assert.ok(scopeGuardIndex < assistant.indexOf("createAssistantManualStockOutputPreview(lines[0]"));
 });

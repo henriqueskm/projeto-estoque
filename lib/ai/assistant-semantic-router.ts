@@ -296,6 +296,7 @@ Exemplos:
 - "Já dei baixa em 2 do 1B" => CHAT, nunca ACTION.
 - "Não dê baixa no 1B" => CHAT, nunca ACTION.
 - "Quanto sobrou do 1B?" => QUERY/INVENTORY_ITEM.
+- "Errei o saldo, como corrijo?" => HELP/STOCK_ADJUSTMENT.
 - "Faz 2" => CLARIFY.
 
 Ações que não sejam entrada/saída manual devem apenas receber o action kind correspondente, com lines vazio, para o pipeline determinístico existente continuar.`;

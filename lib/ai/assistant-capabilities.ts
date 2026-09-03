@@ -16,6 +16,7 @@ export const assistantCapabilityIds = [
   "STATISTICS",
   "CATALOG_MEDIA",
   "MINIMUM_STOCK_MANAGEMENT",
+  "STOCK_ADJUSTMENT",
 ] as const;
 
 export type AssistantCapabilityId = (typeof assistantCapabilityIds)[number];
@@ -104,7 +105,7 @@ export const assistantCapabilities: readonly AssistantCapability[] = [
     steps: ["Informe o código comercial e a quantidade.", "Revise e confirme pelo botão."],
     examples: ["Monte 2 do Cód. 1H."],
     restrictions: ["A disponibilidade e a compatibilidade são verificadas pelo servidor."],
-    page: "/entrada",
+    page: "/estoque",
     availability: "ASSISTANT",
   },
   {
@@ -114,7 +115,7 @@ export const assistantCapabilities: readonly AssistantCapability[] = [
     steps: ["Informe o código comercial e a quantidade.", "Revise e confirme pelo botão."],
     examples: ["Desmonte 1 caixa do Cód. 1H."],
     restrictions: ["A operação só ocorre após confirmação pelo botão."],
-    page: "/saida",
+    page: "/estoque",
     availability: "ASSISTANT",
   },
   {
@@ -206,6 +207,22 @@ export const assistantCapabilities: readonly AssistantCapability[] = [
     steps: ["Abra Estoque.", "Localize o item ou configuração.", "Use a ação de estoque mínimo disponível na tela."],
     examples: [],
     restrictions: ["A Assistente pode consultar o mínimo, mas não alterá-lo pelo chat."],
+    page: "/estoque",
+    availability: "PAGE_ONLY",
+  },
+  {
+    id: "STOCK_ADJUSTMENT",
+    title: "Ajustar estoque",
+    description: "Permite corrigir um saldo pela tela Estoque usando a ação auditável existente.",
+    steps: [
+      "Abra Estoque.",
+      "Localize o item ou configuração.",
+      "Abra as ações.",
+      "Escolha “Ajustar estoque”.",
+      "Informe o novo ajuste conforme o fluxo atual.",
+    ],
+    examples: ["Errei o estoque, como corrijo?", "Como faço um ajuste de estoque?"],
+    restrictions: ["A Assistente não executa ajuste de saldo pelo chat."],
     page: "/estoque",
     availability: "PAGE_ONLY",
   },
