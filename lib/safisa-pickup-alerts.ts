@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import {
   groupSafisaPickupAlertLines,
@@ -179,5 +180,9 @@ export async function loadSafisaPickupAlerts(
     error: null,
   };
 }
+
+export const loadCurrentSafisaPickupAlerts = cache(() =>
+  loadSafisaPickupAlerts(),
+);
 
 export type { SafisaPickupAlert, SafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";

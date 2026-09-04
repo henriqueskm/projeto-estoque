@@ -269,22 +269,19 @@ test("limits total picked quantity to the valid ready quantity", () => {
   });
 });
 
-test("uses the readiness ceiling in the internal pickup control", () => {
+test("uses only the current ready waiting quantity in the bulk pickup control", () => {
   const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
 
-  assert.match(orders, /maximumSafisaPickupQuantity\(/);
-  assert.match(orders, /maximum=\{maximum\}/);
-  assert.match(orders, /const minimum = item\.pickedQuantity/);
-  assert.match(
-    orders,
-    /A retirada já registrada não pode ser reduzida, e o novo total não pode ultrapassar o que a Safisa informou como pronto/,
-  );
+  assert.match(orders, /const markAllQuantity = order\.readyWaitingPickupQuantity/);
+  assert.match(orders, /markSupplierOrderAllPicked\(/);
+  assert.match(orders, /Entrada automática no estoque/);
 });
 
-test("renders a read-only internal bell, Home summary, and order navigation", () => {
+test("renders a read-only internal bell, proactive Home attention, and order navigation", () => {
   const alertsUi = read("components/safisa-pickup-alerts.tsx");
   const shell = read("components/app-sidebar.tsx");
   const home = read("components/assistant-home.tsx");
+  const attention = read("lib/assistant-attention.ts");
   const orders = read("app/(authenticated)/pedidos/orders-workspace.tsx");
 
   assert.match(alertsUi, /aria-haspopup="dialog"/);
@@ -297,7 +294,8 @@ test("renders a read-only internal bell, Home summary, and order navigation", ()
   assert.match(alertsUi, /Não foi possível confirmar o estado/);
   assert.doesNotMatch(alertsUi, /Retirar pedido|Cancelar pedido|Estoque/);
   assert.match(shell, /SafisaPickupAlertBell/);
-  assert.match(home, /SafisaPickupAlertHomeSummary/);
+  assert.match(home, /AssistantAttentionSummaryView/);
+  assert.match(attention, /Itens prontos na Safisa/);
   assert.match(orders, /SafisaPickupBadge/);
   assert.match(orders, /readyWaitingPickupQuantity > 0/);
 });
