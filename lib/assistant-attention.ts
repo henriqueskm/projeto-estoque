@@ -11,6 +11,7 @@ export type AssistantAttentionReplenishmentSnapshot = {
   targetKind: "item" | "commercial_configuration";
   targetId: string;
   primaryCode: string;
+  description: string;
   currentStock: number;
   minimumStock: number | null;
   pendingPurchaseQuantity: number;
@@ -52,6 +53,7 @@ export type AssistantAttentionItem =
       };
       detail: AssistantAttentionDetail<{
         code: string;
+        description: string;
         currentStock: number;
         minimumStock: number;
         pendingPurchaseQuantity: number;
@@ -188,6 +190,7 @@ function buildReplenishmentItem(
     detail: limitDetailLines(
       orderedTargets.map((target) => ({
         code: target.primaryCode,
+        description: target.description,
         currentStock: safeQuantity(target.currentStock),
         minimumStock: safeQuantity(target.minimumStock ?? 0),
         pendingPurchaseQuantity: safeQuantity(

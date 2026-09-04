@@ -30,6 +30,7 @@ function replenishment(overrides = {}) {
     targetKind: "item",
     targetId: "item-1",
     primaryCode: "1B",
+    description: "SERVO MBF-025",
     currentStock: 2,
     minimumStock: 5,
     pendingPurchaseQuantity: 0,
@@ -281,9 +282,10 @@ test("detalhe de reposição usa remainingGap oficial e limita cinco linhas", ()
     ["C1", "C2"],
   );
   assert.equal(card?.detail.lines[0].remainingGap, 8);
+  assert.equal(card?.detail.lines[0].description, "SERVO MBF-025");
   assert.match(
     formatAssistantAttentionDetail(card),
-    /Já comprado 3 · Comprar mais 8/,
+    /Cód\. C1.*SERVO MBF-025.*Já comprado 3 · Comprar mais 8/,
   );
   assert.match(formatAssistantAttentionDetail(card), /E mais 3 itens/);
 });
@@ -303,7 +305,10 @@ test("clique local pode criar somente uma resposta da Assistente", () => {
     { id: "local-attention-message", role: "assistant" },
   );
   assert.match(message.content, /Reposição necessária/);
-  assert.match(message.content, /Est\. 2 · Mín\. 5 · Comprar 3/);
+  assert.match(
+    message.content,
+    /Cód\. 1B.*SERVO MBF-025.*Est\. 2 · Mín\. 5 · Comprar 3/,
+  );
 });
 
 test("detalhe Safisa mostra negociação humana e preserva a ordem oficial", () => {
@@ -450,6 +455,52 @@ test("loader usa readers oficiais controlados e não chama Gemini", async () => 
   );
   assert.doesNotMatch(attentionData, /Gemini|routeAssistantMessageSemantically|@google\/genai/);
   assert.doesNotMatch(homePage, /Gemini|routeAssistantMessageSemantically|@google\/genai/);
+});
+
+test("loader preserva a descrição oficial do reader de reposição", async () => {
+  const result = await loadAssistantAttention({
+    loadPurchaseRecommendations: async () => ({
+      data: {
+        allItems: [
+          {
+            targetKind: "item",
+            targetId: "item-3",
+            primaryCode: "3",
+            description: "SERVO CJ-015",
+            currentStock: 0,
+            minimumStock: 1,
+            pendingPurchaseQuantity: 0,
+            remainingGap: 1,
+          },
+        ],
+        buyNow: [],
+        alreadyOrdered: [],
+        missingMinimum: [],
+        summary: {
+          buyNowCount: 1,
+          alreadyOrderedCount: 0,
+          missingMinimumCount: 0,
+        },
+      },
+      error: null,
+    }),
+    loadSafisaPickupAlerts: async () => ({
+      data: { alerts: [], alertCount: 0, isComplete: true },
+      error: null,
+    }),
+    loadPendingStockOrders: async () => [],
+    now: () => generatedAt,
+  });
+  const card = result.data?.items.find(
+    (item) => item.kind === "REPLENISHMENT_NEEDED",
+  );
+
+  assert.ok(card);
+  assert.equal(card.detail.lines[0].description, "SERVO CJ-015");
+  assert.match(
+    formatAssistantAttentionDetail(card),
+    /Cód\. 3.*SERVO CJ-015.*Est\. 0 · Mín\. 1 · Comprar 1/,
+  );
 });
 
 test("falha de reader não é convertida em falso ALL_CLEAR", async () => {

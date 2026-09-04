@@ -102,6 +102,7 @@ export async function loadAssistantAttention(
               targetKind: item.targetKind,
               targetId: item.targetId,
               primaryCode: item.primaryCode,
+              description: item.description,
               currentStock: item.currentStock,
               minimumStock: item.minimumStock,
               pendingPurchaseQuantity: item.pendingPurchaseQuantity,

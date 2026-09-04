@@ -33,7 +33,7 @@ export function formatAssistantAttentionDetail(item: AssistantAttentionItem) {
         ? ` · Já comprado ${quantityFormatter.format(line.pendingPurchaseQuantity)} · Comprar mais ${quantityFormatter.format(line.remainingGap)}`
         : ` · Comprar ${quantityFormatter.format(line.remainingGap)}`;
 
-      return `- **${safeInlineLabel(line.code)}** — Est. ${quantityFormatter.format(line.currentStock)} · Mín. ${quantityFormatter.format(line.minimumStock)}${pending}`;
+      return `- **Cód. ${safeInlineLabel(line.code)}** — ${safeInlineLabel(line.description)} · Est. ${quantityFormatter.format(line.currentStock)} · Mín. ${quantityFormatter.format(line.minimumStock)}${pending}`;
     });
 
     return [
