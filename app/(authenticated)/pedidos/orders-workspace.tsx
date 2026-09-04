@@ -37,16 +37,20 @@ import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { getSafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";
 import { getSupplierOrderGlobalActionVisibility } from "@/lib/supplier-order-global-actions";
+import { isLatestSupplierOrderRequest } from "@/lib/supplier-orders-client-state";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type {
   CreateSupplierOrderInput,
   SupplierOrderCatalogConfiguration,
   SupplierOrderCatalogPhysicalItem,
+  SupplierOrderCatalog,
   SupplierOrderClosureKind,
+  SupplierOrderDetailData,
   SupplierOrderEvent,
   SupplierOrderItem,
   SupplierOrderLineInput,
-  SupplierOrdersData,
+  SupplierOrderSearchData,
+  SupplierOrderSummariesData,
   SupplierOrderStatus,
   SupplierOrderStockEntryReceipt,
   SupplierOrderSummary,
@@ -56,7 +60,7 @@ import type {
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 type SupplierOrdersWorkspaceProps = {
-  data: SupplierOrdersData;
+  data: SupplierOrderSummariesData;
   view: SupplierOrderView;
   initialOrderId: string | null;
 };
@@ -778,7 +782,7 @@ function OrderFormDialog({
   onStale,
   order,
 }: {
-  catalog: SupplierOrdersData["catalog"];
+  catalog: SupplierOrderCatalog;
   events: SupplierOrderEvent[];
   initialItems: SupplierOrderItem[];
   mode: "CREATE" | "EDIT";
@@ -3543,11 +3547,254 @@ function historyOrderMatchesPeriod(
   return date >= start && date <= today;
 }
 
+type AsyncDataState<T> =
+  | { status: "idle" | "loading"; data: null; error: null }
+  | { status: "ready"; data: T; error: null }
+  | { status: "error"; data: null; error: string };
+
+function useSupplierOrderDetail(
+  orderId: string | null,
+  view: SupplierOrderView,
+  reloadKey: number,
+) {
+  const [state, setState] = useState<AsyncDataState<SupplierOrderDetailData>>({
+    status: "idle",
+    data: null,
+    error: null,
+  });
+  const sequenceRef = useRef(0);
+
+  useEffect(() => {
+    if (!orderId) {
+      sequenceRef.current += 1;
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestSequence = ++sequenceRef.current;
+    const timeoutId = window.setTimeout(() => {
+      setState({ status: "loading", data: null, error: null });
+      void fetch(`/api/supplier-orders/${encodeURIComponent(orderId)}?view=${view}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      })
+      .then(async (response) => {
+        const payload = (await response.json()) as
+          | SupplierOrderDetailData
+          | { error?: string };
+        if (!response.ok || !("order" in payload)) {
+          throw new Error(
+            "error" in payload && payload.error
+              ? payload.error
+              : "Não foi possível carregar este pedido agora.",
+          );
+        }
+        if (
+          isLatestSupplierOrderRequest(
+            requestSequence,
+            sequenceRef.current,
+            orderId,
+            orderId,
+          )
+        ) {
+          setState({ status: "ready", data: payload, error: null });
+        }
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        if (
+          isLatestSupplierOrderRequest(
+            requestSequence,
+            sequenceRef.current,
+            orderId,
+            orderId,
+          )
+        ) {
+          setState({
+            status: "error",
+            data: null,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Não foi possível carregar este pedido agora.",
+          });
+        }
+      });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [orderId, reloadKey, view]);
+
+  if (!orderId) {
+    return { status: "idle", data: null, error: null } as const;
+  }
+
+  if (state.status === "ready" && state.data.order.id !== orderId) {
+    return { status: "loading", data: null, error: null } as const;
+  }
+
+  return state;
+}
+
+function useSupplierOrderSearch(
+  query: string,
+  view: SupplierOrderView,
+) {
+  const [searchState, setSearchState] = useState<{
+    query: string;
+    matchingOrderIds: Set<string>;
+    loading: boolean;
+  }>({ query: "", matchingOrderIds: new Set(), loading: false });
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return;
+    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      setSearchState({
+        query: trimmed,
+        matchingOrderIds: new Set(),
+        loading: true,
+      });
+      void fetch(
+        `/api/supplier-orders/search?view=${view}&q=${encodeURIComponent(trimmed)}`,
+        { cache: "no-store", signal: controller.signal },
+      )
+        .then(async (response) => {
+          const payload = (await response.json()) as
+            | SupplierOrderSearchData
+            | { error?: string };
+          if (!response.ok || !("orderIds" in payload)) {
+            throw new Error("Pesquisa indisponível");
+          }
+          setSearchState({
+            query: trimmed,
+            matchingOrderIds: new Set(payload.orderIds),
+            loading: false,
+          });
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setSearchState({
+              query: trimmed,
+              matchingOrderIds: new Set(),
+              loading: false,
+            });
+          }
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [query, view]);
+
+  const isCurrent =
+    query.trim().length >= 2 && searchState.query === query.trim();
+  return {
+    isSearching:
+      query.trim().length >= 2 && (!isCurrent || searchState.loading),
+    matchingOrderIds: isCurrent
+      ? searchState.matchingOrderIds
+      : new Set<string>(),
+  };
+}
+
+function AsyncOrderDialog({
+  error,
+  onClose,
+  title,
+}: {
+  error?: string;
+  onClose: () => void;
+  title: string;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useAccessibleDialog(dialogRef, closeButtonRef, false, onClose);
+
+  return (
+    <DialogShell
+      title={title}
+      titleId={titleId}
+      descriptionId={descriptionId}
+      dialogRef={dialogRef}
+      closeButtonRef={closeButtonRef}
+      isPending={false}
+      onClose={onClose}
+    >
+      <div className="p-5" id={descriptionId}>
+        {error ? (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">
+            {error}
+          </div>
+        ) : (
+          <div aria-label="Carregando pedido" className="space-y-3">
+            <div className="h-4 w-2/5 animate-pulse rounded bg-slate-200" />
+            <div className="h-20 animate-pulse rounded-xl bg-slate-100" />
+            <div className="h-20 animate-pulse rounded-xl bg-slate-100" />
+          </div>
+        )}
+      </div>
+    </DialogShell>
+  );
+}
+
+function OrderDetailPendingPanel({
+  error,
+  onClose,
+}: {
+  error?: string;
+  onClose: () => void;
+}) {
+  return (
+    <aside
+      data-testid="supplier-order-detail-pending"
+      aria-live="polite"
+      className="fixed right-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] left-3 z-[90] mx-auto max-w-md rounded-2xl border border-brand-charcoal/15 bg-surface p-4 shadow-[0_20px_60px_-28px_rgba(0,0,0,0.7)] lg:right-5 lg:left-auto lg:w-full"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-black text-text-primary">
+            {error ? "Pedido indisponível" : "Carregando pedido"}
+          </p>
+          {error ? (
+            <p role="alert" className="mt-1 text-sm font-semibold text-red-800">
+              {error}
+            </p>
+          ) : (
+            <div aria-label="Carregando pedido" className="mt-3 space-y-2">
+              <div className="h-3 w-2/5 animate-pulse rounded bg-slate-200" />
+              <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          aria-label="Cancelar carregamento do pedido"
+          onClick={onClose}
+          className="nk-focus inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-border-neutral text-text-primary"
+        >
+          <CloseIcon className="size-5" />
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 function ActiveSupplierOrdersWorkspace({
   data,
   initialOrderId,
 }: {
-  data: SupplierOrdersData;
+  data: SupplierOrderSummariesData;
   initialOrderId: string | null;
 }) {
   const router = useRouter();
@@ -3562,55 +3809,55 @@ function ActiveSupplierOrdersWorkspace({
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-
-  const itemsByOrder = useMemo(() => {
-    const grouped = new Map<string, SupplierOrderItem[]>();
-    data.items.forEach((item) => {
-      const current = grouped.get(item.supplierOrderId) ?? [];
-      current.push(item);
-      grouped.set(item.supplierOrderId, current);
-    });
-    grouped.forEach((items) =>
-      items.sort(
-        (first, second) =>
-          first.position - second.position ||
-          compareText(first.codeSnapshot, second.codeSnapshot),
-      ),
-    );
-    return grouped;
-  }, [data.items]);
-  const aliasesByConfigurationId = useMemo(
-    () =>
-      new Map(
-        data.catalog.configurations.map((configuration) => [
-          configuration.configurationId,
-          configuration.aliases.map((alias) => alias.code),
-        ]),
-      ),
-    [data.catalog.configurations],
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
+  const detailState = useSupplierOrderDetail(
+    selectedOrderId,
+    "active",
+    detailReloadKey,
   );
-
-  const eventsByOrder = useMemo(() => {
-    const grouped = new Map<string, SupplierOrderEvent[]>();
-    data.events.forEach((event) => {
-      const current = grouped.get(event.supplierOrderId) ?? [];
-      current.push(event);
-      grouped.set(event.supplierOrderId, current);
-    });
-    return grouped;
-  }, [data.events]);
-
-  const orderById = useMemo(
-    () => new Map(data.summaries.map((order) => [order.id, order])),
-    [data.summaries],
-  );
-  const selectedOrder = selectedOrderId
-    ? (orderById.get(selectedOrderId) ?? null)
-    : null;
-  const editingOrder = editingOrderId
-    ? (orderById.get(editingOrderId) ?? null)
-    : null;
+  const [catalogState, setCatalogState] = useState<
+    AsyncDataState<SupplierOrderCatalog>
+  >({ status: "idle", data: null, error: null });
   const normalizedQuery = normalizeSearch(search.trim());
+  const { isSearching, matchingOrderIds } = useSupplierOrderSearch(
+    search,
+    "active",
+  );
+  const editingOrder =
+    editingOrderId && detailState.status === "ready"
+      ? detailState.data.order
+      : null;
+
+  const loadCatalog = useCallback(() => {
+    if (catalogState.status !== "idle") return;
+    setCatalogState({ status: "loading", data: null, error: null });
+    void fetch("/api/supplier-orders/catalog", {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const payload = (await response.json()) as
+          | SupplierOrderCatalog
+          | { error?: string };
+        if (!response.ok || !("physicalItems" in payload)) {
+          throw new Error(
+            "error" in payload && payload.error
+              ? payload.error
+              : "Não foi possível carregar o catálogo agora.",
+          );
+        }
+        setCatalogState({ status: "ready", data: payload, error: null });
+      })
+      .catch((error: unknown) => {
+        setCatalogState({
+          status: "error",
+          data: null,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Não foi possível carregar o catálogo agora.",
+        });
+      });
+  }, [catalogState.status]);
 
   const indicators = useMemo(
     () => ({
@@ -3643,24 +3890,9 @@ function ActiveSupplierOrdersWorkspace({
         return true;
       }
 
-      const orderItems = itemsByOrder.get(order.id) ?? [];
-      return [
-        order.negotiationNumber,
-        ...orderItems.flatMap((item) => [
-          item.codeSnapshot,
-          item.descriptionSnapshot,
-          item.modelSnapshot,
-          item.commercialCodeSnapshot,
-          ...(item.commercialConfigurationId
-            ? (aliasesByConfigurationId.get(
-                item.commercialConfigurationId,
-              ) ?? [])
-            : []),
-        ]),
-      ].some((value) =>
-        value
-          ? normalizeSearch(value).includes(normalizedQuery)
-          : false,
+      return (
+        normalizeSearch(order.negotiationNumber).includes(normalizedQuery) ||
+        matchingOrderIds.has(order.id)
       );
     });
 
@@ -3689,8 +3921,7 @@ function ActiveSupplierOrdersWorkspace({
     });
   }, [
     data.summaries,
-    aliasesByConfigurationId,
-    itemsByOrder,
+    matchingOrderIds,
     normalizedQuery,
     periodFilter,
     sort,
@@ -3707,6 +3938,7 @@ function ActiveSupplierOrdersWorkspace({
       setFeedback(message);
       if (orderId) {
         setSelectedOrderId(orderId);
+        setDetailReloadKey((current) => current + 1);
       }
       router.refresh();
     },
@@ -3741,6 +3973,7 @@ function ActiveSupplierOrdersWorkspace({
         <button
           type="button"
           onClick={() => {
+            loadCatalog();
             setCreatingOrder(true);
             setSelectedOrderId(null);
             setEditingOrderId(null);
@@ -3814,6 +4047,12 @@ function ActiveSupplierOrdersWorkspace({
             ) : null}
           </button>
         </div>
+
+        {isSearching ? (
+          <p role="status" className="mt-2 text-xs font-semibold text-text-muted">
+            Pesquisando nos itens dos pedidos…
+          </p>
+        ) : null}
 
         {filtersOpen ? (
           <div
@@ -3896,7 +4135,10 @@ function ActiveSupplierOrdersWorkspace({
           </p>
           <button
             type="button"
-            onClick={() => setCreatingOrder(true)}
+            onClick={() => {
+              loadCatalog();
+              setCreatingOrder(true);
+            }}
             className="nk-focus mt-4 inline-flex min-h-12 items-center gap-2 rounded-xl bg-brand-charcoal px-5 text-sm font-black text-white"
           >
             <PlusIcon className="size-5" />
@@ -4075,13 +4317,13 @@ function ActiveSupplierOrdersWorkspace({
           </div>
       )}
 
-      {creatingOrder ? (
+      {creatingOrder && catalogState.status === "ready" ? (
         <OrderFormDialog
           mode="CREATE"
           order={null}
           initialItems={[]}
           events={[]}
-          catalog={data.catalog}
+          catalog={catalogState.data}
           onClose={() => setCreatingOrder(false)}
           onStale={(message) => {
             setCreatingOrder(false);
@@ -4095,14 +4337,29 @@ function ActiveSupplierOrdersWorkspace({
         />
       ) : null}
 
-      {editingOrder ? (
+      {creatingOrder && catalogState.status !== "ready" ? (
+        <AsyncOrderDialog
+          title="Preparando novo pedido"
+          error={catalogState.error ?? undefined}
+          onClose={() => {
+            setCreatingOrder(false);
+            if (catalogState.status === "error") {
+              setCatalogState({ status: "idle", data: null, error: null });
+            }
+          }}
+        />
+      ) : null}
+
+      {editingOrder &&
+      catalogState.status === "ready" &&
+      detailState.status === "ready" ? (
         <OrderFormDialog
           key={`${editingOrder.id}:${editingOrder.updatedAt}`}
           mode="EDIT"
           order={editingOrder}
-          initialItems={itemsByOrder.get(editingOrder.id) ?? []}
-          events={eventsByOrder.get(editingOrder.id) ?? []}
-          catalog={data.catalog}
+          initialItems={detailState.data.items}
+          events={detailState.data.events}
+          catalog={catalogState.data}
           onClose={() => setEditingOrderId(null)}
           onStale={(message) => {
             setEditingOrderId(null);
@@ -4116,20 +4373,55 @@ function ActiveSupplierOrdersWorkspace({
         />
       ) : null}
 
-      {selectedOrder && !editingOrder ? (
-        <OrderDetailsDialog
-          key={`${selectedOrder.id}:${selectedOrder.updatedAt}`}
-          order={selectedOrder}
-          items={itemsByOrder.get(selectedOrder.id) ?? []}
+      {editingOrderId && (!editingOrder || catalogState.status !== "ready") ? (
+        <AsyncOrderDialog
+          title="Preparando edição"
+          error={
+            detailState.status === "error"
+              ? detailState.error
+              : catalogState.error ?? undefined
+          }
+          onClose={() => {
+            setEditingOrderId(null);
+            if (catalogState.status === "error") {
+              setCatalogState({ status: "idle", data: null, error: null });
+            }
+          }}
+        />
+      ) : null}
+
+      {selectedOrderId && !editingOrderId && detailState.status === "loading" ? (
+        <OrderDetailPendingPanel
           onClose={() => setSelectedOrderId(null)}
-          onEdit={() => setEditingOrderId(selectedOrder.id)}
+        />
+      ) : null}
+
+      {selectedOrderId && !editingOrderId && detailState.status === "error" ? (
+        <OrderDetailPendingPanel
+          error={detailState.error}
+          onClose={() => setSelectedOrderId(null)}
+        />
+      ) : null}
+
+      {selectedOrderId && !editingOrderId && detailState.status === "ready" ? (
+        <OrderDetailsDialog
+          key={`${detailState.data.order.id}:${detailState.data.order.updatedAt}`}
+          order={detailState.data.order}
+          items={detailState.data.items}
+          onClose={() => setSelectedOrderId(null)}
+          onEdit={() => {
+            loadCatalog();
+            setEditingOrderId(detailState.data.order.id);
+          }}
           onFinalized={() => {
             setSelectedOrderId(null);
             handleMutated(
               "Pedido finalizado e movido para o Histórico.",
             );
           }}
-          onMutated={(message) => handleMutated(message, selectedOrder.id)}
+          onMutated={(message) =>
+            handleMutated(message, detailState.data.order.id)
+          }
           onStale={(message) => {
             setFeedback(message);
             router.refresh();
@@ -4161,7 +4453,7 @@ function HistorySupplierOrdersWorkspace({
   data,
   initialOrderId,
 }: {
-  data: SupplierOrdersData;
+  data: SupplierOrderSummariesData;
   initialOrderId: string | null;
 }) {
   const router = useRouter();
@@ -4175,34 +4467,17 @@ function HistorySupplierOrdersWorkspace({
     initialOrderId,
   );
   const [feedback, setFeedback] = useState<string | null>(null);
-
-  const itemsByOrder = useMemo(() => {
-    const grouped = new Map<string, SupplierOrderItem[]>();
-    data.items.forEach((item) => {
-      const current = grouped.get(item.supplierOrderId) ?? [];
-      current.push(item);
-      grouped.set(item.supplierOrderId, current);
-    });
-    grouped.forEach((items) =>
-      items.sort(
-        (first, second) =>
-          first.position - second.position ||
-          compareText(first.codeSnapshot, second.codeSnapshot),
-      ),
-    );
-    return grouped;
-  }, [data.items]);
-  const aliasesByConfigurationId = useMemo(
-    () =>
-      new Map(
-        data.catalog.configurations.map((configuration) => [
-          configuration.configurationId,
-          configuration.aliases.map((alias) => alias.code),
-        ]),
-      ),
-    [data.catalog.configurations],
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
+  const detailState = useSupplierOrderDetail(
+    selectedOrderId,
+    "history",
+    detailReloadKey,
   );
   const normalizedQuery = normalizeSearch(search.trim());
+  const { isSearching, matchingOrderIds } = useSupplierOrderSearch(
+    search,
+    "history",
+  );
   const filteredOrders = useMemo(() => {
     const result = data.summaries.filter((order) => {
       if (
@@ -4228,25 +4503,9 @@ function HistorySupplierOrdersWorkspace({
         return true;
       }
 
-      const values = [
-        order.negotiationNumber,
-        ...(itemsByOrder.get(order.id) ?? []).flatMap((item) => [
-          item.codeSnapshot,
-          item.descriptionSnapshot,
-          item.modelSnapshot,
-          item.commercialCodeSnapshot,
-          ...(item.commercialConfigurationId
-            ? (aliasesByConfigurationId.get(
-                item.commercialConfigurationId,
-              ) ?? [])
-            : []),
-        ]),
-      ];
-
-      return values.some((value) =>
-        value
-          ? normalizeSearch(value).includes(normalizedQuery)
-          : false,
+      return (
+        normalizeSearch(order.negotiationNumber).includes(normalizedQuery) ||
+        matchingOrderIds.has(order.id)
       );
     });
 
@@ -4275,10 +4534,9 @@ function HistorySupplierOrdersWorkspace({
         : secondClosed - firstClosed;
     });
   }, [
-    aliasesByConfigurationId,
     closureFilter,
     data.summaries,
-    itemsByOrder,
+    matchingOrderIds,
     normalizedQuery,
     periodFilter,
     sort,
@@ -4301,9 +4559,6 @@ function HistorySupplierOrdersWorkspace({
     }),
     [filteredOrders],
   );
-  const selectedOrder = selectedOrderId
-    ? (data.summaries.find((order) => order.id === selectedOrderId) ?? null)
-    : null;
   const activeFilterCount =
     (closureFilter !== "ALL" ? 1 : 0) +
     (periodFilter !== "ALL" ? 1 : 0);
@@ -4393,6 +4648,12 @@ function HistorySupplierOrdersWorkspace({
             ) : null}
           </button>
         </div>
+
+        {isSearching ? (
+          <p role="status" className="mt-2 text-xs font-semibold text-text-muted">
+            Pesquisando nos itens dos pedidos…
+          </p>
+        ) : null}
 
         {filtersOpen ? (
           <div
@@ -4633,17 +4894,31 @@ function HistorySupplierOrdersWorkspace({
         </div>
       )}
 
-      {selectedOrder ? (
+      {selectedOrderId && detailState.status === "loading" ? (
+        <OrderDetailPendingPanel
+          onClose={() => setSelectedOrderId(null)}
+        />
+      ) : null}
+
+      {selectedOrderId && detailState.status === "error" ? (
+        <OrderDetailPendingPanel
+          error={detailState.error}
+          onClose={() => setSelectedOrderId(null)}
+        />
+      ) : null}
+
+      {selectedOrderId && detailState.status === "ready" ? (
         <OrderDetailsDialog
-          key={`${selectedOrder.id}:${selectedOrder.updatedAt}`}
-          order={selectedOrder}
-          items={itemsByOrder.get(selectedOrder.id) ?? []}
+          key={`${detailState.data.order.id}:${detailState.data.order.updatedAt}`}
+          order={detailState.data.order}
+          items={detailState.data.items}
           readOnly
           onClose={() => setSelectedOrderId(null)}
           onEdit={() => undefined}
           onFinalized={() => undefined}
           onMutated={(message) => {
             setFeedback(message);
+            setDetailReloadKey((current) => current + 1);
             router.refresh();
           }}
           onStale={(message) => {

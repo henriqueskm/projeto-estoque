@@ -1,23 +1,26 @@
-import { createClient } from "@/lib/supabase/server";
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 import { createCompatibleKitImageMap } from "@/lib/compatible-kit-images";
-import { toSafeWaitingStockQuantity } from "./ai/supplier-order-stock-entry-plan";
+import { toSafeWaitingStockQuantity } from "@/lib/ai/supplier-order-stock-entry-plan";
 import {
   physicalItemTypes,
   type PhysicalItemType,
 } from "@/lib/inbound-types";
+import { createClient } from "@/lib/supabase/server";
 import {
-  supplierOrderEventTypes,
   supplierOrderClosureKinds,
+  supplierOrderEventTypes,
   supplierOrderStatuses,
+  type SupplierOrderCatalog,
   type SupplierOrderCatalogConfiguration,
   type SupplierOrderCatalogPhysicalItem,
+  type SupplierOrderDetailData,
   type SupplierOrderEvent,
   type SupplierOrderEventType,
   type SupplierOrderClosureKind,
   type SupplierOrderItem,
-  type SupplierOrdersData,
+  type SupplierOrderSearchData,
   type SupplierOrderStatus,
+  type SupplierOrderSummariesData,
   type SupplierOrderSummary,
   type SupplierOrderView,
 } from "@/lib/supplier-orders-types";
@@ -103,10 +106,7 @@ type ItemRow = {
   is_active: boolean;
 };
 
-type ServoModelRow = {
-  item_id: string;
-  model: string | null;
-};
+type ServoModelRow = { item_id: string; model: string | null };
 
 type ConfigurationRow = {
   id: string;
@@ -124,15 +124,47 @@ type CommercialCodeRow = {
   is_active: boolean;
 };
 
-export type SupplierOrdersDataResult =
-  | {
-      data: SupplierOrdersData;
-      error: null;
-    }
-  | {
-      data: null;
-      error: string;
-    };
+type SupplierOrdersClient = Awaited<ReturnType<typeof createClient>>;
+
+export type SupplierOrdersDataResult<T> =
+  | { data: T; error: null }
+  | { data: null; error: string };
+
+type PerformanceMetric = {
+  loader: "summaries" | "detail" | "catalog" | "search";
+  durationMs: number;
+  queryCount: number;
+  waveCount: number;
+  rowCount: number;
+  payloadBytes: number;
+};
+
+const eventSelect =
+  "id, supplier_order_id, supplier_order_item_id, event_type, user_name_snapshot, previous_quantity, new_quantity, quantity_delta, description, created_at";
+const configurationSelect =
+  "id, description, image_path, servo_id, installation_kit_id, is_active";
+
+function shouldLogPerformance() {
+  return (
+    process.env.NODE_ENV !== "production" ||
+    process.env.VERCEL_ENV === "preview"
+  );
+}
+
+function measurePayload(value: unknown) {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch {
+    return 0;
+  }
+}
+
+function logPerformance(metric: PerformanceMetric) {
+  if (!shouldLogPerformance()) return;
+  console.info(
+    JSON.stringify({ event: "supplier_orders_performance", ...metric }),
+  );
+}
 
 function compareCodes(first: { code: string }, second: { code: string }) {
   return first.code.localeCompare(second.code, "pt-BR", {
@@ -145,9 +177,7 @@ function isSupplierOrderStatus(value: string): value is SupplierOrderStatus {
   return supplierOrderStatuses.some((status) => status === value);
 }
 
-function isSupplierOrderEventType(
-  value: string,
-): value is SupplierOrderEventType {
+function isSupplierOrderEventType(value: string): value is SupplierOrderEventType {
   return supplierOrderEventTypes.some((eventType) => eventType === value);
 }
 
@@ -167,12 +197,27 @@ function asSafeInteger(value: unknown) {
       : typeof value === "string" && value.trim()
         ? Number(value)
         : Number.NaN;
-
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+export function isSupplierOrderView(value: unknown): value is SupplierOrderView {
+  return value === "active" || value === "history";
+}
+
+export function isSupplierOrderId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
 }
 
 export const supplierOrderSummarySelect =
   "id, negotiation_number, order_date, notes, created_by_name_snapshot, created_at, updated_at, cancelled_at, cancelled_by_name_snapshot, cancellation_note, finalized_at, finalized_by_name_snapshot, finalization_note, is_finalized, is_active_order, is_in_history, closure_kind, closed_at, closed_by_name_snapshot, line_count, ordered_quantity, ready_quantity, picked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_ready_quantity, ready_waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity, pickup_percentage, status";
+
+export const supplierOrderListSummarySelect =
+  "id, negotiation_number, order_date, created_at, updated_at, is_finalized, is_active_order, is_in_history, closure_kind, closed_at, line_count, ordered_quantity, ready_quantity, picked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_ready_quantity, ready_waiting_pickup_quantity, stocked_quantity, waiting_stock_quantity, pickup_percentage, status";
 
 export const supplierOrderItemSelect =
   "id, supplier_order_id, item_id, commercial_configuration_id, commercial_configuration_code_id, code_snapshot, description_snapshot, model_snapshot, item_type_snapshot, commercial_code_snapshot, ordered_quantity, ready_quantity, picked_quantity, stocked_quantity, cancelled_quantity, waiting_pickup_quantity, waiting_ready_quantity, ready_waiting_pickup_quantity, waiting_stock_quantity, position, notes, created_at, updated_at";
@@ -180,10 +225,7 @@ export const supplierOrderItemSelect =
 export function mapSupplierOrderSummary(
   row: SupplierOrderSummaryRow,
 ): SupplierOrderSummary | null {
-  if (!isSupplierOrderStatus(row.status)) {
-    return null;
-  }
-
+  if (!isSupplierOrderStatus(row.status)) return null;
   return {
     id: row.id,
     negotiationNumber: row.negotiation_number,
@@ -221,18 +263,46 @@ export function mapSupplierOrderSummary(
   };
 }
 
+function mapSupplierOrderListSummary(
+  row: Omit<
+    SupplierOrderSummaryRow,
+    | "notes"
+    | "created_by_name_snapshot"
+    | "cancelled_at"
+    | "cancelled_by_name_snapshot"
+    | "cancellation_note"
+    | "finalized_at"
+    | "finalized_by_name_snapshot"
+    | "finalization_note"
+    | "closed_by_name_snapshot"
+  >,
+) {
+  return mapSupplierOrderSummary({
+    ...row,
+    notes: null,
+    created_by_name_snapshot: "",
+    cancelled_at: null,
+    cancelled_by_name_snapshot: null,
+    cancellation_note: null,
+    finalized_at: null,
+    finalized_by_name_snapshot: null,
+    finalization_note: null,
+    closed_by_name_snapshot: null,
+  });
+}
+
 export function mapSupplierOrderItem(
   row: SupplierOrderItemRow,
 ): SupplierOrderItem | null {
-  const itemType = row.item_type_snapshot;
   const physicalItemType = physicalItemTypes.find(
-    (physicalType) => physicalType === itemType,
+    (itemType) => itemType === row.item_type_snapshot,
   );
-
-  if (itemType !== "COMMERCIAL_CONFIGURATION" && !physicalItemType) {
+  if (
+    row.item_type_snapshot !== "COMMERCIAL_CONFIGURATION" &&
+    !physicalItemType
+  ) {
     return null;
   }
-
   return {
     id: row.id,
     supplierOrderId: row.supplier_order_id,
@@ -243,8 +313,8 @@ export function mapSupplierOrderItem(
     descriptionSnapshot: row.description_snapshot,
     modelSnapshot: row.model_snapshot,
     itemTypeSnapshot:
-      itemType === "COMMERCIAL_CONFIGURATION"
-        ? itemType
+      row.item_type_snapshot === "COMMERCIAL_CONFIGURATION"
+        ? row.item_type_snapshot
         : physicalItemType!,
     commercialCodeSnapshot: row.commercial_code_snapshot,
     imageUrl: null,
@@ -266,10 +336,7 @@ export function mapSupplierOrderItem(
 }
 
 function mapEvent(row: EventRow): SupplierOrderEvent | null {
-  if (!isSupplierOrderEventType(row.event_type)) {
-    return null;
-  }
-
+  if (!isSupplierOrderEventType(row.event_type)) return null;
   return {
     id: row.id,
     supplierOrderId: row.supplier_order_id,
@@ -284,316 +351,525 @@ function mapEvent(row: EventRow): SupplierOrderEvent | null {
   };
 }
 
-export async function loadSupplierOrdersData(
-  view: SupplierOrderView,
-): Promise<SupplierOrdersDataResult> {
-  try {
-    const supabase = await createClient();
-    const classificationColumn =
-      view === "history" ? "is_in_history" : "is_active_order";
-    let summariesQuery = supabase
-      .from("supplier_order_summaries")
-      .select(
-        supplierOrderSummarySelect,
-      )
-      .eq(classificationColumn, true);
-
-    summariesQuery =
-      view === "history"
-        ? summariesQuery
-            .order("closed_at", { ascending: false })
-            .order("order_date", { ascending: false })
-            .order("created_at", { ascending: false })
-        : summariesQuery
-            .order("order_date", { ascending: false })
-            .order("created_at", { ascending: false });
-
-    const summariesResult = await summariesQuery;
-
-    if (summariesResult.error) {
-      return {
-        data: null,
-        error: "Não foi possível carregar os pedidos agora.",
-      };
-    }
-
-    const summaries = (
-      (summariesResult.data ?? []) as SupplierOrderSummaryRow[]
-    )
-      .map(mapSupplierOrderSummary)
-      .filter((summary): summary is SupplierOrderSummary => Boolean(summary));
-    const supplierOrderIds = summaries.map((summary) => summary.id);
-    const orderItemsPromise =
-      supplierOrderIds.length > 0
-        ? supabase
-            .from("supplier_order_item_details")
-            .select(
-              supplierOrderItemSelect,
-            )
-            .in("supplier_order_id", supplierOrderIds)
-            .order("supplier_order_id")
-            .order("position")
-        : Promise.resolve({ data: [], error: null });
-    const eventsPromise =
-      view === "active" && supplierOrderIds.length > 0
-        ? supabase
-            .from("supplier_order_events")
-            .select(
-              "id, supplier_order_id, supplier_order_item_id, event_type, user_name_snapshot, previous_quantity, new_quantity, quantity_delta, description, created_at",
-            )
-            .in("supplier_order_id", supplierOrderIds)
-            .order("created_at", { ascending: false })
-        : Promise.resolve({ data: [], error: null });
-    const [
-      orderItemsResult,
-      eventsResult,
-      itemsResult,
-      servoModelsResult,
-      configurationsResult,
-      commercialCodesResult,
-    ] = await Promise.all([
-      orderItemsPromise,
-      eventsPromise,
-      supabase
+async function loadCatalogRows(client: SupplierOrdersClient) {
+  const [itemsResult, modelsResult, configurationsResult, codesResult] =
+    await Promise.all([
+      client
         .from("items")
         .select("id, code, description, item_type, is_active")
         .in("item_type", [...physicalItemTypes]),
-      supabase.from("servo_models").select("item_id, model"),
-      supabase
-        .from("commercial_configurations")
-        .select(
-          "id, description, image_path, servo_id, installation_kit_id, is_active",
-        ),
-      supabase
+      client.from("servo_models").select("item_id, model"),
+      client.from("commercial_configurations").select(configurationSelect),
+      client
         .from("commercial_configuration_codes")
         .select("id, code, configuration_id, is_active"),
     ]);
+  const error = [
+    itemsResult.error,
+    modelsResult.error,
+    configurationsResult.error,
+    codesResult.error,
+  ].find(Boolean);
+  if (error) return null;
+  return {
+    items: (itemsResult.data ?? []) as ItemRow[],
+    models: (modelsResult.data ?? []) as ServoModelRow[],
+    configurations: (configurationsResult.data ?? []) as ConfigurationRow[],
+    codes: (codesResult.data ?? []) as CommercialCodeRow[],
+  };
+}
 
-    const readError = [
-      orderItemsResult.error,
-      eventsResult.error,
-      itemsResult.error,
-      servoModelsResult.error,
-      configurationsResult.error,
-      commercialCodesResult.error,
-    ].find(Boolean);
-
-    if (readError) {
-      return {
-        data: null,
-        error: "Não foi possível carregar os pedidos agora.",
-      };
-    }
-
-    const orderItemDrafts = (
-      (orderItemsResult.data ?? []) as SupplierOrderItemRow[]
-    )
-      .map(mapSupplierOrderItem)
-      .filter((item): item is SupplierOrderItem => Boolean(item));
-    const events = ((eventsResult.data ?? []) as EventRow[])
-      .map(mapEvent)
-      .filter((event): event is SupplierOrderEvent => Boolean(event));
-    const items = (itemsResult.data ?? []) as ItemRow[];
-    const servoModels = (servoModelsResult.data ?? []) as ServoModelRow[];
-    const allConfigurations = (configurationsResult.data ??
-      []) as ConfigurationRow[];
-    const commercialCodes = (commercialCodesResult.data ??
-      []) as CommercialCodeRow[];
-    const referencedConfigurationIds = new Set(
-      orderItemDrafts.flatMap((item) =>
-        item.commercialConfigurationId
-          ? [item.commercialConfigurationId]
+async function buildCatalog(
+  client: SupplierOrdersClient,
+  rows: NonNullable<Awaited<ReturnType<typeof loadCatalogRows>>>,
+  activeOnly = true,
+): Promise<SupplierOrderCatalog> {
+  const imageUrlByPath = await createCommercialImageUrlMap(
+    client,
+    rows.configurations.map((configuration) => configuration.image_path),
+  );
+  const itemById = new Map(rows.items.map((item) => [item.id, item]));
+  const modelByServoId = new Map(
+    rows.models.map((model) => [model.item_id, model.model]),
+  );
+  const codesByConfiguration = new Map<string, CommercialCodeRow[]>();
+  rows.codes.forEach((code) => {
+    const aliases = codesByConfiguration.get(code.configuration_id) ?? [];
+    aliases.push(code);
+    codesByConfiguration.set(code.configuration_id, aliases);
+  });
+  codesByConfiguration.forEach((aliases) => aliases.sort(compareCodes));
+  const imageUrlByConfigurationId = new Map(
+    rows.configurations.map((configuration) => [
+      configuration.id,
+      configuration.image_path
+        ? (imageUrlByPath.get(configuration.image_path) ?? null)
+        : null,
+    ]),
+  );
+  const compatibleKitImagesByItemId = createCompatibleKitImageMap(
+    rows.configurations.flatMap((configuration) => {
+      const servo = itemById.get(configuration.servo_id);
+      const kit = itemById.get(configuration.installation_kit_id);
+      const aliases = (codesByConfiguration.get(configuration.id) ?? []).filter(
+        (alias) => alias.is_active,
+      );
+      const imageUrl = imageUrlByConfigurationId.get(configuration.id) ?? null;
+      if (
+        (activeOnly && !configuration.is_active) ||
+        servo?.item_type !== "SERVO" ||
+        (activeOnly && !servo.is_active) ||
+        kit?.item_type !== "INSTALLATION_KIT" ||
+        (activeOnly && !kit.is_active) ||
+        aliases.length === 0 ||
+        !imageUrl
+      ) {
+        return [];
+      }
+      return [
+        {
+          installationKitId: kit.id,
+          configurationId: configuration.id,
+          commercialCodes: aliases.map((alias) => alias.code),
+          servoCode: servo.code,
+          servoDescription: servo.description,
+          servoModel: modelByServoId.get(servo.id) ?? null,
+          installationKitCode: kit.code,
+          description:
+            configuration.description?.trim() ||
+            `${servo.description} + ${kit.code}`,
+          imageUrl,
+        },
+      ];
+    }),
+  );
+  const physicalItems: SupplierOrderCatalogPhysicalItem[] = rows.items
+    .filter((item) => !activeOnly || item.is_active)
+    .map((item) => ({
+      kind: "ITEM" as const,
+      itemId: item.id,
+      code: item.code,
+      description: item.description,
+      model:
+        item.item_type === "SERVO"
+          ? (modelByServoId.get(item.id) ?? null)
+          : null,
+      itemType: item.item_type,
+      imageUrl: null,
+      compatibleKitImages:
+        item.item_type === "INSTALLATION_KIT"
+          ? (compatibleKitImagesByItemId.get(item.id) ?? [])
           : [],
+    }))
+    .sort(compareCodes);
+  const configurations: SupplierOrderCatalogConfiguration[] =
+    rows.configurations
+      .flatMap((configuration) => {
+        const servo = itemById.get(configuration.servo_id);
+        const kit = itemById.get(configuration.installation_kit_id);
+        if (
+          (activeOnly && !configuration.is_active) ||
+          servo?.item_type !== "SERVO" ||
+          (activeOnly && !servo.is_active) ||
+          kit?.item_type !== "INSTALLATION_KIT" ||
+          (activeOnly && !kit.is_active)
+        ) {
+          return [];
+        }
+        return [
+          {
+            kind: "COMMERCIAL_CONFIGURATION" as const,
+            configurationId: configuration.id,
+            description:
+              configuration.description?.trim() ||
+              `${servo.description} + ${kit.code}`,
+            servoCode: servo.code,
+            servoDescription: servo.description,
+            servoModel: modelByServoId.get(servo.id) ?? null,
+            installationKitCode: kit.code,
+            installationKitDescription: kit.description,
+            imageUrl: imageUrlByConfigurationId.get(configuration.id) ?? null,
+            aliases: (codesByConfiguration.get(configuration.id) ?? [])
+              .filter((code) => !activeOnly || code.is_active)
+              .map((code) => ({ id: code.id, code: code.code })),
+          },
+        ];
+      })
+      .sort((first, second) =>
+        compareCodes(
+          { code: first.aliases[0]?.code ?? first.servoCode },
+          { code: second.aliases[0]?.code ?? second.servoCode },
+        ),
+      );
+  return { physicalItems, configurations };
+}
+
+export async function loadSupplierOrderSummariesWithClient(
+  view: SupplierOrderView,
+  client: SupplierOrdersClient,
+): Promise<SupplierOrdersDataResult<SupplierOrderSummariesData>> {
+  const startedAt = performance.now();
+  const classificationColumn =
+    view === "history" ? "is_in_history" : "is_active_order";
+  let query = client
+    .from("supplier_order_summaries")
+    .select(supplierOrderListSummarySelect)
+    .eq(classificationColumn, true);
+  query =
+    view === "history"
+      ? query
+          .order("closed_at", { ascending: false })
+          .order("order_date", { ascending: false })
+          .order("created_at", { ascending: false })
+      : query
+          .order("order_date", { ascending: false })
+          .order("created_at", { ascending: false });
+  const result = await query;
+  if (result.error) {
+    return { data: null, error: "Não foi possível carregar os pedidos agora." };
+  }
+  const summaries = (
+    (result.data ?? []) as Parameters<typeof mapSupplierOrderListSummary>[0][]
+  )
+    .map(mapSupplierOrderListSummary)
+    .filter((summary): summary is SupplierOrderSummary => Boolean(summary));
+  const data = { view, summaries };
+  logPerformance({
+    loader: "summaries",
+    durationMs: Math.round(performance.now() - startedAt),
+    queryCount: 1,
+    waveCount: 1,
+    rowCount: summaries.length,
+    payloadBytes: measurePayload(data),
+  });
+  return { data, error: null };
+}
+
+export async function loadSupplierOrderSummaries(
+  view: SupplierOrderView,
+): Promise<SupplierOrdersDataResult<SupplierOrderSummariesData>> {
+  try {
+    return await loadSupplierOrderSummariesWithClient(view, await createClient());
+  } catch {
+    return { data: null, error: "Não foi possível carregar os pedidos agora." };
+  }
+}
+
+async function enrichDetailItems(
+  client: SupplierOrdersClient,
+  drafts: SupplierOrderItem[],
+) {
+  const configurationIds = [
+    ...new Set(
+      drafts.flatMap((item) =>
+        item.commercialConfigurationId ? [item.commercialConfigurationId] : [],
       ),
-    );
-    const referencedInstallationKitIds = new Set(
-      orderItemDrafts.flatMap((item) =>
+    ),
+  ];
+  const installationKitIds = [
+    ...new Set(
+      drafts.flatMap((item) =>
         item.itemTypeSnapshot === "INSTALLATION_KIT" && item.itemId
           ? [item.itemId]
           : [],
       ),
-    );
-    const configurations =
-      view === "active"
-        ? allConfigurations
-        : allConfigurations.filter(
-            (configuration) =>
-              referencedConfigurationIds.has(configuration.id) ||
-              referencedInstallationKitIds.has(
-                configuration.installation_kit_id,
-              ),
-          );
-    const imageUrlByPath = await createCommercialImageUrlMap(
-      supabase,
-      configurations.map((configuration) => configuration.image_path),
-    );
-    const imageUrlByConfigurationId = new Map(
-      configurations.map((configuration) => [
-        configuration.id,
-        configuration.image_path
-          ? (imageUrlByPath.get(configuration.image_path) ?? null)
-          : null,
+    ),
+  ];
+  if (configurationIds.length === 0 && installationKitIds.length === 0) {
+    return { items: drafts, queryCount: 0, waveCount: 0 };
+  }
+  const configurationQueryCount =
+    Number(configurationIds.length > 0) + Number(installationKitIds.length > 0);
+  const [directResult, compatibleResult] = await Promise.all([
+    configurationIds.length
+      ? client
+          .from("commercial_configurations")
+          .select(configurationSelect)
+          .in("id", configurationIds)
+      : Promise.resolve({ data: [], error: null }),
+    installationKitIds.length
+      ? client
+          .from("commercial_configurations")
+          .select(configurationSelect)
+          .in("installation_kit_id", installationKitIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (directResult.error || compatibleResult.error) {
+    return { items: drafts, queryCount: configurationQueryCount, waveCount: 1 };
+  }
+  const configurationMap = new Map<string, ConfigurationRow>();
+  [
+    ...((directResult.data ?? []) as ConfigurationRow[]),
+    ...((compatibleResult.data ?? []) as ConfigurationRow[]),
+  ].forEach((configuration) =>
+    configurationMap.set(configuration.id, configuration),
+  );
+  const configurations = [...configurationMap.values()];
+  const relatedItemIds = [
+    ...new Set(
+      configurations.flatMap((configuration) => [
+        configuration.servo_id,
+        configuration.installation_kit_id,
       ]),
-    );
-    const modelByServoId = new Map(
-      servoModels.map((servo) => [servo.item_id, servo.model]),
-    );
-    const itemById = new Map(items.map((item) => [item.id, item]));
-    const codesByConfiguration = new Map<string, CommercialCodeRow[]>();
-
-    commercialCodes.forEach((code) => {
-      const aliases = codesByConfiguration.get(code.configuration_id) ?? [];
-      aliases.push(code);
-      codesByConfiguration.set(code.configuration_id, aliases);
-    });
-    codesByConfiguration.forEach((aliases) => aliases.sort(compareCodes));
-    const compatibleKitImagesByItemId = createCompatibleKitImageMap(
-      configurations.flatMap((configuration) => {
-        const servo = itemById.get(configuration.servo_id);
-        const installationKit = itemById.get(
-          configuration.installation_kit_id,
-        );
-        const aliases = (
-          codesByConfiguration.get(configuration.id) ?? []
-        ).filter((alias) => alias.is_active);
-        const imageUrl = configuration.image_path
-          ? (imageUrlByConfigurationId.get(configuration.id) ?? null)
-          : null;
-
-        if (
-          !configuration.is_active ||
-          servo?.item_type !== "SERVO" ||
-          !servo.is_active ||
-          installationKit?.item_type !== "INSTALLATION_KIT" ||
-          !installationKit.is_active ||
-          aliases.length === 0 ||
-          !configuration.image_path ||
-          !imageUrl
-        ) {
-          return [];
-        }
-
-        return [
-          {
-            installationKitId: installationKit.id,
-            configurationId: configuration.id,
-            commercialCodes: aliases.map((alias) => alias.code),
-            servoCode: servo.code,
-            servoDescription: servo.description,
-            servoModel: modelByServoId.get(servo.id) ?? null,
-            installationKitCode: installationKit.code,
-            description:
-              configuration.description?.trim() ||
-              `${servo.description} + ${installationKit.code}`,
-            imageUrl,
-          },
-        ];
-      }),
-    );
-    const orderItems = orderItemDrafts.map((item) => ({
+    ),
+  ];
+  const relatedConfigurationIds = configurations.map(
+    (configuration) => configuration.id,
+  );
+  const servoIds = [
+    ...new Set(configurations.map((configuration) => configuration.servo_id)),
+  ];
+  const supportQueryCount =
+    Number(relatedItemIds.length > 0) +
+    Number(servoIds.length > 0) +
+    Number(relatedConfigurationIds.length > 0);
+  const [itemsResult, modelsResult, codesResult] = await Promise.all([
+    relatedItemIds.length
+      ? client
+          .from("items")
+          .select("id, code, description, item_type, is_active")
+          .in("id", relatedItemIds)
+      : Promise.resolve({ data: [], error: null }),
+    servoIds.length
+      ? client
+          .from("servo_models")
+          .select("item_id, model")
+          .in("item_id", servoIds)
+      : Promise.resolve({ data: [], error: null }),
+    relatedConfigurationIds.length
+      ? client
+          .from("commercial_configuration_codes")
+          .select("id, code, configuration_id, is_active")
+          .in("configuration_id", relatedConfigurationIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (itemsResult.error || modelsResult.error || codesResult.error) {
+    return {
+      items: drafts,
+      queryCount: configurationQueryCount + supportQueryCount,
+      waveCount: 2,
+    };
+  }
+  const catalog = await buildCatalog(client, {
+    items: (itemsResult.data ?? []) as ItemRow[],
+    models: (modelsResult.data ?? []) as ServoModelRow[],
+    configurations,
+    codes: (codesResult.data ?? []) as CommercialCodeRow[],
+  }, false);
+  const imageByConfiguration = new Map(
+    catalog.configurations.map((configuration) => [
+      configuration.configurationId,
+      configuration.imageUrl,
+    ]),
+  );
+  const compatibleByKit = new Map(
+    catalog.physicalItems
+      .filter((item) => item.itemType === "INSTALLATION_KIT")
+      .map((item) => [item.itemId, item.compatibleKitImages]),
+  );
+  const signedUrlOperationCount = Number(
+    configurations.some((configuration) => Boolean(configuration.image_path)),
+  );
+  return {
+    items: drafts.map((item) => ({
       ...item,
       imageUrl: item.commercialConfigurationId
-        ? (imageUrlByConfigurationId.get(
-            item.commercialConfigurationId,
-          ) ?? null)
+        ? (imageByConfiguration.get(item.commercialConfigurationId) ?? null)
         : null,
       compatibleKitImages:
         item.itemTypeSnapshot === "INSTALLATION_KIT" && item.itemId
-          ? (compatibleKitImagesByItemId.get(item.itemId) ?? [])
+          ? (compatibleByKit.get(item.itemId) ?? [])
           : [],
-    }));
+    })),
+    queryCount:
+      configurationQueryCount + supportQueryCount + signedUrlOperationCount,
+    waveCount: 2 + signedUrlOperationCount,
+  };
+}
 
-    const physicalItems: SupplierOrderCatalogPhysicalItem[] = (
-      view === "active" ? items : []
-    )
-      .filter((item) => item.is_active)
-      .map((item) => ({
-        kind: "ITEM" as const,
-        itemId: item.id,
-        code: item.code,
-        description: item.description,
-        model:
-          item.item_type === "SERVO"
-            ? (modelByServoId.get(item.id) ?? null)
-            : null,
-        itemType: item.item_type,
-        imageUrl: null,
-        compatibleKitImages:
-          item.item_type === "INSTALLATION_KIT"
-            ? (compatibleKitImagesByItemId.get(item.id) ?? [])
-            : [],
-      }))
-      .sort(compareCodes);
+export async function loadSupplierOrderDetailWithClient(
+  orderId: string,
+  view: SupplierOrderView,
+  client: SupplierOrdersClient,
+): Promise<SupplierOrdersDataResult<SupplierOrderDetailData>> {
+  if (!isSupplierOrderId(orderId)) {
+    return { data: null, error: "Pedido inválido." };
+  }
+  const startedAt = performance.now();
+  const classificationColumn =
+    view === "history" ? "is_in_history" : "is_active_order";
+  const [summaryResult, itemsResult, eventsResult] = await Promise.all([
+    client
+      .from("supplier_order_summaries")
+      .select(supplierOrderSummarySelect)
+      .eq("id", orderId)
+      .eq(classificationColumn, true)
+      .maybeSingle(),
+    client
+      .from("supplier_order_item_details")
+      .select(supplierOrderItemSelect)
+      .eq("supplier_order_id", orderId)
+      .order("position"),
+    view === "active"
+      ? client
+          .from("supplier_order_events")
+          .select(eventSelect)
+          .eq("supplier_order_id", orderId)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (summaryResult.error || itemsResult.error || eventsResult.error) {
+    return { data: null, error: "Não foi possível carregar este pedido agora." };
+  }
+  const order = summaryResult.data
+    ? mapSupplierOrderSummary(summaryResult.data as SupplierOrderSummaryRow)
+    : null;
+  if (!order) return { data: null, error: "Pedido não encontrado." };
+  const drafts = ((itemsResult.data ?? []) as SupplierOrderItemRow[])
+    .map(mapSupplierOrderItem)
+    .filter((item): item is SupplierOrderItem => Boolean(item));
+  const enriched = await enrichDetailItems(client, drafts);
+  const events = ((eventsResult.data ?? []) as EventRow[])
+    .map(mapEvent)
+    .filter((event): event is SupplierOrderEvent => Boolean(event));
+  const data = { view, order, items: enriched.items, events };
+  logPerformance({
+    loader: "detail",
+    durationMs: Math.round(performance.now() - startedAt),
+    queryCount: 3 + enriched.queryCount,
+    waveCount: 1 + enriched.waveCount,
+    rowCount: 1 + enriched.items.length + events.length,
+    payloadBytes: measurePayload(data),
+  });
+  return { data, error: null };
+}
 
-    const catalogConfigurations: SupplierOrderCatalogConfiguration[] =
-      configurations
-        .flatMap((configuration) => {
-          const servo = itemById.get(configuration.servo_id);
-          const installationKit = itemById.get(
-            configuration.installation_kit_id,
-          );
+export async function loadSupplierOrderDetail(
+  orderId: string,
+  view: SupplierOrderView,
+): Promise<SupplierOrdersDataResult<SupplierOrderDetailData>> {
+  try {
+    return await loadSupplierOrderDetailWithClient(
+      orderId,
+      view,
+      await createClient(),
+    );
+  } catch {
+    return { data: null, error: "Não foi possível carregar este pedido agora." };
+  }
+}
 
-          if (
-            (view === "active" && !configuration.is_active) ||
-            servo?.item_type !== "SERVO" ||
-            (view === "active" && !servo.is_active) ||
-            installationKit?.item_type !== "INSTALLATION_KIT" ||
-            (view === "active" && !installationKit.is_active)
-          ) {
-            return [];
-          }
+export async function loadSupplierOrderCatalogWithClient(
+  client: SupplierOrdersClient,
+): Promise<SupplierOrdersDataResult<SupplierOrderCatalog>> {
+  const startedAt = performance.now();
+  const rows = await loadCatalogRows(client);
+  if (!rows) {
+    return { data: null, error: "Não foi possível carregar o catálogo agora." };
+  }
+  const data = await buildCatalog(client, rows);
+  const signedUrlOperationCount = Number(
+    rows.configurations.some((configuration) => Boolean(configuration.image_path)),
+  );
+  logPerformance({
+    loader: "catalog",
+    durationMs: Math.round(performance.now() - startedAt),
+    queryCount: 4 + signedUrlOperationCount,
+    waveCount: 1 + signedUrlOperationCount,
+    rowCount: data.physicalItems.length + data.configurations.length,
+    payloadBytes: measurePayload(data),
+  });
+  return { data, error: null };
+}
 
-          return [
-            {
-              kind: "COMMERCIAL_CONFIGURATION" as const,
-              configurationId: configuration.id,
-              description:
-                configuration.description?.trim() ||
-                `${servo.description} + ${installationKit.code}`,
-              servoCode: servo.code,
-              servoDescription: servo.description,
-              servoModel: modelByServoId.get(servo.id) ?? null,
-              installationKitCode: installationKit.code,
-              installationKitDescription: installationKit.description,
-              imageUrl:
-                imageUrlByConfigurationId.get(configuration.id) ?? null,
-              aliases: (codesByConfiguration.get(configuration.id) ?? [])
-                .filter((code) => view === "history" || code.is_active)
-                .map((code) => ({
-                  id: code.id,
-                  code: code.code,
-                })),
-            },
-          ];
-        })
-        .sort((first, second) => {
-          const firstCode =
-            first.aliases[0]?.code ??
-            `${first.servoCode}-${first.installationKitCode}`;
-          const secondCode =
-            second.aliases[0]?.code ??
-            `${second.servoCode}-${second.installationKitCode}`;
-
-          return compareCodes({ code: firstCode }, { code: secondCode });
-        });
-
-    return {
-      data: {
-        view,
-        summaries,
-        items: orderItems,
-        events,
-        catalog: {
-          physicalItems,
-          configurations: catalogConfigurations,
-        },
-      },
-      error: null,
-    };
+export async function loadSupplierOrderCatalog() {
+  try {
+    return await loadSupplierOrderCatalogWithClient(await createClient());
   } catch {
     return {
       data: null,
-      error: "Não foi possível carregar os pedidos agora.",
-    };
+      error: "Não foi possível carregar o catálogo agora.",
+    } as const;
+  }
+}
+
+function sanitizeSearchTerm(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/[,%()_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+export async function searchSupplierOrderIdsWithClient(
+  view: SupplierOrderView,
+  search: string,
+  client: SupplierOrdersClient,
+): Promise<SupplierOrdersDataResult<SupplierOrderSearchData>> {
+  const startedAt = performance.now();
+  const term = sanitizeSearchTerm(search);
+  if (term.length < 2) return { data: { orderIds: [] }, error: null };
+  const itemResult = await client
+    .from("supplier_order_item_details")
+    .select("supplier_order_id")
+    .or(
+      `code_snapshot.ilike.%${term}%,description_snapshot.ilike.%${term}%,model_snapshot.ilike.%${term}%,commercial_code_snapshot.ilike.%${term}%`,
+    )
+    .limit(250);
+  if (itemResult.error) {
+    return { data: null, error: "Não foi possível pesquisar os pedidos agora." };
+  }
+  const candidateIds = [
+    ...new Set(
+      ((itemResult.data ?? []) as { supplier_order_id: string }[]).map(
+        (row) => row.supplier_order_id,
+      ),
+    ),
+  ];
+  if (candidateIds.length === 0) {
+    return { data: { orderIds: [] }, error: null };
+  }
+  const classificationColumn =
+    view === "history" ? "is_in_history" : "is_active_order";
+  const summaryResult = await client
+    .from("supplier_order_summaries")
+    .select("id")
+    .in("id", candidateIds)
+    .eq(classificationColumn, true);
+  if (summaryResult.error) {
+    return { data: null, error: "Não foi possível pesquisar os pedidos agora." };
+  }
+  const data = {
+    orderIds: ((summaryResult.data ?? []) as { id: string }[]).map(
+      (row) => row.id,
+    ),
+  };
+  logPerformance({
+    loader: "search",
+    durationMs: Math.round(performance.now() - startedAt),
+    queryCount: 2,
+    waveCount: 2,
+    rowCount: data.orderIds.length,
+    payloadBytes: measurePayload(data),
+  });
+  return { data, error: null };
+}
+
+export async function searchSupplierOrderIds(
+  view: SupplierOrderView,
+  search: string,
+) {
+  try {
+    return await searchSupplierOrderIdsWithClient(
+      view,
+      search,
+      await createClient(),
+    );
+  } catch {
+    return {
+      data: null,
+      error: "Não foi possível pesquisar os pedidos agora.",
+    } as const;
   }
 }

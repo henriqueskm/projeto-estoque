@@ -1,6 +1,9 @@
 import { SupplierOrdersWorkspace } from "@/app/(authenticated)/pedidos/orders-workspace";
 import { OrdersIcon } from "@/components/icons";
-import { loadSupplierOrdersData } from "@/lib/supplier-orders-data";
+import {
+  isSupplierOrderId,
+  loadSupplierOrderSummaries,
+} from "@/lib/supplier-orders-data";
 import type { SupplierOrderView } from "@/lib/supplier-orders-types";
 
 type SupplierOrdersPageProps = {
@@ -15,18 +18,10 @@ export default async function SupplierOrdersPage({
   const requestedOrder = params.order;
   const view: SupplierOrderView =
     requestedView === "history" ? "history" : "active";
-  const result = await loadSupplierOrdersData(view);
+  const result = await loadSupplierOrderSummaries(view);
   const orderCandidate =
-    typeof requestedOrder === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      requestedOrder,
-    )
+    typeof requestedOrder === "string" && isSupplierOrderId(requestedOrder)
       ? requestedOrder
-      : null;
-  const initialOrderId =
-    orderCandidate &&
-    result.data?.summaries.some((order) => order.id === orderCandidate)
-      ? orderCandidate
       : null;
 
   return (
@@ -35,7 +30,7 @@ export default async function SupplierOrdersPage({
         <SupplierOrdersWorkspace
           data={result.data}
           view={view}
-          initialOrderId={initialOrderId}
+          initialOrderId={orderCandidate}
         />
       ) : (
         <>
