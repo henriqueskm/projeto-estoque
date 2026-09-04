@@ -141,15 +141,34 @@ export type SupplierOrderCatalogConfiguration = {
   aliases: SupplierOrderCatalogAlias[];
 };
 
-export type SupplierOrdersData = {
+export type SupplierOrderCatalog = {
+  physicalItems: SupplierOrderCatalogPhysicalItem[];
+  configurations: SupplierOrderCatalogConfiguration[];
+};
+
+export type SupplierOrderSummariesData = {
   view: SupplierOrderView;
   summaries: SupplierOrderSummary[];
+};
+
+export type SupplierOrderDetailData = {
+  view: SupplierOrderView;
+  order: SupplierOrderSummary;
   items: SupplierOrderItem[];
   events: SupplierOrderEvent[];
-  catalog: {
-    physicalItems: SupplierOrderCatalogPhysicalItem[];
-    configurations: SupplierOrderCatalogConfiguration[];
-  };
+};
+
+export type SupplierOrderMediaItem = Pick<
+  SupplierOrderItem,
+  "id" | "imageUrl" | "compatibleKitImages"
+>;
+
+export type SupplierOrderMediaData = {
+  items: SupplierOrderMediaItem[];
+};
+
+export type SupplierOrderSearchData = {
+  orderIds: string[];
 };
 
 export type SupplierOrderLineInput =

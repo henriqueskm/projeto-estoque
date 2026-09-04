@@ -41,6 +41,7 @@
     "eval:assistant:live": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs evals/assistant/cli.ts --live",
     "test:assistant-statistics": "node --experimental-strip-types --test tests/assistant-statistics.test.mjs",
     "test:supplier-order-global-actions": "node --experimental-strip-types --test tests/supplier-order-global-actions.test.mjs",
+    "test:supplier-orders-performance": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/supplier-orders-performance.test.mjs",
     "test:supplier-order-negotiation-identity": "node --test tests/supplier-order-negotiation-identity.test.mjs",
     "test:supplier-order-negotiation-identity:local": "node tests/supplier-order-negotiation-identity.local.mjs",
     "test:supplier-order-negotiation-identity:cli-local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/supplier-order-negotiation-identity.cli.local.ps1",
