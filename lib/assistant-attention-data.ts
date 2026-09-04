@@ -11,7 +11,8 @@ import { createClient } from "@/lib/supabase/server";
 
 type PendingStockRow = {
   id: string;
-  is_in_history: boolean;
+  negotiation_number: string;
+  order_date: string;
   waiting_stock_quantity: number;
 };
 
@@ -34,8 +35,10 @@ async function loadPendingStockOrders(): Promise<
   const supabase = await createClient();
   const result = await supabase
     .from("supplier_order_summaries")
-    .select("id, is_in_history, waiting_stock_quantity")
-    .gt("waiting_stock_quantity", 0);
+    .select("id, negotiation_number, order_date, waiting_stock_quantity")
+    .gt("waiting_stock_quantity", 0)
+    .order("waiting_stock_quantity", { ascending: false })
+    .order("order_date", { ascending: false });
 
   if (result.error) return null;
 
@@ -44,7 +47,10 @@ async function loadPendingStockOrders(): Promise<
     rows.some(
       (row) =>
         typeof row.id !== "string" ||
-        typeof row.is_in_history !== "boolean" ||
+        typeof row.negotiation_number !== "string" ||
+        !/^\d{1,120}$/.test(row.negotiation_number) ||
+        typeof row.order_date !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(row.order_date) ||
         !Number.isSafeInteger(row.waiting_stock_quantity) ||
         row.waiting_stock_quantity < 0,
     )
@@ -54,7 +60,8 @@ async function loadPendingStockOrders(): Promise<
 
   return rows.map((row) => ({
     supplierOrderId: row.id,
-    isInHistory: row.is_in_history,
+    negotiationNumber: row.negotiation_number,
+    orderDate: row.order_date,
     waitingStockQuantity: row.waiting_stock_quantity,
   }));
 }
@@ -94,6 +101,7 @@ export async function loadAssistantAttention(
             purchaseResult.data.allItems.map((item) => ({
               targetKind: item.targetKind,
               targetId: item.targetId,
+              primaryCode: item.primaryCode,
               currentStock: item.currentStock,
               minimumStock: item.minimumStock,
               pendingPurchaseQuantity: item.pendingPurchaseQuantity,
@@ -101,6 +109,7 @@ export async function loadAssistantAttention(
             })),
           readyPickupOrders: pickupResult.data.alerts.map((alert) => ({
             supplierOrderId: alert.supplierOrderId,
+            negotiationNumber: alert.negotiationNumber,
             readyWaitingPickupQuantity:
               alert.readyWaitingPickupQuantity,
           })),

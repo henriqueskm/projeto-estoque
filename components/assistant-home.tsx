@@ -70,7 +70,11 @@ import {
   parseAssistantConversationContext,
   parseAssistantConversationalText,
 } from "@/lib/assistant-conversation";
-import type { AssistantAttentionSummary } from "@/lib/assistant-attention";
+import { createAssistantAttentionMessage } from "@/lib/assistant-attention-chat";
+import type {
+  AssistantAttentionItem,
+  AssistantAttentionSummary,
+} from "@/lib/assistant-attention";
 
 type AssistantHomeProps = {
   attention: AssistantAttentionSummary | null;
@@ -374,6 +378,14 @@ export function AssistantHome({
       latestScrollTopRef.current = nextScrollTop;
       setScrollTop(nextScrollTop);
     });
+  }
+
+  function handleAttentionSelect(item: AssistantAttentionItem) {
+    setFeedback(null);
+    setMessages((current) => [
+      ...current,
+      createAssistantAttentionMessage(item, crypto.randomUUID()),
+    ]);
   }
 
   async function prepareSelectedImage(
@@ -1314,6 +1326,7 @@ export function AssistantHome({
               attention={attention}
               attentionError={attentionError}
               firstName={firstName}
+              onAttentionSelect={handleAttentionSelect}
             />
           ) : (
             <div

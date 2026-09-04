@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  assistantAttentionDetailLineLimit,
   assistantAttentionMaxItems,
   buildAssistantAttentionSummary,
 } from "../lib/assistant-attention.ts";
 import { loadAssistantAttention } from "../lib/assistant-attention-data.ts";
+import {
+  createAssistantAttentionMessage,
+  formatAssistantAttentionDetail,
+} from "../lib/assistant-attention-chat.ts";
 
 const generatedAt = new Date("2026-09-03T15:00:00.000Z");
 const read = (path) =>
@@ -24,6 +29,7 @@ function replenishment(overrides = {}) {
   return {
     targetKind: "item",
     targetId: "item-1",
+    primaryCode: "1B",
     currentStock: 2,
     minimumStock: 5,
     pendingPurchaseQuantity: 0,
@@ -108,8 +114,16 @@ test("ready_quantity ainda não retirada aparece agrupada por Pedido", () => {
   const result = buildAssistantAttentionSummary(
     input({
       readyPickupOrders: [
-        { supplierOrderId: "order-1", readyWaitingPickupQuantity: 2 },
-        { supplierOrderId: "order-2", readyWaitingPickupQuantity: 3 },
+        {
+          supplierOrderId: "order-1",
+          negotiationNumber: "40959",
+          readyWaitingPickupQuantity: 2,
+        },
+        {
+          supplierOrderId: "order-2",
+          negotiationNumber: "40971",
+          readyWaitingPickupQuantity: 3,
+        },
       ],
     }),
     generatedAt,
@@ -129,7 +143,8 @@ test("picked_quantity ainda não estocada aparece como entrada pendente", () => 
       pendingStockOrders: [
         {
           supplierOrderId: "order-1",
-          isInHistory: false,
+          negotiationNumber: "40959",
+          orderDate: "2026-08-24",
           waitingStockQuantity: 4,
         },
       ],
@@ -142,7 +157,7 @@ test("picked_quantity ainda não estocada aparece como entrada pendente", () => 
 
   assert.equal(card?.count, 1);
   assert.equal(card?.metadata.waitingStockQuantity, 4);
-  assert.equal(card?.href, "/pedidos?view=active&order=order-1");
+  assert.equal(card?.detail.lines[0].negotiationNumber, "40959");
 });
 
 test("várias linhas da mesma categoria viram somente um card", () => {
@@ -150,21 +165,36 @@ test("várias linhas da mesma categoria viram somente um card", () => {
     input({
       purchaseRecommendations: [
         replenishment({ targetId: "item-1" }),
-        replenishment({ targetId: "item-2", currentStock: 4, remainingGap: 1 }),
+        replenishment({
+          targetId: "item-2",
+          primaryCode: "1E",
+          currentStock: 4,
+          remainingGap: 1,
+        }),
       ],
       readyPickupOrders: [
-        { supplierOrderId: "order-1", readyWaitingPickupQuantity: 2 },
-        { supplierOrderId: "order-2", readyWaitingPickupQuantity: 1 },
+        {
+          supplierOrderId: "order-1",
+          negotiationNumber: "40959",
+          readyWaitingPickupQuantity: 2,
+        },
+        {
+          supplierOrderId: "order-2",
+          negotiationNumber: "40971",
+          readyWaitingPickupQuantity: 1,
+        },
       ],
       pendingStockOrders: [
         {
           supplierOrderId: "order-1",
-          isInHistory: false,
+          negotiationNumber: "40959",
+          orderDate: "2026-08-24",
           waitingStockQuantity: 1,
         },
         {
           supplierOrderId: "order-2",
-          isInHistory: true,
+          negotiationNumber: "40971",
+          orderDate: "2026-08-23",
           waitingStockQuantity: 2,
         },
       ],
@@ -190,18 +220,28 @@ test("linhas duplicadas não duplicam Pedido nem alvo", () => {
     input({
       purchaseRecommendations: [duplicated, duplicated],
       readyPickupOrders: [
-        { supplierOrderId: "order-1", readyWaitingPickupQuantity: 2 },
-        { supplierOrderId: "order-1", readyWaitingPickupQuantity: 2 },
+        {
+          supplierOrderId: "order-1",
+          negotiationNumber: "40959",
+          readyWaitingPickupQuantity: 2,
+        },
+        {
+          supplierOrderId: "order-1",
+          negotiationNumber: "40959",
+          readyWaitingPickupQuantity: 2,
+        },
       ],
       pendingStockOrders: [
         {
           supplierOrderId: "order-1",
-          isInHistory: false,
+          negotiationNumber: "40959",
+          orderDate: "2026-08-24",
           waitingStockQuantity: 3,
         },
         {
           supplierOrderId: "order-1",
-          isInHistory: false,
+          negotiationNumber: "40959",
+          orderDate: "2026-08-24",
           waitingStockQuantity: 3,
         },
       ],
@@ -212,6 +252,157 @@ test("linhas duplicadas não duplicam Pedido nem alvo", () => {
   assert.equal(result.items.find((item) => item.kind === "REPLENISHMENT_NEEDED")?.count, 1);
   assert.equal(result.items.find((item) => item.kind === "SAFISA_READY_PICKUP")?.count, 1);
   assert.equal(result.items.find((item) => item.kind === "SUPPLIER_ORDER_PENDING_STOCK")?.count, 1);
+});
+
+test("detalhe de reposição usa remainingGap oficial e limita cinco linhas", () => {
+  const purchaseRecommendations = Array.from({ length: 8 }, (_, index) =>
+    replenishment({
+      targetId: `item-${index}`,
+      primaryCode: `C${index + 1}`,
+      currentStock: index < 2 ? 0 : 9,
+      minimumStock: 10,
+      pendingPurchaseQuantity: index === 0 ? 3 : 0,
+      remainingGap: 8 - index,
+    }),
+  );
+  const result = buildAssistantAttentionSummary(
+    input({ purchaseRecommendations }),
+    generatedAt,
+  );
+  const card = result.items.find(
+    (item) => item.kind === "REPLENISHMENT_NEEDED",
+  );
+
+  assert.ok(card);
+  assert.equal(card?.detail.lines.length, assistantAttentionDetailLineLimit);
+  assert.equal(card?.detail.remainingCount, 3);
+  assert.deepEqual(
+    card?.detail.lines.slice(0, 2).map((line) => line.code),
+    ["C1", "C2"],
+  );
+  assert.equal(card?.detail.lines[0].remainingGap, 8);
+  assert.match(
+    formatAssistantAttentionDetail(card),
+    /Já comprado 3 · Comprar mais 8/,
+  );
+  assert.match(formatAssistantAttentionDetail(card), /E mais 3 itens/);
+});
+
+test("clique local pode criar somente uma resposta da Assistente", () => {
+  const result = buildAssistantAttentionSummary(
+    input({ purchaseRecommendations: [replenishment()] }),
+    generatedAt,
+  );
+  const message = createAssistantAttentionMessage(
+    result.items[0],
+    "local-attention-message",
+  );
+
+  assert.deepEqual(
+    { id: message.id, role: message.role },
+    { id: "local-attention-message", role: "assistant" },
+  );
+  assert.match(message.content, /Reposição necessária/);
+  assert.match(message.content, /Est\. 2 · Mín\. 5 · Comprar 3/);
+});
+
+test("detalhe Safisa mostra negociação humana e preserva a ordem oficial", () => {
+  const hiddenId = "77777777-7777-4777-8777-777777777777";
+  const result = buildAssistantAttentionSummary(
+    input({
+      readyPickupOrders: [
+        {
+          supplierOrderId: hiddenId,
+          negotiationNumber: "40959",
+          readyWaitingPickupQuantity: 12,
+        },
+        {
+          supplierOrderId: "order-2",
+          negotiationNumber: "40971",
+          readyWaitingPickupQuantity: 8,
+        },
+      ],
+    }),
+    generatedAt,
+  );
+  const card = result.items.find(
+    (item) => item.kind === "SAFISA_READY_PICKUP",
+  );
+  assert.ok(card);
+  const content = formatAssistantAttentionDetail(card);
+
+  assert.deepEqual(
+    card?.detail.lines.map((line) => line.negotiationNumber),
+    ["40959", "40971"],
+  );
+  assert.match(content, /Pedido 40959.*12 unidades/);
+  assert.match(content, /Pedido 40971.*8 unidades/);
+  assert.doesNotMatch(content, new RegExp(hiddenId, "i"));
+});
+
+test("detalhe de entrada pendente ordena quantidade e mostra negociação", () => {
+  const result = buildAssistantAttentionSummary(
+    input({
+      pendingStockOrders: [
+        {
+          supplierOrderId: "order-1",
+          negotiationNumber: "40959",
+          orderDate: "2026-08-24",
+          waitingStockQuantity: 3,
+        },
+        {
+          supplierOrderId: "order-2",
+          negotiationNumber: "40971",
+          orderDate: "2026-08-23",
+          waitingStockQuantity: 7,
+        },
+      ],
+    }),
+    generatedAt,
+  );
+  const card = result.items.find(
+    (item) => item.kind === "SUPPLIER_ORDER_PENDING_STOCK",
+  );
+  assert.ok(card);
+  const content = formatAssistantAttentionDetail(card);
+
+  assert.equal(card?.detail.lines[0].negotiationNumber, "40971");
+  assert.match(content, /Pedido 40971.*7 unidades/);
+  assert.match(content, /Pedido 40959.*3 unidades/);
+});
+
+test("cards são botões acessíveis e injetam detalhes sem rede ou mutação", () => {
+  const home = read("components/assistant-home.tsx");
+  const view = read("components/assistant-attention-summary.tsx");
+  const selectionHandler = home.slice(
+    home.indexOf("function handleAttentionSelect"),
+    home.indexOf("async function prepareSelectedImage"),
+  );
+
+  assert.match(view, /<button/);
+  assert.match(view, /type="button"/);
+  assert.match(view, /aria-label=\{`Mostrar/);
+  assert.match(view, /min-h-24 w-full/);
+  assert.match(view, /onClick=\{\(\) => onSelect\(item\)\}/);
+  assert.doesNotMatch(view, /next\/link|<Link|href=/);
+  assert.match(selectionHandler, /setMessages/);
+  assert.match(selectionHandler, /createAssistantAttentionMessage/);
+  assert.doesNotMatch(
+    selectionHandler,
+    /fetch|sendAssistantMessage|router\.|\/api\/assistant|rpc|supabase/i,
+  );
+});
+
+test("detalhes locais não importam Gemini nem endpoints operacionais", () => {
+  const detail = read("lib/assistant-attention-chat.ts");
+  const view = read("components/assistant-attention-summary.tsx");
+
+  for (const source of [detail, view]) {
+    assert.doesNotMatch(
+      source,
+      /@google\/genai|Gemini|\/api\/assistant|createClient|supabase|fetch\(/i,
+    );
+  }
 });
 
 test("loader usa readers oficiais controlados e não chama Gemini", async () => {
@@ -253,6 +444,10 @@ test("loader usa readers oficiais controlados e não chama Gemini", async () => 
 
   const attentionData = read("lib/assistant-attention-data.ts");
   const homePage = read("app/(authenticated)/page.tsx");
+  assert.match(
+    attentionData,
+    /id, negotiation_number, order_date, waiting_stock_quantity/,
+  );
   assert.doesNotMatch(attentionData, /Gemini|routeAssistantMessageSemantically|@google\/genai/);
   assert.doesNotMatch(homePage, /Gemini|routeAssistantMessageSemantically|@google\/genai/);
 });

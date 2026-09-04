@@ -20,7 +20,9 @@ test("proactive Assistant attention replaces shortcuts without shifting the conv
   assert.match(home, /AssistantAttentionSummaryView/);
   assert.match(attention, /Tudo em dia por aqui/);
   assert.match(attention, /O que precisa da minha atenção hoje\?/);
-  assert.match(attention, /Ver detalhes/);
+  assert.match(attention, /Ver no chat/);
+  assert.match(attention, /<button/);
+  assert.doesNotMatch(attention, /next\/link|<Link|href=/);
   assert.doesNotMatch(home, /initialSuggestions|Como posso ajudar\?/);
   assert.match(sidebar, /aria-label="Nova conversa"/);
   assert.match(sidebar, /assistantNewConversationRequestEvent/);

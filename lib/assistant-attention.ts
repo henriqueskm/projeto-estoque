@@ -1,4 +1,5 @@
 export const assistantAttentionMaxItems = 5;
+export const assistantAttentionDetailLineLimit = 5;
 
 export type AssistantAttentionSeverity =
   | "CRITICAL"
@@ -9,6 +10,7 @@ export type AssistantAttentionSeverity =
 export type AssistantAttentionReplenishmentSnapshot = {
   targetKind: "item" | "commercial_configuration";
   targetId: string;
+  primaryCode: string;
   currentStock: number;
   minimumStock: number | null;
   pendingPurchaseQuantity: number;
@@ -17,13 +19,20 @@ export type AssistantAttentionReplenishmentSnapshot = {
 
 export type AssistantAttentionReadyPickupSnapshot = {
   supplierOrderId: string;
+  negotiationNumber: string;
   readyWaitingPickupQuantity: number;
 };
 
 export type AssistantAttentionPendingStockSnapshot = {
   supplierOrderId: string;
-  isInHistory: boolean;
+  negotiationNumber: string;
+  orderDate: string;
   waitingStockQuantity: number;
+};
+
+type AssistantAttentionDetail<TLine> = {
+  lines: TLine[];
+  remainingCount: number;
 };
 
 type AssistantAttentionBaseItem = {
@@ -31,7 +40,6 @@ type AssistantAttentionBaseItem = {
   title: string;
   summary: string;
   count: number;
-  href: string;
 };
 
 export type AssistantAttentionItem =
@@ -42,18 +50,33 @@ export type AssistantAttentionItem =
         partiallyCoveredCount: number;
         zeroStockCount: number;
       };
+      detail: AssistantAttentionDetail<{
+        code: string;
+        currentStock: number;
+        minimumStock: number;
+        pendingPurchaseQuantity: number;
+        remainingGap: number;
+      }>;
     })
   | (AssistantAttentionBaseItem & {
       kind: "SAFISA_READY_PICKUP";
       metadata: {
         readyQuantity: number;
       };
+      detail: AssistantAttentionDetail<{
+        negotiationNumber: string;
+        quantity: number;
+      }>;
     })
   | (AssistantAttentionBaseItem & {
       kind: "SUPPLIER_ORDER_PENDING_STOCK";
       metadata: {
         waitingStockQuantity: number;
       };
+      detail: AssistantAttentionDetail<{
+        negotiationNumber: string;
+        quantity: number;
+      }>;
     });
 
 export type AssistantAttentionSummary = {
@@ -94,9 +117,18 @@ function uniqueByOrderId<T extends { supplierOrderId: string }>(rows: T[]) {
   );
 }
 
-function orderHref(order: { supplierOrderId: string; isInHistory?: boolean }) {
-  const view = order.isInHistory ? "history" : "active";
-  return `/pedidos?view=${view}&order=${encodeURIComponent(order.supplierOrderId)}`;
+function compareCodes(first: string, second: string) {
+  return first.localeCompare(second, "pt-BR", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function limitDetailLines<T>(lines: T[]) {
+  return {
+    lines: lines.slice(0, assistantAttentionDetailLineLimit),
+    remainingCount: Math.max(0, lines.length - assistantAttentionDetailLineLimit),
+  };
 }
 
 function buildReplenishmentItem(
@@ -117,11 +149,20 @@ function buildReplenishmentItem(
 
   if (targets.length === 0) return null;
 
-  const uncoveredCount = targets.filter(
+  const orderedTargets = targets.sort(
+    (first, second) =>
+      Number(first.currentStock !== 0) - Number(second.currentStock !== 0) ||
+      safeQuantity(second.remainingGap ?? 0) -
+        safeQuantity(first.remainingGap ?? 0) ||
+      compareCodes(first.primaryCode, second.primaryCode) ||
+      first.targetId.localeCompare(second.targetId),
+  );
+
+  const uncoveredCount = orderedTargets.filter(
     (target) => safeQuantity(target.pendingPurchaseQuantity) === 0,
   ).length;
-  const partiallyCoveredCount = targets.length - uncoveredCount;
-  const zeroStockCount = targets.filter(
+  const partiallyCoveredCount = orderedTargets.length - uncoveredCount;
+  const zeroStockCount = orderedTargets.filter(
     (target) => safeQuantity(target.currentStock) === 0,
   ).length;
   const details = [
@@ -137,14 +178,24 @@ function buildReplenishmentItem(
     kind: "REPLENISHMENT_NEEDED",
     severity: zeroStockCount > 0 ? "CRITICAL" : "HIGH",
     title: "Reposição necessária",
-    summary: `${targets.length} ${plural(targets.length, "item precisa", "itens precisam")} de reposição. ${details.join(" ")}`.trim(),
-    count: targets.length,
-    href: "/estoque?view=purchase-recommendations",
+    summary: `${orderedTargets.length} ${plural(orderedTargets.length, "item precisa", "itens precisam")} de reposição. ${details.join(" ")}`.trim(),
+    count: orderedTargets.length,
     metadata: {
       uncoveredCount,
       partiallyCoveredCount,
       zeroStockCount,
     },
+    detail: limitDetailLines(
+      orderedTargets.map((target) => ({
+        code: target.primaryCode,
+        currentStock: safeQuantity(target.currentStock),
+        minimumStock: safeQuantity(target.minimumStock ?? 0),
+        pendingPurchaseQuantity: safeQuantity(
+          target.pendingPurchaseQuantity,
+        ),
+        remainingGap: safeQuantity(target.remainingGap ?? 0),
+      })),
+    ),
   };
 }
 
@@ -168,20 +219,29 @@ function buildReadyPickupItem(
     title: "Itens prontos na Safisa",
     summary: `${orders.length} ${plural(orders.length, "Pedido tem", "Pedidos têm")} ${readyQuantity} ${plural(readyQuantity, "unidade pronta", "unidades prontas")} para retirada.`,
     count: orders.length,
-    href:
-      orders.length === 1
-        ? orderHref(orders[0])
-        : "/pedidos?view=active",
     metadata: { readyQuantity },
+    detail: limitDetailLines(
+      orders.map((order) => ({
+        negotiationNumber: order.negotiationNumber,
+        quantity: safeQuantity(order.readyWaitingPickupQuantity),
+      })),
+    ),
   };
 }
 
 function buildPendingStockItem(
   snapshots: AssistantAttentionPendingStockSnapshot[],
 ): AssistantAttentionItem | null {
-  const orders = uniqueByOrderId(snapshots).filter(
-    (order) => safeQuantity(order.waitingStockQuantity) > 0,
-  );
+  const orders = uniqueByOrderId(snapshots)
+    .filter((order) => safeQuantity(order.waitingStockQuantity) > 0)
+    .sort(
+      (first, second) =>
+        safeQuantity(second.waitingStockQuantity) -
+          safeQuantity(first.waitingStockQuantity) ||
+        second.orderDate.localeCompare(first.orderDate) ||
+        compareCodes(first.negotiationNumber, second.negotiationNumber) ||
+        first.supplierOrderId.localeCompare(second.supplierOrderId),
+    );
 
   if (orders.length === 0) return null;
 
@@ -196,11 +256,13 @@ function buildPendingStockItem(
     title: "Entrada pendente",
     summary: `${orders.length} ${plural(orders.length, "Pedido possui", "Pedidos possuem")} ${waitingStockQuantity} ${plural(waitingStockQuantity, "unidade retirada aguardando", "unidades retiradas aguardando")} entrada no estoque.`,
     count: orders.length,
-    href:
-      orders.length === 1
-        ? orderHref(orders[0])
-        : "/pedidos",
     metadata: { waitingStockQuantity },
+    detail: limitDetailLines(
+      orders.map((order) => ({
+        negotiationNumber: order.negotiationNumber,
+        quantity: safeQuantity(order.waitingStockQuantity),
+      })),
+    ),
   };
 }
 

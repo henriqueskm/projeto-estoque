@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type {
   AssistantAttentionItem,
   AssistantAttentionSummary,
@@ -8,6 +7,7 @@ type AssistantAttentionSummaryProps = {
   attention: AssistantAttentionSummary | null;
   attentionError: string | null;
   firstName: string | null;
+  onAttentionSelect: (item: AssistantAttentionItem) => void;
 };
 
 const severityPresentation = {
@@ -53,13 +53,21 @@ function greeting(generatedAt: string | null) {
   return "Boa noite";
 }
 
-function AttentionCard({ item }: { item: AssistantAttentionItem }) {
+function AttentionCard({
+  item,
+  onSelect,
+}: {
+  item: AssistantAttentionItem;
+  onSelect: (item: AssistantAttentionItem) => void;
+}) {
   const presentation = severityPresentation[item.severity];
 
   return (
-    <Link
-      href={item.href}
-      className="nk-focus group relative flex min-h-24 overflow-hidden rounded-xl border border-border-neutral bg-surface px-4 py-3 shadow-sm transition hover:border-brand-gold-dark hover:shadow-md"
+    <button
+      type="button"
+      aria-label={`Mostrar ${item.title.toLocaleLowerCase("pt-BR")} no chat`}
+      onClick={() => onSelect(item)}
+      className="nk-focus group relative flex min-h-24 w-full overflow-hidden rounded-xl border border-border-neutral bg-surface px-4 py-3 text-left shadow-sm transition hover:border-brand-gold-dark hover:shadow-md"
     >
       <span
         aria-hidden="true"
@@ -80,10 +88,10 @@ function AttentionCard({ item }: { item: AssistantAttentionItem }) {
           {item.summary}
         </span>
         <span className="mt-2 text-xs font-black text-brand-gold-ink group-hover:underline">
-          Ver detalhes
+          Ver no chat
         </span>
       </span>
-    </Link>
+    </button>
   );
 }
 
@@ -91,6 +99,7 @@ export function AssistantAttentionSummaryView({
   attention,
   attentionError,
   firstName,
+  onAttentionSelect,
 }: AssistantAttentionSummaryProps) {
   const salutation = `${greeting(attention?.generatedAt ?? null)}${
     firstName ? `, ${firstName}` : ""
@@ -131,7 +140,11 @@ export function AssistantAttentionSummaryView({
             O que precisa da minha atenção hoje?
           </h2>
           {attention.items.map((item) => (
-            <AttentionCard key={item.kind} item={item} />
+            <AttentionCard
+              key={item.kind}
+              item={item}
+              onSelect={onAttentionSelect}
+            />
           ))}
         </section>
       ) : null}
