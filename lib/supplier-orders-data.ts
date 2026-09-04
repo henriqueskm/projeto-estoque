@@ -18,6 +18,8 @@ import {
   type SupplierOrderEventType,
   type SupplierOrderClosureKind,
   type SupplierOrderItem,
+  type SupplierOrderMediaData,
+  type SupplierOrderMediaItem,
   type SupplierOrderSearchData,
   type SupplierOrderStatus,
   type SupplierOrderSummariesData,
@@ -131,12 +133,15 @@ export type SupplierOrdersDataResult<T> =
   | { data: null; error: string };
 
 type PerformanceMetric = {
-  loader: "summaries" | "detail" | "catalog" | "search";
+  loader: "summaries" | "detail_core" | "detail_media" | "catalog" | "search";
   durationMs: number;
   queryCount: number;
   waveCount: number;
   rowCount: number;
   payloadBytes: number;
+  detail_core_ms?: number;
+  enrichment_ms?: number;
+  signed_urls_ms?: number;
 };
 
 const eventSelect =
@@ -379,15 +384,11 @@ async function loadCatalogRows(client: SupplierOrdersClient) {
   };
 }
 
-async function buildCatalog(
-  client: SupplierOrdersClient,
+function buildCatalog(
   rows: NonNullable<Awaited<ReturnType<typeof loadCatalogRows>>>,
+  imageUrlByPath: Map<string, string>,
   activeOnly = true,
-): Promise<SupplierOrderCatalog> {
-  const imageUrlByPath = await createCommercialImageUrlMap(
-    client,
-    rows.configurations.map((configuration) => configuration.image_path),
-  );
+): SupplierOrderCatalog {
   const itemById = new Map(rows.items.map((item) => [item.id, item]));
   const modelByServoId = new Map(
     rows.models.map((model) => [model.item_id, model.model]),
@@ -555,28 +556,52 @@ export async function loadSupplierOrderSummaries(
   }
 }
 
-async function enrichDetailItems(
+type SupplierOrderMediaSourceRow = Pick<
+  SupplierOrderItemRow,
+  "id" | "item_id" | "commercial_configuration_id" | "item_type_snapshot"
+>;
+
+function createEmptyMediaItems(
+  sources: SupplierOrderMediaSourceRow[],
+): SupplierOrderMediaItem[] {
+  return sources.map((source) => ({
+    id: source.id,
+    imageUrl: null,
+    compatibleKitImages: [],
+  }));
+}
+
+async function enrichDetailMedia(
   client: SupplierOrdersClient,
-  drafts: SupplierOrderItem[],
+  sources: SupplierOrderMediaSourceRow[],
 ) {
+  const enrichmentStartedAt = performance.now();
   const configurationIds = [
     ...new Set(
-      drafts.flatMap((item) =>
-        item.commercialConfigurationId ? [item.commercialConfigurationId] : [],
+      sources.flatMap((item) =>
+        item.commercial_configuration_id
+          ? [item.commercial_configuration_id]
+          : [],
       ),
     ),
   ];
   const installationKitIds = [
     ...new Set(
-      drafts.flatMap((item) =>
-        item.itemTypeSnapshot === "INSTALLATION_KIT" && item.itemId
-          ? [item.itemId]
+      sources.flatMap((item) =>
+        item.item_type_snapshot === "INSTALLATION_KIT" && item.item_id
+          ? [item.item_id]
           : [],
       ),
     ),
   ];
   if (configurationIds.length === 0 && installationKitIds.length === 0) {
-    return { items: drafts, queryCount: 0, waveCount: 0 };
+    return {
+      items: createEmptyMediaItems(sources),
+      queryCount: 0,
+      waveCount: 0,
+      enrichmentMs: 0,
+      signedUrlsMs: 0,
+    };
   }
   const configurationQueryCount =
     Number(configurationIds.length > 0) + Number(installationKitIds.length > 0);
@@ -595,7 +620,13 @@ async function enrichDetailItems(
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (directResult.error || compatibleResult.error) {
-    return { items: drafts, queryCount: configurationQueryCount, waveCount: 1 };
+    return {
+      items: createEmptyMediaItems(sources),
+      queryCount: configurationQueryCount,
+      waveCount: 1,
+      enrichmentMs: Math.round(performance.now() - enrichmentStartedAt),
+      signedUrlsMs: 0,
+    };
   }
   const configurationMap = new Map<string, ConfigurationRow>();
   [
@@ -645,17 +676,30 @@ async function enrichDetailItems(
   ]);
   if (itemsResult.error || modelsResult.error || codesResult.error) {
     return {
-      items: drafts,
+      items: createEmptyMediaItems(sources),
       queryCount: configurationQueryCount + supportQueryCount,
       waveCount: 2,
+      enrichmentMs: Math.round(performance.now() - enrichmentStartedAt),
+      signedUrlsMs: 0,
     };
   }
-  const catalog = await buildCatalog(client, {
-    items: (itemsResult.data ?? []) as ItemRow[],
-    models: (modelsResult.data ?? []) as ServoModelRow[],
-    configurations,
-    codes: (codesResult.data ?? []) as CommercialCodeRow[],
-  }, false);
+  const metadataCompletedAt = performance.now();
+  const signedUrlsStartedAt = performance.now();
+  const imageUrlByPath = await createCommercialImageUrlMap(
+    client,
+    configurations.map((configuration) => configuration.image_path),
+  );
+  const signedUrlsMs = Math.round(performance.now() - signedUrlsStartedAt);
+  const catalog = buildCatalog(
+    {
+      items: (itemsResult.data ?? []) as ItemRow[],
+      models: (modelsResult.data ?? []) as ServoModelRow[],
+      configurations,
+      codes: (codesResult.data ?? []) as CommercialCodeRow[],
+    },
+    imageUrlByPath,
+    false,
+  );
   const imageByConfiguration = new Map(
     catalog.configurations.map((configuration) => [
       configuration.configurationId,
@@ -671,19 +715,21 @@ async function enrichDetailItems(
     configurations.some((configuration) => Boolean(configuration.image_path)),
   );
   return {
-    items: drafts.map((item) => ({
-      ...item,
-      imageUrl: item.commercialConfigurationId
-        ? (imageByConfiguration.get(item.commercialConfigurationId) ?? null)
+    items: sources.map((item) => ({
+      id: item.id,
+      imageUrl: item.commercial_configuration_id
+        ? (imageByConfiguration.get(item.commercial_configuration_id) ?? null)
         : null,
       compatibleKitImages:
-        item.itemTypeSnapshot === "INSTALLATION_KIT" && item.itemId
-          ? (compatibleByKit.get(item.itemId) ?? [])
+        item.item_type_snapshot === "INSTALLATION_KIT" && item.item_id
+          ? (compatibleByKit.get(item.item_id) ?? [])
           : [],
     })),
     queryCount:
       configurationQueryCount + supportQueryCount + signedUrlOperationCount,
     waveCount: 2 + signedUrlOperationCount,
+    enrichmentMs: Math.round(metadataCompletedAt - enrichmentStartedAt),
+    signedUrlsMs,
   };
 }
 
@@ -725,21 +771,72 @@ export async function loadSupplierOrderDetailWithClient(
     ? mapSupplierOrderSummary(summaryResult.data as SupplierOrderSummaryRow)
     : null;
   if (!order) return { data: null, error: "Pedido não encontrado." };
-  const drafts = ((itemsResult.data ?? []) as SupplierOrderItemRow[])
+  const items = ((itemsResult.data ?? []) as SupplierOrderItemRow[])
     .map(mapSupplierOrderItem)
     .filter((item): item is SupplierOrderItem => Boolean(item));
-  const enriched = await enrichDetailItems(client, drafts);
   const events = ((eventsResult.data ?? []) as EventRow[])
     .map(mapEvent)
     .filter((event): event is SupplierOrderEvent => Boolean(event));
-  const data = { view, order, items: enriched.items, events };
+  const data = { view, order, items, events };
+  const detailCoreMs = Math.round(performance.now() - startedAt);
   logPerformance({
-    loader: "detail",
-    durationMs: Math.round(performance.now() - startedAt),
-    queryCount: 3 + enriched.queryCount,
-    waveCount: 1 + enriched.waveCount,
-    rowCount: 1 + enriched.items.length + events.length,
+    loader: "detail_core",
+    durationMs: detailCoreMs,
+    queryCount: view === "active" ? 3 : 2,
+    waveCount: 1,
+    rowCount: 1 + items.length + events.length,
     payloadBytes: measurePayload(data),
+    detail_core_ms: detailCoreMs,
+  });
+  return { data, error: null };
+}
+
+export async function loadSupplierOrderMediaWithClient(
+  orderId: string,
+  view: SupplierOrderView,
+  client: SupplierOrdersClient,
+): Promise<SupplierOrdersDataResult<SupplierOrderMediaData>> {
+  if (!isSupplierOrderId(orderId)) {
+    return { data: null, error: "Pedido inválido." };
+  }
+  const startedAt = performance.now();
+  const classificationColumn =
+    view === "history" ? "is_in_history" : "is_active_order";
+  const [summaryResult, itemsResult] = await Promise.all([
+    client
+      .from("supplier_order_summaries")
+      .select("id")
+      .eq("id", orderId)
+      .eq(classificationColumn, true)
+      .maybeSingle(),
+    client
+      .from("supplier_order_item_details")
+      .select(
+        "id, item_id, commercial_configuration_id, item_type_snapshot",
+      )
+      .eq("supplier_order_id", orderId),
+  ]);
+  if (summaryResult.error || itemsResult.error) {
+    return {
+      data: null,
+      error: "Não foi possível carregar as imagens deste pedido agora.",
+    };
+  }
+  if (!summaryResult.data) {
+    return { data: null, error: "Pedido não encontrado." };
+  }
+  const sources = (itemsResult.data ?? []) as SupplierOrderMediaSourceRow[];
+  const enriched = await enrichDetailMedia(client, sources);
+  const data = { items: enriched.items };
+  logPerformance({
+    loader: "detail_media",
+    durationMs: Math.round(performance.now() - startedAt),
+    queryCount: 2 + enriched.queryCount,
+    waveCount: 1 + enriched.waveCount,
+    rowCount: enriched.items.length,
+    payloadBytes: measurePayload(data),
+    enrichment_ms: enriched.enrichmentMs,
+    signed_urls_ms: enriched.signedUrlsMs,
   });
   return { data, error: null };
 }
@@ -767,7 +864,13 @@ export async function loadSupplierOrderCatalogWithClient(
   if (!rows) {
     return { data: null, error: "Não foi possível carregar o catálogo agora." };
   }
-  const data = await buildCatalog(client, rows);
+  const signedUrlsStartedAt = performance.now();
+  const imageUrlByPath = await createCommercialImageUrlMap(
+    client,
+    rows.configurations.map((configuration) => configuration.image_path),
+  );
+  const signedUrlsMs = Math.round(performance.now() - signedUrlsStartedAt);
+  const data = buildCatalog(rows, imageUrlByPath);
   const signedUrlOperationCount = Number(
     rows.configurations.some((configuration) => Boolean(configuration.image_path)),
   );
@@ -778,6 +881,7 @@ export async function loadSupplierOrderCatalogWithClient(
     waveCount: 1 + signedUrlOperationCount,
     rowCount: data.physicalItems.length + data.configurations.length,
     payloadBytes: measurePayload(data),
+    signed_urls_ms: signedUrlsMs,
   });
   return { data, error: null };
 }

@@ -37,7 +37,10 @@ import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { getSafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";
 import { getSupplierOrderGlobalActionVisibility } from "@/lib/supplier-order-global-actions";
-import { isLatestSupplierOrderRequest } from "@/lib/supplier-orders-client-state";
+import {
+  isLatestSupplierOrderRequest,
+  mergeSupplierOrderMedia,
+} from "@/lib/supplier-orders-client-state";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type {
   CreateSupplierOrderInput,
@@ -48,6 +51,7 @@ import type {
   SupplierOrderDetailData,
   SupplierOrderEvent,
   SupplierOrderItem,
+  SupplierOrderMediaData,
   SupplierOrderLineInput,
   SupplierOrderSearchData,
   SupplierOrderSummariesData,
@@ -3598,6 +3602,45 @@ function useSupplierOrderDetail(
           )
         ) {
           setState({ status: "ready", data: payload, error: null });
+          void fetch(
+            `/api/supplier-orders/${encodeURIComponent(orderId)}/media?view=${view}`,
+            { cache: "no-store", signal: controller.signal },
+          )
+            .then(async (mediaResponse) => {
+              const mediaPayload = (await mediaResponse.json()) as
+                | SupplierOrderMediaData
+                | { error?: string };
+              if (!mediaResponse.ok || !("items" in mediaPayload)) return;
+              if (
+                !isLatestSupplierOrderRequest(
+                  requestSequence,
+                  sequenceRef.current,
+                  orderId,
+                  orderId,
+                )
+              ) {
+                return;
+              }
+              setState((current) =>
+                current.status === "ready" &&
+                current.data.order.id === orderId
+                  ? {
+                      status: "ready",
+                      data: {
+                        ...current.data,
+                        items: mergeSupplierOrderMedia(
+                          current.data.items,
+                          mediaPayload.items,
+                        ),
+                      },
+                      error: null,
+                    }
+                  : current,
+              );
+            })
+            .catch(() => {
+              // Media is optional; the snapshot-based operational detail stays usable.
+            });
         }
       })
       .catch((error: unknown) => {

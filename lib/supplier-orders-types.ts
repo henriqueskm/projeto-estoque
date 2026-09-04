@@ -158,6 +158,15 @@ export type SupplierOrderDetailData = {
   events: SupplierOrderEvent[];
 };
 
+export type SupplierOrderMediaItem = Pick<
+  SupplierOrderItem,
+  "id" | "imageUrl" | "compatibleKitImages"
+>;
+
+export type SupplierOrderMediaData = {
+  items: SupplierOrderMediaItem[];
+};
+
 export type SupplierOrderSearchData = {
   orderIds: string[];
 };

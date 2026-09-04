@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   isSupplierOrderId,
   isSupplierOrderView,
-  loadSupplierOrderDetailWithClient,
+  loadSupplierOrderMediaWithClient,
 } from "@/lib/supplier-orders-data";
 import { authenticateSupplierOrdersRequest } from "@/lib/supplier-orders-route-auth";
 
@@ -30,7 +30,7 @@ export async function GET(request: Request, context: RouteContext) {
     );
   }
 
-  const result = await loadSupplierOrderDetailWithClient(
+  const result = await loadSupplierOrderMediaWithClient(
     orderId,
     viewValue,
     auth.client,
@@ -46,7 +46,7 @@ export async function GET(request: Request, context: RouteContext) {
   return NextResponse.json(result.data, {
     headers: {
       "Cache-Control": "no-store",
-      "Server-Timing": `supplier-order-detail-core;dur=${Math.round(performance.now() - startedAt)}`,
+      "Server-Timing": `supplier-order-media;dur=${Math.round(performance.now() - startedAt)}`,
     },
   });
 }
