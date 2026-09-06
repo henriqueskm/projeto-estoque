@@ -182,7 +182,7 @@ export function SafisaPortal({
   useEffect(() => {
     let restoreTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const serialized = sessionStorage.getItem(attemptStorageKey);
+      const serialized = localStorage.getItem(attemptStorageKey);
       const restored = serialized ? restoreSafisaLogicalAttempt(serialized) : null;
       if (!restored) return;
       restoreTimer = setTimeout(() => {
@@ -204,7 +204,7 @@ export function SafisaPortal({
 
   function persistAttempt(attempt: SafisaLogicalAttempt) {
     try {
-      sessionStorage.setItem(attemptStorageKey, serializeSafisaLogicalAttempt(attempt));
+      localStorage.setItem(attemptStorageKey, serializeSafisaLogicalAttempt(attempt));
     } catch {
       // The ref still protects retries for the lifetime of this mounted portal.
     }
@@ -212,7 +212,7 @@ export function SafisaPortal({
 
   function clearPersistedAttempt() {
     try {
-      sessionStorage.removeItem(attemptStorageKey);
+      localStorage.removeItem(attemptStorageKey);
     } catch {
       // A stale stored attempt is safe: replaying its key can only fetch its receipt.
     }

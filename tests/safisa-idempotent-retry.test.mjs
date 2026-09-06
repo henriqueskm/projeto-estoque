@@ -106,7 +106,7 @@ test("canonical payload identity is stable across property order", () => {
   );
 });
 
-test("an unknown attempt survives a page refresh in validated session storage form", () => {
+test("an unknown attempt survives reopening the portal in validated local storage form", () => {
   const attempt = markSafisaAttemptResultUnknown(
     beginSafisaLogicalAttempt(null, incrementPayload(), keyFactory()),
   );
@@ -114,8 +114,8 @@ test("an unknown attempt survives a page refresh in validated session storage fo
 
   assert.deepEqual(restored, attempt);
   assert.equal(restoreSafisaLogicalAttempt("not-json"), null);
-  assert.match(portal, /sessionStorage\.setItem/);
-  assert.match(portal, /sessionStorage\.getItem/);
+  assert.match(portal, /localStorage\.setItem/);
+  assert.match(portal, /localStorage\.getItem/);
 });
 
 test("a submitting attempt restores as unknown if the page unloads mid-request", () => {
