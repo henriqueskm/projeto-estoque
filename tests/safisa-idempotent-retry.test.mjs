@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { PostgrestClient } from "@supabase/postgrest-js";
 import {
   beginSafisaLogicalAttempt,
   canonicalSafisaAttemptPayload,
@@ -8,7 +9,11 @@ import {
   restoreSafisaLogicalAttempt,
   serializeSafisaLogicalAttempt,
 } from "../lib/safisa-logical-attempt.ts";
-import { mapSafisaMutationError } from "../lib/safisa-action-errors.ts";
+import {
+  classifySafisaMutationResponse,
+  mapSafisaMutationError,
+  runSafisaMutation,
+} from "../lib/safisa-action-errors.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const portal = read("components/safisa-portal.tsx");
@@ -76,6 +81,44 @@ test("commit followed by a lost response retries the same receipt exactly once",
 
   assert.equal(retry.idempotencyKey, attempt.idempotencyKey);
   assert.equal(result.idempotentReplay, true);
+  assert.equal(backend.readyQuantity, 2);
+});
+
+test("postgrest status 0 after commit stays unknown and retries the same receipt", async () => {
+  const nextKey = keyFactory();
+  const backend = createReceiptBackend();
+  let attempt = beginSafisaLogicalAttempt(null, incrementPayload(), nextKey);
+
+  backend.execute(attempt);
+  const postgrest = new PostgrestClient("https://example.test/rest/v1", {
+    fetch: async () => {
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("connection refused"), { code: "ECONNREFUSED" }),
+      });
+    },
+  });
+  const transportResponse = await postgrest.rpc("increment_safisa_ready_quantity", {
+    p_supplier_order_item_id: lineId,
+    p_increment_quantity: 2,
+    p_idempotency_key: attempt.idempotencyKey,
+  });
+
+  assert.equal(transportResponse.status, 0);
+  assert.equal(transportResponse.statusText, "");
+  assert.equal(transportResponse.error?.code, "");
+
+  const actionResult = await runSafisaMutation(() =>
+    Promise.resolve(transportResponse),
+  );
+
+  assert.equal(actionResult?.status, "unknown");
+  attempt = markSafisaAttemptResultUnknown(attempt);
+
+  const retry = beginSafisaLogicalAttempt(attempt, incrementPayload(), nextKey);
+  const replay = backend.execute(retry);
+
+  assert.equal(retry.idempotencyKey, attempt.idempotencyKey);
+  assert.equal(replay.idempotentReplay, true);
   assert.equal(backend.readyQuantity, 2);
 });
 
@@ -169,14 +212,85 @@ test("authoritative validation, membership, session, and idempotency errors end 
   );
 });
 
+test("real PostgREST response shapes separate authoritative errors from unknown outcomes", async () => {
+  const abortedPostgrest = new PostgrestClient("https://example.test/rest/v1", {
+    fetch: async () => {
+      throw new DOMException("The operation was aborted", "AbortError");
+    },
+  });
+  const abortedResponse = await abortedPostgrest.rpc("probe_rpc", { value: 1 });
+
+  assert.equal(abortedResponse.status, 0);
+  assert.equal(abortedResponse.statusText, "");
+  assert.equal(
+    classifySafisaMutationResponse(abortedResponse)?.status,
+    "unknown",
+  );
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { code: "22023", message: "invalid quantity" },
+      status: 400,
+      statusText: "Bad Request",
+    })?.status,
+    "error",
+  );
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { code: "42501", message: "permission denied" },
+      status: 403,
+      statusText: "Forbidden",
+    })?.status,
+    "error",
+  );
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { code: "40001", message: "version_conflict" },
+      status: 500,
+      statusText: "Internal Server Error",
+    })?.status,
+    "conflict",
+  );
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { code: "22023", message: "must not be trusted with status zero" },
+      status: 0,
+      statusText: "",
+    })?.status,
+    "unknown",
+  );
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { message: "upstream unavailable" },
+      status: 503,
+      statusText: "Service Unavailable",
+    })?.status,
+    "unknown",
+  );
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { message: "request timeout" },
+      status: 408,
+      statusText: "Request Timeout",
+    })?.status,
+    "unknown",
+  );
+  assert.equal(
+    (
+      await runSafisaMutation(() =>
+        Promise.reject(new TypeError("fetch failed")),
+      )
+    )?.status,
+    "unknown",
+  );
+});
+
 test("a rejected retry does not pretend to resolve an already unknown attempt", () => {
   assert.match(portal, /retryingUnknownAttempt && result\.status !== "success"/);
   assert.match(portal, /O resultado anterior continua sem confirmação/);
 });
 
 test("client and server distinguish an unknown transport outcome from rejection", () => {
-  assert.match(actions, /A thrown transport error cannot prove whether it committed/);
-  assert.match(actions, /status: "unknown"/);
+  assert.match(actions, /import \{ runSafisaMutation \}/);
   assert.match(portal, /result\.status === "unknown"/);
   assert.match(portal, /Tentar verificar novamente/);
   assert.doesNotMatch(portal, /status: "error"[\s\S]{0,120}Verifique sua conexão e tente novamente/);

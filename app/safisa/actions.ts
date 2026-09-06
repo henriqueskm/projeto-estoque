@@ -11,7 +11,7 @@ import {
 } from "@/lib/safisa-portal-data";
 import type { SafisaActionResult } from "@/lib/safisa-portal-types";
 import { dispatchSafisaFullyReadyPush } from "@/lib/safisa-push-dispatch";
-import { mapSafisaMutationError } from "@/lib/safisa-action-errors";
+import { runSafisaMutation } from "@/lib/safisa-action-errors";
 
 export type SafisaLoginState = {
   error?: string;
@@ -45,24 +45,6 @@ function safeActionError(error: unknown): SafisaActionResult {
     status: "error",
     message: "Não foi possível concluir a operação. Tente novamente.",
   };
-}
-
-const unknownMutationResult: SafisaActionResult = {
-  status: "unknown",
-  message: "Não foi possível confirmar o resultado da operação. Tente verificar novamente.",
-};
-
-async function runSafisaMutation(
-  mutation: () => PromiseLike<{ error: { code?: string; message?: string } | null }>,
-): Promise<SafisaActionResult | null> {
-  try {
-    const { error } = await mutation();
-    // A database response is authoritative: an error means the transaction did
-    // not commit. A thrown transport error cannot prove whether it committed.
-    return error ? mapSafisaMutationError(error) : null;
-  } catch {
-    return unknownMutationResult;
-  }
 }
 
 export async function safisaLogin(

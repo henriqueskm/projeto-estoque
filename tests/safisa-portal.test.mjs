@@ -5,7 +5,10 @@ import {
   maximumReadyQuantity,
   readinessLabel,
 } from "../lib/safisa-portal-readiness.ts";
-import { mapSafisaMutationError } from "../lib/safisa-action-errors.ts";
+import {
+  classifySafisaMutationResponse,
+  mapSafisaMutationError,
+} from "../lib/safisa-action-errors.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const actions = read("app/safisa/actions.ts");
@@ -189,6 +192,25 @@ test("Safisa mutation errors distinguish authentication, membership, authorizati
   assert.notEqual(
     mapSafisaMutationError({ code: "42501", message: "permission denied for relation" }).message,
     "Seu acesso ao Portal Safisa não está ativo.",
+  );
+});
+
+test("Safisa mutation transport classification preserves uncertain attempts", () => {
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { message: "TypeError: fetch failed", code: "" },
+      status: 0,
+      statusText: "",
+    })?.status,
+    "unknown",
+  );
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { message: "Bad Gateway" },
+      status: 502,
+      statusText: "Bad Gateway",
+    })?.status,
+    "unknown",
   );
 });
 
