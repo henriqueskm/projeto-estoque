@@ -64,6 +64,6 @@ export type SafisaOrderList = {
 };
 
 export type SafisaActionResult = {
-  status: "success" | "error" | "conflict";
+  status: "success" | "error" | "conflict" | "unknown";
   message: string;
 };

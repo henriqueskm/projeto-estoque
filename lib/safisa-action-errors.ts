@@ -13,6 +13,13 @@ const inactiveMembershipMessages = new Set([
 export function mapSafisaMutationError(
   error: SafisaMutationError,
 ): SafisaActionResult {
+  if (error.message?.includes("idempotency_key")) {
+    return {
+      status: "conflict",
+      message: "Esta tentativa já foi usada com uma operação diferente. Revise os dados antes de continuar.",
+    };
+  }
+
   if (error.code === "40001" || error.message?.includes("version_conflict")) {
     return {
       status: "conflict",
