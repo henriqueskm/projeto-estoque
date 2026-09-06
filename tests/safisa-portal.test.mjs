@@ -63,7 +63,7 @@ test("correction preserves version, confirmation and canonical justification for
 });
 
 test("client prevents double submit and exposes accessible states", () => {
-  assert.match(portal, /if \(isPending \|\| operationLock\.current\) return/);
+  assert.match(portal, /if \(isAttemptRestoring \|\| isPending \|\| operationLock\.current\) return/);
   assert.match(portal, /operationLock\.current/);
   assert.match(portal, /disabled=\{isPending\}/);
   assert.match(portal, /aria-live="polite"/);
@@ -193,6 +193,21 @@ test("Safisa mutation errors distinguish authentication, membership, authorizati
     mapSafisaMutationError({ code: "42501", message: "permission denied for relation" }).message,
     "Seu acesso ao Portal Safisa não está ativo.",
   );
+});
+
+test("unknown result blocks every operational control except its own retry", () => {
+  assert.match(portal, /isAttemptRestoring \|\| isPending \|\| unknownAttempt !== null/);
+  assert.ok((portal.match(/disabled=\{mutationControlsBlocked\}/g) ?? []).length >= 8);
+  assert.match(portal, /aria-disabled=\{mutationControlsBlocked\}/);
+  assert.match(portal, /requestConfirmation/);
+  assert.match(portal, /completeAction\(unknownAttempt\.payload, "RECONCILE_UNKNOWN"\)/);
+  assert.match(portal, /Confirme o resultado da operação anterior antes de realizar outra ação/);
+  const retrySection = portal.slice(
+    portal.indexOf("Tentar verificar novamente") - 800,
+    portal.indexOf("Tentar verificar novamente") + 100,
+  );
+  assert.match(retrySection, /disabled=\{isPending\}/);
+  assert.doesNotMatch(retrySection, /disabled=\{mutationControlsBlocked\}/);
 });
 
 test("Safisa mutation transport classification preserves uncertain attempts", () => {

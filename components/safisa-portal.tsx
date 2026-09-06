@@ -12,10 +12,11 @@ import {
 } from "@/app/safisa/actions";
 import { maximumReadyQuantity, readinessLabel } from "@/lib/safisa-portal-readiness";
 import {
-  beginSafisaLogicalAttempt,
   markSafisaAttemptResultUnknown,
+  prepareSafisaLogicalAttempt,
   restoreSafisaLogicalAttempt,
   serializeSafisaLogicalAttempt,
+  type SafisaAttemptStartMode,
   type SafisaAttemptPayload,
   type SafisaLogicalAttempt,
 } from "@/lib/safisa-logical-attempt";
@@ -168,6 +169,7 @@ export function SafisaPortal({
   const [openingOrderId, setOpeningOrderId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<SafisaActionResult | null>(null);
   const [confirmation, setConfirmation] = useState<PendingConfirmation>(null);
+  const [isAttemptRestoring, setIsAttemptRestoring] = useState(true);
   const [selectedList, setSelectedList] = useState<"ACTIVE" | "COMPLETED">(
     selectedOrder?.portalState ?? "ACTIVE",
   );
@@ -178,27 +180,32 @@ export function SafisaPortal({
   const orders = selectedList === "ACTIVE" ? activeOrders : completedOrders;
   const remainingLineCount =
     selectedOrder?.lines.filter((line) => line.waitingReadyQuantity > 0).length ?? 0;
+  const mutationControlsBlocked =
+    isAttemptRestoring || isPending || unknownAttempt !== null;
 
   useEffect(() => {
-    let restoreTimer: ReturnType<typeof setTimeout> | undefined;
+    let restored: SafisaLogicalAttempt | null = null;
     try {
       const serialized = localStorage.getItem(attemptStorageKey);
-      const restored = serialized ? restoreSafisaLogicalAttempt(serialized) : null;
-      if (!restored) return;
-      restoreTimer = setTimeout(() => {
-        if (logicalAttempt.current || operationLock.current) return;
+      restored = serialized ? restoreSafisaLogicalAttempt(serialized) : null;
+      if (restored && !logicalAttempt.current && !operationLock.current) {
         logicalAttempt.current = restored;
+      }
+    } catch {
+      // The in-memory attempt remains available when browser storage is blocked.
+    }
+    const restoreTimer = setTimeout(() => {
+      if (restored && logicalAttempt.current === restored) {
         setUnknownAttempt(restored);
         setFeedback({
           status: "unknown",
           message: "Não foi possível confirmar o resultado da operação. Tente verificar novamente.",
         });
-      }, 0);
-    } catch {
-      // The in-memory attempt remains available when browser storage is blocked.
-    }
+      }
+      setIsAttemptRestoring(false);
+    }, 0);
     return () => {
-      if (restoreTimer) clearTimeout(restoreTimer);
+      clearTimeout(restoreTimer);
     };
   }, [attemptStorageKey]);
 
@@ -218,17 +225,46 @@ export function SafisaPortal({
     }
   }
 
-  function completeAction(payload: SafisaAttemptPayload) {
-    if (isPending || operationLock.current) return;
-    operationLock.current = true;
+  function showUnknownAttemptBlock(attempt: SafisaLogicalAttempt | null) {
+    if (attempt?.state === "RESULT_UNKNOWN") {
+      setUnknownAttempt(attempt);
+    }
+    setConfirmation(null);
+    setFeedback({
+      status: "unknown",
+      message: "Não foi possível confirmar o resultado da operação. Tente verificar novamente.",
+    });
+  }
+
+  function requestConfirmation(nextConfirmation: Exclude<PendingConfirmation, null>) {
+    if (isAttemptRestoring) return;
     const currentAttempt = logicalAttempt.current;
-    const attempt = beginSafisaLogicalAttempt(
+    if (currentAttempt?.state === "RESULT_UNKNOWN") {
+      showUnknownAttemptBlock(currentAttempt);
+      return;
+    }
+    setConfirmation(nextConfirmation);
+  }
+
+  function completeAction(
+    payload: SafisaAttemptPayload,
+    mode: SafisaAttemptStartMode = "NEW_MUTATION",
+  ) {
+    if (isAttemptRestoring || isPending || operationLock.current) return;
+    const currentAttempt = logicalAttempt.current;
+    const attemptStart = prepareSafisaLogicalAttempt(
       currentAttempt,
       payload,
       () => crypto.randomUUID(),
+      mode,
     );
-    const retryingUnknownAttempt = currentAttempt?.state === "RESULT_UNKNOWN" &&
-      currentAttempt.idempotencyKey === attempt.idempotencyKey;
+    if (attemptStart.kind === "BLOCKED_BY_UNKNOWN") {
+      showUnknownAttemptBlock(attemptStart.attempt);
+      return;
+    }
+
+    operationLock.current = true;
+    const { attempt, retryingUnknownAttempt } = attemptStart;
     logicalAttempt.current = attempt;
     persistAttempt(attempt);
     setUnknownAttempt(null);
@@ -277,7 +313,7 @@ export function SafisaPortal({
 
   function retryUnknownAction() {
     if (!unknownAttempt) return;
-    completeAction(unknownAttempt.payload);
+    completeAction(unknownAttempt.payload, "RECONCILE_UNKNOWN");
   }
 
   function warmOrder(orderId: string) {
@@ -433,14 +469,19 @@ export function SafisaPortal({
             >
               <p>{feedback.message}</p>
               {feedback.status === "unknown" && unknownAttempt ? (
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={retryUnknownAction}
-                  className="mt-3 min-h-11 rounded-xl border border-amber-400 bg-white px-4 text-sm font-black text-amber-950 transition hover:bg-amber-100 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-wait disabled:opacity-60"
-                >
-                  {isPending ? "Verificando…" : "Tentar verificar novamente"}
-                </button>
+                <>
+                  <p className="mt-1 font-semibold">
+                    Confirme o resultado da operação anterior antes de realizar outra ação.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={retryUnknownAction}
+                    className="mt-3 min-h-11 rounded-xl border border-amber-400 bg-white px-4 text-sm font-black text-amber-950 transition hover:bg-amber-100 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {isPending ? "Verificando…" : "Tentar verificar novamente"}
+                  </button>
+                </>
               ) : null}
             </div>
           ) : null}
@@ -496,9 +537,9 @@ export function SafisaPortal({
                     </div>
                     <button
                       type="button"
-                      disabled={isPending}
+                      disabled={mutationControlsBlocked}
                       onClick={() =>
-                        setConfirmation({
+                        requestConfirmation({
                           kind: "order",
                           pendingQuantity: selectedOrder.waitingReadyQuantity,
                           pendingLineCount: remainingLineCount,
@@ -577,13 +618,13 @@ export function SafisaPortal({
                                   max={line.waitingReadyQuantity}
                                   step="1"
                                   required
-                                  disabled={isPending}
+                                  disabled={mutationControlsBlocked}
                                   className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-base font-black tabular-nums outline-none transition focus:border-blue-700 focus:ring-3 focus:ring-blue-100 disabled:bg-slate-100"
                                 />
                               </div>
                               <button
                                 type="submit"
-                                disabled={isPending}
+                                disabled={mutationControlsBlocked}
                                 className="min-h-11 rounded-xl border border-blue-300 bg-white px-4 text-sm font-black text-blue-950 transition hover:bg-blue-50 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-wait disabled:opacity-60"
                               >
                                 {activeLineId === line.supplierOrderItemId && isPending ? "Salvando…" : "Informar quantidade"}
@@ -591,15 +632,26 @@ export function SafisaPortal({
                             </form>
                             <button
                               type="button"
-                              disabled={isPending}
-                              onClick={() => setConfirmation({ kind: "remaining", line })}
+                              disabled={mutationControlsBlocked}
+                              onClick={() => requestConfirmation({ kind: "remaining", line })}
                               className="min-h-11 rounded-xl bg-blue-800 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-900 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-wait disabled:opacity-60"
                             >
                               Concluir este item ({line.waitingReadyQuantity})
                             </button>
                           </div>
                           <details className="group mt-2">
-                            <summary className="inline-flex min-h-10 cursor-pointer items-center rounded-lg px-1 text-xs font-bold text-slate-600 transition hover:text-slate-950 focus-visible:outline-3 focus-visible:outline-blue-700 sm:text-sm">
+                            <summary
+                              aria-disabled={mutationControlsBlocked}
+                              onClick={(event) => {
+                                if (mutationControlsBlocked) event.preventDefault();
+                              }}
+                              className={classNames(
+                                "inline-flex min-h-10 items-center rounded-lg px-1 text-xs font-bold transition focus-visible:outline-3 focus-visible:outline-blue-700 sm:text-sm",
+                                mutationControlsBlocked
+                                  ? "cursor-not-allowed text-slate-400"
+                                  : "cursor-pointer text-slate-600 hover:text-slate-950",
+                              )}
+                            >
                               Corrigir quantidade pronta
                             </summary>
                             <form
@@ -607,7 +659,7 @@ export function SafisaPortal({
                               onSubmit={(event) => {
                                 event.preventDefault();
                                 const form = new FormData(event.currentTarget);
-                                setConfirmation({
+                                requestConfirmation({
                                   kind: "correction",
                                   line,
                                   total: Number(form.get("total")),
@@ -626,7 +678,8 @@ export function SafisaPortal({
                                   max={maximumReadyQuantity(line.readyQuantity, line.waitingReadyQuantity)}
                                   defaultValue={line.readyQuantity}
                                   required
-                                  className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-bold outline-none focus:border-amber-700 focus:ring-3 focus:ring-amber-100"
+                                  disabled={mutationControlsBlocked}
+                                  className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-bold outline-none focus:border-amber-700 focus:ring-3 focus:ring-amber-100 disabled:bg-slate-100"
                                 />
                               </div>
                               <div>
@@ -638,13 +691,14 @@ export function SafisaPortal({
                                   maxLength={500}
                                   required
                                   rows={3}
-                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-700 focus:ring-3 focus:ring-amber-100"
+                                  disabled={mutationControlsBlocked}
+                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-700 focus:ring-3 focus:ring-amber-100 disabled:bg-slate-100"
                                 />
                               </div>
                               <button
                                 type="submit"
-                                disabled={isPending}
-                                className="min-h-11 w-full rounded-xl border border-amber-500 bg-white px-4 text-sm font-black text-amber-950 transition hover:bg-amber-100 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                                disabled={mutationControlsBlocked}
+                                className="min-h-11 w-full rounded-xl border border-amber-500 bg-white px-4 text-sm font-black text-amber-950 transition hover:bg-amber-100 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 Revisar correção
                               </button>
@@ -715,7 +769,7 @@ export function SafisaPortal({
               </button>
               <button
                 type="button"
-                disabled={isPending}
+                disabled={mutationControlsBlocked}
                 onClick={() => {
                   if (confirmation.kind === "order") {
                     const payload: SafisaAttemptPayload = {

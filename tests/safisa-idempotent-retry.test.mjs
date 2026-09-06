@@ -6,6 +6,7 @@ import {
   beginSafisaLogicalAttempt,
   canonicalSafisaAttemptPayload,
   markSafisaAttemptResultUnknown,
+  prepareSafisaLogicalAttempt,
   restoreSafisaLogicalAttempt,
   serializeSafisaLogicalAttempt,
 } from "../lib/safisa-logical-attempt.ts";
@@ -176,27 +177,120 @@ test("double submit of one pending intention keeps one logical key", () => {
   const second = beginSafisaLogicalAttempt(first, incrementPayload(), nextKey);
 
   assert.equal(second.idempotencyKey, first.idempotencyKey);
-  assert.match(portal, /if \(isPending \|\| operationLock\.current\) return/);
+  assert.match(portal, /if \(isAttemptRestoring \|\| isPending \|\| operationLock\.current\) return/);
 });
 
-test("changed quantity, changed item, and a new completed intention receive new keys", () => {
+test("an unknown attempt blocks every different payload without creating or sending a new intention", () => {
+  let createdKeyCount = 0;
+  let sentPayloadCount = 0;
+  const nextKey = () => {
+    createdKeyCount += 1;
+    return `00000000-0000-4000-8000-${String(createdKeyCount).padStart(12, "0")}`;
+  };
+  const firstStart = prepareSafisaLogicalAttempt(
+    null,
+    incrementPayload(),
+    nextKey,
+  );
+  assert.equal(firstStart.kind, "START");
+  if (firstStart.kind !== "START") return;
+
+  const unknown = markSafisaAttemptResultUnknown(firstStart.attempt);
+  const serializedUnknown = serializeSafisaLogicalAttempt(unknown);
+  let persistedAttempt = serializedUnknown;
+  const differentPayloads = [
+    incrementPayload({ incrementQuantity: 3 }),
+    incrementPayload({ supplierOrderItemId: "33333333-3333-4333-8333-333333333333" }),
+    {
+      kind: "MARK_LINE_REMAINING_READY",
+      supplierOrderId: orderId,
+      supplierOrderItemId: lineId,
+      incrementQuantity: 2,
+    },
+    { kind: "MARK_ORDER_REMAINING_READY", supplierOrderId: orderId },
+    {
+      kind: "CORRECT_READY_QUANTITY",
+      supplierOrderId: orderId,
+      supplierOrderItemId: lineId,
+      newReadyQuantity: 1,
+      justification: "Contagem conferida",
+      expectedUpdatedAt: "2026-09-06T00:00:00.000Z",
+    },
+  ];
+
+  for (const payload of differentPayloads) {
+    const blocked = prepareSafisaLogicalAttempt(
+      unknown,
+      payload,
+      nextKey,
+    );
+    if (blocked.kind === "START") {
+      sentPayloadCount += 1;
+      persistedAttempt = serializeSafisaLogicalAttempt(blocked.attempt);
+    }
+
+    assert.equal(blocked.kind, "BLOCKED_BY_UNKNOWN");
+    assert.equal(blocked.attempt, unknown);
+    assert.equal(persistedAttempt, serializedUnknown);
+  }
+
+  assert.equal(createdKeyCount, 1);
+  assert.equal(sentPayloadCount, 0);
+});
+
+test("a reloaded unknown attempt still blocks a different mutation without replacing storage", () => {
   const nextKey = keyFactory();
-  const first = beginSafisaLogicalAttempt(null, incrementPayload(), nextKey);
-  const changedQuantity = beginSafisaLogicalAttempt(
-    markSafisaAttemptResultUnknown(first),
+  const initial = markSafisaAttemptResultUnknown(
+    beginSafisaLogicalAttempt(null, incrementPayload(), nextKey),
+  );
+  const persistedAttempt = serializeSafisaLogicalAttempt(initial);
+  const restored = restoreSafisaLogicalAttempt(persistedAttempt);
+  assert.ok(restored);
+
+  const blocked = prepareSafisaLogicalAttempt(
+    restored,
+    { kind: "MARK_ORDER_REMAINING_READY", supplierOrderId: orderId },
+    nextKey,
+  );
+
+  assert.equal(blocked.kind, "BLOCKED_BY_UNKNOWN");
+  assert.equal(blocked.attempt, restored);
+  assert.equal(serializeSafisaLogicalAttempt(restored), persistedAttempt);
+});
+
+test("only explicit reconciliation can reuse unknown A, then resolved A allows a new B key", () => {
+  const nextKey = keyFactory();
+  const firstStart = prepareSafisaLogicalAttempt(null, incrementPayload(), nextKey);
+  assert.equal(firstStart.kind, "START");
+  if (firstStart.kind !== "START") return;
+
+  const unknown = markSafisaAttemptResultUnknown(firstStart.attempt);
+  const samePayloadAsNewMutation = prepareSafisaLogicalAttempt(
+    unknown,
+    incrementPayload(),
+    nextKey,
+  );
+  assert.equal(samePayloadAsNewMutation.kind, "BLOCKED_BY_UNKNOWN");
+
+  const retry = prepareSafisaLogicalAttempt(
+    unknown,
+    incrementPayload(),
+    nextKey,
+    "RECONCILE_UNKNOWN",
+  );
+  assert.equal(retry.kind, "START");
+  if (retry.kind !== "START") return;
+  assert.equal(retry.attempt.idempotencyKey, unknown.idempotencyKey);
+  assert.equal(retry.retryingUnknownAttempt, true);
+
+  const newIntention = prepareSafisaLogicalAttempt(
+    null,
     incrementPayload({ incrementQuantity: 3 }),
     nextKey,
   );
-  const changedItem = beginSafisaLogicalAttempt(
-    markSafisaAttemptResultUnknown(changedQuantity),
-    incrementPayload({ supplierOrderItemId: "33333333-3333-4333-8333-333333333333" }),
-    nextKey,
-  );
-  const newIntention = beginSafisaLogicalAttempt(null, incrementPayload(), nextKey);
-
-  assert.notEqual(changedQuantity.idempotencyKey, first.idempotencyKey);
-  assert.notEqual(changedItem.idempotencyKey, changedQuantity.idempotencyKey);
-  assert.notEqual(newIntention.idempotencyKey, first.idempotencyKey);
+  assert.equal(newIntention.kind, "START");
+  if (newIntention.kind !== "START") return;
+  assert.notEqual(newIntention.attempt.idempotencyKey, unknown.idempotencyKey);
 });
 
 test("authoritative validation, membership, session, and idempotency errors end as rejections", () => {
@@ -289,6 +383,18 @@ test("a rejected retry does not pretend to resolve an already unknown attempt", 
   assert.match(portal, /O resultado anterior continua sem confirmação/);
 });
 
+test("the portal blocks new mutations during unknown and exposes only explicit reconciliation", () => {
+  assert.match(portal, /prepareSafisaLogicalAttempt/);
+  assert.match(portal, /mode: SafisaAttemptStartMode = "NEW_MUTATION"/);
+  assert.match(portal, /attemptStart\.kind === "BLOCKED_BY_UNKNOWN"/);
+  assert.match(portal, /completeAction\(unknownAttempt\.payload, "RECONCILE_UNKNOWN"\)/);
+  assert.match(portal, /isAttemptRestoring \|\| isPending \|\| unknownAttempt !== null/);
+  assert.match(portal, /if \(isAttemptRestoring \|\| isPending \|\| operationLock\.current\) return/);
+  assert.match(portal, /Confirme o resultado da operação anterior antes de realizar outra ação/);
+  assert.match(portal, /disabled=\{mutationControlsBlocked\}/);
+  assert.match(portal, /aria-disabled=\{mutationControlsBlocked\}/);
+});
+
 test("client and server distinguish an unknown transport outcome from rejection", () => {
   assert.match(actions, /import \{ runSafisaMutation \}/);
   assert.match(portal, /result\.status === "unknown"/);
@@ -318,4 +424,5 @@ test("normal operation remains a single mutation with the existing mobile contro
   assert.equal(backend.readyQuantity, 2);
   assert.match(portal, /min-h-11/);
   assert.match(portal, /inputMode="numeric"/);
+  assert.match(portal, /setIsAttemptRestoring\(false\)/);
 });

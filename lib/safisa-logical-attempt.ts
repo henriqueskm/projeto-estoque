@@ -31,6 +31,19 @@ export type SafisaLogicalAttempt = {
   state: "SUBMITTING" | "RESULT_UNKNOWN";
 };
 
+export type SafisaAttemptStart =
+  | {
+      kind: "START";
+      attempt: SafisaLogicalAttempt;
+      retryingUnknownAttempt: boolean;
+    }
+  | {
+      kind: "BLOCKED_BY_UNKNOWN";
+      attempt: SafisaLogicalAttempt | null;
+    };
+
+export type SafisaAttemptStartMode = "NEW_MUTATION" | "RECONCILE_UNKNOWN";
+
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -137,6 +150,30 @@ export function beginSafisaLogicalAttempt(
     canonicalPayload,
     payload,
     state: "SUBMITTING",
+  };
+}
+
+export function prepareSafisaLogicalAttempt(
+  current: SafisaLogicalAttempt | null,
+  payload: SafisaAttemptPayload,
+  createIdempotencyKey: () => string,
+  mode: SafisaAttemptStartMode = "NEW_MUTATION",
+): SafisaAttemptStart {
+  const canonicalPayload = canonicalSafisaAttemptPayload(payload);
+
+  if (current?.state === "RESULT_UNKNOWN") {
+    const isExactRetry = current.canonicalPayload === canonicalPayload;
+    if (mode !== "RECONCILE_UNKNOWN" || !isExactRetry) {
+      return { kind: "BLOCKED_BY_UNKNOWN", attempt: current };
+    }
+  } else if (mode === "RECONCILE_UNKNOWN") {
+    return { kind: "BLOCKED_BY_UNKNOWN", attempt: current };
+  }
+
+  return {
+    kind: "START",
+    attempt: beginSafisaLogicalAttempt(current, payload, createIdempotencyKey),
+    retryingUnknownAttempt: current?.state === "RESULT_UNKNOWN",
   };
 }
 
