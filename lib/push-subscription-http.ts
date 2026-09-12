@@ -18,17 +18,19 @@ export function isPushSubscriptionSameOrigin(request: Request) {
   }
 }
 
-export function parsePushSubscriptionBody(value: unknown) {
+export function parsePushSubscriptionBody(value: unknown, operation: "register" | "disable" = "register") {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
+  const expectedKeys = operation === "register"
+    ? ["deviceId", "firebaseInstallationId"]
+    : ["firebaseInstallationId"];
   if (
-    keys.length !== 2 ||
-    !keys.includes("deviceId") ||
-    !keys.includes("firebaseInstallationId") ||
-    typeof record.deviceId !== "string" ||
-    !uuidPattern.test(record.deviceId) ||
+    keys.length !== expectedKeys.length ||
+    !expectedKeys.every((key) => keys.includes(key)) ||
+    (operation === "register" &&
+      (typeof record.deviceId !== "string" || !uuidPattern.test(record.deviceId))) ||
     typeof record.firebaseInstallationId !== "string" ||
     record.firebaseInstallationId.trim().length === 0 ||
     record.firebaseInstallationId.length > firebaseInstallationIdMaxLength ||
@@ -38,15 +40,16 @@ export function parsePushSubscriptionBody(value: unknown) {
   }
 
   return {
-    deviceId: record.deviceId,
+    ...(operation === "register" ? { deviceId: record.deviceId as string } : {}),
     firebaseInstallationId: record.firebaseInstallationId.trim(),
   };
 }
 
 export async function readPushSubscriptionBody(
   request: Request,
+  operation: "register" | "disable" = "register",
 ): Promise<
-  | { data: { deviceId: string; firebaseInstallationId: string } }
+  | { data: { deviceId?: string; firebaseInstallationId: string } }
   | { error: 400 | 413 | 415 }
 > {
   const contentType = request.headers
@@ -76,7 +79,7 @@ export async function readPushSubscriptionBody(
   }
 
   try {
-    const parsed = parsePushSubscriptionBody(JSON.parse(rawBody));
+    const parsed = parsePushSubscriptionBody(JSON.parse(rawBody), operation);
     return parsed ? { data: parsed } : { error: 400 as const };
   } catch {
     return { error: 400 as const };

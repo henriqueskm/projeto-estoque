@@ -1,146 +1,106 @@
 export type PushOperationKind = "enable" | "disable";
 export type PushMutationKind = "enable" | "disable";
 export type PushPreference = "enabled" | "disabled" | "unknown";
-export type PushRegistrationIdentity = {
-  deviceId: string;
-  firebaseInstallationId: string;
-};
 
 type PushPreferenceStorage = Pick<
   Storage,
   "getItem" | "setItem" | "removeItem"
 >;
+type PushInstallationStorage = PushPreferenceStorage & Pick<Storage, "key" | "length">;
 const pushDeviceIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const pushInstallationControlCharacterPattern = /[\u0000-\u001f\u007f]/;
 
-function isPushRegistrationIdentity(
-  value: unknown,
-): value is PushRegistrationIdentity {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const keys = Object.keys(value).sort();
-  const deviceId = Reflect.get(value, "deviceId");
-  const firebaseInstallationId = Reflect.get(
-    value,
-    "firebaseInstallationId",
-  );
-  return (
-    keys.length === 2 &&
-    keys[0] === "deviceId" &&
-    keys[1] === "firebaseInstallationId" &&
-    typeof deviceId === "string" &&
-    pushDeviceIdPattern.test(deviceId) &&
-    typeof firebaseInstallationId === "string" &&
-    firebaseInstallationId.trim() === firebaseInstallationId &&
-    firebaseInstallationId.length > 0 &&
-    firebaseInstallationId.length <= 512 &&
-    !pushInstallationControlCharacterPattern.test(firebaseInstallationId)
-  );
+function isPushInstallationId(value: unknown): value is string {
+  return typeof value === "string" && value.trim() === value &&
+    value.length > 0 && value.length <= 512 &&
+    !pushInstallationControlCharacterPattern.test(value);
 }
 
-function readStoredPushRegistration(
-  storage: Pick<Storage, "getItem">,
-  registrationKey: string,
+function pushInstallationStorageKey(prefix: string, firebaseInstallationId: string) {
+  return `${prefix}:${encodeURIComponent(firebaseInstallationId)}`;
+}
+
+function readStoredPushInstallationIds(
+  storage: Pick<Storage, "getItem" | "key" | "length">,
+  installationSetKey: string,
 ) {
-  const serialized = storage.getItem(registrationKey);
-  if (serialized === null) return null;
-  try {
-    const parsed: unknown = JSON.parse(serialized);
-    return isPushRegistrationIdentity(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
+  const prefix = `${installationSetKey}:`;
+  const ids: string[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key?.startsWith(prefix)) continue;
+    const value = storage.getItem(key);
+    if (!isPushInstallationId(value)) return undefined;
+    ids.push(value);
   }
+  return [...new Set(ids)].sort();
 }
 
-export function persistConfirmedPushRegistration(input: {
-  storage: PushPreferenceStorage;
-  registrationKey: string;
-  identity: PushRegistrationIdentity;
+export function persistPotentialPushInstallation(input: {
+  storage: PushInstallationStorage;
+  installationSetKey: string;
+  firebaseInstallationId: string;
 }) {
-  if (!isPushRegistrationIdentity(input.identity)) return false;
+  if (!isPushInstallationId(input.firebaseInstallationId)) return false;
   try {
-    input.storage.setItem(
-      input.registrationKey,
-      JSON.stringify(input.identity),
-    );
-    const stored = readStoredPushRegistration(
-      input.storage,
-      input.registrationKey,
-    );
-    return (
-      stored?.deviceId === input.identity.deviceId &&
-      stored.firebaseInstallationId === input.identity.firebaseInstallationId
-    );
+    const current = readStoredPushInstallationIds(input.storage, input.installationSetKey);
+    if (current === undefined) return false;
+    if (!current.includes(input.firebaseInstallationId) && current.length >= 8) return false;
+    const key = pushInstallationStorageKey(input.installationSetKey, input.firebaseInstallationId);
+    input.storage.setItem(key, input.firebaseInstallationId);
+    return input.storage.getItem(key) === input.firebaseInstallationId;
   } catch {
     return false;
   }
 }
 
-export function readConfirmedPushRegistration(input: {
-  storage: PushPreferenceStorage;
-  registrationKey: string;
+export function readPotentialPushInstallations(input: {
+  storage: PushInstallationStorage;
+  installationSetKey: string;
   legacyInstallationKey: string;
-  legacyDeviceKey: string;
-}): PushRegistrationIdentity | null {
+  legacyConfirmedKey?: string;
+}): string[] {
   try {
-    const stored = readStoredPushRegistration(
-      input.storage,
-      input.registrationKey,
-    );
-    if (stored === undefined) return null;
-    if (stored) return stored;
-
-    const legacyIdentity = {
-      deviceId: input.storage.getItem(input.legacyDeviceKey),
-      firebaseInstallationId: input.storage.getItem(
-        input.legacyInstallationKey,
-      ),
-    };
-    if (!isPushRegistrationIdentity(legacyIdentity)) return null;
-    return persistConfirmedPushRegistration({
-      storage: input.storage,
-      registrationKey: input.registrationKey,
-      identity: legacyIdentity,
-    })
-      ? legacyIdentity
-      : null;
+    const stored = readStoredPushInstallationIds(input.storage, input.installationSetKey);
+    if (stored === undefined) return [];
+    if (stored.length > 0) return stored;
+    const candidates: unknown[] = [input.storage.getItem(input.legacyInstallationKey)];
+    if (input.legacyConfirmedKey) {
+      try {
+        candidates.push(JSON.parse(input.storage.getItem(input.legacyConfirmedKey) ?? "null")?.firebaseInstallationId);
+      } catch { /* malformed legacy state is ignored */ }
+    }
+    const ids = [...new Set(candidates.filter(isPushInstallationId))].slice(-8);
+    for (const firebaseInstallationId of ids) {
+      if (!persistPotentialPushInstallation({ ...input, firebaseInstallationId })) return [];
+    }
+    return ids;
   } catch {
-    return null;
+    return [];
   }
 }
 
-export function removeConfirmedPushRegistration(input: {
-  storage: PushPreferenceStorage;
-  registrationKey: string;
+export function removePotentialPushInstallation(input: {
+  storage: PushInstallationStorage;
+  installationSetKey: string;
   legacyInstallationKey: string;
-  identity: PushRegistrationIdentity;
+  legacyConfirmedKey?: string;
+  firebaseInstallationId: string;
 }) {
   try {
-    const stored = readStoredPushRegistration(
-      input.storage,
-      input.registrationKey,
-    );
+    const stored = readStoredPushInstallationIds(input.storage, input.installationSetKey);
     if (stored === undefined) return false;
-    if (
-      stored &&
-      (stored.deviceId !== input.identity.deviceId ||
-        stored.firebaseInstallationId !== input.identity.firebaseInstallationId)
-    ) {
-      return true;
-    }
-
-    input.storage.removeItem(input.registrationKey);
-    if (
-      input.storage.getItem(input.legacyInstallationKey) ===
-      input.identity.firebaseInstallationId
-    ) {
+    input.storage.removeItem(pushInstallationStorageKey(
+      input.installationSetKey,
+      input.firebaseInstallationId,
+    ));
+    if (input.storage.getItem(input.legacyInstallationKey) === input.firebaseInstallationId) {
       input.storage.removeItem(input.legacyInstallationKey);
     }
-    return (
-      input.storage.getItem(input.registrationKey) === null &&
-      input.storage.getItem(input.legacyInstallationKey) !==
-        input.identity.firebaseInstallationId
-    );
+    if (input.legacyConfirmedKey) input.storage.removeItem(input.legacyConfirmedKey);
+    return readStoredPushInstallationIds(input.storage, input.installationSetKey)
+      ?.includes(input.firebaseInstallationId) === false;
   } catch {
     return false;
   }
@@ -260,23 +220,16 @@ export async function registerPushInstallationWithConvergence(input: {
   firebaseInstallationId: string;
   getOrCreateDeviceId: () => string;
   readDeviceId: () => string | null;
-  storeConfirmedRegistration: (
-    identity: PushRegistrationIdentity,
-  ) => boolean;
+  storePotentialInstallation: (firebaseInstallationId: string) => boolean;
   registerInstallation: (
     deviceId: string,
     firebaseInstallationId: string,
   ) => Promise<PushRegistrationResponse>;
-  rollbackInstallation?: (
-    deviceId: string,
-    firebaseInstallationId: string,
-  ) => Promise<unknown>;
   canRegister: () => boolean;
   maxAttempts?: number;
 }) {
   const maxAttempts = Math.max(1, Math.min(input.maxAttempts ?? 3, 5));
   let deviceId: string;
-  let registrationConfirmed = false;
 
   try {
     if (!input.canRegister()) return null;
@@ -287,34 +240,17 @@ export async function registerPushInstallationWithConvergence(input: {
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      if (!registrationConfirmed && !input.canRegister()) return null;
+      if (!input.canRegister()) return null;
       const storedBeforeRequest = input.readDeviceId();
       if (!storedBeforeRequest) return null;
       deviceId = storedBeforeRequest;
 
+      if (!input.storePotentialInstallation(input.firebaseInstallationId)) return null;
       const response = await input.registerInstallation(
         deviceId,
         input.firebaseInstallationId,
       );
       if (!response.ok) return null;
-      registrationConfirmed = true;
-
-      // Replace the cleanup identity only after a semantically confirmed POST.
-      const confirmedIdentity = {
-        deviceId,
-        firebaseInstallationId: input.firebaseInstallationId,
-      };
-      if (!input.storeConfirmedRegistration(confirmedIdentity)) {
-        try {
-          await input.rollbackInstallation?.(
-            deviceId,
-            input.firebaseInstallationId,
-          );
-        } catch {
-          // Rollback is best-effort; registration is never reported complete.
-        }
-        return null;
-      }
 
       const canonicalDeviceId = input.readDeviceId();
       if (!canonicalDeviceId) return null;
@@ -484,33 +420,27 @@ export function subscribeToPushDeviceIdentityEvents(input: {
 }
 
 export async function runPushDisableCleanup(input: {
-  confirmedRegistration: PushRegistrationIdentity | null;
-  disableRegistration: (
-    identity: PushRegistrationIdentity,
-  ) => Promise<LogoutCleanupResponse>;
-  removeConfirmedRegistration: (
-    identity: PushRegistrationIdentity,
-  ) => void;
+  firebaseInstallationIds: string[];
+  disableInstallation: (firebaseInstallationId: string) => Promise<LogoutCleanupResponse>;
+  removeInstallation: (firebaseInstallationId: string) => void;
   unregisterInstallation: () => Promise<unknown>;
 }) {
-  let deleteConfirmed = input.confirmedRegistration === null;
+  let deleteConfirmed = true;
   let unregisterConfirmed = false;
 
-  if (input.confirmedRegistration) {
+  for (const firebaseInstallationId of [...new Set(input.firebaseInstallationIds)].slice(0, 8)) {
     try {
-      const response = await input.disableRegistration(
-        input.confirmedRegistration,
-      );
-      deleteConfirmed = response.ok;
+      const response = await input.disableInstallation(firebaseInstallationId);
+      deleteConfirmed = response.ok && deleteConfirmed;
       if (response.ok) {
         try {
-          input.removeConfirmedRegistration(input.confirmedRegistration);
+          input.removeInstallation(firebaseInstallationId);
         } catch {
-          // Confirmed DELETE makes stale local identity harmless; unregister continues.
+          // Remote cleanup and Firebase unregistration remain independent.
         }
       }
     } catch {
-      // Keep the FID so a later retry can target the same device record.
+      deleteConfirmed = false;
     }
   }
 
@@ -529,13 +459,9 @@ export async function runPushDisableCleanup(input: {
 }
 
 export async function runPushLogoutCleanup(input: {
-  confirmedRegistration: PushRegistrationIdentity | null;
-  disableRegistration: (
-    identity: PushRegistrationIdentity,
-  ) => Promise<LogoutCleanupResponse>;
-  removeConfirmedRegistration: (
-    identity: PushRegistrationIdentity,
-  ) => void;
+  firebaseInstallationIds: string[];
+  disableInstallation: (firebaseInstallationId: string) => Promise<LogoutCleanupResponse>;
+  removeInstallation: (firebaseInstallationId: string) => void;
   unregisterInstallation: () => Promise<unknown>;
   storeLocalOptOut: () => void;
 }) {

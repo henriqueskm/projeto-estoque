@@ -36,7 +36,7 @@ async function mutateSubscription(request: Request, operation: "register" | "dis
     return json({ error: "Origem da solicitação não permitida." }, 403);
   }
 
-  const parsed = await readPushSubscriptionBody(request);
+  const parsed = await readPushSubscriptionBody(request, operation);
   if ("error" in parsed) {
     const message = parsed.error === 415
       ? "O conteúdo da solicitação deve ser JSON."
@@ -53,7 +53,7 @@ async function mutateSubscription(request: Request, operation: "register" | "dis
     ? "register_push_subscription"
     : "disable_push_subscription";
   const { data, error } = await supabase.rpc(rpcName, {
-    p_device_id: parsed.data.deviceId,
+    p_device_id: operation === "register" ? parsed.data.deviceId : null,
     p_firebase_installation_id: parsed.data.firebaseInstallationId,
   });
 

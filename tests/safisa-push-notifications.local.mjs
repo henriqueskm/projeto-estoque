@@ -108,7 +108,7 @@ asAuthenticated(ids.internalB, `select public.register_push_subscription('${devi
 assert.equal(psql(`select user_id from public.push_subscriptions where firebase_installation_id = '${fid(1)}'`), ids.internalB);
 assert.equal(asAuthenticated(ids.internalA, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`).includes('"disabled": false'), true);
 assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}' and enabled`), 1);
-assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`).includes('"disabled": true'), true);
+assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(9)}', '${fid(1)}')`).includes('"disabled": true'), true, "device_id metadata does not participate in disable");
 assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}' and enabled`), 0);
 assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`).includes('"disabled": true'), true, "second exact disable remains successful");
 assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}' and enabled`), 0);

@@ -26,8 +26,7 @@ begin
     raise exception using errcode = '42501', message = 'An active internal profile is required.';
   end if;
 
-  if p_device_id is null
-    or v_firebase_installation_id is null
+  if v_firebase_installation_id is null
     or char_length(v_firebase_installation_id) > 512
     or v_firebase_installation_id ~ '[[:cntrl:]]' then
     raise exception using errcode = '22023', message = 'The Firebase installation ID is invalid.';
@@ -38,7 +37,6 @@ begin
       updated_at = now(),
       last_seen_at = now()
   where user_id = v_user_id
-    and device_id = p_device_id
     and firebase_installation_id = v_firebase_installation_id
   returning true into v_disabled;
 
