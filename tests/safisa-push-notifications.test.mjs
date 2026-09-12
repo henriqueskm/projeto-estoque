@@ -11,10 +11,12 @@ import { dispatchSafisaFullyReadyPush } from "../lib/safisa-push-dispatch.ts";
 import {
   beginPushOperation,
   createPushOperationGate,
+  createPushPersistenceQueue,
   finishPushOperation,
   invalidatePushOperations,
   isCurrentPushOperation,
   runBoundedLogoutFlow,
+  runPushDisableCleanup,
   runPushLogoutCleanup,
 } from "../lib/push-notification-operations.ts";
 
@@ -88,6 +90,14 @@ function batch(responses) {
     successCount: responses.filter((response) => response.success).length,
     failureCount: responses.filter((response) => !response.success).length,
   };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 function loadServiceWorker() {
@@ -178,7 +188,7 @@ test("client registers through FID callbacks using the existing worker and asks 
   assert.match(providerSource, /"not_configured"/);
 });
 
-test("FID rotation is persisted and disable updates the backend before unregistering", () => {
+test("FID rotation is persisted and disable records opt-out before cleanup", () => {
   const registrationEffect = providerSource.slice(
     providerSource.indexOf("subscribeToFirebasePushRegistration"),
     providerSource.indexOf("const enable"),
@@ -190,27 +200,167 @@ test("FID rotation is persisted and disable updates the backend before unregiste
     providerSource.indexOf("const disable"),
     providerSource.indexOf("const value"),
   );
-  assert.ok(
-    disableFlow.indexOf('persistInstallation(') <
-      disableFlow.indexOf('unregisterFirebasePushInstallation()'),
-  );
-  assert.match(disableFlow, /if \(!response\.ok\) \{[\s\S]*setState\("error"\);[\s\S]*return;/);
+  assert.ok(disableFlow.indexOf("localOptOutKey") < disableFlow.indexOf("await queuePersistence"));
+  assert.match(disableFlow, /runPushDisableCleanup/);
+  assert.match(disableFlow, /setErrorOperation\("disable"\)/);
+  assert.match(controlSource, /Tentar desativar novamente/);
+  assert.match(controlSource, /sincronização está pendente/);
 });
 
-test("operation gate blocks double click and enable x disable concurrency", () => {
+test("disable supersedes enable, while double click disable remains blocked", () => {
   const gate = createPushOperationGate();
   const enableGeneration = beginPushOperation(gate, "enable");
   assert.equal(enableGeneration, 1);
   assert.equal(beginPushOperation(gate, "enable"), null);
+  const disableGeneration = beginPushOperation(gate, "disable");
+  assert.equal(disableGeneration, 2);
   assert.equal(beginPushOperation(gate, "disable"), null);
-  assert.equal(isCurrentPushOperation(gate, 1, "enable"), true);
+  assert.equal(isCurrentPushOperation(gate, 1, "enable"), false);
+  assert.equal(isCurrentPushOperation(gate, 2, "disable"), true);
   assert.equal(finishPushOperation(gate, 0, "enable"), false);
   assert.equal(gate.working, true, "callback antigo não libera a operação atual");
-  assert.equal(finishPushOperation(gate, 1, "enable"), true);
-  assert.equal(beginPushOperation(gate, "disable"), 2);
+  assert.equal(finishPushOperation(gate, 1, "enable"), false);
   invalidatePushOperations(gate);
   assert.equal(isCurrentPushOperation(gate, 2, "disable"), false);
   assert.equal(gate.working, false);
+});
+
+test("enable pendente seguido de disable mantém opt-out e a última intenção vence", async () => {
+  const gate = createPushOperationGate();
+  const queue = createPushPersistenceQueue();
+  const postResponse = deferred();
+  const calls = [];
+  let storedFid = null;
+  let localOptOut = false;
+  let state = "default";
+  let registrationGeneration = 1;
+  let desiredEnabled = true;
+
+  const enableGeneration = beginPushOperation(gate, "enable");
+  const enablePersistence = queue.run(async () => {
+    calls.push("post-start");
+    await postResponse.promise;
+    storedFid = "fid-device-a";
+    calls.push("post-finish");
+    return "fid-device-a";
+  }).then(() => {
+    if (isCurrentPushOperation(gate, enableGeneration, "enable")) state = "granted";
+  });
+
+  const disableGeneration = beginPushOperation(gate, "disable");
+  assert.equal(disableGeneration, 2);
+  localOptOut = true;
+  desiredEnabled = false;
+  registrationGeneration += 1;
+  state = "default";
+  const disableCleanup = queue.run(() => runPushDisableCleanup({
+    firebaseInstallationId: storedFid,
+    async disableInstallation(fid) {
+      calls.push(["delete", fid]);
+      return { ok: true };
+    },
+    removeStoredInstallation(fid) {
+      if (storedFid === fid) storedFid = null;
+    },
+    async unregisterInstallation() { calls.push("unregister"); },
+  }));
+
+  const registeredCallback = (callbackGeneration) => {
+    if (desiredEnabled && callbackGeneration === registrationGeneration) {
+      state = "granted";
+    }
+  };
+  const unregisteredCallback = registeredCallback;
+  registeredCallback(1);
+  unregisteredCallback(1);
+  assert.equal(state, "default", "callbacks antigos não reativam o device");
+
+  postResponse.resolve();
+  await enablePersistence;
+  const cleanupResult = await disableCleanup;
+  assert.equal(cleanupResult.synchronized, true);
+  assert.equal(localOptOut, true);
+  assert.equal(state, "default");
+  assert.equal(storedFid, null);
+  assert.deepEqual(calls, [
+    "post-start",
+    "post-finish",
+    ["delete", "fid-device-a"],
+    "unregister",
+  ]);
+});
+
+test("DELETE falho preserva FID e retry usa usuário, device e FID originais", async () => {
+  const identity = {
+    userId: "user-current",
+    deviceId: "device-a",
+    firebaseInstallationId: "fid-a",
+  };
+  let storedFid = identity.firebaseInstallationId;
+  let attempt = 0;
+  const requests = [];
+  const cleanup = () => runPushDisableCleanup({
+    firebaseInstallationId: storedFid,
+    async disableInstallation(firebaseInstallationId) {
+      attempt += 1;
+      requests.push({ ...identity, firebaseInstallationId });
+      return { ok: attempt === 2 };
+    },
+    removeStoredInstallation(firebaseInstallationId) {
+      if (storedFid === firebaseInstallationId) storedFid = null;
+    },
+    async unregisterInstallation() {},
+  });
+
+  assert.equal((await cleanup()).synchronized, false);
+  assert.equal(storedFid, "fid-a");
+  assert.equal((await cleanup()).synchronized, true);
+  assert.equal(storedFid, null);
+  assert.deepEqual(requests, [identity, identity]);
+});
+
+test("disable sem FID ainda tenta unregister e falhas permanecem retryable", async () => {
+  let unregisterAttempts = 0;
+  const result = await runPushDisableCleanup({
+    firebaseInstallationId: null,
+    async disableInstallation() { throw new Error("DELETE indevido"); },
+    removeStoredInstallation() { throw new Error("remoção indevida"); },
+    async unregisterInstallation() {
+      unregisterAttempts += 1;
+      throw new Error("firebase offline");
+    },
+  });
+  assert.equal(unregisterAttempts, 1);
+  assert.deepEqual(result, {
+    deleteConfirmed: true,
+    unregisterConfirmed: false,
+    synchronized: false,
+  });
+});
+
+test("dois devices do mesmo usuário: disable A não modifica B", async () => {
+  const rows = new Map([
+    ["device-a", { userId: "user-1", fid: "fid-a", enabled: true }],
+    ["device-b", { userId: "user-1", fid: "fid-b", enabled: true }],
+  ]);
+  const currentUserId = "user-1";
+  const currentDeviceId = "device-a";
+  await runPushDisableCleanup({
+    firebaseInstallationId: "fid-a",
+    async disableInstallation(fid) {
+      const row = rows.get(currentDeviceId);
+      if (row?.userId === currentUserId && row.fid === fid) row.enabled = false;
+      return { ok: row?.enabled === false };
+    },
+    removeStoredInstallation() {},
+    async unregisterInstallation() {},
+  });
+  assert.equal(rows.get("device-a").enabled, false);
+  assert.deepEqual(rows.get("device-b"), {
+    userId: "user-1",
+    fid: "fid-b",
+    enabled: true,
+  });
 });
 
 test("controle compartilhado cobre estados e denied nunca solicita permissão", () => {
@@ -253,10 +403,10 @@ test("logout desativa somente o FID armazenado e não toca outro dispositivo", a
     storeLocalOptOut() { calls.push(["opt-out"]); },
   });
   assert.deepEqual(calls, [
+    ["opt-out"],
     ["disable", "fid-device-a"],
     ["remove", "fid-device-a"],
     ["unregister"],
-    ["opt-out"],
   ]);
   assert.equal(JSON.stringify(calls).includes("fid-device-b"), false);
 });
@@ -274,7 +424,7 @@ test("logout continua unregister e opt-out quando DELETE falha ou não retorna O
       async unregisterInstallation() { calls.push("unregister"); },
       storeLocalOptOut() { calls.push("opt-out"); },
     });
-    assert.deepEqual(calls, ["unregister", "opt-out"]);
+    assert.deepEqual(calls, ["opt-out", "unregister"]);
   }
 });
 
@@ -287,7 +437,7 @@ test("logout conclui opt-out mesmo quando unregister falha", async () => {
     async unregisterInstallation() { throw new Error("firebase failure"); },
     storeLocalOptOut() { calls.push("opt-out"); },
   });
-  assert.deepEqual(calls, ["remove", "opt-out"]);
+  assert.deepEqual(calls, ["opt-out", "remove"]);
 });
 
 test("fluxo limitado sempre submete após sucesso, throw ou timeout", async () => {
@@ -308,6 +458,38 @@ test("fluxo limitado sempre submete após sucesso, throw ou timeout", async () =
     submit: () => { submissions += 1; },
   });
   assert.equal(submissions, 3);
+});
+
+test("logout invalida enable e libera submit em 1,2s mesmo com fila pendente", async () => {
+  const gate = createPushOperationGate();
+  const queue = createPushPersistenceQueue();
+  const pendingPost = deferred();
+  const enableGeneration = beginPushOperation(gate, "enable");
+  void queue.run(() => pendingPost.promise);
+  let localOptOut = false;
+  let submissions = 0;
+
+  invalidatePushOperations(gate);
+  localOptOut = true;
+  const cleanup = queue.run(() => runPushLogoutCleanup({
+    firebaseInstallationId: "fid-device-a",
+    async disableInstallation() { return { ok: true }; },
+    removeStoredInstallation() {},
+    async unregisterInstallation() {},
+    storeLocalOptOut() { localOptOut = true; },
+  }));
+  await runBoundedLogoutFlow({
+    cleanup,
+    deadline: Promise.resolve("1.2s"),
+    submit: () => { submissions += 1; },
+  });
+
+  assert.equal(isCurrentPushOperation(gate, enableGeneration, "enable"), false);
+  assert.equal(localOptOut, true);
+  assert.equal(submissions, 1);
+  pendingPost.resolve();
+  await cleanup;
+  assert.equal(submissions, 1);
 });
 
 test("service worker displays the approved push and derives an internal Pedido URL", async () => {

@@ -14,7 +14,11 @@ export function beginPushOperation(
   gate: PushOperationGate,
   operation: PushOperationKind,
 ) {
-  if (gate.working) return null;
+  if (gate.working) {
+    const disableSupersedesEnable =
+      operation === "disable" && gate.operation === "enable";
+    if (!disableSupersedesEnable) return null;
+  }
   gate.generation += 1;
   gate.working = true;
   gate.operation = operation;
@@ -52,6 +56,63 @@ export function invalidatePushOperations(gate: PushOperationGate) {
 
 type LogoutCleanupResponse = { ok: boolean };
 
+export function createPushPersistenceQueue() {
+  let tail: Promise<void> = Promise.resolve();
+
+  return {
+    run<T>(work: () => Promise<T>) {
+      const result = tail.catch(() => undefined).then(work);
+      tail = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    },
+    idle() {
+      return tail;
+    },
+  };
+}
+
+export async function runPushDisableCleanup(input: {
+  firebaseInstallationId: string | null;
+  disableInstallation: (
+    firebaseInstallationId: string,
+  ) => Promise<LogoutCleanupResponse>;
+  removeStoredInstallation: (firebaseInstallationId: string) => void;
+  unregisterInstallation: () => Promise<unknown>;
+}) {
+  let deleteConfirmed = input.firebaseInstallationId === null;
+  let unregisterConfirmed = false;
+
+  if (input.firebaseInstallationId) {
+    try {
+      const response = await input.disableInstallation(
+        input.firebaseInstallationId,
+      );
+      deleteConfirmed = response.ok;
+      if (response.ok) {
+        input.removeStoredInstallation(input.firebaseInstallationId);
+      }
+    } catch {
+      // Keep the FID so a later retry can target the same device record.
+    }
+  }
+
+  try {
+    await input.unregisterInstallation();
+    unregisterConfirmed = true;
+  } catch {
+    // Backend deletion and local Firebase unregistration are independent.
+  }
+
+  return {
+    deleteConfirmed,
+    unregisterConfirmed,
+    synchronized: deleteConfirmed && unregisterConfirmed,
+  };
+}
+
 export async function runPushLogoutCleanup(input: {
   firebaseInstallationId: string | null;
   disableInstallation: (
@@ -61,26 +122,8 @@ export async function runPushLogoutCleanup(input: {
   unregisterInstallation: () => Promise<unknown>;
   storeLocalOptOut: () => void;
 }) {
-  if (input.firebaseInstallationId) {
-    try {
-      const response = await input.disableInstallation(
-        input.firebaseInstallationId,
-      );
-      if (response.ok) {
-        input.removeStoredInstallation(input.firebaseInstallationId);
-      }
-    } catch {
-      // Logout cleanup continues with local unregistration.
-    }
-  }
-
-  try {
-    await input.unregisterInstallation();
-  } catch {
-    // Logout itself must not depend on Firebase cleanup.
-  }
-
   input.storeLocalOptOut();
+  return runPushDisableCleanup(input);
 }
 
 export async function runBoundedLogoutFlow(input: {

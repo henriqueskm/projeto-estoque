@@ -23,10 +23,12 @@ import {
 import { isIosDevice, isStandaloneMode } from "@/lib/pwa-capabilities";
 import {
   beginPushOperation,
+  createPushPersistenceQueue,
   createPushOperationGate,
   finishPushOperation,
   invalidatePushOperations,
   isCurrentPushOperation,
+  runPushDisableCleanup,
   runPushLogoutCleanup,
   type PushOperationKind,
 } from "@/lib/push-notification-operations";
@@ -44,6 +46,8 @@ export type PushNotificationState =
 type PushNotificationContextValue = {
   state: PushNotificationState;
   isWorking: boolean;
+  operation: PushOperationKind | null;
+  errorOperation: PushOperationKind | null;
   enable: () => Promise<void>;
   disable: () => Promise<void>;
   prepareForLogout: () => Promise<void>;
@@ -125,29 +129,27 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
   const { refreshAlerts } = useSafisaPickupAlerts();
   const [state, setState] = useState<PushNotificationState>("checking");
   const [isWorking, setIsWorking] = useState(false);
+  const [operation, setOperation] = useState<PushOperationKind | null>(null);
+  const [errorOperation, setErrorOperation] =
+    useState<PushOperationKind | null>(null);
   const operationGateRef = useRef(createPushOperationGate());
   const desiredEnabledRef = useRef<boolean | null>(null);
   const registrationGenerationRef = useRef(0);
-  const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
-
-  const queuePersistence = useCallback(<T,>(work: () => Promise<T>) => {
-    const result = persistenceQueueRef.current.catch(() => undefined).then(work);
-    persistenceQueueRef.current = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
-  }, []);
+  const [persistenceQueue] = useState(createPushPersistenceQueue);
+  const queuePersistence = persistenceQueue.run;
 
   const registerAndPersistInstallation = useCallback(async () => {
     const firebaseInstallationId = await waitForFirebasePushInstallation();
     if (!firebaseInstallationId) return null;
 
     return queuePersistence(async () => {
+      if (desiredEnabledRef.current !== true) return null;
       const response = await persistInstallation(firebaseInstallationId, "POST");
       if (!response.ok) return null;
       storeFirebaseInstallationId(firebaseInstallationId);
-      return firebaseInstallationId;
+      return desiredEnabledRef.current === true
+        ? firebaseInstallationId
+        : null;
     });
   }, [queuePersistence]);
 
@@ -155,6 +157,8 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     const generation = beginPushOperation(operationGateRef.current, operation);
     if (generation === null) return null;
     desiredEnabledRef.current = operation === "enable";
+    setOperation(operation);
+    setErrorOperation(null);
     setIsWorking(true);
     return generation;
   }, []);
@@ -169,6 +173,7 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     (generation: number, operation: PushOperationKind) => {
       if (finishPushOperation(operationGateRef.current, generation, operation)) {
         setIsWorking(false);
+        setOperation(null);
       }
     },
     [],
@@ -215,11 +220,22 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
       }
 
       try {
+        desiredEnabledRef.current = true;
         const firebaseInstallationId = await registerAndPersistInstallation();
+        if (!active || desiredEnabledRef.current !== true) return;
         desiredEnabledRef.current = Boolean(firebaseInstallationId);
-        if (active) setState(firebaseInstallationId ? "granted" : "error");
+        if (firebaseInstallationId) {
+          setErrorOperation(null);
+          setState("granted");
+        } else {
+          setErrorOperation("enable");
+          setState("error");
+        }
       } catch {
-        if (active) setState("error");
+        if (active && desiredEnabledRef.current === true) {
+          setErrorOperation("enable");
+          setState("error");
+        }
       }
     }
 
@@ -250,7 +266,8 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
           const response = await queuePersistence(async () => {
             if (
               !active ||
-              registrationGeneration !== registrationGenerationRef.current
+              registrationGeneration !== registrationGenerationRef.current ||
+              desiredEnabledRef.current !== true
             ) return null;
             const nextResponse = await persistInstallation(
               firebaseInstallationId,
@@ -266,6 +283,7 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
             desiredEnabledRef.current !== true
           ) return;
           if (!response.ok) {
+            setErrorOperation("enable");
             setState("error");
             return;
           }
@@ -274,7 +292,10 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
             active &&
             registrationGeneration === registrationGenerationRef.current &&
             desiredEnabledRef.current === true
-          ) setState("error");
+          ) {
+            setErrorOperation("enable");
+            setState("error");
+          }
         }
       },
       async unregistered(firebaseInstallationId) {
@@ -292,20 +313,35 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
             desiredEnabledRef.current !== true
           ) return;
           if (!response.ok) {
+            setErrorOperation("enable");
             setState("error");
             return;
           }
           removeStoredFirebaseInstallationId(firebaseInstallationId);
           setState("default");
         } catch {
-          if (active) setState("error");
+          if (
+            active &&
+            registrationGeneration === registrationGenerationRef.current &&
+            desiredEnabledRef.current === true
+          ) {
+            setErrorOperation("enable");
+            setState("error");
+          }
         }
       },
     }).then((unsubscribe) => {
       if (active) stopRegistration = unsubscribe;
       else unsubscribe();
     }).catch(() => {
-      if (active) setState("error");
+      if (
+        active &&
+        registrationGeneration === registrationGenerationRef.current &&
+        desiredEnabledRef.current === true
+      ) {
+        setErrorOperation("enable");
+        setState("error");
+      }
     });
 
     void subscribeToForegroundPush(() => void refreshAlerts()).then(
@@ -365,14 +401,19 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
       const firebaseInstallationId = await registerAndPersistInstallation();
       if (!operationIsCurrent(operationGeneration, operation)) return;
       if (!firebaseInstallationId) {
+        setErrorOperation("enable");
         setState("error");
         return;
       }
 
       window.localStorage.removeItem(localOptOutKey);
+      setErrorOperation(null);
       setState("granted");
     } catch {
-      if (operationIsCurrent(operationGeneration, operation)) setState("error");
+      if (operationIsCurrent(operationGeneration, operation)) {
+        setErrorOperation("enable");
+        setState("error");
+      }
     } finally {
       finishOperation(operationGeneration, operation);
     }
@@ -383,33 +424,44 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     const operationGeneration = beginOperation(operation);
     if (operationGeneration === null) return;
 
+    desiredEnabledRef.current = false;
+    registrationGenerationRef.current += 1;
     try {
-      const result = await queuePersistence(async () => {
-        const firebaseInstallationId = getStoredFirebaseInstallationId();
-        if (!firebaseInstallationId) return null;
-        const response = await persistInstallation(
+      window.localStorage.setItem(localOptOutKey, "true");
+    } catch {
+      // The in-memory intent still prevents callbacks from re-enabling push.
+    }
+    setState("default");
+
+    try {
+      const result = await queuePersistence(() => {
+        let firebaseInstallationId: string | null = null;
+        try {
+          firebaseInstallationId = getStoredFirebaseInstallationId();
+        } catch {
+          // Firebase is still unregistered when local storage is unavailable.
+        }
+        return runPushDisableCleanup({
           firebaseInstallationId,
-          "DELETE",
-        );
-        return { firebaseInstallationId, response };
+          disableInstallation: (storedInstallationId) =>
+            persistInstallation(storedInstallationId, "DELETE"),
+          removeStoredInstallation: removeStoredFirebaseInstallationId,
+          unregisterInstallation: unregisterFirebasePushInstallation,
+        });
       });
       if (!operationIsCurrent(operationGeneration, operation)) return;
-      if (!result) {
+      if (!result.synchronized) {
+        setErrorOperation("disable");
         setState("error");
         return;
       }
-      const { firebaseInstallationId, response } = result;
-      if (!response.ok) {
-        setState("error");
-        return;
-      }
-      removeStoredFirebaseInstallationId(firebaseInstallationId);
-
-      await unregisterFirebasePushInstallation().catch(() => false);
-      window.localStorage.setItem(localOptOutKey, "true");
+      setErrorOperation(null);
       setState("default");
     } catch {
-      if (operationIsCurrent(operationGeneration, operation)) setState("error");
+      if (operationIsCurrent(operationGeneration, operation)) {
+        setErrorOperation("disable");
+        setState("error");
+      }
     } finally {
       finishOperation(operationGeneration, operation);
     }
@@ -419,13 +471,35 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     desiredEnabledRef.current = false;
     registrationGenerationRef.current += 1;
     invalidatePushOperations(operationGateRef.current);
+    try {
+      window.localStorage.setItem(localOptOutKey, "true");
+    } catch {
+      // Logout remains authoritative even if local storage is unavailable.
+    }
     setIsWorking(false);
+    setOperation(null);
     await queuePersistence(disablePushBeforeLogout);
   }, [queuePersistence]);
 
   const value = useMemo(
-    () => ({ state, isWorking, enable, disable, prepareForLogout }),
-    [disable, enable, isWorking, prepareForLogout, state],
+    () => ({
+      state,
+      isWorking,
+      operation,
+      errorOperation,
+      enable,
+      disable,
+      prepareForLogout,
+    }),
+    [
+      disable,
+      enable,
+      errorOperation,
+      isWorking,
+      operation,
+      prepareForLogout,
+      state,
+    ],
   );
 
   return (

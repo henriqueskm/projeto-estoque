@@ -7,9 +7,18 @@ export function PushNotificationControl({
 }: {
   className?: string;
 }) {
-  const { state, isWorking, enable, disable } = usePushNotifications();
+  const {
+    state,
+    isWorking,
+    operation,
+    errorOperation,
+    enable,
+    disable,
+  } = usePushNotifications();
 
-  const message = state === "granted"
+  const message = isWorking && operation === "disable"
+    ? "Desativando as notificações neste dispositivo..."
+    : state === "granted"
     ? "Notificações ativadas neste dispositivo."
     : state === "denied"
       ? "As notificações foram bloqueadas neste navegador. Reative-as nas configurações do site."
@@ -19,13 +28,22 @@ export function PushNotificationControl({
           ? "As notificações push ainda não estão configuradas."
           : state === "ios_install_required"
             ? "Para receber notificações no iPhone, adicione o NK à Tela de Início."
-            : state === "error"
-              ? "Não foi possível atualizar as notificações agora."
+            : state === "error" && errorOperation === "disable"
+              ? "As notificações ficaram desativadas localmente, mas a sincronização está pendente. Tente desativar novamente."
+              : state === "error"
+                ? "Não foi possível ativar as notificações agora. Tente novamente."
               : state === "checking"
                 ? "Verificando este dispositivo..."
                 : "Receba um aviso quando um Pedido ficar totalmente pronto.";
 
-  const canEnable = state === "default" || state === "error";
+  const showDisable =
+    state === "granted" ||
+    (isWorking && operation === "disable") ||
+    (state === "error" && errorOperation === "disable");
+  const showEnable =
+    state === "default" ||
+    (isWorking && operation === "enable") ||
+    (state === "error" && errorOperation !== "disable");
 
   return (
     <div className={className}>
@@ -35,16 +53,20 @@ export function PushNotificationControl({
       <p className="mt-1 text-xs font-semibold leading-5 text-text-muted" aria-live="polite">
         {message}
       </p>
-      {state === "granted" ? (
+      {showDisable ? (
         <button
           type="button"
           onClick={() => void disable()}
           disabled={isWorking}
           className="nk-focus mt-2 inline-flex min-h-9 items-center rounded-lg border border-border-neutral bg-surface px-3 text-xs font-black text-text-primary transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/25 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isWorking ? "Desativando..." : "Desativar"}
+          {isWorking
+            ? "Desativando..."
+            : errorOperation === "disable"
+              ? "Tentar desativar novamente"
+              : "Desativar"}
         </button>
-      ) : canEnable ? (
+      ) : showEnable ? (
         <button
           type="button"
           onClick={() => void enable()}

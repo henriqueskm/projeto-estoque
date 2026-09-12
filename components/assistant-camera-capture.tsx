@@ -1,10 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { CameraIcon, CloseIcon, ImageIcon } from "@/components/icons";
 import {
-  discardAssistantCameraStream,
+  completeAssistantCameraCapture,
+  createAssistantCameraPreviewStore,
   isAssistantCameraRequestCurrent,
+  runAssistantCameraRequest,
 } from "@/lib/assistant-camera-lifecycle";
 
 type CameraState = "starting" | "live" | "preview" | "paused" | "fallback";
@@ -46,18 +54,18 @@ export function AssistantCameraCapture({
 }: AssistantCameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const previewUrlRef = useRef<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const requestGenerationRef = useRef(0);
   const mountedRef = useRef(false);
-  const isOpenRef = useRef(isOpen);
+  const isOpenRef = useRef(false);
+  const [previewStore] = useState(() =>
+    createAssistantCameraPreviewStore((url) => URL.revokeObjectURL(url)),
+  );
   const [state, setState] = useState<CameraState>("starting");
   const [message, setMessage] = useState("Abrindo câmera...");
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [hasVideoDimensions, setHasVideoDimensions] = useState(false);
-
-  isOpenRef.current = isOpen;
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -80,13 +88,10 @@ export function AssistantCameraCapture({
   }), []);
 
   const clearPreview = useCallback(() => {
-    if (previewUrlRef.current) {
-      URL.revokeObjectURL(previewUrlRef.current);
-      previewUrlRef.current = null;
-    }
+    previewStore.clear();
     setPreviewUrl(null);
     setCapturedFile(null);
-  }, []);
+  }, [previewStore]);
 
   const startCamera = useCallback(async () => {
     invalidateCameraWork();
@@ -102,41 +107,41 @@ export function AssistantCameraCapture({
     setState("starting");
     setMessage("Abrindo câmera...");
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+    const result = await runAssistantCameraRequest({
+      acquire: () => navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: "environment" },
         },
         audio: false,
-      });
-
-      if (discardAssistantCameraStream(stream, requestStatus(requestGeneration))) {
-        return;
-      }
-
-      const video = videoRef.current;
-      if (!video) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
-      streamRef.current = stream;
-      video.srcObject = stream;
-      await video.play().catch(() => undefined);
-      if (discardAssistantCameraStream(stream, requestStatus(requestGeneration))) {
+      }),
+      isCurrent: () =>
+        isAssistantCameraRequestCurrent(requestStatus(requestGeneration)),
+      publish(stream) {
+        const video = videoRef.current;
+        if (!video) return false;
+        streamRef.current = stream;
+        video.srcObject = stream;
+        return true;
+      },
+      play: () =>
+        videoRef.current?.play().catch(() => undefined) ?? Promise.resolve(),
+      unpublish(stream) {
         if (streamRef.current === stream) streamRef.current = null;
-        if (video.srcObject === stream) video.srcObject = null;
-        return;
-      }
+        if (videoRef.current?.srcObject === stream) {
+          videoRef.current.srcObject = null;
+        }
+      },
+    });
+
+    if (result.status === "active") {
       setState("live");
       setMessage("Enquadre a folha inteira, com boa luz e sem cortar os códigos.");
-    } catch (error) {
-      if (!isAssistantCameraRequestCurrent(requestStatus(requestGeneration))) {
-        return;
-      }
+      return;
+    }
+    if (result.status === "error") {
       stopStream();
       setState("fallback");
-      setMessage(cameraMessage(error));
+      setMessage(cameraMessage(result.error));
     }
   }, [invalidateCameraWork, requestStatus, stopStream]);
 
@@ -200,16 +205,25 @@ export function AssistantCameraCapture({
     };
   }, [capturedFile, closeCamera, invalidateCameraWork, isOpen]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    isOpenRef.current = isOpen;
+    if (!isOpen) invalidateCameraWork();
+
+    return () => {
+      isOpenRef.current = false;
+      invalidateCameraWork();
+    };
+  }, [invalidateCameraWork, isOpen]);
+
+  useLayoutEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      isOpenRef.current = false;
       invalidateCameraWork();
-      if (previewUrlRef.current) {
-        URL.revokeObjectURL(previewUrlRef.current);
-      }
+      previewStore.clear();
     };
-  }, [invalidateCameraWork]);
+  }, [invalidateCameraWork, previewStore]);
 
   if (!isOpen) return null;
 
@@ -233,27 +247,29 @@ export function AssistantCameraCapture({
     const captureGeneration = requestGenerationRef.current;
     stopStream();
     canvas.toBlob((blob) => {
-      if (!isAssistantCameraRequestCurrent(requestStatus(captureGeneration))) {
-        return;
-      }
-      if (!blob) {
-        setState("fallback");
-        setMessage("Não foi possível preparar esta foto. Tente novamente ou escolha uma imagem da galeria.");
-        return;
-      }
-
-      clearPreview();
-      const timestamp = Date.now();
-      const file = new File([blob], `pedido-${timestamp}.jpg`, {
-        type: "image/jpeg",
-        lastModified: timestamp,
+      completeAssistantCameraCapture({
+        blob,
+        isCurrent: () =>
+          isAssistantCameraRequestCurrent(requestStatus(captureGeneration)),
+        onMissing() {
+          setState("fallback");
+          setMessage("Não foi possível preparar esta foto. Tente novamente ou escolha uma imagem da galeria.");
+        },
+        onCaptured(capturedBlob) {
+          clearPreview();
+          const timestamp = Date.now();
+          const file = new File([capturedBlob], `pedido-${timestamp}.jpg`, {
+            type: "image/jpeg",
+            lastModified: timestamp,
+          });
+          const url = URL.createObjectURL(file);
+          previewStore.replace(url);
+          setCapturedFile(file);
+          setPreviewUrl(url);
+          setState("preview");
+          setMessage("Confira a foto antes de usar.");
+        },
       });
-      const url = URL.createObjectURL(file);
-      previewUrlRef.current = url;
-      setCapturedFile(file);
-      setPreviewUrl(url);
-      setState("preview");
-      setMessage("Confira a foto antes de usar.");
     }, "image/jpeg", 0.92);
   }
 

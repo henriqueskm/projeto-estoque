@@ -2,151 +2,228 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
-  discardAssistantCameraStream,
+  completeAssistantCameraCapture,
+  createAssistantCameraPreviewStore,
   isAssistantCameraRequestCurrent,
+  runAssistantCameraRequest,
 } from "../lib/assistant-camera-lifecycle.ts";
 
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("a câmera integrada usa getUserMedia com preferência traseira e sem áudio", () => {
+test("a câmera integrada preserva câmera traseira, JPEG e fallbacks nativos", () => {
   const camera = read("components/assistant-camera-capture.tsx");
+  const home = read("components/assistant-home.tsx");
 
   assert.match(camera, /navigator\.mediaDevices\?\.getUserMedia/);
   assert.match(camera, /facingMode:\s*\{ ideal: "environment" \}/);
   assert.match(camera, /audio:\s*false/);
   assert.match(camera, /autoPlay/);
   assert.match(camera, /playsInline/);
-  assert.match(camera, /muted/);
-  assert.match(camera, /video\.videoWidth === 0 \|\| video\.videoHeight === 0/);
-});
-
-test("a captura gera JPEG local, permite revisar e limpa stream e URLs", () => {
-  const camera = read("components/assistant-camera-capture.tsx");
-
   assert.match(camera, /canvas\.toBlob\(/);
   assert.match(camera, /"image\/jpeg", 0\.92/);
-  assert.match(camera, /new File\(\[blob\], `pedido-\$\{timestamp\}\.jpg`/);
-  assert.match(camera, /Tirar novamente/);
-  assert.match(camera, /Usar foto/);
-  assert.match(camera, /streamRef\.current\?\.getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
-  assert.match(camera, /URL\.revokeObjectURL/);
-  assert.match(camera, /visibilitychange/);
-  assert.match(camera, /const startFrame = window\.requestAnimationFrame/);
-  assert.match(camera, /window\.cancelAnimationFrame\(startFrame\)/);
-  assert.doesNotMatch(camera, /fetch\(|\/api\/assistant|prepareSupplierOrderPhoto/);
-});
-
-test("o composer usa a câmera integrada, preserva fallback nativo e reutiliza o preparo existente", () => {
-  const home = read("components/assistant-home.tsx");
-
   assert.match(home, /<AssistantCameraCapture/);
-  assert.match(home, /setIsCameraCaptureOpen\(true\)/);
   assert.match(home, /prepareSelectedImage\(file, "camera"\)/);
-  assert.match(home, /prepareSupplierOrderPhoto\(file\)/);
-  assert.match(home, /cameraInputRef\.current\?\.click\(\)/);
   assert.match(home, /capture="environment"/);
-  assert.match(home, /galleryInputRef\.current\?\.click\(\)/);
+  assert.doesNotMatch(camera, /fetch\(|\/api\/assistant/);
 });
 
-function fakeStream(stoppedTracks) {
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function fakeStream(name, stoppedTracks) {
   return {
     getTracks: () => [
-      { stop: () => stoppedTracks.push("video-main") },
-      { stop: () => stoppedTracks.push("video-secondary") },
+      { stop: () => stoppedTracks.push(`${name}-main`) },
+      { stop: () => stoppedTracks.push(`${name}-secondary`) },
     ],
   };
 }
 
-const currentVisibleRequest = {
-  isMounted: true,
-  isOpen: true,
-  isCurrent: true,
-  isHidden: false,
-};
+function createCameraHarness() {
+  let generation = 0;
+  let mounted = true;
+  let open = true;
+  let hidden = false;
+  let published = null;
+  let live = null;
 
-test("descarta todos os tracks quando hidden, fechado ou desmontado antes da permissão resolver", () => {
-  for (const status of [
-    { ...currentVisibleRequest, isHidden: true },
-    { ...currentVisibleRequest, isOpen: false },
-    { ...currentVisibleRequest, isMounted: false },
-  ]) {
-    const stoppedTracks = [];
-    assert.equal(discardAssistantCameraStream(fakeStream(stoppedTracks), status), true);
-    assert.deepEqual(stoppedTracks, ["video-main", "video-secondary"]);
+  function isCurrent(requestGeneration) {
+    return isAssistantCameraRequestCurrent({
+      isMounted: mounted,
+      isOpen: open,
+      isCurrent: requestGeneration === generation,
+      isHidden: hidden,
+    });
+  }
+
+  return {
+    start(acquire, play = async () => undefined) {
+      generation += 1;
+      const requestGeneration = generation;
+      const result = runAssistantCameraRequest({
+        acquire,
+        isCurrent: () => isCurrent(requestGeneration),
+        publish(stream) {
+          published = stream;
+          return true;
+        },
+        play,
+        unpublish(stream) {
+          if (published === stream) published = null;
+        },
+      });
+      void result.then((outcome) => {
+        if (outcome.status === "active" && isCurrent(requestGeneration)) {
+          live = published;
+        }
+      });
+      return result;
+    },
+    invalidate(reason) {
+      generation += 1;
+      if (reason === "close") open = false;
+      if (reason === "unmount") mounted = false;
+      if (reason === "hidden") hidden = true;
+      if (published) {
+        published.getTracks().forEach((track) => track.stop());
+        published = null;
+      }
+      live = null;
+    },
+    currentGeneration: () => generation,
+    isCurrent,
+    published: () => published,
+    live: () => live,
+  };
+}
+
+test("requisição invalidada antes de resolver encerra todos os tracks e nunca ativa", async () => {
+  for (const reason of ["hidden", "close", "unmount"]) {
+    const acquisition = deferred();
+    const stopped = [];
+    const harness = createCameraHarness();
+    const request = harness.start(() => acquisition.promise);
+    harness.invalidate(reason);
+    acquisition.resolve(fakeStream(reason, stopped));
+    assert.deepEqual(await request, { status: "stale" });
+    assert.deepEqual(stopped, [`${reason}-main`, `${reason}-secondary`]);
+    assert.equal(harness.live(), null);
   }
 });
 
-test("duas permissões fora de ordem preservam só a geração atual", () => {
-  const staleTracks = [];
-  const currentTracks = [];
-  assert.equal(discardAssistantCameraStream(fakeStream(staleTracks), {
-    ...currentVisibleRequest,
-    isCurrent: false,
-  }), true);
-  assert.equal(
-    discardAssistantCameraStream(fakeStream(currentTracks), currentVisibleRequest),
-    false,
-  );
-  assert.deepEqual(staleTracks, ["video-main", "video-secondary"]);
-  assert.deepEqual(currentTracks, []);
+test("A e B fora de ordem descartam A e preservam B", async () => {
+  const acquisitionA = deferred();
+  const acquisitionB = deferred();
+  const stoppedA = [];
+  const stoppedB = [];
+  const streamA = fakeStream("a", stoppedA);
+  const streamB = fakeStream("b", stoppedB);
+  const harness = createCameraHarness();
+  const requestA = harness.start(() => acquisitionA.promise);
+  const requestB = harness.start(() => acquisitionB.promise);
+
+  acquisitionB.resolve(streamB);
+  assert.deepEqual(await requestB, { status: "active" });
+  acquisitionA.resolve(streamA);
+  assert.deepEqual(await requestA, { status: "stale" });
+  await Promise.resolve();
+  assert.deepEqual(stoppedA, ["a-main", "a-secondary"]);
+  assert.deepEqual(stoppedB, []);
+  assert.equal(harness.published(), streamB);
+  assert.equal(harness.live(), streamB);
 });
 
-test("erro antigo, hidden ou close durante play não reescrevem a tentativa atual", () => {
-  const camera = read("components/assistant-camera-capture.tsx");
-  const beforePublication = camera.indexOf("discardAssistantCameraStream(stream");
-  const publication = camera.indexOf("streamRef.current = stream");
-  const play = camera.indexOf("await video.play()");
-  const afterPlay = camera.indexOf("discardAssistantCameraStream(stream", beforePublication + 1);
-  const live = camera.indexOf('setState("live")');
-  const catchStart = camera.indexOf("} catch (error)");
-  const staleErrorGuard = camera.indexOf("isAssistantCameraRequestCurrent", catchStart);
-  const fallback = camera.indexOf('setState("fallback")', catchStart);
-
-  assert.ok(beforePublication < publication);
-  assert.ok(play < afterPlay && afterPlay < live);
-  assert.ok(catchStart < staleErrorGuard && staleErrorGuard < fallback);
-  assert.match(camera, /function handleVisibilityChange\(\)[\s\S]*pauseCamera\(\)/);
-  assert.match(camera, /const closeCamera[\s\S]*invalidateCameraWork\(\)/);
+test("play pendente invalidado encerra o stream sem voltar para live", async () => {
+  const play = deferred();
+  const stopped = [];
+  const stream = fakeStream("play", stopped);
+  const harness = createCameraHarness();
+  const request = harness.start(async () => stream, () => play.promise);
+  await Promise.resolve();
+  assert.equal(harness.published(), stream);
+  harness.invalidate("close");
+  play.resolve();
+  assert.deepEqual(await request, { status: "stale" });
+  assert.ok(stopped.includes("play-main") && stopped.includes("play-secondary"));
+  assert.equal(harness.published(), null);
+  assert.equal(harness.live(), null);
 });
 
-test("pagehide e unmount invalidam trabalho pendente", () => {
+test("erro antigo não altera a tentativa nova", async () => {
+  const acquisitionA = deferred();
+  const acquisitionB = deferred();
+  const stoppedB = [];
+  const streamB = fakeStream("b", stoppedB);
+  const harness = createCameraHarness();
+  const requestA = harness.start(() => acquisitionA.promise);
+  const requestB = harness.start(() => acquisitionB.promise);
+  acquisitionB.resolve(streamB);
+  assert.deepEqual(await requestB, { status: "active" });
+  acquisitionA.reject(new Error("old permission error"));
+  assert.deepEqual(await requestA, { status: "stale" });
+  assert.equal(harness.live(), streamB);
+  assert.deepEqual(stoppedB, []);
+});
+
+test("toBlob tardio após close, unmount ou retake não cria preview nem URL", () => {
+  for (const reason of ["close", "unmount", "retake"]) {
+    const harness = createCameraHarness();
+    const captureGeneration = harness.currentGeneration();
+    const created = [];
+    harness.invalidate(reason);
+    const result = completeAssistantCameraCapture({
+      blob: new Blob([reason]),
+      isCurrent: () => harness.isCurrent(captureGeneration),
+      onMissing() { throw new Error("não deveria faltar blob"); },
+      onCaptured() { created.push(reason); },
+    });
+    assert.equal(result, "stale");
+    assert.deepEqual(created, []);
+  }
+});
+
+test("capture, preview, retake e close mantêm create/revoke coerentes", () => {
+  const revoked = [];
+  const store = createAssistantCameraPreviewStore((url) => revoked.push(url));
+  const harness = createCameraHarness();
+  let nextUrl = 0;
+  const capture = () => completeAssistantCameraCapture({
+    blob: new Blob(["foto"]),
+    isCurrent: () => harness.isCurrent(harness.currentGeneration()),
+    onMissing() { throw new Error("blob esperado"); },
+    onCaptured() {
+      nextUrl += 1;
+      store.replace(`blob:preview-${nextUrl}`);
+    },
+  });
+
+  assert.equal(capture(), "captured");
+  assert.equal(store.currentUrl, "blob:preview-1");
+  harness.invalidate("retake");
+  store.clear();
+  assert.deepEqual(revoked, ["blob:preview-1"]);
+  assert.equal(capture(), "captured");
+  assert.equal(store.currentUrl, "blob:preview-2");
+  harness.invalidate("close");
+  store.clear();
+  assert.deepEqual(revoked, ["blob:preview-1", "blob:preview-2"]);
+  assert.equal(store.currentUrl, null);
+});
+
+test("wiring preserva pagehide, fallback físico, retake e commit-safe open ref", () => {
   const camera = read("components/assistant-camera-capture.tsx");
   assert.match(camera, /window\.addEventListener\("pagehide", handlePageHide\)/);
-  assert.match(camera, /window\.removeEventListener\("pagehide", handlePageHide\)/);
-  assert.match(camera, /function handlePageHide\(\) \{\s*pauseCamera\(\)/);
-  assert.match(camera, /mountedRef\.current = false;\s*invalidateCameraWork\(\)/);
-});
-
-test("preview e fallback param a câmera e retake inicia stream novo", () => {
-  const camera = read("components/assistant-camera-capture.tsx");
-  const draw = camera.indexOf("context.drawImage");
-  const stop = camera.indexOf("stopStream();", draw);
-  const toBlob = camera.indexOf("canvas.toBlob", draw);
-  const contextFallback = camera.slice(
-    camera.indexOf("if (!context)"),
-    draw,
-  );
-  const retake = camera.slice(
-    camera.indexOf("function retakePhoto"),
-    camera.indexOf("function usePhoto"),
-  );
-
-  assert.ok(draw < stop && stop < toBlob);
-  assert.match(contextFallback, /invalidateCameraWork\(\)/);
-  assert.match(retake, /clearPreview\(\);\s*void startCamera\(\)/);
-  assert.doesNotMatch(retake, /streamRef\.current|video\.play/);
-});
-
-test("callback tardio de toBlob é descartado antes de criar URL ou atualizar estado", () => {
-  const camera = read("components/assistant-camera-capture.tsx");
-  const callback = camera.slice(camera.indexOf("canvas.toBlob"));
-  const guard = callback.indexOf("isAssistantCameraRequestCurrent");
-  assert.ok(guard >= 0);
-  assert.ok(guard < callback.indexOf("URL.createObjectURL"));
-  assert.ok(guard < callback.indexOf("setCapturedFile"));
-  assert.equal(isAssistantCameraRequestCurrent({
-    ...currentVisibleRequest,
-    isCurrent: false,
-  }), false);
+  assert.match(camera, /function retakePhoto\(\)[\s\S]*clearPreview\(\);\s*void startCamera\(\)/);
+  assert.match(camera, /function useNativeCameraFallback\(\)[\s\S]*invalidateCameraWork\(\)/);
+  assert.match(camera, /function useGalleryFallback\(\)[\s\S]*invalidateCameraWork\(\)/);
+  assert.match(camera, /completeAssistantCameraCapture/);
+  assert.match(camera, /useLayoutEffect\(\(\) => \{\s*isOpenRef\.current = isOpen/);
 });
