@@ -30,15 +30,19 @@ import {
   invalidatePushOperations,
   isPushMutationConfirmed,
   isCurrentPushOperation,
+  persistConfirmedPushRegistration,
   persistPushPreference,
+  readConfirmedPushRegistration,
   readAndMigratePushPreference,
   registerPushInstallationWithConvergence,
+  removeConfirmedPushRegistration,
   runPushDisableCleanup,
   runPushLogoutCleanup,
   shouldAutoRegisterPush,
   subscribeToPushDeviceIdentityEvents,
   subscribeToPushOptOutEvents,
   type PushOperationKind,
+  type PushRegistrationIdentity,
 } from "@/lib/push-notification-operations";
 
 export type PushNotificationState =
@@ -68,6 +72,8 @@ const legacyLocalOptOutKey = "negocios-k:push-disabled";
 const localDeviceIdKey = "negocios-k:push-device-id";
 const localFirebaseInstallationIdKey =
   "negocios-k:push-firebase-installation-id";
+const localConfirmedPushRegistrationKey =
+  "negocios-k:push-confirmed-registration";
 
 function getDeviceId() {
   const existing = window.localStorage.getItem(localDeviceIdKey);
@@ -82,32 +88,52 @@ function getStoredDeviceId() {
   return window.localStorage.getItem(localDeviceIdKey);
 }
 
-function getStoredFirebaseInstallationId() {
-  return window.localStorage.getItem(localFirebaseInstallationIdKey);
+function getConfirmedPushRegistration() {
+  return readConfirmedPushRegistration({
+    storage: window.localStorage,
+    registrationKey: localConfirmedPushRegistrationKey,
+    legacyInstallationKey: localFirebaseInstallationIdKey,
+    legacyDeviceKey: localDeviceIdKey,
+  });
 }
 
-function storeFirebaseInstallationId(firebaseInstallationId: string) {
-  window.localStorage.setItem(
-    localFirebaseInstallationIdKey,
-    firebaseInstallationId,
-  );
+function storeConfirmedPushRegistration(identity: PushRegistrationIdentity) {
+  const stored = persistConfirmedPushRegistration({
+    storage: window.localStorage,
+    registrationKey: localConfirmedPushRegistrationKey,
+    identity,
+  });
+  if (stored) {
+    try {
+      window.localStorage.setItem(
+        localFirebaseInstallationIdKey,
+        identity.firebaseInstallationId,
+      );
+    } catch {
+      // The exact confirmed tuple above remains authoritative.
+    }
+  }
+  return stored;
 }
 
-function removeStoredFirebaseInstallationId(firebaseInstallationId?: string) {
-  const stored = getStoredFirebaseInstallationId();
-  if (!firebaseInstallationId || stored === firebaseInstallationId) {
-    window.localStorage.removeItem(localFirebaseInstallationIdKey);
+function removeStoredConfirmedPushRegistration(
+  identity: PushRegistrationIdentity,
+) {
+  if (!removeConfirmedPushRegistration({
+    storage: window.localStorage,
+    registrationKey: localConfirmedPushRegistrationKey,
+    legacyInstallationKey: localFirebaseInstallationIdKey,
+    identity,
+  })) {
+    throw new Error("The confirmed push registration could not be removed.");
   }
 }
 
 async function persistInstallation(
-  firebaseInstallationId: string,
+  identity: PushRegistrationIdentity,
   method: "POST" | "DELETE",
-  options: { keepalive?: boolean; deviceId?: string } = {},
+  options: { keepalive?: boolean } = {},
 ) {
-  const deviceId = options.deviceId ?? getStoredDeviceId();
-  if (!deviceId) return { ok: false };
-
   const response = await fetch("/api/push-subscriptions", {
     method,
     credentials: "same-origin",
@@ -115,10 +141,7 @@ async function persistInstallation(
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      deviceId,
-      firebaseInstallationId,
-    }),
+    body: JSON.stringify(identity),
     keepalive: options.keepalive,
   });
   return {
@@ -165,17 +188,17 @@ function persistLocalPushPreference(preference: "enabled" | "disabled") {
 }
 
 export async function disablePushBeforeLogout() {
-  let firebaseInstallationId: string | null = null;
+  let confirmedRegistration: PushRegistrationIdentity | null = null;
   try {
-    firebaseInstallationId = getStoredFirebaseInstallationId();
+    confirmedRegistration = getConfirmedPushRegistration();
   } catch {
-    // Firebase unregistration is still attempted when local storage is unavailable.
+    // Firebase unregistration is still attempted without a readable identity.
   }
   await runPushLogoutCleanup({
-    firebaseInstallationId,
-    disableInstallation: (firebaseInstallationId) =>
-      persistInstallation(firebaseInstallationId, "DELETE", { keepalive: true }),
-    removeStoredInstallation: removeStoredFirebaseInstallationId,
+    confirmedRegistration,
+    disableRegistration: (identity) =>
+      persistInstallation(identity, "DELETE", { keepalive: true }),
+    removeConfirmedRegistration: removeStoredConfirmedPushRegistration,
     unregisterInstallation: unregisterFirebasePushInstallation,
     storeLocalOptOut: () => {
       persistLocalPushPreference("disabled");
@@ -210,11 +233,17 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
         firebaseInstallationId,
         getOrCreateDeviceId: getDeviceId,
         readDeviceId: getStoredDeviceId,
-        storeInstallation: storeFirebaseInstallationId,
+        storeConfirmedRegistration: storeConfirmedPushRegistration,
         registerInstallation: (deviceId, installationId) =>
-          persistInstallation(installationId, "POST", { deviceId }),
+          persistInstallation({
+            deviceId,
+            firebaseInstallationId: installationId,
+          }, "POST"),
         rollbackInstallation: (deviceId, installationId) =>
-          persistInstallation(installationId, "DELETE", { deviceId }),
+          persistInstallation({
+            deviceId,
+            firebaseInstallationId: installationId,
+          }, "DELETE"),
         canRegister: canPersist,
         maxAttempts: 3,
       });
@@ -268,18 +297,19 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
         if (active) setState("default");
         if (preference !== "disabled") return;
 
-        let firebaseInstallationId: string | null = null;
+        let confirmedRegistration: PushRegistrationIdentity | null = null;
         try {
-          firebaseInstallationId = getStoredFirebaseInstallationId();
+          confirmedRegistration = getConfirmedPushRegistration();
         } catch {
-          // Firebase unregistration is still attempted without readable storage.
+          // Firebase unregistration is still attempted without a readable identity.
         }
         await optOutReconciler.run(() =>
           queuePersistence(() => runPushDisableCleanup({
-            firebaseInstallationId,
-            disableInstallation: (installationId) =>
-              persistInstallation(installationId, "DELETE"),
-            removeStoredInstallation: removeStoredFirebaseInstallationId,
+            confirmedRegistration,
+            disableRegistration: (identity) =>
+              persistInstallation(identity, "DELETE"),
+            removeConfirmedRegistration:
+              removeStoredConfirmedPushRegistration,
             unregisterInstallation: unregisterFirebasePushInstallation,
           })),
         );
@@ -362,17 +392,17 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
       setState("default");
 
       void optOutReconciler.run(() => queuePersistence(() => {
-        let firebaseInstallationId: string | null = null;
+        let confirmedRegistration: PushRegistrationIdentity | null = null;
         try {
-          firebaseInstallationId = getStoredFirebaseInstallationId();
+          confirmedRegistration = getConfirmedPushRegistration();
         } catch {
-          // Firebase is still unregistered when local storage is unavailable.
+          // Firebase is still unregistered without a readable identity.
         }
         return runPushDisableCleanup({
-          firebaseInstallationId,
-          disableInstallation: (storedInstallationId) =>
-            persistInstallation(storedInstallationId, "DELETE"),
-          removeStoredInstallation: removeStoredFirebaseInstallationId,
+          confirmedRegistration,
+          disableRegistration: (identity) =>
+            persistInstallation(identity, "DELETE"),
+          removeConfirmedRegistration: removeStoredConfirmedPushRegistration,
           unregisterInstallation: unregisterFirebasePushInstallation,
         });
       }));
@@ -478,8 +508,14 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
           desiredEnabledRef.current !== true
         ) return;
         try {
+          const confirmedRegistration = getConfirmedPushRegistration();
+          if (
+            !confirmedRegistration ||
+            confirmedRegistration.firebaseInstallationId !==
+              firebaseInstallationId
+          ) return;
           const response = await queuePersistence(() =>
-            persistInstallation(firebaseInstallationId, "DELETE"));
+            persistInstallation(confirmedRegistration, "DELETE"));
           if (
             !active ||
             registrationGeneration !== registrationGenerationRef.current ||
@@ -490,7 +526,7 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
             setState("error");
             return;
           }
-          removeStoredFirebaseInstallationId(firebaseInstallationId);
+          removeStoredConfirmedPushRegistration(confirmedRegistration);
           setState("default");
         } catch {
           if (
@@ -618,17 +654,17 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
 
     try {
       const result = await queuePersistence(() => {
-        let firebaseInstallationId: string | null = null;
+        let confirmedRegistration: PushRegistrationIdentity | null = null;
         try {
-          firebaseInstallationId = getStoredFirebaseInstallationId();
+          confirmedRegistration = getConfirmedPushRegistration();
         } catch {
-          // Firebase is still unregistered when local storage is unavailable.
+          // Firebase is still unregistered without a readable identity.
         }
         return runPushDisableCleanup({
-          firebaseInstallationId,
-          disableInstallation: (storedInstallationId) =>
-            persistInstallation(storedInstallationId, "DELETE"),
-          removeStoredInstallation: removeStoredFirebaseInstallationId,
+          confirmedRegistration,
+          disableRegistration: (identity) =>
+            persistInstallation(identity, "DELETE"),
+          removeConfirmedRegistration: removeStoredConfirmedPushRegistration,
           unregisterInstallation: unregisterFirebasePushInstallation,
         });
       });
