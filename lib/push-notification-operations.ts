@@ -64,16 +64,22 @@ export function readPotentialPushInstallations(input: {
   try {
     const stored = readStoredPushInstallationIds(input.storage, input.installationSetKey);
     if (stored === undefined) return [];
-    if (stored.length > 0) return stored;
-    const candidates: unknown[] = [input.storage.getItem(input.legacyInstallationKey)];
+    const candidates: unknown[] = [
+      ...stored,
+      input.storage.getItem(input.legacyInstallationKey),
+    ];
     if (input.legacyConfirmedKey) {
       try {
         candidates.push(JSON.parse(input.storage.getItem(input.legacyConfirmedKey) ?? "null")?.firebaseInstallationId);
       } catch { /* malformed legacy state is ignored */ }
     }
-    const ids = [...new Set(candidates.filter(isPushInstallationId))].slice(-8);
+    const ids = [...new Set(candidates.filter(isPushInstallationId))]
+      .sort()
+      .slice(-10);
     for (const firebaseInstallationId of ids) {
-      if (!persistPotentialPushInstallation({ ...input, firebaseInstallationId })) return [];
+      if (!stored.includes(firebaseInstallationId)) {
+        persistPotentialPushInstallation({ ...input, firebaseInstallationId });
+      }
     }
     return ids;
   } catch {
@@ -98,7 +104,18 @@ export function removePotentialPushInstallation(input: {
     if (input.storage.getItem(input.legacyInstallationKey) === input.firebaseInstallationId) {
       input.storage.removeItem(input.legacyInstallationKey);
     }
-    if (input.legacyConfirmedKey) input.storage.removeItem(input.legacyConfirmedKey);
+    if (input.legacyConfirmedKey) {
+      try {
+        const legacy = JSON.parse(
+          input.storage.getItem(input.legacyConfirmedKey) ?? "null",
+        );
+        if (legacy?.firebaseInstallationId === input.firebaseInstallationId) {
+          input.storage.removeItem(input.legacyConfirmedKey);
+        }
+      } catch {
+        // Malformed legacy state is never treated as a known registration.
+      }
+    }
     return readStoredPushInstallationIds(input.storage, input.installationSetKey)
       ?.includes(input.firebaseInstallationId) === false;
   } catch {
@@ -428,7 +445,7 @@ export async function runPushDisableCleanup(input: {
   let deleteConfirmed = true;
   let unregisterConfirmed = false;
 
-  for (const firebaseInstallationId of [...new Set(input.firebaseInstallationIds)].slice(0, 8)) {
+  for (const firebaseInstallationId of [...new Set(input.firebaseInstallationIds)].slice(0, 10)) {
     try {
       const response = await input.disableInstallation(firebaseInstallationId);
       deleteConfirmed = response.ok && deleteConfirmed;

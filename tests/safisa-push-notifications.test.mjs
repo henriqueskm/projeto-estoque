@@ -581,6 +581,26 @@ test("entradas independentes por FID impedem lost update multiaba e aplicam limi
   assert.equal(readPotentialPushInstallations(input).includes("fid-over-limit"), false);
 });
 
+test("FID legado coexistente é unido e só é removido pelo DELETE correspondente", () => {
+  const values = new Map([
+    ["confirmed", JSON.stringify({ deviceId: "10000000-0000-4000-8000-000000000001", firebaseInstallationId: "fid-legacy" })],
+  ]);
+  const storage = {
+    get length() { return values.size; },
+    key(index) { return [...values.keys()][index] ?? null; },
+    getItem(key) { return values.get(key) ?? null; },
+    setItem(key, value) { values.set(key, value); },
+    removeItem(key) { values.delete(key); },
+  };
+  const input = { storage, installationSetKey: "potential", legacyInstallationKey: "legacy-fid", legacyConfirmedKey: "confirmed" };
+  assert.equal(persistPotentialPushInstallation({ ...input, firebaseInstallationId: "fid-new" }), true);
+  assert.deepEqual(readPotentialPushInstallations(input), ["fid-legacy", "fid-new"]);
+  assert.equal(removePotentialPushInstallation({ ...input, firebaseInstallationId: "fid-new" }), true);
+  assert.notEqual(storage.getItem("confirmed"), null);
+  assert.equal(removePotentialPushInstallation({ ...input, firebaseInstallationId: "fid-legacy" }), true);
+  assert.equal(storage.getItem("confirmed"), null);
+});
+
 test("user switch mantém disable isolado por auth.uid e FID, independente de device_id", () => {
   const rows = new Map();
   const register = (userId, deviceId, fid) => rows.set(fid, { userId, deviceId, enabled: true });
