@@ -146,12 +146,9 @@ test("endpoints são fixos, estritos, autenticados e não criam Pedido nem estoq
   assert.match(security, /isAssistantOrderPhotoSameOrigin/);
   assert.match(resolveRoute, /readExactJson\(request, \["code"\]\)/);
   assert.match(createRoute, /readExactJson\(request, \["code", "description"\]\)/);
-  assert.match(createRoute, /assessSupplierOrderPhotoLoosePartCode/);
-  assert.match(createRoute, /\.rpc\("create_loose_part"/);
-  assert.ok(
-    createRoute.lastIndexOf("assessSupplierOrderPhotoLoosePartCode") < createRoute.indexOf('.rpc("create_loose_part"'),
-    "o preflight de catálogo deve ocorrer antes da RPC",
-  );
+  assert.match(createRoute, /executeCatalogWrite/);
+  assert.match(createRoute, /kind: "CATALOG_ONLY_LOOSE_PART"/);
+  assert.doesNotMatch(createRoute, /\.rpc\("create_loose_part"/);
   assert.doesNotMatch(resolveRoute + createRoute, /Gemini|create_supplier_order|stock_inbound|movement_batch/);
 });
 
