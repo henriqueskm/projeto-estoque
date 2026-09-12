@@ -21,6 +21,7 @@ import {
   runBoundedLogoutFlow,
   runPushDisableCleanup,
   runPushLogoutCleanup,
+  subscribeToPushOptOutEvents,
 } from "../lib/push-notification-operations.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -202,7 +203,7 @@ test("client registers through FID callbacks using the existing worker and asks 
   const initialization = providerSource.slice(providerSource.indexOf("async function initialize"), providerSource.indexOf("const enable"));
   assert.doesNotMatch(initialization, /requestFirebasePushPermission\(/);
   assert.ok(
-    initialization.indexOf("localOptOutKey") <
+    initialization.indexOf("hasLocalPushOptOut") <
       initialization.indexOf("isFirebasePushConfigured"),
   );
   assert.match(initialization, /createPushOptOutReconciler|optOutReconciler\.run/);
@@ -363,6 +364,114 @@ test("enable pendente seguido de disable mantém opt-out e a última intenção 
     ["delete", "fid-device-a"],
     "unregister",
   ]);
+});
+
+test("opt-out entre abas ordena DELETE após POST tardio e desmonta o listener", async () => {
+  const listeners = new Set();
+  const values = new Map([
+    ["negocios-k:push-firebase-installation-id", "fid-device-a"],
+  ]);
+  const eventTarget = {
+    addEventListener(type, listener) {
+      if (type === "storage") listeners.add(listener);
+    },
+    removeEventListener(type, listener) {
+      if (type === "storage") listeners.delete(listener);
+    },
+  };
+  const sharedStorage = {
+    getItem(key) { return values.get(key) ?? null; },
+    setItem(key, value) {
+      const oldValue = values.get(key) ?? null;
+      values.set(key, value);
+      const event = { type: "storage", key, oldValue, newValue: value, storageArea: sharedStorage };
+      for (const listener of [...listeners]) listener(event);
+    },
+    removeItem(key) { values.delete(key); },
+  };
+  const gateB = createPushOperationGate();
+  const queueB = createPushPersistenceQueue();
+  const reconcilerB = createPushOptOutReconciler();
+  const pendingPost = deferred();
+  const requests = [];
+  const row = { deviceId: "device-a", fid: "fid-device-a", enabled: true };
+  let desiredEnabledB = true;
+  let registrationGenerationB = 1;
+  let stateB = "granted";
+  let observedOptOutsB = 0;
+
+  const pendingRegistrationB = queueB.run(async () => {
+    requests.push("POST:start:B");
+    await pendingPost.promise;
+    row.enabled = true;
+    sharedStorage.setItem("negocios-k:push-firebase-installation-id", row.fid);
+    requests.push("POST:finish:B");
+  });
+
+  const unsubscribeB = subscribeToPushOptOutEvents({
+    eventTarget,
+    storage: sharedStorage,
+    storageKey: "negocios-k:push-disabled",
+    onOptOut() {
+      observedOptOutsB += 1;
+      desiredEnabledB = false;
+      registrationGenerationB += 1;
+      invalidatePushOperations(gateB);
+      stateB = "default";
+      void reconcilerB.run(() => queueB.run(() => runPushDisableCleanup({
+        firebaseInstallationId: sharedStorage.getItem("negocios-k:push-firebase-installation-id"),
+        async disableInstallation(fid) {
+          requests.push(`DELETE:B:${fid}`);
+          if (row.deviceId === "device-a" && row.fid === fid) row.enabled = false;
+          return { ok: row.enabled === false };
+        },
+        removeStoredInstallation(fid) {
+          if (sharedStorage.getItem("negocios-k:push-firebase-installation-id") === fid) {
+            sharedStorage.removeItem("negocios-k:push-firebase-installation-id");
+          }
+        },
+        async unregisterInstallation() { requests.push("UNREGISTER:B"); },
+      })));
+    },
+  });
+
+  sharedStorage.setItem("negocios-k:push-disabled", "true");
+  requests.push("DELETE:A:fid-device-a");
+  row.enabled = false;
+  assert.equal(desiredEnabledB, false);
+  assert.equal(stateB, "default");
+
+  const passiveRegisteredCallbackB = async (callbackGeneration) => {
+    if (
+      desiredEnabledB &&
+      callbackGeneration === registrationGenerationB &&
+      sharedStorage.getItem("negocios-k:push-disabled") !== "true"
+    ) {
+      await queueB.run(async () => {
+        requests.push("POST:late-callback:B");
+        row.enabled = true;
+      });
+      stateB = "granted";
+      return true;
+    }
+    return false;
+  };
+  assert.equal(await passiveRegisteredCallbackB(1), false);
+  assert.equal(stateB, "default", "callback antigo da aba B não volta a granted");
+
+  pendingPost.resolve();
+  await pendingRegistrationB;
+  await queueB.idle();
+  assert.equal(row.enabled, false);
+  assert.equal(sharedStorage.getItem("negocios-k:push-disabled"), "true");
+  assert.equal(requests.at(-2), "DELETE:B:fid-device-a");
+  assert.equal(requests.at(-1), "UNREGISTER:B");
+  assert.equal(observedOptOutsB, 1);
+
+  unsubscribeB();
+  assert.equal(listeners.size, 0);
+  sharedStorage.setItem("negocios-k:push-disabled", "true");
+  assert.equal(observedOptOutsB, 1, "aba desmontada não reage a novos eventos");
 });
 
 test("reload com opt-out e FID reconcilia exatamente uma vez e mantém UI desativada", async () => {

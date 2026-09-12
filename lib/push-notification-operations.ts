@@ -99,7 +99,31 @@ export function createPushOptOutReconciler() {
       if (!reconciliation) reconciliation = work();
       return reconciliation as Promise<T>;
     },
+    reset() {
+      reconciliation = null;
+    },
   };
+}
+
+export function subscribeToPushOptOutEvents(input: {
+  eventTarget: Pick<EventTarget, "addEventListener" | "removeEventListener">;
+  storage: Storage;
+  storageKey: string;
+  onOptOut: () => void;
+}) {
+  const listener: EventListener = (event) => {
+    const storageEvent = event as StorageEvent;
+    if (
+      storageEvent.storageArea === input.storage &&
+      storageEvent.key === input.storageKey &&
+      storageEvent.newValue === "true"
+    ) {
+      input.onOptOut();
+    }
+  };
+
+  input.eventTarget.addEventListener("storage", listener);
+  return () => input.eventTarget.removeEventListener("storage", listener);
 }
 
 export async function runPushDisableCleanup(input: {
