@@ -19,6 +19,7 @@ import {
   invalidatePushOperations,
   isCurrentPushOperation,
   isPushMutationConfirmed,
+  observePushCleanup,
   persistPotentialPushInstallation,
   persistPushPreference,
   readPotentialPushInstallations,
@@ -624,32 +625,60 @@ test("corrupção bloqueia POST novo sem mascarar FIDs válidos no cleanup", asy
     async disableInstallation(fid) { deleted.push(fid); return { ok: true }; },
     removeInstallation(fid) { removePotentialPushInstallation({ ...input, firebaseInstallationId: fid }); },
     async unregisterInstallation() { return true; },
-    operationTimeoutMs: 30,
   });
   assert.deepEqual(deleted, ["fid-legacy", "fid-valid"]);
   assert.equal(values.has("potential:corrupt"), true, "corrupção não é apagada silenciosamente");
 });
 
-test("DELETE travado não bloqueia outro FID nem unregister e retorna no prazo", async () => {
+test("observer expira sem liberar drain/fila e POST espera todos os efeitos", async () => {
   const removed = [];
   const started = [];
-  const startedAt = Date.now();
-  const result = await runPushDisableCleanup({
+  const completed = [];
+  const pendingDelete = deferred();
+  const queue = createPushPersistenceQueue();
+  let posts = 0;
+  let state = "disabled";
+  const drain = queue.run(() => runPushDisableCleanup({
     firebaseInstallationIds: ["fid-a", "fid-b"],
     async disableInstallation(fid) {
       started.push(`delete:${fid}`);
-      if (fid === "fid-a") return new Promise(() => undefined);
+      if (fid === "fid-a") {
+        await pendingDelete.promise;
+        completed.push("delete:fid-a");
+        return { ok: true };
+      }
+      completed.push("delete:fid-b");
       return { ok: true };
     },
     removeInstallation(fid) { removed.push(fid); },
-    async unregisterInstallation() { started.push("unregister"); return true; },
-    operationTimeoutMs: 30,
-  });
+    async unregisterInstallation() {
+      started.push("unregister");
+      completed.push("unregister");
+      return true;
+    },
+  }));
+  let drainSettled = false;
+  void drain.then(() => { drainSettled = true; });
+  const observation = await observePushCleanup(drain, 30);
   assert.deepEqual(started, ["delete:fid-a", "delete:fid-b", "unregister"]);
   assert.deepEqual(removed, ["fid-b"]);
-  assert.equal(result.deleteConfirmed, false);
-  assert.equal(result.unregisterConfirmed, true);
-  assert.ok(Date.now() - startedAt < 500);
+  assert.deepEqual(observation, { pending: true });
+  assert.equal(drainSettled, false);
+
+  const laterEnable = queue.run(async () => {
+    posts += 1;
+    state = "enabled";
+    completed.push("post");
+  });
+  await Promise.resolve();
+  assert.equal(posts, 0, "timeout de UI não libera a barreira da fila");
+  pendingDelete.resolve();
+  const result = await drain;
+  await laterEnable;
+  assert.equal(result.synchronized, true);
+  assert.deepEqual(removed.sort(), ["fid-a", "fid-b"]);
+  assert.deepEqual(completed, ["delete:fid-b", "unregister", "delete:fid-a", "post"]);
+  assert.equal(state, "enabled");
 });
 
 test("unregister resolvendo false não confirma cleanup", async () => {
@@ -658,7 +687,6 @@ test("unregister resolvendo false não confirma cleanup", async () => {
     async disableInstallation() { throw new Error("não chamado"); },
     removeInstallation() { throw new Error("não chamado"); },
     async unregisterInstallation() { return false; },
-    operationTimeoutMs: 30,
   });
   assert.deepEqual(result, {
     deleteConfirmed: true,
@@ -1206,8 +1234,8 @@ test("falha ao remover FID local após DELETE não impede unregister", async () 
   });
   assert.deepEqual(calls, [
     ["delete", "fid-device-a"],
-    ["unregister"],
     ["remove", "fid-device-a"],
+    ["unregister"],
   ]);
   assert.deepEqual(result, {
     deleteConfirmed: true,
@@ -1284,8 +1312,8 @@ test("logout desativa somente o FID armazenado e não toca outro dispositivo", a
   assert.deepEqual(calls, [
     ["opt-out"],
     ["disable", "fid-device-a"],
-    ["unregister"],
     ["remove", "fid-device-a"],
+    ["unregister"],
   ]);
   assert.equal(JSON.stringify(calls).includes("fid-device-b"), false);
 });
@@ -1338,8 +1366,8 @@ test("opt-out lançando não impede DELETE, unregister ou logout", async () => {
   assert.deepEqual(calls, [
     ["opt-out"],
     ["delete", "fid-device-a"],
-    ["unregister"],
     ["remove", "fid-device-a"],
+    ["unregister"],
   ]);
 });
 
@@ -1361,6 +1389,29 @@ test("fluxo limitado sempre submete após sucesso, throw ou timeout", async () =
     submit: () => { submissions += 1; },
   });
   assert.equal(submissions, 3);
+});
+
+test("logout submete no deadline enquanto o drain real continua até efeito tardio", async () => {
+  const pendingDelete = deferred();
+  let submissions = 0;
+  let drainSettled = false;
+  const drain = runPushLogoutCleanup({
+    firebaseInstallationIds: ["fid-logout"],
+    async disableInstallation() { await pendingDelete.promise; return { ok: true }; },
+    removeInstallation() {},
+    async unregisterInstallation() { return true; },
+    storeLocalOptOut() {},
+  });
+  void drain.then(() => { drainSettled = true; });
+  await runBoundedLogoutFlow({
+    cleanup: drain,
+    deadline: Promise.resolve("1.2s"),
+    submit: () => { submissions += 1; },
+  });
+  assert.equal(submissions, 1);
+  assert.equal(drainSettled, false);
+  pendingDelete.resolve();
+  assert.equal((await drain).synchronized, true);
 });
 
 test("logout invalida enable e libera submit em 1,2s mesmo com fila pendente", async () => {

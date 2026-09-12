@@ -30,6 +30,7 @@ import {
   invalidatePushOperations,
   isPushMutationConfirmed,
   isCurrentPushOperation,
+  observePushCleanup,
   persistPotentialPushInstallation,
   persistPushPreference,
   readPotentialPushInstallations,
@@ -294,9 +295,10 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
         if (active) setState("default");
         if (preference !== "disabled") return;
 
-        await optOutReconciler.run(() =>
+        const drain = optOutReconciler.run(() =>
           queuePersistence(() => runStoredPushDisableCleanup()),
         );
+        await observePushCleanup(drain);
         return;
       }
 
@@ -375,8 +377,9 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
       setErrorOperation(null);
       setState("default");
 
-      void optOutReconciler.run(() =>
+      const drain = optOutReconciler.run(() =>
         queuePersistence(() => runStoredPushDisableCleanup()));
+      void observePushCleanup(drain);
     };
 
     const stopPreferenceOptOut = subscribeToPushOptOutEvents({
@@ -629,9 +632,14 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     setState("default");
 
     try {
-      const result = await queuePersistence(() => runStoredPushDisableCleanup());
+      const drain = queuePersistence(() => runStoredPushDisableCleanup());
+      const observation = await observePushCleanup(drain);
       if (!operationIsCurrent(operationGeneration, operation)) return;
-      if (!result.synchronized) {
+      if (
+        observation.pending ||
+        "error" in observation ||
+        !observation.result.synchronized
+      ) {
         setErrorOperation("disable");
         setState("error");
         return;

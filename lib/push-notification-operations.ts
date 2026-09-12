@@ -362,25 +362,6 @@ export function invalidatePushOperations(gate: PushOperationGate) {
 // `ok` is the semantic mutation result (`disabled === true`), never HTTP status alone.
 type LogoutCleanupResponse = { ok: boolean };
 
-function settlePushCleanupWithin<T>(
-  work: () => Promise<T>,
-  timeoutMs: number,
-): Promise<T | null> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (value: T | null) => {
-      if (settled) return;
-      settled = true;
-      globalThis.clearTimeout(timer);
-      resolve(value);
-    };
-    const timer = globalThis.setTimeout(() => finish(null), timeoutMs);
-    Promise.resolve()
-      .then(work)
-      .then((value) => finish(value), () => finish(null));
-  });
-}
-
 export function createPushPersistenceQueue() {
   let tail: Promise<void> = Promise.resolve();
 
@@ -462,31 +443,29 @@ export async function runPushDisableCleanup(input: {
   disableInstallation: (firebaseInstallationId: string) => Promise<LogoutCleanupResponse>;
   removeInstallation: (firebaseInstallationId: string) => void;
   unregisterInstallation: () => Promise<unknown>;
-  operationTimeoutMs?: number;
 }) {
-  const timeoutMs = Math.max(10, Math.min(input.operationTimeoutMs ?? 1_000, 1_000));
   const firebaseInstallationIds = [
     ...new Set(input.firebaseInstallationIds),
   ].slice(0, 10);
   const deleteTasks = firebaseInstallationIds.map(async (firebaseInstallationId) => {
-    const response = await settlePushCleanupWithin(
-      () => input.disableInstallation(firebaseInstallationId),
-      timeoutMs,
-    );
-    if (response?.ok === true) {
-      try {
-        input.removeInstallation(firebaseInstallationId);
-      } catch {
-        // Remote cleanup and Firebase unregistration remain independent.
+    try {
+      const response = await input.disableInstallation(firebaseInstallationId);
+      if (response.ok === true) {
+        try {
+          input.removeInstallation(firebaseInstallationId);
+        } catch {
+          // Remote confirmation remains authoritative; other work still drains.
+        }
+        return true;
       }
-      return true;
+    } catch {
+      // The durable FID is preserved for a later retry.
     }
     return false;
   });
-  const unregisterTask = settlePushCleanupWithin(
-    input.unregisterInstallation,
-    timeoutMs,
-  ).then((result) => result === true);
+  const unregisterTask = Promise.resolve()
+    .then(input.unregisterInstallation)
+    .then((result) => result === true, () => false);
 
   const [deleteResults, unregisterConfirmed] = await Promise.all([
     Promise.all(deleteTasks),
@@ -501,13 +480,39 @@ export async function runPushDisableCleanup(input: {
   };
 }
 
+export async function observePushCleanup<T>(
+  drain: Promise<T>,
+  timeoutMs = 1_000,
+): Promise<
+  | { pending: false; result: T }
+  | { pending: false; error: true }
+  | { pending: true }
+> {
+  const boundedTimeoutMs = Math.max(10, Math.min(timeoutMs, 1_000));
+  let timer: ReturnType<typeof globalThis.setTimeout> | undefined;
+  const timeout = new Promise<{ pending: true }>((resolve) => {
+    timer = globalThis.setTimeout(
+      () => resolve({ pending: true }),
+      boundedTimeoutMs,
+    );
+  });
+  const settled = drain.then(
+    (result) => ({ pending: false as const, result }),
+    () => ({ pending: false as const, error: true as const }),
+  );
+  try {
+    return await Promise.race([settled, timeout]);
+  } finally {
+    if (timer !== undefined) globalThis.clearTimeout(timer);
+  }
+}
+
 export async function runPushLogoutCleanup(input: {
   firebaseInstallationIds: string[];
   disableInstallation: (firebaseInstallationId: string) => Promise<LogoutCleanupResponse>;
   removeInstallation: (firebaseInstallationId: string) => void;
   unregisterInstallation: () => Promise<unknown>;
   storeLocalOptOut: () => void;
-  operationTimeoutMs?: number;
 }) {
   try {
     input.storeLocalOptOut();
