@@ -18,9 +18,14 @@ import {
   invalidatePushOperations,
   isCurrentPushOperation,
   isPushMutationConfirmed,
+  persistPushPreference,
+  readAndMigratePushPreference,
+  registerPushInstallationWithConvergence,
   runBoundedLogoutFlow,
   runPushDisableCleanup,
   runPushLogoutCleanup,
+  shouldAutoRegisterPush,
+  subscribeToPushDeviceIdentityEvents,
   subscribeToPushOptOutEvents,
 } from "../lib/push-notification-operations.ts";
 
@@ -203,13 +208,15 @@ test("client registers through FID callbacks using the existing worker and asks 
   const initialization = providerSource.slice(providerSource.indexOf("async function initialize"), providerSource.indexOf("const enable"));
   assert.doesNotMatch(initialization, /requestFirebasePushPermission\(/);
   assert.ok(
-    initialization.indexOf("hasLocalPushOptOut") <
+    initialization.indexOf("readLocalPushPreference") <
       initialization.indexOf("isFirebasePushConfigured"),
   );
   assert.match(initialization, /createPushOptOutReconciler|optOutReconciler\.run/);
+  assert.match(initialization, /shouldAutoRegisterPush\(preference\)/);
   assert.match(providerSource, /firebaseInstallationId/);
   assert.match(providerSource, /localFirebaseInstallationIdKey/);
-  assert.match(providerSource, /const response = await persistInstallation[\s\S]*if \(!response\.ok\)[\s\S]*setState\("granted"\)/);
+  assert.match(providerSource, /registerPushInstallationWithConvergence\([\s\S]*maxAttempts: 3/);
+  assert.match(providerSource, /const registration = await registerAndPersistInstallation\(\)[\s\S]*if \(registration\)[\s\S]*setState\("granted"\)/);
   assert.match(providerSource, /isIosDevice\(\) && !isStandaloneMode\(\)/);
   assert.match(providerSource, /"denied"/);
   assert.match(providerSource, /"unsupported"/);
@@ -221,7 +228,7 @@ test("FID rotation is persisted and disable records opt-out before cleanup", () 
     providerSource.indexOf("subscribeToFirebasePushRegistration"),
     providerSource.indexOf("const enable"),
   );
-  assert.match(registrationEffect, /registered\(firebaseInstallationId\)[\s\S]*persistInstallation\([\s\S]*"POST"/);
+  assert.match(registrationEffect, /registered\(firebaseInstallationId\)[\s\S]*reconcileInstallation\(\s*firebaseInstallationId/);
   assert.match(registrationEffect, /unregistered\(firebaseInstallationId\)[\s\S]*persistInstallation\([\s\S]*"DELETE"/);
 
   const disableFlow = providerSource.slice(
@@ -281,6 +288,319 @@ test("JSON inválido ou anômalo nunca confirma POST ou DELETE", async () => {
       operation,
     ), false);
   }
+});
+
+test("preferência persistente é fail-closed e permission granted isolada nunca autoriza registro", async () => {
+  const preferenceKey = "push-preference";
+  const legacyOptOutKey = "push-disabled";
+  const installationKey = "push-fid";
+  const deviceKey = "push-device";
+  const createStorage = (entries = []) => {
+    const values = new Map(entries);
+    return {
+      values,
+      getItem(key) { return values.get(key) ?? null; },
+      setItem(key, value) { values.set(key, value); },
+      removeItem(key) { values.delete(key); },
+    };
+  };
+  const readPreference = (storage) => readAndMigratePushPreference({
+    storage,
+    preferenceKey,
+    legacyOptOutKey,
+    installationKey,
+    deviceKey,
+  });
+
+  const cases = [
+    [createStorage([[preferenceKey, "enabled"]]), true],
+    [createStorage([[preferenceKey, "disabled"]]), false],
+    [createStorage(), false],
+    [{
+      getItem() { throw new DOMException("blocked", "SecurityError"); },
+      setItem() { throw new DOMException("blocked", "SecurityError"); },
+      removeItem() { throw new DOMException("blocked", "SecurityError"); },
+    }, false],
+  ];
+  for (const [storage, expectedRegistration] of cases) {
+    const preference = readPreference(storage);
+    let posts = 0;
+    const result = await registerPushInstallationWithConvergence({
+      firebaseInstallationId: "fid-auto",
+      getOrCreateDeviceId: () => "device-auto",
+      readDeviceId: () => "device-auto",
+      storeInstallation() {},
+      async registerInstallation() { posts += 1; return { ok: true }; },
+      canRegister: () => shouldAutoRegisterPush(preference),
+    });
+    assert.equal(Boolean(result), expectedRegistration);
+    assert.equal(posts, expectedRegistration ? 1 : 0);
+  }
+
+  const notificationPermission = "granted";
+  const noOptIn = readPreference(createStorage());
+  assert.equal(notificationPermission, "granted");
+  assert.equal(shouldAutoRegisterPush(noOptIn), false);
+});
+
+test("opt-in explícito exige write/readback confiável antes de registrar", async () => {
+  const preferenceKey = "push-preference";
+  const legacyOptOutKey = "push-disabled";
+  const values = new Map();
+  const storage = {
+    getItem(key) { return values.get(key) ?? null; },
+    setItem(key, value) { values.set(key, value); },
+    removeItem(key) { values.delete(key); },
+  };
+  const persisted = persistPushPreference({
+    storage,
+    preferenceKey,
+    legacyOptOutKey,
+    preference: "enabled",
+  });
+  let postCalls = 0;
+  const registration = await registerPushInstallationWithConvergence({
+    firebaseInstallationId: "fid-explicit",
+    getOrCreateDeviceId: () => "device-explicit",
+    readDeviceId: () => "device-explicit",
+    storeInstallation() {},
+    async registerInstallation() {
+      postCalls += 1;
+      return { ok: true };
+    },
+    canRegister: () => persisted && values.get(preferenceKey) === "enabled",
+  });
+  assert.equal(persisted, true);
+  assert.equal(registration.deviceId, "device-explicit");
+  assert.equal(postCalls, 1);
+
+  let failedPostCalls = 0;
+  const writeFailure = persistPushPreference({
+    storage: {
+      getItem() { return null; },
+      setItem() { throw new DOMException("quota", "QuotaExceededError"); },
+      removeItem() {},
+    },
+    preferenceKey,
+    legacyOptOutKey,
+    preference: "enabled",
+  });
+  const failedRegistration = await registerPushInstallationWithConvergence({
+    firebaseInstallationId: "fid-never-posted",
+    getOrCreateDeviceId: () => "device-never-posted",
+    readDeviceId: () => "device-never-posted",
+    storeInstallation() {},
+    async registerInstallation() {
+      failedPostCalls += 1;
+      return { ok: true };
+    },
+    canRegister: () => writeFailure,
+  });
+  assert.equal(writeFailure, false);
+  assert.equal(failedRegistration, null);
+  assert.equal(failedPostCalls, 0);
+
+  const staleOptIn = new Map([[preferenceKey, "enabled"]]);
+  const disableWriteFailureStorage = {
+    getItem(key) { return staleOptIn.get(key) ?? null; },
+    setItem() { throw new DOMException("quota", "QuotaExceededError"); },
+    removeItem(key) { staleOptIn.delete(key); },
+  };
+  assert.equal(persistPushPreference({
+    storage: disableWriteFailureStorage,
+    preferenceKey,
+    legacyOptOutKey,
+    preference: "disabled",
+  }), false);
+  assert.equal(staleOptIn.has(preferenceKey), false);
+  assert.equal(shouldAutoRegisterPush(readAndMigratePushPreference({
+    storage: disableWriteFailureStorage,
+    preferenceKey,
+    legacyOptOutKey,
+    installationKey: "push-fid",
+    deviceKey: "push-device",
+  })), false, "falha ao gravar disabled não preserva opt-in stale");
+});
+
+test("migração legada exige FID e device_id coerentes e acontece uma única vez", () => {
+  const preferenceKey = "push-preference";
+  const legacyOptOutKey = "push-disabled";
+  const installationKey = "push-fid";
+  const deviceKey = "push-device";
+  const values = new Map([[installationKey, "fid-legacy"]]);
+  let writes = 0;
+  const storage = {
+    getItem(key) { return values.get(key) ?? null; },
+    setItem(key, value) { writes += 1; values.set(key, value); },
+    removeItem(key) { values.delete(key); },
+  };
+  const read = () => readAndMigratePushPreference({
+    storage,
+    preferenceKey,
+    legacyOptOutKey,
+    installationKey,
+    deviceKey,
+  });
+
+  assert.equal(read(), "unknown", "FID isolado pode ser stale e não prova opt-in");
+  values.set(deviceKey, "10000000-0000-4000-8000-000000000010");
+  assert.equal(read(), "enabled");
+  const writesAfterMigration = writes;
+  assert.equal(read(), "enabled");
+  assert.equal(writes, writesAfterMigration, "marcador novo evita nova migração");
+
+  values.set(legacyOptOutKey, "true");
+  assert.equal(read(), "disabled", "opt-out legado sempre prevalece");
+  assert.equal(values.get(preferenceKey), "disabled");
+});
+
+test("duas abas com candidatos distintos convergem local/backend e DELETE usa a identidade final", async () => {
+  const fid = "fid-shared-installation";
+  const candidateA = "10000000-0000-4000-8000-00000000000a";
+  const candidateB = "10000000-0000-4000-8000-00000000000b";
+  const firstPostA = deferred();
+  const rows = new Map();
+  const requests = [];
+  let storedDeviceId = null;
+  let storedFid = null;
+
+  const registerBackend = async (deviceId, firebaseInstallationId) => {
+    requests.push(["POST", deviceId, firebaseInstallationId]);
+    if (deviceId === candidateA && requests.length === 1) {
+      await firstPostA.promise;
+    }
+    for (const [rowDeviceId, row] of rows) {
+      if (row.fid === firebaseInstallationId && rowDeviceId !== deviceId) {
+        rows.delete(rowDeviceId);
+      }
+    }
+    rows.set(deviceId, { fid: firebaseInstallationId, enabled: true });
+    return { ok: true };
+  };
+  const runTab = (candidate) => registerPushInstallationWithConvergence({
+    firebaseInstallationId: fid,
+    getOrCreateDeviceId() {
+      storedDeviceId = candidate;
+      return candidate;
+    },
+    readDeviceId: () => storedDeviceId,
+    storeInstallation(firebaseInstallationId) {
+      storedFid = firebaseInstallationId;
+    },
+    registerInstallation: registerBackend,
+    canRegister: () => true,
+    maxAttempts: 3,
+  });
+
+  const tabA = runTab(candidateA);
+  const tabB = runTab(candidateB);
+  const resultB = await tabB;
+  firstPostA.resolve();
+  const resultA = await tabA;
+
+  assert.equal(resultA.deviceId, candidateB);
+  assert.equal(resultB.deviceId, candidateB);
+  assert.equal(storedDeviceId, candidateB);
+  assert.equal(storedFid, fid);
+  assert.deepEqual([...rows], [[candidateB, { fid, enabled: true }]]);
+  assert.equal(requests.filter(([method]) => method === "POST").length, 3);
+
+  const deleteDeviceId = storedDeviceId;
+  requests.push(["DELETE", deleteDeviceId, storedFid]);
+  const row = rows.get(deleteDeviceId);
+  if (row?.fid === storedFid) row.enabled = false;
+  const deleteConfirmed = row?.enabled === false;
+  assert.equal(deleteConfirmed, true);
+  assert.deepEqual([...rows], [[candidateB, { fid, enabled: false }]]);
+  assert.equal(rows.has(candidateA), false, "RPC canônico remove a identidade perdida");
+});
+
+test("opt-out durante POST stale termina convergência antes do DELETE final", async () => {
+  const fid = "fid-disable-race";
+  const candidateA = "10000000-0000-4000-8000-00000000000a";
+  const candidateB = "10000000-0000-4000-8000-00000000000b";
+  const pendingPost = deferred();
+  const rows = new Map();
+  const requests = [];
+  let storedDeviceId = candidateA;
+  let storedFid = null;
+  let enabled = true;
+
+  const registration = registerPushInstallationWithConvergence({
+    firebaseInstallationId: fid,
+    getOrCreateDeviceId: () => candidateA,
+    readDeviceId: () => storedDeviceId,
+    storeInstallation(value) { storedFid = value; },
+    async registerInstallation(deviceId, firebaseInstallationId) {
+      requests.push(["POST", deviceId, firebaseInstallationId]);
+      if (deviceId === candidateA) await pendingPost.promise;
+      for (const [rowDeviceId, row] of rows) {
+        if (row.fid === firebaseInstallationId && rowDeviceId !== deviceId) {
+          rows.delete(rowDeviceId);
+        }
+      }
+      rows.set(deviceId, { fid: firebaseInstallationId, enabled: true });
+      return { ok: true };
+    },
+    canRegister: () => enabled,
+    maxAttempts: 3,
+  });
+
+  storedDeviceId = candidateB;
+  enabled = false;
+  pendingPost.resolve();
+  assert.equal(await registration, null, "opt-out nunca conclui ativação");
+  assert.deepEqual(requests, [
+    ["POST", candidateA, fid],
+    ["POST", candidateB, fid],
+  ]);
+  assert.deepEqual([...rows], [[candidateB, { fid, enabled: true }]]);
+
+  const cleanup = await runPushDisableCleanup({
+    firebaseInstallationId: storedFid,
+    async disableInstallation(firebaseInstallationId) {
+      requests.push(["DELETE", storedDeviceId, firebaseInstallationId]);
+      const row = rows.get(storedDeviceId);
+      if (row?.fid === firebaseInstallationId) row.enabled = false;
+      return { ok: row?.enabled === false };
+    },
+    removeStoredInstallation(value) {
+      if (storedFid === value) storedFid = null;
+    },
+    async unregisterInstallation() {
+      requests.push(["UNREGISTER"]);
+    },
+  });
+  assert.equal(cleanup.synchronized, true);
+  assert.equal(storedFid, null);
+  assert.deepEqual(rows.get(candidateB), { fid, enabled: false });
+  assert.deepEqual(requests.at(-2), ["DELETE", candidateB, fid]);
+  assert.deepEqual(requests.at(-1), ["UNREGISTER"]);
+  assert.equal(rows.has(candidateA), false);
+});
+
+test("mudança de device_id em outra aba aciona a fronteira real de reconciliação", () => {
+  const listeners = new Set();
+  const storage = {};
+  const eventTarget = {
+    addEventListener(type, listener) { if (type === "storage") listeners.add(listener); },
+    removeEventListener(type, listener) { if (type === "storage") listeners.delete(listener); },
+  };
+  let reconciliations = 0;
+  const unsubscribe = subscribeToPushDeviceIdentityEvents({
+    eventTarget,
+    storage,
+    storageKey: "push-device",
+    onIdentityChange() { reconciliations += 1; },
+  });
+  for (const listener of listeners) listener({
+    storageArea: storage,
+    key: "push-device",
+    newValue: "device-final",
+  });
+  assert.equal(reconciliations, 1);
+  unsubscribe();
+  assert.equal(listeners.size, 0);
 });
 
 test("disable supersedes enable, while double click disable remains blocked", () => {
@@ -604,6 +924,34 @@ test("disable sem FID ainda tenta unregister e falhas permanecem retryable", asy
     deleteConfirmed: true,
     unregisterConfirmed: false,
     synchronized: false,
+  });
+});
+
+test("falha ao remover FID local após DELETE não impede unregister", async () => {
+  const calls = [];
+  const result = await runPushDisableCleanup({
+    firebaseInstallationId: "fid-device-a",
+    async disableInstallation(fid) {
+      calls.push(["delete", fid]);
+      return { ok: true };
+    },
+    removeStoredInstallation(fid) {
+      calls.push(["remove", fid]);
+      throw new DOMException("storage blocked", "SecurityError");
+    },
+    async unregisterInstallation() {
+      calls.push(["unregister"]);
+    },
+  });
+  assert.deepEqual(calls, [
+    ["delete", "fid-device-a"],
+    ["remove", "fid-device-a"],
+    ["unregister"],
+  ]);
+  assert.deepEqual(result, {
+    deleteConfirmed: true,
+    unregisterConfirmed: true,
+    synchronized: true,
   });
 });
 
