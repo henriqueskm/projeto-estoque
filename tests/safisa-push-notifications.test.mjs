@@ -15,6 +15,7 @@ import {
   finishPushOperation,
   invalidatePushOperations,
   isCurrentPushOperation,
+  isPushMutationConfirmed,
   runBoundedLogoutFlow,
   runPushDisableCleanup,
   runPushLogoutCleanup,
@@ -207,6 +208,54 @@ test("FID rotation is persisted and disable records opt-out before cleanup", () 
   assert.match(controlSource, /sincronização está pendente/);
 });
 
+test("POST exige HTTP ok, JSON válido e enabled true", async () => {
+  assert.equal(await isPushMutationConfirmed(
+    new Response(JSON.stringify({ enabled: true }), { status: 200 }),
+    "enable",
+  ), true);
+  assert.equal(await isPushMutationConfirmed(
+    new Response(JSON.stringify({ enabled: false }), { status: 200 }),
+    "enable",
+  ), false);
+  assert.equal(await isPushMutationConfirmed(
+    new Response(JSON.stringify({ enabled: true }), { status: 500 }),
+    "enable",
+  ), false);
+});
+
+test("DELETE exige HTTP ok, JSON válido e disabled true", async () => {
+  assert.equal(await isPushMutationConfirmed(
+    new Response(JSON.stringify({ disabled: true }), { status: 200 }),
+    "disable",
+  ), true);
+  assert.equal(await isPushMutationConfirmed(
+    new Response(JSON.stringify({ disabled: false }), { status: 200 }),
+    "disable",
+  ), false);
+  assert.equal(await isPushMutationConfirmed(
+    new Response(JSON.stringify({ disabled: true }), { status: 409 }),
+    "disable",
+  ), false);
+});
+
+test("JSON inválido ou anômalo nunca confirma POST ou DELETE", async () => {
+  for (const [body, operation] of [
+    ["{", "enable"],
+    ["not-json", "disable"],
+    [JSON.stringify(null), "enable"],
+    [JSON.stringify([]), "disable"],
+    [JSON.stringify({ enabled: "true" }), "enable"],
+    [JSON.stringify({ disabled: 1 }), "disable"],
+    [JSON.stringify({ disabled: true }), "enable"],
+    [JSON.stringify({ enabled: true }), "disable"],
+  ]) {
+    assert.equal(await isPushMutationConfirmed(
+      new Response(body, { status: 200 }),
+      operation,
+    ), false);
+  }
+});
+
 test("disable supersedes enable, while double click disable remains blocked", () => {
   const gate = createPushOperationGate();
   const enableGeneration = beginPushOperation(gate, "enable");
@@ -304,7 +353,11 @@ test("DELETE falho preserva FID e retry usa usuário, device e FID originais", a
     async disableInstallation(firebaseInstallationId) {
       attempt += 1;
       requests.push({ ...identity, firebaseInstallationId });
-      return { ok: attempt === 2 };
+      const response = new Response(
+        JSON.stringify({ disabled: attempt === 2 }),
+        { status: 200 },
+      );
+      return { ok: await isPushMutationConfirmed(response, "disable") };
     },
     removeStoredInstallation(firebaseInstallationId) {
       if (storedFid === firebaseInstallationId) storedFid = null;
@@ -438,6 +491,30 @@ test("logout conclui opt-out mesmo quando unregister falha", async () => {
     storeLocalOptOut() { calls.push("opt-out"); },
   });
   assert.deepEqual(calls, ["opt-out", "remove"]);
+});
+
+test("opt-out lançando não impede DELETE, unregister ou logout", async () => {
+  const calls = [];
+  const result = await runPushLogoutCleanup({
+    firebaseInstallationId: "fid-device-a",
+    async disableInstallation(fid) {
+      calls.push(["delete", fid]);
+      return { ok: true };
+    },
+    removeStoredInstallation(fid) { calls.push(["remove", fid]); },
+    async unregisterInstallation() { calls.push(["unregister"]); },
+    storeLocalOptOut() {
+      calls.push(["opt-out"]);
+      throw new DOMException("storage blocked", "SecurityError");
+    },
+  });
+  assert.equal(result.synchronized, true);
+  assert.deepEqual(calls, [
+    ["opt-out"],
+    ["delete", "fid-device-a"],
+    ["remove", "fid-device-a"],
+    ["unregister"],
+  ]);
 });
 
 test("fluxo limitado sempre submete após sucesso, throw ou timeout", async () => {

@@ -1,4 +1,21 @@
 export type PushOperationKind = "enable" | "disable";
+export type PushMutationKind = "enable" | "disable";
+
+export async function isPushMutationConfirmed(
+  response: Pick<Response, "ok" | "json">,
+  operation: PushMutationKind,
+) {
+  if (!response.ok) return false;
+
+  try {
+    const body: unknown = await response.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+    const confirmationField = operation === "enable" ? "enabled" : "disabled";
+    return Reflect.get(body, confirmationField) === true;
+  } catch {
+    return false;
+  }
+}
 
 export type PushOperationGate = {
   generation: number;
@@ -122,7 +139,11 @@ export async function runPushLogoutCleanup(input: {
   unregisterInstallation: () => Promise<unknown>;
   storeLocalOptOut: () => void;
 }) {
-  input.storeLocalOptOut();
+  try {
+    input.storeLocalOptOut();
+  } catch {
+    // Storage is best-effort; remote and Firebase cleanup must still run.
+  }
   return runPushDisableCleanup(input);
 }
 

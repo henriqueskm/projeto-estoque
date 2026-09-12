@@ -27,6 +27,7 @@ import {
   createPushOperationGate,
   finishPushOperation,
   invalidatePushOperations,
+  isPushMutationConfirmed,
   isCurrentPushOperation,
   runPushDisableCleanup,
   runPushLogoutCleanup,
@@ -92,7 +93,7 @@ async function persistInstallation(
   method: "POST" | "DELETE",
   options: { keepalive?: boolean } = {},
 ) {
-  return fetch("/api/push-subscriptions", {
+  const response = await fetch("/api/push-subscriptions", {
     method,
     credentials: "same-origin",
     headers: {
@@ -105,6 +106,12 @@ async function persistInstallation(
     }),
     keepalive: options.keepalive,
   });
+  return {
+    ok: await isPushMutationConfirmed(
+      response,
+      method === "POST" ? "enable" : "disable",
+    ),
+  };
 }
 
 export async function disablePushBeforeLogout() {
