@@ -55,7 +55,7 @@ test("blocks logical cancellation with ready units awaiting pickup and keeps aud
 
 test("portal exposes active and completed lists while completed orders are read-only", () => {
   assert.match(portal, /Em andamento/);
-  assert.match(portal, /Concluídos/);
+  assert.match(portal, /Histórico/);
   assert.match(portal, /selectedOrder\?\.portalState/);
   assert.match(portal, /!selectedOrder\.isReadOnly/);
   assert.match(data, /portal_state/);

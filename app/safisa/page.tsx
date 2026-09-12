@@ -38,6 +38,7 @@ export default async function SafisaPage({ searchParams }: Props) {
 
   return (
     <SafisaPortal
+      userId={session.userId}
       displayName={session.displayName}
       activeOrders={session.orderList.orders}
       completedOrders={completedOrderList.orders}

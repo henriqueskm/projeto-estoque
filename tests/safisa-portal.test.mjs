@@ -5,7 +5,10 @@ import {
   maximumReadyQuantity,
   readinessLabel,
 } from "../lib/safisa-portal-readiness.ts";
-import { mapSafisaMutationError } from "../lib/safisa-action-errors.ts";
+import {
+  classifySafisaMutationResponse,
+  mapSafisaMutationError,
+} from "../lib/safisa-action-errors.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const actions = read("app/safisa/actions.ts");
@@ -40,26 +43,27 @@ test("mutations call only fixed Safisa readiness RPCs", () => {
   assert.match(actions, /p_idempotency_key: input\.idempotencyKey/);
 });
 
-test("mark remaining reloads official order and calculates a delta", () => {
+test("mark remaining preserves the client-confirmed delta for an idempotent retry", () => {
   const section = actions.slice(
     actions.indexOf("export async function markSafisaRemainingReady"),
     actions.indexOf("export async function markSafisaOrderRemainingReady"),
   );
   assert.match(section, /getSafisaOrder\(supabase, input\.supplierOrderId\)/);
-  assert.match(section, /p_increment_quantity: line\.waitingReadyQuantity/);
+  assert.match(section, /p_increment_quantity: input\.incrementQuantity/);
+  assert.match(section, /"incrementQuantity"/);
   assert.doesNotMatch(section, /ready_quantity\s*:/);
 });
 
-test("correction validates version, confirmation and justification", () => {
-  assert.match(actions, /line\.updatedAt !== input\.expectedUpdatedAt/);
+test("correction preserves version, confirmation and canonical justification for the RPC", () => {
   assert.match(actions, /p_confirmed: true/);
-  assert.match(actions, /p_expected_updated_at: line\.updatedAt/);
-  assert.match(actions, /input\.justification\.trim\(\)/);
-  assert.match(actions, /status: "conflict"/);
+  assert.match(actions, /p_expected_updated_at: input\.expectedUpdatedAt/);
+  assert.match(actions, /const justification = input\.justification\.trim\(\)/);
+  assert.match(actions, /p_justification: justification/);
+  assert.match(actions, /mutationResult\.status === "conflict"/);
 });
 
 test("client prevents double submit and exposes accessible states", () => {
-  assert.match(portal, /if \(isPending \|\| operationLock\.current\) return/);
+  assert.match(portal, /if \(isAttemptRestoring \|\| isPending \|\| operationLock\.current\) return/);
   assert.match(portal, /operationLock\.current/);
   assert.match(portal, /disabled=\{isPending\}/);
   assert.match(portal, /aria-live="polite"/);
@@ -92,7 +96,7 @@ test("opening a selected order overlaps its detail read with completed-list load
 });
 
 test("mark all ready is a confirmed order-level action above the line controls", () => {
-  assert.match(portal, /kind: "order"/);
+  assert.match(portal, /kind: "MARK_ORDER_REMAINING_READY"/);
   assert.match(portal, /Dar todo o Pedido como pronto/);
   assert.match(portal, /Dar todo o Pedido como pronto\?/);
   assert.match(portal, /pendingLineCount/);
@@ -100,22 +104,19 @@ test("mark all ready is a confirmed order-level action above the line controls",
     portal.indexOf("Dar todo o Pedido como pronto") <
       portal.indexOf("Concluir este item"),
   );
-  assert.match(actions, /p_increment_quantity: line\.waitingReadyQuantity/);
+  assert.match(portal, /pendingQuantity: selectedOrder\.waitingReadyQuantity/);
   assert.match(actions, /markSafisaOrderRemainingReady/);
   assert.match(actions, /mark_safisa_order_remaining_ready/);
 });
 
-test("mark all ready reuses the official order reader before the bulk RPC", () => {
+test("mark all ready lets the idempotent RPC resolve a replay before current-state guards", () => {
   const section = actions.slice(
     actions.indexOf("export async function markSafisaOrderRemainingReady"),
     actions.indexOf("export async function correctSafisaReadyQuantity"),
   );
-  assert.match(section, /getSafisaOrder\(supabase, input\.supplierOrderId\)/);
-  assert.match(section, /if \(order\.isReadOnly\)/);
-  assert.ok(
-    section.indexOf("getSafisaOrder") <
-      section.indexOf('.rpc("mark_safisa_order_remaining_ready"'),
-  );
+  assert.doesNotMatch(section, /getSafisaOrder|isReadOnly/);
+  assert.match(section, /runSafisaMutation/);
+  assert.match(section, /\.rpc\("mark_safisa_order_remaining_ready"/);
 });
 
 test("mark all ready is atomic, idempotent, audited, and Safisa-only", () => {
@@ -194,16 +195,52 @@ test("Safisa mutation errors distinguish authentication, membership, authorizati
   );
 });
 
+test("unknown result blocks every operational control except its own retry", () => {
+  assert.match(portal, /isAttemptRestoring \|\| isPending \|\| unknownAttempt !== null/);
+  assert.ok((portal.match(/disabled=\{mutationControlsBlocked\}/g) ?? []).length >= 8);
+  assert.match(portal, /aria-disabled=\{mutationControlsBlocked\}/);
+  assert.match(portal, /requestConfirmation/);
+  assert.match(portal, /completeAction\(unknownAttempt\.payload, "RECONCILE_UNKNOWN"\)/);
+  assert.match(portal, /Confirme o resultado da operação anterior antes de realizar outra ação/);
+  const retrySection = portal.slice(
+    portal.indexOf("Tentar verificar novamente") - 800,
+    portal.indexOf("Tentar verificar novamente") + 100,
+  );
+  assert.match(retrySection, /disabled=\{isPending\}/);
+  assert.doesNotMatch(retrySection, /disabled=\{mutationControlsBlocked\}/);
+});
+
+test("Safisa mutation transport classification preserves uncertain attempts", () => {
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { message: "TypeError: fetch failed", code: "" },
+      status: 0,
+      statusText: "",
+    })?.status,
+    "unknown",
+  );
+  assert.equal(
+    classifySafisaMutationResponse({
+      error: { message: "Bad Gateway" },
+      status: 502,
+      statusText: "Bad Gateway",
+    })?.status,
+    "unknown",
+  );
+});
+
 test("partially ready lines with all current ready units picked remain partial", () => {
   assert.equal(readinessLabel("PARTIALLY_READY", 3, 3), "Retirada parcial");
   assert.equal(readinessLabel("COMPLETELY_READY", 10, 10), "Retirado");
 });
 
-test("a rejected action releases its lock and renders a safe retry message", () => {
+test("an unknown result releases its lock and offers an explicit same-attempt retry", () => {
   assert.match(portal, /try \{/);
   assert.match(portal, /catch \{/);
   assert.match(portal, /finally \{/);
-  assert.match(portal, /Verifique sua conexão e tente novamente/);
+  assert.match(portal, /Não foi possível confirmar o resultado da operação/);
+  assert.match(portal, /Tentar verificar novamente/);
+  assert.match(portal, /markSafisaAttemptResultUnknown/);
   assert.match(portal, /operationLock\.current = false/);
   assert.match(portal, /setActiveLineId\(null\)/);
 });
@@ -211,8 +248,8 @@ test("a rejected action releases its lock and renders a safe retry message", () 
 test("correction uses the current non-cancelled ready ceiling", () => {
   assert.equal(maximumReadyQuantity(3, 5), 8);
   assert.match(portal, /max=\{maximumReadyQuantity\(line\.readyQuantity, line\.waitingReadyQuantity\)\}/);
-  assert.match(actions, /const maximum = maximumReadyQuantity\(line\.readyQuantity, line\.waitingReadyQuantity\)/);
-  assert.match(actions, /entre \$\{line\.pickedQuantity\} e \$\{maximum\}/);
+  assert.match(automaticLifecycleMigration, /p_new_ready_quantity < v_line\.picked_quantity/);
+  assert.match(automaticLifecycleMigration, /p_new_ready_quantity \+ v_line\.cancelled_quantity > v_line\.ordered_quantity/);
 });
 
 test("closed orders remain readable and do not render mutation controls", () => {

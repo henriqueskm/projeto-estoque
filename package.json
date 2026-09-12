@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:safisa-portal": "node --experimental-strip-types --test tests/safisa-portal.test.mjs",
+    "test:safisa-idempotency": "node --experimental-strip-types --test tests/safisa-idempotent-retry.test.mjs",
     "test:safisa-pickup-alerts": "node --experimental-strip-types --test tests/safisa-pickup-alerts.test.mjs",
     "test:safisa-push": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/safisa-push-notifications.test.mjs",
     "test:safisa-push:local": "node tests/safisa-push-notifications.local.mjs",

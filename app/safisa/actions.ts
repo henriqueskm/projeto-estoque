@@ -9,10 +9,9 @@ import {
   SafisaPortalAccessError,
   SafisaPortalDataError,
 } from "@/lib/safisa-portal-data";
-import { maximumReadyQuantity } from "@/lib/safisa-portal-readiness";
 import type { SafisaActionResult } from "@/lib/safisa-portal-types";
 import { dispatchSafisaFullyReadyPush } from "@/lib/safisa-push-dispatch";
-import { mapSafisaMutationError } from "@/lib/safisa-action-errors";
+import { runSafisaMutation } from "@/lib/safisa-action-errors";
 
 export type SafisaLoginState = {
   error?: string;
@@ -109,17 +108,14 @@ export async function incrementSafisaReadyQuantity(
     const order = await getSafisaOrder(supabase, input.supplierOrderId);
     const line = order.lines.find((item) => item.supplierOrderItemId === input.supplierOrderItemId);
     if (!line) return { status: "error", message: "Este item não pertence ao pedido." };
-    if (order.isReadOnly) return { status: "error", message: "Este pedido está encerrado e permite somente consulta." };
-    if ((input.incrementQuantity as number) > line.waitingReadyQuantity) {
-      return { status: "error", message: "A quantidade é maior que o restante disponível." };
-    }
-
-    const { error } = await supabase.rpc("increment_safisa_ready_quantity", {
-      p_supplier_order_item_id: line.supplierOrderItemId,
-      p_increment_quantity: input.incrementQuantity,
-      p_idempotency_key: input.idempotencyKey,
-    });
-    if (error) return mapSafisaMutationError(error);
+    const mutationResult = await runSafisaMutation(() =>
+      supabase.rpc("increment_safisa_ready_quantity", {
+        p_supplier_order_item_id: line.supplierOrderItemId,
+        p_increment_quantity: input.incrementQuantity,
+        p_idempotency_key: input.idempotencyKey,
+      }),
+    );
+    if (mutationResult) return mutationResult;
 
     await dispatchSafisaFullyReadyPush(input.supplierOrderId);
     revalidatePath("/safisa");
@@ -133,10 +129,12 @@ export async function markSafisaRemainingReady(
   input: unknown,
 ): Promise<SafisaActionResult> {
   if (
-    !isExactObject(input, ["idempotencyKey", "supplierOrderId", "supplierOrderItemId"]) ||
+    !isExactObject(input, ["idempotencyKey", "incrementQuantity", "supplierOrderId", "supplierOrderItemId"]) ||
     !isUuid(input.idempotencyKey) ||
     !isUuid(input.supplierOrderId) ||
-    !isUuid(input.supplierOrderItemId)
+    !isUuid(input.supplierOrderItemId) ||
+    !Number.isSafeInteger(input.incrementQuantity) ||
+    (input.incrementQuantity as number) <= 0
   ) {
     return { status: "error", message: "Pedido ou item inválido." };
   }
@@ -146,18 +144,14 @@ export async function markSafisaRemainingReady(
     const order = await getSafisaOrder(supabase, input.supplierOrderId);
     const line = order.lines.find((item) => item.supplierOrderItemId === input.supplierOrderItemId);
     if (!line) return { status: "error", message: "Este item não pertence ao pedido." };
-    if (order.isReadOnly) return { status: "error", message: "Este pedido está encerrado e permite somente consulta." };
-    if (line.waitingReadyQuantity <= 0) {
-      revalidatePath("/safisa");
-      return { status: "error", message: "Todo o restante deste item já foi informado como pronto." };
-    }
-
-    const { error } = await supabase.rpc("increment_safisa_ready_quantity", {
-      p_supplier_order_item_id: line.supplierOrderItemId,
-      p_increment_quantity: line.waitingReadyQuantity,
-      p_idempotency_key: input.idempotencyKey,
-    });
-    if (error) return mapSafisaMutationError(error);
+    const mutationResult = await runSafisaMutation(() =>
+      supabase.rpc("increment_safisa_ready_quantity", {
+        p_supplier_order_item_id: line.supplierOrderItemId,
+        p_increment_quantity: input.incrementQuantity,
+        p_idempotency_key: input.idempotencyKey,
+      }),
+    );
+    if (mutationResult) return mutationResult;
 
     await dispatchSafisaFullyReadyPush(input.supplierOrderId);
     revalidatePath("/safisa");
@@ -180,19 +174,13 @@ export async function markSafisaOrderRemainingReady(
 
   try {
     const supabase = await createClient();
-    const order = await getSafisaOrder(supabase, input.supplierOrderId);
-    if (order.isReadOnly) {
-      return {
-        status: "error",
-        message: "Este pedido está encerrado e permite somente consulta.",
-      };
-    }
-
-    const { error } = await supabase.rpc("mark_safisa_order_remaining_ready", {
-      p_supplier_order_id: input.supplierOrderId,
-      p_idempotency_key: input.idempotencyKey,
-    });
-    if (error) return mapSafisaMutationError(error);
+    const mutationResult = await runSafisaMutation(() =>
+      supabase.rpc("mark_safisa_order_remaining_ready", {
+        p_supplier_order_id: input.supplierOrderId,
+        p_idempotency_key: input.idempotencyKey,
+      }),
+    );
+    if (mutationResult) return mutationResult;
 
     await dispatchSafisaFullyReadyPush(input.supplierOrderId);
     revalidatePath("/safisa");
@@ -230,40 +218,26 @@ export async function correctSafisaReadyQuantity(
   ) {
     return { status: "error", message: "Revise o total e informe uma justificativa de até 500 caracteres." };
   }
+  const justification = input.justification.trim();
 
   try {
     const supabase = await createClient();
     const order = await getSafisaOrder(supabase, input.supplierOrderId);
     const line = order.lines.find((item) => item.supplierOrderItemId === input.supplierOrderItemId);
     if (!line) return { status: "error", message: "Este item não pertence ao pedido." };
-    if (order.isReadOnly) return { status: "error", message: "Este pedido está encerrado e permite somente consulta." };
-    if (line.updatedAt !== input.expectedUpdatedAt) {
-      revalidatePath("/safisa");
-      return {
-        status: "conflict",
-        message: "Este pedido foi atualizado por outra pessoa. Os dados foram recarregados.",
-      };
-    }
-    const maximum = maximumReadyQuantity(line.readyQuantity, line.waitingReadyQuantity);
-    if ((input.newReadyQuantity as number) < line.pickedQuantity || (input.newReadyQuantity as number) > maximum) {
-      return {
-        status: "error",
-        message: `O total pronto deve ficar entre ${line.pickedQuantity} e ${maximum}.`,
-      };
-    }
-
-    const { error } = await supabase.rpc("correct_safisa_ready_quantity", {
-      p_supplier_order_item_id: line.supplierOrderItemId,
-      p_new_ready_quantity: input.newReadyQuantity,
-      p_justification: input.justification.trim(),
-      p_confirmed: true,
-      p_expected_updated_at: line.updatedAt,
-      p_idempotency_key: input.idempotencyKey,
-    });
-    if (error) {
-      const result = mapSafisaMutationError(error);
-      if (result.status === "conflict") revalidatePath("/safisa");
-      return result;
+    const mutationResult = await runSafisaMutation(() =>
+      supabase.rpc("correct_safisa_ready_quantity", {
+        p_supplier_order_item_id: line.supplierOrderItemId,
+        p_new_ready_quantity: input.newReadyQuantity,
+        p_justification: justification,
+        p_confirmed: true,
+        p_expected_updated_at: input.expectedUpdatedAt,
+        p_idempotency_key: input.idempotencyKey,
+      }),
+    );
+    if (mutationResult) {
+      if (mutationResult.status === "conflict") revalidatePath("/safisa");
+      return mutationResult;
     }
 
     await dispatchSafisaFullyReadyPush(input.supplierOrderId);
