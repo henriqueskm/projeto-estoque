@@ -23,6 +23,7 @@ import {
 import { isIosDevice, isStandaloneMode } from "@/lib/pwa-capabilities";
 import {
   beginPushOperation,
+  createPushOptOutReconciler,
   createPushPersistenceQueue,
   createPushOperationGate,
   finishPushOperation,
@@ -143,6 +144,7 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
   const desiredEnabledRef = useRef<boolean | null>(null);
   const registrationGenerationRef = useRef(0);
   const [persistenceQueue] = useState(createPushPersistenceQueue);
+  const [optOutReconciler] = useState(createPushOptOutReconciler);
   const queuePersistence = persistenceQueue.run;
 
   const registerAndPersistInstallation = useCallback(async () => {
@@ -190,6 +192,31 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     let active = true;
 
     async function initialize() {
+      if (window.localStorage.getItem(localOptOutKey) === "true") {
+        desiredEnabledRef.current = false;
+        registrationGenerationRef.current += 1;
+        if (active) setState("default");
+        let firebaseInstallationId: string | null = null;
+        try {
+          firebaseInstallationId = getStoredFirebaseInstallationId();
+        } catch {
+          // Durable opt-out still wins when local storage cannot be read.
+        }
+        if (firebaseInstallationId) {
+          const storedInstallationId = firebaseInstallationId;
+          await optOutReconciler.run(() =>
+            queuePersistence(() => runPushDisableCleanup({
+              firebaseInstallationId: storedInstallationId,
+              disableInstallation: (installationId) =>
+                persistInstallation(installationId, "DELETE"),
+              removeStoredInstallation: removeStoredFirebaseInstallationId,
+              unregisterInstallation: unregisterFirebasePushInstallation,
+            })),
+          );
+        }
+        return;
+      }
+
       if (!isFirebasePushConfigured()) {
         desiredEnabledRef.current = false;
         if (active) setState("not_configured");
@@ -220,12 +247,6 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
         return;
       }
 
-      if (window.localStorage.getItem(localOptOutKey) === "true") {
-        desiredEnabledRef.current = false;
-        if (active) setState("default");
-        return;
-      }
-
       try {
         desiredEnabledRef.current = true;
         const firebaseInstallationId = await registerAndPersistInstallation();
@@ -250,7 +271,7 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     return () => {
       active = false;
     };
-  }, [registerAndPersistInstallation]);
+  }, [optOutReconciler, queuePersistence, registerAndPersistInstallation]);
 
   useEffect(() => {
     if (state !== "granted") return;

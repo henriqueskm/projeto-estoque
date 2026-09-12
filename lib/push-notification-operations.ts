@@ -91,6 +91,17 @@ export function createPushPersistenceQueue() {
   };
 }
 
+export function createPushOptOutReconciler() {
+  let reconciliation: Promise<unknown> | null = null;
+
+  return {
+    run<T>(work: () => Promise<T>): Promise<T> {
+      if (!reconciliation) reconciliation = work();
+      return reconciliation as Promise<T>;
+    },
+  };
+}
+
 export async function runPushDisableCleanup(input: {
   firebaseInstallationId: string | null;
   disableInstallation: (

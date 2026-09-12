@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
@@ -11,6 +12,7 @@ import { dispatchSafisaFullyReadyPush } from "../lib/safisa-push-dispatch.ts";
 import {
   beginPushOperation,
   createPushOperationGate,
+  createPushOptOutReconciler,
   createPushPersistenceQueue,
   finishPushOperation,
   invalidatePushOperations,
@@ -23,6 +25,7 @@ import {
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260825113000_safisa_fully_ready_push_notifications.sql");
+const idempotentDisableMigration = read("supabase/migrations/20260912104748_make_disable_push_subscription_idempotent.sql");
 const workerSource = read("public/sw.js");
 const clientSource = read("lib/firebase-push-client.ts");
 const providerSource = read("components/push-notification-provider.tsx");
@@ -143,6 +146,24 @@ test("database contract isolates subscriptions and creates one transactional FUL
   assert.match(migration, /on conflict \(supplier_order_id, event_type\) do nothing/i);
 });
 
+test("migration forward-only torna disable idempotente sem alterar a migration histórica", () => {
+  assert.equal(
+    createHash("sha256").update(migration).digest("hex"),
+    "daee1604ad41fdc0a9b8f045ff399f84a38043c4ad8904bb631028ce76ae167b",
+  );
+  assert.equal(
+    (idempotentDisableMigration.match(/create or replace function/gi) ?? []).length,
+    1,
+  );
+  assert.match(idempotentDisableMigration, /create or replace function public\.disable_push_subscription\(\s*p_device_id uuid,\s*p_firebase_installation_id text\s*\)/i);
+  assert.match(idempotentDisableMigration, /returns jsonb\s+language plpgsql\s+security definer\s+set search_path = ''/i);
+  assert.match(idempotentDisableMigration, /v_user_id uuid := auth\.uid\(\)/i);
+  assert.match(idempotentDisableMigration, /profile\.id = v_user_id\s+and profile\.is_active/i);
+  assert.match(idempotentDisableMigration, /where user_id = v_user_id\s+and device_id = p_device_id\s+and firebase_installation_id = v_firebase_installation_id\s+returning true into v_disabled/i);
+  assert.doesNotMatch(idempotentDisableMigration, /and enabled/i);
+  assert.doesNotMatch(idempotentDisableMigration, /create\s+table|alter\s+table|grant\s+|revoke\s+|row level security/i);
+});
+
 test("SQL FULLY_READY rule remains equivalent to the official TypeScript contract", () => {
   assert.equal(getSafisaPickupAlertKind({ orderedQuantity: 10, cancelledQuantity: 0, readyQuantity: 3, readyWaitingPickupQuantity: 3 }), "PARTIALLY_READY");
   assert.equal(getSafisaPickupAlertKind({ orderedQuantity: 10, cancelledQuantity: 0, readyQuantity: 10, readyWaitingPickupQuantity: 4 }), "FULLY_READY");
@@ -180,6 +201,11 @@ test("client registers through FID callbacks using the existing worker and asks 
   assert.match(requestFunction, /Notification\.requestPermission\(\)/);
   const initialization = providerSource.slice(providerSource.indexOf("async function initialize"), providerSource.indexOf("const enable"));
   assert.doesNotMatch(initialization, /requestFirebasePushPermission\(/);
+  assert.ok(
+    initialization.indexOf("localOptOutKey") <
+      initialization.indexOf("isFirebasePushConfigured"),
+  );
+  assert.match(initialization, /createPushOptOutReconciler|optOutReconciler\.run/);
   assert.match(providerSource, /firebaseInstallationId/);
   assert.match(providerSource, /localFirebaseInstallationIdKey/);
   assert.match(providerSource, /const response = await persistInstallation[\s\S]*if \(!response\.ok\)[\s\S]*setState\("granted"\)/);
@@ -337,6 +363,87 @@ test("enable pendente seguido de disable mantém opt-out e a última intenção 
     ["delete", "fid-device-a"],
     "unregister",
   ]);
+});
+
+test("reload com opt-out e FID reconcilia exatamente uma vez e mantém UI desativada", async () => {
+  const reconciler = createPushOptOutReconciler();
+  const rows = new Map([
+    ["device-a", { userId: "user-1", fid: "fid-a", enabled: true }],
+    ["device-b", { userId: "user-1", fid: "fid-b", enabled: true }],
+  ]);
+  let storedFid = "fid-a";
+  let deleteCalls = 0;
+  let unregisterCalls = 0;
+  const permissionRequests = 0;
+  let uiState = "default";
+  const desiredEnabled = false;
+  const registrationGeneration = 2;
+
+  const work = () => runPushDisableCleanup({
+    firebaseInstallationId: storedFid,
+    async disableInstallation(fid) {
+      deleteCalls += 1;
+      const row = rows.get("device-a");
+      if (row?.userId === "user-1" && row.fid === fid) row.enabled = false;
+      return { ok: row?.enabled === false };
+    },
+    removeStoredInstallation(fid) {
+      if (storedFid === fid) storedFid = null;
+    },
+    async unregisterInstallation() { unregisterCalls += 1; },
+  });
+  await Promise.all([reconciler.run(work), reconciler.run(work)]);
+
+  const lateRegistration = (callbackGeneration) => {
+    if (desiredEnabled && callbackGeneration === registrationGeneration) {
+      uiState = "granted";
+    }
+  };
+  lateRegistration(1);
+  assert.equal(uiState, "default");
+  assert.equal(permissionRequests, 0);
+  assert.equal(deleteCalls, 1);
+  assert.equal(unregisterCalls, 1);
+  assert.equal(storedFid, null);
+  assert.equal(rows.get("device-a").enabled, false);
+  assert.equal(rows.get("device-b").enabled, true);
+});
+
+test("reconciliação false ou falha preserva FID e o próximo reload tenta novamente", async () => {
+  for (const firstAttempt of ["false", "throw"]) {
+    let storedFid = "fid-a";
+    let deleteCalls = 0;
+    let unregisterCalls = 0;
+    const reconcile = (reconciler, succeeds) => reconciler.run(() =>
+      runPushDisableCleanup({
+        firebaseInstallationId: storedFid,
+        async disableInstallation() {
+          deleteCalls += 1;
+          if (firstAttempt === "throw" && deleteCalls === 1) {
+            throw new Error("offline");
+          }
+          return { ok: succeeds };
+        },
+        removeStoredInstallation(fid) {
+          if (storedFid === fid) storedFid = null;
+        },
+        async unregisterInstallation() { unregisterCalls += 1; },
+      }));
+
+    const firstReload = createPushOptOutReconciler();
+    const firstResult = await reconcile(firstReload, false);
+    assert.equal(firstResult.synchronized, false);
+    assert.equal(storedFid, "fid-a");
+    assert.equal(deleteCalls, 1);
+    assert.equal(unregisterCalls, 1);
+
+    const nextReload = createPushOptOutReconciler();
+    const retryResult = await reconcile(nextReload, true);
+    assert.equal(retryResult.synchronized, true);
+    assert.equal(storedFid, null);
+    assert.equal(deleteCalls, 2);
+    assert.equal(unregisterCalls, 2);
+  }
 });
 
 test("DELETE falho preserva FID e retry usa usuário, device e FID originais", async () => {
