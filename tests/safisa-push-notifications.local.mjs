@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync as run } from "node:child_process";
 
@@ -17,6 +17,10 @@ const lineId = (suffix) => `30000000-0000-4000-8000-${String(200 + suffix).padSt
 const key = (suffix) => `30000000-0000-4000-8000-${String(300 + suffix).padStart(12, "0")}`;
 const fid = (suffix) => `local-fid:${String(suffix).padStart(32, "x")}`;
 const deviceId = (suffix) => `30000000-0000-4000-8000-${String(400 + suffix).padStart(12, "0")}`;
+const idempotentDisableMigration = readFileSync(
+  new URL("../supabase/migrations/20260912104748_make_disable_push_subscription_idempotent.sql", import.meta.url),
+  "utf8",
+);
 
 function psql(sql, { allowFailure = false } = {}) {
   try {
@@ -47,6 +51,15 @@ console.log("ALVO CONFIRMADO: SUPABASE LOCAL DESCARTÁVEL");
 assert.equal(psql("select current_database() = 'postgres'"), "t");
 assert.equal(psql("select to_regclass('public.push_subscriptions') is not null"), "t");
 assert.equal(psql("select to_regclass('public.push_notification_events') is not null"), "t");
+psql(idempotentDisableMigration);
+assert.equal(psql("select has_function_privilege('authenticated', 'public.disable_push_subscription(uuid,text)', 'execute')"), "t");
+assert.equal(psql("select has_function_privilege('anon', 'public.disable_push_subscription(uuid,text)', 'execute')"), "f");
+assert.equal(psql(`
+  select procedure.prosecdef
+    and array_to_string(procedure.proconfig, ',') = 'search_path=""'
+  from pg_proc as procedure
+  where procedure.oid = 'public.disable_push_subscription(uuid,text)'::regprocedure
+`), "t");
 
 const itemId = psql("select id from public.items where is_active order by id limit 1");
 assert.match(itemId, /^[0-9a-f-]{36}$/i);
@@ -78,6 +91,11 @@ asAuthenticatedFailure(ids.inactive, `select public.register_push_subscription('
 asAuthenticatedFailure(ids.internalA, `select public.register_push_subscription('${deviceId(9)}', '')`, /Firebase installation ID is invalid/i);
 asAuthenticatedFailure(ids.internalA, `select public.register_push_subscription('${deviceId(9)}', repeat('x', 513))`, /Firebase installation ID is invalid/i);
 asAuthenticatedFailure(ids.internalA, `select public.register_push_subscription('${deviceId(9)}', 'fid' || chr(1))`, /Firebase installation ID is invalid/i);
+assert.match(asRole("anon", null, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`, true), /permission denied|Authentication is required/i);
+asAuthenticatedFailure(ids.inactive, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`, /active internal profile/i);
+asAuthenticatedFailure(ids.internalA, `select public.disable_push_subscription('${deviceId(9)}', '')`, /Firebase installation ID is invalid/i);
+asAuthenticatedFailure(ids.internalA, `select public.disable_push_subscription('${deviceId(9)}', repeat('x', 513))`, /Firebase installation ID is invalid/i);
+asAuthenticatedFailure(ids.internalA, `select public.disable_push_subscription('${deviceId(9)}', 'fid' || chr(1))`, /Firebase installation ID is invalid/i);
 asAuthenticated(ids.internalA, `select public.register_push_subscription('${deviceId(1)}', '${fid(1)}')`);
 asAuthenticated(ids.internalA, `select public.register_push_subscription('${deviceId(1)}', '${fid(2)}')`);
 assert.equal(number(`select count(*) from public.push_subscriptions where device_id = '${deviceId(1)}'`), 1, "FID rotation updates the same device row");
@@ -90,8 +108,17 @@ asAuthenticated(ids.internalB, `select public.register_push_subscription('${devi
 assert.equal(psql(`select user_id from public.push_subscriptions where firebase_installation_id = '${fid(1)}'`), ids.internalB);
 assert.equal(asAuthenticated(ids.internalA, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`).includes('"disabled": false'), true);
 assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}' and enabled`), 1);
-assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`).includes('"disabled": true'), true);
+assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(9)}', '${fid(1)}')`).includes('"disabled": true'), true, "device_id metadata does not participate in disable");
 assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}' and enabled`), 0);
+assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(1)}', '${fid(1)}')`).includes('"disabled": true'), true, "second exact disable remains successful");
+assert.equal(number(`select count(*) from public.push_subscriptions where firebase_installation_id = '${fid(1)}' and enabled`), 0);
+assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(9)}', '${fid(9)}')`).includes('"disabled": false'), true, "missing tuple is not confirmed");
+
+asAuthenticated(ids.internalA, `select public.register_push_subscription('${deviceId(2)}', '${fid(2)}')`);
+asAuthenticated(ids.internalB, `select public.register_push_subscription('${deviceId(3)}', '${fid(3)}')`);
+assert.equal(asAuthenticated(ids.internalB, `select public.disable_push_subscription('${deviceId(2)}', '${fid(2)}')`).includes('"disabled": false'), true, "device B cannot disable device A");
+assert.equal(number(`select count(*) from public.push_subscriptions where user_id = '${ids.internalA}' and device_id = '${deviceId(2)}' and firebase_installation_id = '${fid(2)}' and enabled`), 1);
+assert.equal(number(`select count(*) from public.push_subscriptions where user_id = '${ids.internalB}' and device_id = '${deviceId(3)}' and firebase_installation_id = '${fid(3)}' and enabled`), 1);
 
 asAuthenticated(ids.internalA, `select public.set_safisa_portal_member_status('${ids.safisa}', true, '${key(1)}')`);
 psql(`

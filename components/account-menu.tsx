@@ -8,8 +8,8 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { logout } from "@/app/auth/actions";
 import { ChevronDownIcon, LogoutIcon } from "@/components/icons";
+import { PushAwareLogoutForm } from "@/components/push-aware-logout-form";
 
 type AccountMenuProps = {
   fullName: string;
@@ -244,20 +244,14 @@ export function AccountMenu({
               Minha conta
             </Link>
 
-            <form
-              action={logout}
-              role="none"
-              data-assistant-session-logout
+            <PushAwareLogoutForm
+              formRole="none"
+              buttonRole="menuitem"
+              buttonClassName="nk-focus flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-red-800 transition hover:bg-red-50"
             >
-              <button
-                type="submit"
-                role="menuitem"
-                className="nk-focus flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold text-red-800 transition hover:bg-red-50"
-              >
-                <LogoutIcon className="size-4" />
-                Sair
-              </button>
-            </form>
+              <LogoutIcon className="size-4" />
+              Sair
+            </PushAwareLogoutForm>
           </div>
         </div>
       ) : null}

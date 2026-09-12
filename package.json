@@ -13,7 +13,7 @@
     "test:safisa-push": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/safisa-push-notifications.test.mjs",
     "test:safisa-push:local": "node tests/safisa-push-notifications.local.mjs",
     "test:ui-layout": "node --test tests/ui-layout-regressions.test.mjs",
-    "test:assistant-camera": "node --test tests/assistant-camera-capture.test.mjs",
+    "test:assistant-camera": "node --experimental-strip-types --test tests/assistant-camera-capture.test.mjs",
     "test:assistant-voice": "node --experimental-strip-types --test tests/assistant-voice-dictation.test.mjs",
     "test:public-site": "node --test tests/public-site.test.mjs",
     "test:commercial-proposal": "node --experimental-strip-types --test tests/commercial-proposal.test.mjs",
