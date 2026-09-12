@@ -27,14 +27,18 @@ function readStoredPushInstallationIds(
 ) {
   const prefix = `${installationSetKey}:`;
   const ids: string[] = [];
+  let corrupted = false;
   for (let index = 0; index < storage.length; index += 1) {
     const key = storage.key(index);
     if (!key?.startsWith(prefix)) continue;
     const value = storage.getItem(key);
-    if (!isPushInstallationId(value)) return undefined;
+    if (!isPushInstallationId(value)) {
+      corrupted = true;
+      continue;
+    }
     ids.push(value);
   }
-  return [...new Set(ids)].sort();
+  return { ids: [...new Set(ids)].sort(), corrupted };
 }
 
 export function persistPotentialPushInstallation(input: {
@@ -45,8 +49,8 @@ export function persistPotentialPushInstallation(input: {
   if (!isPushInstallationId(input.firebaseInstallationId)) return false;
   try {
     const current = readStoredPushInstallationIds(input.storage, input.installationSetKey);
-    if (current === undefined) return false;
-    if (!current.includes(input.firebaseInstallationId) && current.length >= 8) return false;
+    if (current.corrupted) return false;
+    if (!current.ids.includes(input.firebaseInstallationId) && current.ids.length >= 8) return false;
     const key = pushInstallationStorageKey(input.installationSetKey, input.firebaseInstallationId);
     input.storage.setItem(key, input.firebaseInstallationId);
     return input.storage.getItem(key) === input.firebaseInstallationId;
@@ -63,9 +67,8 @@ export function readPotentialPushInstallations(input: {
 }): string[] {
   try {
     const stored = readStoredPushInstallationIds(input.storage, input.installationSetKey);
-    if (stored === undefined) return [];
     const candidates: unknown[] = [
-      ...stored,
+      ...stored.ids,
       input.storage.getItem(input.legacyInstallationKey),
     ];
     if (input.legacyConfirmedKey) {
@@ -77,7 +80,7 @@ export function readPotentialPushInstallations(input: {
       .sort()
       .slice(-10);
     for (const firebaseInstallationId of ids) {
-      if (!stored.includes(firebaseInstallationId)) {
+      if (!stored.ids.includes(firebaseInstallationId)) {
         persistPotentialPushInstallation({ ...input, firebaseInstallationId });
       }
     }
@@ -95,8 +98,6 @@ export function removePotentialPushInstallation(input: {
   firebaseInstallationId: string;
 }) {
   try {
-    const stored = readStoredPushInstallationIds(input.storage, input.installationSetKey);
-    if (stored === undefined) return false;
     input.storage.removeItem(pushInstallationStorageKey(
       input.installationSetKey,
       input.firebaseInstallationId,
@@ -116,8 +117,8 @@ export function removePotentialPushInstallation(input: {
         // Malformed legacy state is never treated as a known registration.
       }
     }
-    return readStoredPushInstallationIds(input.storage, input.installationSetKey)
-      ?.includes(input.firebaseInstallationId) === false;
+    return !readStoredPushInstallationIds(input.storage, input.installationSetKey)
+      .ids.includes(input.firebaseInstallationId);
   } catch {
     return false;
   }
@@ -358,7 +359,27 @@ export function invalidatePushOperations(gate: PushOperationGate) {
   gate.operation = null;
 }
 
+// `ok` is the semantic mutation result (`disabled === true`), never HTTP status alone.
 type LogoutCleanupResponse = { ok: boolean };
+
+function settlePushCleanupWithin<T>(
+  work: () => Promise<T>,
+  timeoutMs: number,
+): Promise<T | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: T | null) => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = globalThis.setTimeout(() => finish(null), timeoutMs);
+    Promise.resolve()
+      .then(work)
+      .then((value) => finish(value), () => finish(null));
+  });
+}
 
 export function createPushPersistenceQueue() {
   let tail: Promise<void> = Promise.resolve();
@@ -441,32 +462,37 @@ export async function runPushDisableCleanup(input: {
   disableInstallation: (firebaseInstallationId: string) => Promise<LogoutCleanupResponse>;
   removeInstallation: (firebaseInstallationId: string) => void;
   unregisterInstallation: () => Promise<unknown>;
+  operationTimeoutMs?: number;
 }) {
-  let deleteConfirmed = true;
-  let unregisterConfirmed = false;
-
-  for (const firebaseInstallationId of [...new Set(input.firebaseInstallationIds)].slice(0, 10)) {
-    try {
-      const response = await input.disableInstallation(firebaseInstallationId);
-      deleteConfirmed = response.ok && deleteConfirmed;
-      if (response.ok) {
-        try {
-          input.removeInstallation(firebaseInstallationId);
-        } catch {
-          // Remote cleanup and Firebase unregistration remain independent.
-        }
+  const timeoutMs = Math.max(10, Math.min(input.operationTimeoutMs ?? 1_000, 1_000));
+  const firebaseInstallationIds = [
+    ...new Set(input.firebaseInstallationIds),
+  ].slice(0, 10);
+  const deleteTasks = firebaseInstallationIds.map(async (firebaseInstallationId) => {
+    const response = await settlePushCleanupWithin(
+      () => input.disableInstallation(firebaseInstallationId),
+      timeoutMs,
+    );
+    if (response?.ok === true) {
+      try {
+        input.removeInstallation(firebaseInstallationId);
+      } catch {
+        // Remote cleanup and Firebase unregistration remain independent.
       }
-    } catch {
-      deleteConfirmed = false;
+      return true;
     }
-  }
+    return false;
+  });
+  const unregisterTask = settlePushCleanupWithin(
+    input.unregisterInstallation,
+    timeoutMs,
+  ).then((result) => result === true);
 
-  try {
-    await input.unregisterInstallation();
-    unregisterConfirmed = true;
-  } catch {
-    // Backend deletion and local Firebase unregistration are independent.
-  }
+  const [deleteResults, unregisterConfirmed] = await Promise.all([
+    Promise.all(deleteTasks),
+    unregisterTask,
+  ]);
+  const deleteConfirmed = deleteResults.every((confirmed) => confirmed);
 
   return {
     deleteConfirmed,
@@ -481,6 +507,7 @@ export async function runPushLogoutCleanup(input: {
   removeInstallation: (firebaseInstallationId: string) => void;
   unregisterInstallation: () => Promise<unknown>;
   storeLocalOptOut: () => void;
+  operationTimeoutMs?: number;
 }) {
   try {
     input.storeLocalOptOut();

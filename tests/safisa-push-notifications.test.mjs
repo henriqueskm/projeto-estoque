@@ -519,7 +519,7 @@ test("FID é persistido antes do POST e resposta perdida permanece para reload e
     removeInstallation(firebaseInstallationId) {
       assert.equal(removePotentialPushInstallation({ storage, installationSetKey, legacyInstallationKey, firebaseInstallationId }), true);
     },
-    async unregisterInstallation() {},
+    async unregisterInstallation() { return true; },
   });
   assert.equal(result.synchronized, true);
   assert.deepEqual(deletes, [fid]);
@@ -552,7 +552,7 @@ test("dois FIDs são reconciliados independentemente e falha preserva somente o 
     firebaseInstallationIds: readKnown(),
     async disableInstallation(fid) { retries.push(fid); return { ok: true }; },
     removeInstallation(fid) { assert.equal(removePotentialPushInstallation({ storage, installationSetKey, legacyInstallationKey, firebaseInstallationId: fid }), true); },
-    async unregisterInstallation() {},
+    async unregisterInstallation() { return true; },
     storeLocalOptOut() {},
   });
   assert.deepEqual(retries, ["fid-old"]);
@@ -599,6 +599,72 @@ test("FID legado coexistente é unido e só é removido pelo DELETE corresponden
   assert.notEqual(storage.getItem("confirmed"), null);
   assert.equal(removePotentialPushInstallation({ ...input, firebaseInstallationId: "fid-legacy" }), true);
   assert.equal(storage.getItem("confirmed"), null);
+});
+
+test("corrupção bloqueia POST novo sem mascarar FIDs válidos no cleanup", async () => {
+  const values = new Map([
+    ["potential:fid-valid", "fid-valid"],
+    ["potential:corrupt", ""],
+    ["legacy-fid", "fid-legacy"],
+  ]);
+  const storage = {
+    get length() { return values.size; },
+    key(index) { return [...values.keys()][index] ?? null; },
+    getItem(key) { return values.get(key) ?? null; },
+    setItem(key, value) { values.set(key, value); },
+    removeItem(key) { values.delete(key); },
+  };
+  const input = { storage, installationSetKey: "potential", legacyInstallationKey: "legacy-fid" };
+  assert.equal(persistPotentialPushInstallation({ ...input, firebaseInstallationId: "fid-new" }), false);
+  const recoverable = readPotentialPushInstallations(input);
+  assert.deepEqual(recoverable, ["fid-legacy", "fid-valid"]);
+  const deleted = [];
+  await runPushDisableCleanup({
+    firebaseInstallationIds: recoverable,
+    async disableInstallation(fid) { deleted.push(fid); return { ok: true }; },
+    removeInstallation(fid) { removePotentialPushInstallation({ ...input, firebaseInstallationId: fid }); },
+    async unregisterInstallation() { return true; },
+    operationTimeoutMs: 30,
+  });
+  assert.deepEqual(deleted, ["fid-legacy", "fid-valid"]);
+  assert.equal(values.has("potential:corrupt"), true, "corrupção não é apagada silenciosamente");
+});
+
+test("DELETE travado não bloqueia outro FID nem unregister e retorna no prazo", async () => {
+  const removed = [];
+  const started = [];
+  const startedAt = Date.now();
+  const result = await runPushDisableCleanup({
+    firebaseInstallationIds: ["fid-a", "fid-b"],
+    async disableInstallation(fid) {
+      started.push(`delete:${fid}`);
+      if (fid === "fid-a") return new Promise(() => undefined);
+      return { ok: true };
+    },
+    removeInstallation(fid) { removed.push(fid); },
+    async unregisterInstallation() { started.push("unregister"); return true; },
+    operationTimeoutMs: 30,
+  });
+  assert.deepEqual(started, ["delete:fid-a", "delete:fid-b", "unregister"]);
+  assert.deepEqual(removed, ["fid-b"]);
+  assert.equal(result.deleteConfirmed, false);
+  assert.equal(result.unregisterConfirmed, true);
+  assert.ok(Date.now() - startedAt < 500);
+});
+
+test("unregister resolvendo false não confirma cleanup", async () => {
+  const result = await runPushDisableCleanup({
+    firebaseInstallationIds: [],
+    async disableInstallation() { throw new Error("não chamado"); },
+    removeInstallation() { throw new Error("não chamado"); },
+    async unregisterInstallation() { return false; },
+    operationTimeoutMs: 30,
+  });
+  assert.deepEqual(result, {
+    deleteConfirmed: true,
+    unregisterConfirmed: false,
+    synchronized: false,
+  });
 });
 
 test("user switch mantém disable isolado por auth.uid e FID, independente de device_id", () => {
@@ -757,6 +823,7 @@ test("opt-out durante POST stale termina convergência antes do DELETE final", a
     removeInstallation() { confirmedRegistration = null; },
     async unregisterInstallation() {
       requests.push(["UNREGISTER"]);
+      return true;
     },
   });
   assert.equal(cleanup.synchronized, true);
@@ -847,7 +914,7 @@ test("enable pendente seguido de disable mantém opt-out e a última intenção 
       return { ok: true };
     },
     removeInstallation() { confirmedRegistration = null; },
-    async unregisterInstallation() { calls.push("unregister"); },
+    async unregisterInstallation() { calls.push("unregister"); return true; },
   }));
 
   const registeredCallback = (callbackGeneration) => {
@@ -940,7 +1007,7 @@ test("opt-out entre abas ordena DELETE após POST tardio e desmonta o listener",
           return { ok: row.enabled === false };
         },
         removeInstallation() { confirmedRegistration = null; },
-        async unregisterInstallation() { requests.push("UNREGISTER:B"); },
+        async unregisterInstallation() { requests.push("UNREGISTER:B"); return true; },
       })));
     },
   });
@@ -1013,7 +1080,7 @@ test("reload com opt-out e FID reconcilia exatamente uma vez e mantém UI desati
       return { ok: row?.enabled === false };
     },
     removeInstallation() { confirmedRegistration = null; },
-    async unregisterInstallation() { unregisterCalls += 1; },
+    async unregisterInstallation() { unregisterCalls += 1; return true; },
   });
   await Promise.all([reconciler.run(work), reconciler.run(work)]);
 
@@ -1051,7 +1118,7 @@ test("reconciliação false ou falha preserva FID e o próximo reload tenta nova
           return { ok: succeeds };
         },
         removeInstallation() { confirmedRegistration = null; },
-        async unregisterInstallation() { unregisterCalls += 1; },
+        async unregisterInstallation() { unregisterCalls += 1; return true; },
       }));
 
     const firstReload = createPushOptOutReconciler();
@@ -1091,7 +1158,7 @@ test("DELETE falho preserva FID e retry usa usuário, device e FID originais", a
       return { ok: await isPushMutationConfirmed(response, "disable") };
     },
     removeInstallation() { confirmedRegistration = null; },
-    async unregisterInstallation() {},
+    async unregisterInstallation() { return true; },
   });
 
   assert.equal((await cleanup()).synchronized, false);
@@ -1134,12 +1201,13 @@ test("falha ao remover FID local após DELETE não impede unregister", async () 
     },
     async unregisterInstallation() {
       calls.push(["unregister"]);
+      return true;
     },
   });
   assert.deepEqual(calls, [
     ["delete", "fid-device-a"],
-    ["remove", "fid-device-a"],
     ["unregister"],
+    ["remove", "fid-device-a"],
   ]);
   assert.deepEqual(result, {
     deleteConfirmed: true,
@@ -1163,7 +1231,7 @@ test("dois devices do mesmo usuário: disable A não modifica B", async () => {
       return { ok: row?.enabled === false };
     },
     removeInstallation() {},
-    async unregisterInstallation() {},
+    async unregisterInstallation() { return true; },
   });
   assert.equal(rows.get("device-a").enabled, false);
   assert.deepEqual(rows.get("device-b"), {
@@ -1210,14 +1278,14 @@ test("logout desativa somente o FID armazenado e não toca outro dispositivo", a
       return { ok: true };
     },
     removeInstallation(fid) { calls.push(["remove", fid]); },
-    async unregisterInstallation() { calls.push(["unregister"]); },
+    async unregisterInstallation() { calls.push(["unregister"]); return true; },
     storeLocalOptOut() { calls.push(["opt-out"]); },
   });
   assert.deepEqual(calls, [
     ["opt-out"],
     ["disable", "fid-device-a"],
-    ["remove", "fid-device-a"],
     ["unregister"],
+    ["remove", "fid-device-a"],
   ]);
   assert.equal(JSON.stringify(calls).includes("fid-device-b"), false);
 });
@@ -1232,7 +1300,7 @@ test("logout continua unregister e opt-out quando DELETE falha ou não retorna O
       firebaseInstallationIds: ["fid-device-a"],
       disableInstallation,
       removeInstallation() { calls.push("remove"); },
-      async unregisterInstallation() { calls.push("unregister"); },
+      async unregisterInstallation() { calls.push("unregister"); return true; },
       storeLocalOptOut() { calls.push("opt-out"); },
     });
     assert.deepEqual(calls, ["opt-out", "unregister"]);
@@ -1260,7 +1328,7 @@ test("opt-out lançando não impede DELETE, unregister ou logout", async () => {
       return { ok: true };
     },
     removeInstallation(fid) { calls.push(["remove", fid]); },
-    async unregisterInstallation() { calls.push(["unregister"]); },
+    async unregisterInstallation() { calls.push(["unregister"]); return true; },
     storeLocalOptOut() {
       calls.push(["opt-out"]);
       throw new DOMException("storage blocked", "SecurityError");
@@ -1270,8 +1338,8 @@ test("opt-out lançando não impede DELETE, unregister ou logout", async () => {
   assert.deepEqual(calls, [
     ["opt-out"],
     ["delete", "fid-device-a"],
-    ["remove", "fid-device-a"],
     ["unregister"],
+    ["remove", "fid-device-a"],
   ]);
 });
 
@@ -1310,7 +1378,7 @@ test("logout invalida enable e libera submit em 1,2s mesmo com fila pendente", a
     firebaseInstallationIds: ["fid-device-a"],
     async disableInstallation() { return { ok: true }; },
     removeInstallation() {},
-    async unregisterInstallation() {},
+    async unregisterInstallation() { return true; },
     storeLocalOptOut() { localOptOut = true; },
   }));
   await runBoundedLogoutFlow({
