@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { logout } from "@/app/auth/actions";
 import { ArrowLeftIcon, LogoutIcon } from "@/components/icons";
+import { PushAwareLogoutForm } from "@/components/push-aware-logout-form";
+import { PushNotificationControl } from "@/components/push-notification-control";
 import { requireActiveProfile } from "@/lib/auth";
 
 export const metadata: Metadata = {
@@ -100,6 +101,8 @@ export default async function AccountPage() {
           </p>
         </div>
 
+        <PushNotificationControl className="mt-6 rounded-xl border border-border-neutral bg-app-background/65 p-4" />
+
         <div className="mt-7 flex flex-col gap-3 border-t border-border-neutral pt-6 sm:flex-row">
           <Link
             href="/"
@@ -108,19 +111,13 @@ export default async function AccountPage() {
             Voltar para o início
           </Link>
 
-          <form
-            action={logout}
-            className="flex-1"
-            data-assistant-session-logout
+          <PushAwareLogoutForm
+            formClassName="flex-1"
+            buttonClassName="nk-focus inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-red-300 bg-surface px-5 text-sm font-black text-red-800 transition hover:bg-red-50"
           >
-            <button
-              type="submit"
-              className="nk-focus inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-red-300 bg-surface px-5 text-sm font-black text-red-800 transition hover:bg-red-50"
-            >
-              <LogoutIcon className="size-5" />
-              Sair com segurança
-            </button>
-          </form>
+            <LogoutIcon className="size-5" />
+            Sair com segurança
+          </PushAwareLogoutForm>
         </div>
       </section>
     </main>

@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CameraIcon, CloseIcon, ImageIcon } from "@/components/icons";
+import {
+  discardAssistantCameraStream,
+  isAssistantCameraRequestCurrent,
+} from "@/lib/assistant-camera-lifecycle";
 
 type CameraState = "starting" | "live" | "preview" | "paused" | "fallback";
 
@@ -44,11 +48,16 @@ export function AssistantCameraCapture({
   const streamRef = useRef<MediaStream | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const requestGenerationRef = useRef(0);
+  const mountedRef = useRef(false);
+  const isOpenRef = useRef(isOpen);
   const [state, setState] = useState<CameraState>("starting");
   const [message, setMessage] = useState("Abrindo câmera...");
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [hasVideoDimensions, setHasVideoDimensions] = useState(false);
+
+  isOpenRef.current = isOpen;
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -57,6 +66,18 @@ export function AssistantCameraCapture({
       videoRef.current.srcObject = null;
     }
   }, []);
+
+  const invalidateCameraWork = useCallback(() => {
+    requestGenerationRef.current += 1;
+    stopStream();
+  }, [stopStream]);
+
+  const requestStatus = useCallback((requestGeneration: number) => ({
+    isMounted: mountedRef.current,
+    isOpen: isOpenRef.current,
+    isCurrent: requestGeneration === requestGenerationRef.current,
+    isHidden: document.visibilityState === "hidden",
+  }), []);
 
   const clearPreview = useCallback(() => {
     if (previewUrlRef.current) {
@@ -68,13 +89,15 @@ export function AssistantCameraCapture({
   }, []);
 
   const startCamera = useCallback(async () => {
+    invalidateCameraWork();
+    const requestGeneration = requestGenerationRef.current;
+
     if (!navigator.mediaDevices?.getUserMedia) {
       setState("fallback");
       setMessage("A câmera integrada não está disponível neste navegador.");
       return;
     }
 
-    stopStream();
     setHasVideoDimensions(false);
     setState("starting");
     setMessage("Abrindo câmera...");
@@ -87,59 +110,78 @@ export function AssistantCameraCapture({
         audio: false,
       });
 
-      streamRef.current = stream;
+      if (discardAssistantCameraStream(stream, requestStatus(requestGeneration))) {
+        return;
+      }
+
       const video = videoRef.current;
       if (!video) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
 
+      streamRef.current = stream;
       video.srcObject = stream;
       await video.play().catch(() => undefined);
+      if (discardAssistantCameraStream(stream, requestStatus(requestGeneration))) {
+        if (streamRef.current === stream) streamRef.current = null;
+        if (video.srcObject === stream) video.srcObject = null;
+        return;
+      }
       setState("live");
       setMessage("Enquadre a folha inteira, com boa luz e sem cortar os códigos.");
     } catch (error) {
+      if (!isAssistantCameraRequestCurrent(requestStatus(requestGeneration))) {
+        return;
+      }
       stopStream();
       setState("fallback");
       setMessage(cameraMessage(error));
     }
-  }, [stopStream]);
+  }, [invalidateCameraWork, requestStatus, stopStream]);
 
   const closeCamera = useCallback(() => {
-    stopStream();
+    invalidateCameraWork();
     clearPreview();
     onClose();
-  }, [clearPreview, onClose, stopStream]);
+  }, [clearPreview, invalidateCameraWork, onClose]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      invalidateCameraWork();
+      return;
+    }
 
-    let disposed = false;
     const startFrame = window.requestAnimationFrame(() => {
       closeButtonRef.current?.focus();
-      void startCamera().then(() => {
-        if (disposed) stopStream();
-      });
+      void startCamera();
     });
 
     return () => {
-      disposed = true;
       window.cancelAnimationFrame(startFrame);
-      stopStream();
+      invalidateCameraWork();
     };
-  }, [isOpen, startCamera, stopStream]);
+  }, [invalidateCameraWork, isOpen, startCamera]);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    function handleVisibilityChange() {
-      if (document.visibilityState !== "hidden") return;
-      stopStream();
+    function pauseCamera() {
+      invalidateCameraWork();
       if (!capturedFile) {
         setHasVideoDimensions(false);
         setState("paused");
         setMessage("A câmera foi pausada. Toque para abrir novamente.");
       }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "hidden") return;
+      pauseCamera();
+    }
+
+    function handlePageHide() {
+      pauseCamera();
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -150,20 +192,24 @@ export function AssistantCameraCapture({
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("pagehide", handlePageHide);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("pagehide", handlePageHide);
     };
-  }, [capturedFile, closeCamera, isOpen, stopStream]);
+  }, [capturedFile, closeCamera, invalidateCameraWork, isOpen]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      stopStream();
+      mountedRef.current = false;
+      invalidateCameraWork();
       if (previewUrlRef.current) {
         URL.revokeObjectURL(previewUrlRef.current);
       }
     };
-  }, [stopStream]);
+  }, [invalidateCameraWork]);
 
   if (!isOpen) return null;
 
@@ -176,13 +222,20 @@ export function AssistantCameraCapture({
     canvas.height = video.videoHeight;
     const context = canvas.getContext("2d");
     if (!context) {
+      invalidateCameraWork();
       setState("fallback");
       setMessage("Não foi possível preparar esta foto. Tente novamente ou escolha uma imagem da galeria.");
       return;
     }
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    requestGenerationRef.current += 1;
+    const captureGeneration = requestGenerationRef.current;
+    stopStream();
     canvas.toBlob((blob) => {
+      if (!isAssistantCameraRequestCurrent(requestStatus(captureGeneration))) {
+        return;
+      }
       if (!blob) {
         setState("fallback");
         setMessage("Não foi possível preparar esta foto. Tente novamente ou escolha uma imagem da galeria.");
@@ -199,7 +252,6 @@ export function AssistantCameraCapture({
       previewUrlRef.current = url;
       setCapturedFile(file);
       setPreviewUrl(url);
-      video.pause();
       setState("preview");
       setMessage("Confira a foto antes de usar.");
     }, "image/jpeg", 0.92);
@@ -207,33 +259,25 @@ export function AssistantCameraCapture({
 
   function retakePhoto() {
     clearPreview();
-    const video = videoRef.current;
-    if (streamRef.current && video) {
-      video.srcObject = streamRef.current;
-      void video.play().catch(() => undefined);
-      setState("live");
-      setMessage("Enquadre a folha inteira, com boa luz e sem cortar os códigos.");
-      return;
-    }
     void startCamera();
   }
 
   function usePhoto() {
     if (!capturedFile) return;
     const file = capturedFile;
-    stopStream();
+    invalidateCameraWork();
     clearPreview();
     onUsePhoto(file);
   }
 
   function useNativeCameraFallback() {
-    stopStream();
+    invalidateCameraWork();
     clearPreview();
     onNativeCameraFallback();
   }
 
   function useGalleryFallback() {
-    stopStream();
+    invalidateCameraWork();
     clearPreview();
     onGalleryFallback();
   }
