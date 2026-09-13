@@ -24,7 +24,8 @@ export type CatalogWrite = CatalogOnlyLoosePartWrite | StockInboundWrite;
 export type CatalogWritePolicyErrorReason =
   | "CATALOG_READ_FAILED"
   | "KNOWN_CODE"
-  | "AMBIGUOUS_CODE";
+  | "AMBIGUOUS_CODE"
+  | "UNSUPPORTED_CODE";
 
 export class CatalogWritePolicyError extends Error {
   readonly reason: CatalogWritePolicyErrorReason;
@@ -62,24 +63,50 @@ function parseCatalogCodes(data: unknown) {
       throw new CatalogWritePolicyError("CATALOG_READ_FAILED");
     }
 
-    return { code: (row as Record<string, string>).code };
+    const code = (row as Record<string, string>).code;
+
+    return { code };
   });
 }
 
+const catalogPageSize = 1_000;
+
+async function loadCatalogCodeTable(
+  supabase: SupabaseClient,
+  table: "items" | "commercial_configuration_codes",
+) {
+  const catalog: Array<{ code: string }> = [];
+  let offset = 0;
+
+  while (true) {
+    const result = await supabase
+      .from(table)
+      .select("code")
+      .order("code", { ascending: true })
+      .range(offset, offset + catalogPageSize - 1);
+
+    if (result.error) {
+      throw new CatalogWritePolicyError("CATALOG_READ_FAILED");
+    }
+
+    const page = parseCatalogCodes(result.data);
+    catalog.push(...page);
+
+    if (page.length < catalogPageSize) {
+      return catalog;
+    }
+
+    offset += catalogPageSize;
+  }
+}
+
 async function loadCatalogCodes(supabase: SupabaseClient) {
-  const [itemsResult, commercialCodesResult] = await Promise.all([
-    supabase.from("items").select("code"),
-    supabase.from("commercial_configuration_codes").select("code"),
+  const [items, commercialCodes] = await Promise.all([
+    loadCatalogCodeTable(supabase, "items"),
+    loadCatalogCodeTable(supabase, "commercial_configuration_codes"),
   ]);
 
-  if (itemsResult.error || commercialCodesResult.error) {
-    throw new CatalogWritePolicyError("CATALOG_READ_FAILED");
-  }
-
-  return [
-    ...parseCatalogCodes(itemsResult.data),
-    ...parseCatalogCodes(commercialCodesResult.data),
-  ];
+  return [...items, ...commercialCodes];
 }
 
 function loosePartsFromWrite(write: CatalogWrite) {
@@ -121,6 +148,12 @@ async function enforceCatalogWritePolicy(
     );
 
     if (!pendingAssessment.allowed) {
+      if (pendingAssessment.resolution.kind === "UNSUPPORTED") {
+        throw new CatalogWritePolicyError("UNSUPPORTED_CODE", {
+          requestedCode: loosePart.code,
+        });
+      }
+
       const catalogCodes = pendingAssessment.resolution.kind === "FOUND"
         ? [pendingAssessment.resolution.target.code]
         : pendingAssessment.resolution.candidates.map(
@@ -138,6 +171,12 @@ async function enforceCatalogWritePolicy(
     if (assessment.allowed) {
       acceptedLooseParts.push({ code: loosePart.code });
       continue;
+    }
+
+    if (assessment.resolution.kind === "UNSUPPORTED") {
+      throw new CatalogWritePolicyError("UNSUPPORTED_CODE", {
+        requestedCode: loosePart.code,
+      });
     }
 
     const catalogCodes =

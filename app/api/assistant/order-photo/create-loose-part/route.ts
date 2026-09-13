@@ -8,6 +8,7 @@ import {
 
 function friendlyError(message: string) {
   if (/commercial configuration/i.test(message)) return "Este código já pertence a um código comercial.";
+  if (/conflicts with (?:existing|physical) catalog/i.test(message)) return "Este código corresponde a outro cadastro existente.";
   if (/inactive/i.test(message)) return "Esta peça avulsa está inativa e não pode ser reativada automaticamente.";
   if (/different description/i.test(message)) return "Este código já possui uma descrição diferente no catálogo.";
   if (/another item type|not registered as a loose-part/i.test(message)) return "Este código já pertence a outro tipo de item do catálogo.";
@@ -47,6 +48,11 @@ export async function POST(request: Request) {
       if (error.reason === "AMBIGUOUS_CODE") {
         return assistantOrderPhotoJson({
           error: "Este código pertence a uma família conhecida. Defina o produto oficial correto na revisão.",
+        }, 409);
+      }
+      if (error.reason === "UNSUPPORTED_CODE") {
+        return assistantOrderPhotoJson({
+          error: "Este código usa um formato não suportado. Informe o código oficial sem criar uma nova grafia.",
         }, 409);
       }
     }

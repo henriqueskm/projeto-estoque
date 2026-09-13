@@ -44,7 +44,7 @@ test("separadores de INV são normalizados só para consulta e famílias conheci
     ["5", ["5INV015", "5INV028"]],
     ["7", ["7INV015", "7INV028"]],
   ]) {
-    for (const code of [`${family}-INV`, `${family} INV`, `${family}INV`]) {
+    for (const code of [`${family}-INV`, `${family}INV`]) {
       const resolution = resolveSupplierOrderPhotoCatalogCode(invertedCatalog, code);
       assert.equal(resolution.kind, "AMBIGUOUS", code);
       assert.deepEqual(resolution.candidates.map((candidate) => candidate.code), variants, code);
@@ -96,6 +96,10 @@ test("prévia exige escolha manual entre 015 e 028 e a escolha remove o bloqueio
 
 test("somente código genuinamente desconhecido permanece elegível para peça avulsa", () => {
   assert.equal(assessSupplierOrderPhotoLoosePartCode(invertedCatalog, "5 INV").allowed, false);
+  assert.equal(
+    assessSupplierOrderPhotoLoosePartCode(invertedCatalog, "5 INV").resolution.kind,
+    "UNSUPPORTED",
+  );
   assert.equal(assessSupplierOrderPhotoLoosePartCode(invertedCatalog, "7-INV").allowed, false);
   assert.equal(assessSupplierOrderPhotoLoosePartCode(invertedCatalog, "P123").allowed, true);
 });

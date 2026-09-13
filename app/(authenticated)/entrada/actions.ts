@@ -331,6 +331,8 @@ function mapRpcError(code: string | undefined, message: string) {
     normalizedMessage.includes("different description") ||
     normalizedMessage.includes("another item type") ||
     normalizedMessage.includes("commercial configuration code") ||
+    normalizedMessage.includes("conflicts with existing catalog code") ||
+    normalizedMessage.includes("conflicts with physical catalog item") ||
     normalizedMessage.includes("loose-part subtype")
   ) {
     return "O código da nova peça já existe com outro tipo ou outra descrição. Revise o cadastro sem substituir os dados existentes.";
@@ -555,6 +557,12 @@ export async function submitStockInbound(
       if (error.reason === "KNOWN_CODE") {
         return invalidRequest(
           `O código ${error.requestedCode} já corresponde ao catálogo oficial. Atualize a página e selecione o produto existente.`,
+        );
+      }
+
+      if (error.reason === "UNSUPPORTED_CODE") {
+        return invalidRequest(
+          `O código ${error.requestedCode} usa um formato não suportado. Informe o código oficial sem criar uma nova grafia.`,
         );
       }
 
