@@ -114,7 +114,7 @@ async function expectPolicyRejection(client, write, reason, catalogCodes) {
 }
 
 test("INV exato conhecido e variantes de consulta nunca chegam ao writer", async () => {
-  for (const code of ["1INV", "1-inv", " 1-inv ", "1-DESL"]) {
+  for (const code of ["1INV", "1-inv", " 1-inv "]) {
     for (const write of [
       { kind: "CATALOG_ONLY_LOOSE_PART", code, description: "NOVA" },
       {
@@ -129,13 +129,13 @@ test("INV exato conhecido e variantes de consulta nunca chegam ao writer", async
         client,
         write,
         "KNOWN_CODE",
-        [code.toUpperCase().includes("DESL") ? "1DESL" : "1INV"],
+        ["1INV"],
       );
     }
   }
 });
 
-test("código geral com barra preserva a identidade exata existente", async () => {
+test("códigos gerais preservam identidade sem whitelist global", async () => {
   for (const code of ["091/VF", "091/vf"]) {
     const client = fakeSupabase();
     await expectPolicyRejection(
@@ -146,20 +146,26 @@ test("código geral com barra preserva a identidade exata existente", async () =
     );
   }
 
-  const client = fakeSupabase();
-  await executeCatalogWrite(client, {
-    kind: "CATALOG_ONLY_LOOSE_PART",
-    code: "092/VF",
-    description: "NOVA",
-  });
-  assert.equal(client.calls[0].name, "create_loose_part");
-  assert.equal(client.calls[0].args.p_code, "092/VF");
+  for (const code of ["092/VF", "ABC.123", "PEÇA-1", "1-DESL"]) {
+    const client = fakeSupabase();
+    await executeCatalogWrite(client, {
+      kind: "CATALOG_ONLY_LOOSE_PART",
+      code,
+      description: "NOVA",
+    });
+    assert.equal(client.calls[0].name, "create_loose_part");
+    assert.equal(client.calls[0].args.p_code, code);
+  }
 });
 
 test("famílias 5-INV e 7-INV permanecem ambíguas em ambos os writers", async () => {
   for (const [code, candidates] of [
+    ["5 INV", ["5INV015", "5INV028"]],
     ["5-INV", ["5INV015", "5INV028"]],
-    ["7-inv", ["7INV015", "7INV028"]],
+    ["5INV", ["5INV015", "5INV028"]],
+    ["7 INV", ["7INV015", "7INV028"]],
+    ["7-INV", ["7INV015", "7INV028"]],
+    ["7INV", ["7INV015", "7INV028"]],
   ]) {
     for (const write of [
       { kind: "CATALOG_ONLY_LOOSE_PART", code, description: "NOVA" },
@@ -248,10 +254,10 @@ test("formatos e separadores não suportados são rejeitados, nunca normalizados
     "5-INV-015",
     "5INV-015",
     "5 INV 015",
-    "7 INV",
     "7\u2011INV",
     "7\u00a0INV",
     "７-INV",
+    "７－ＩＮＶ",
   ]) {
     const client = fakeSupabase();
     await expectPolicyRejection(

@@ -142,6 +142,28 @@ async function enforceCatalogWritePolicy(
   const acceptedLooseParts: Array<{ code: string }> = [];
 
   for (const loosePart of looseParts) {
+    const assessment = assessNewLoosePartCode(catalog, loosePart.code);
+
+    if (!assessment.allowed) {
+      if (assessment.resolution.kind === "UNSUPPORTED") {
+        throw new CatalogWritePolicyError("UNSUPPORTED_CODE", {
+          requestedCode: loosePart.code,
+        });
+      }
+
+      const catalogCodes =
+        assessment.resolution.kind === "FOUND"
+          ? [assessment.resolution.target.code]
+          : assessment.resolution.candidates.map((candidate) => candidate.code);
+
+      throw new CatalogWritePolicyError(
+        assessment.resolution.kind === "FOUND"
+          ? "KNOWN_CODE"
+          : "AMBIGUOUS_CODE",
+        { requestedCode: loosePart.code, catalogCodes },
+      );
+    }
+
     const pendingAssessment = assessNewLoosePartCode(
       acceptedLooseParts,
       loosePart.code,
@@ -166,30 +188,7 @@ async function enforceCatalogWritePolicy(
       });
     }
 
-    const assessment = assessNewLoosePartCode(catalog, loosePart.code);
-
-    if (assessment.allowed) {
-      acceptedLooseParts.push({ code: loosePart.code });
-      continue;
-    }
-
-    if (assessment.resolution.kind === "UNSUPPORTED") {
-      throw new CatalogWritePolicyError("UNSUPPORTED_CODE", {
-        requestedCode: loosePart.code,
-      });
-    }
-
-    const catalogCodes =
-      assessment.resolution.kind === "FOUND"
-        ? [assessment.resolution.target.code]
-        : assessment.resolution.candidates.map((candidate) => candidate.code);
-
-    throw new CatalogWritePolicyError(
-      assessment.resolution.kind === "FOUND"
-        ? "KNOWN_CODE"
-        : "AMBIGUOUS_CODE",
-      { requestedCode: loosePart.code, catalogCodes },
-    );
+    acceptedLooseParts.push({ code: loosePart.code });
   }
 }
 

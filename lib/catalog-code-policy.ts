@@ -14,23 +14,31 @@ export type CatalogCodeWriteIdentity =
       kind: "UNSUPPORTED";
     };
 
-const supportedCodePattern = /^[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*$/;
-const supportedModifierPattern = /^(\d+)-?(INV|DESL)(\d*)$/i;
-const modifierLikePattern = /^\d+.*(?:INV|DESL)/i;
+const supportedModifierPattern = /^(\d+)-?(INV)(\d*)$/i;
+const asciiSpaceModifierBasePattern = /^(\d+) +INV$/i;
+const unicodeInvDetectionPattern = /^\d+.*INV/i;
+const unicodeDashPattern = /[‐‑‒–—―−－]/g;
+
+function normalizeInvForRejection(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(unicodeDashPattern, "-")
+    .toLocaleUpperCase("pt-BR");
+}
 
 export function getCatalogCodeWriteIdentity(
   value: string,
 ): CatalogCodeWriteIdentity {
   const trimmed = value.trim();
 
-  if (!supportedCodePattern.test(trimmed)) {
+  if (trimmed.length === 0 || trimmed.length > 120) {
     return { kind: "UNSUPPORTED" };
   }
 
   const modifierMatch = trimmed.match(supportedModifierPattern);
 
   if (!modifierMatch) {
-    return modifierLikePattern.test(trimmed)
+    return unicodeInvDetectionPattern.test(normalizeInvForRejection(trimmed))
       ? { kind: "UNSUPPORTED" }
       : {
           kind: "VALID",
@@ -54,10 +62,17 @@ export function getCatalogCodeWriteIdentity(
 }
 
 export function normalizeCatalogCodeForLookup(value: string) {
+  const trimmed = value.trim();
+  const asciiSpaceBaseMatch = trimmed.match(asciiSpaceModifierBasePattern);
+
+  if (asciiSpaceBaseMatch) {
+    return `${asciiSpaceBaseMatch[1]}INV`;
+  }
+
   const identity = getCatalogCodeWriteIdentity(value);
   return identity.kind === "VALID"
     ? identity.canonicalCode
-    : value.trim().toLocaleUpperCase("pt-BR");
+    : trimmed.toLocaleUpperCase("pt-BR");
 }
 
 export function catalogCodesConflict(left: string, right: string) {
@@ -129,6 +144,12 @@ export function assessNewLoosePartCode<T extends CatalogCodeTarget>(
   catalog: readonly T[],
   code: string,
 ) {
+  const resolution = resolveCatalogCode(catalog, code);
+
+  if (resolution.kind !== "NOT_FOUND") {
+    return { allowed: false as const, resolution };
+  }
+
   const writeIdentity = getCatalogCodeWriteIdentity(code);
 
   if (writeIdentity.kind === "UNSUPPORTED") {
@@ -136,12 +157,6 @@ export function assessNewLoosePartCode<T extends CatalogCodeTarget>(
       allowed: false as const,
       resolution: { kind: "UNSUPPORTED" as const },
     };
-  }
-
-  const resolution = resolveCatalogCode(catalog, code);
-
-  if (resolution.kind !== "NOT_FOUND") {
-    return { allowed: false as const, resolution };
   }
 
   const conflicts = catalog.filter((target) =>

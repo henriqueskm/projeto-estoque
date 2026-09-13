@@ -25,12 +25,26 @@ function functionBody(name) {
 
 test("forward migration defines one authoritative write identity", () => {
   const body = functionBody("private.catalog_code_write_policy");
-  assert.match(body, /\^\(\[0-9\]\+\)-\?\(INV\|DESL\)\(\[0-9\]\*\)\$/i);
-  assert.match(body, /unsupported INV\/DESL format/i);
-  assert.match(body, /\^\[A-Za-z0-9\]\+\(\[-\/\]\[A-Za-z0-9\]\+\)\*\$/);
+  assert.match(body, /\^\(\[0-9\]\+\)-\?\(INV\)\(\[0-9\]\*\)\$/i);
+  assert.match(body, /unsupported INV format/i);
+  assert.doesNotMatch(body, /DESL/i);
+  assert.doesNotMatch(body, /A-Za-z0-9/i);
+  assert.match(body, /canonical_code := upper\(v_code\)/i);
   assert.match(body, /lock_identity := modifier_family/i);
   assert.match(body, /canonical_code := modifier_family \|\| v_modifier_parts\[3\]/i);
   assert.doesNotMatch(body, /update public\.|insert into public\.|delete from public\./i);
+});
+
+test("migration removes only the authorized orphan test item and fails closed", () => {
+  assert.match(migration, /efce5819-0fe5-4766-8856-29924fdc3fcd/i);
+  assert.match(migration, /v_test_item\.code is distinct from '7 INV'/i);
+  assert.match(migration, /SERVO BR-040 INVER SEM KIT/i);
+  assert.match(migration, /v_test_item\.created_by is not null/i);
+  assert.match(migration, /pg_catalog\.pg_constraint[\s\S]*constraint_record\.confrelid = 'public\.items'::regclass/i);
+  assert.match(migration, /v_reference_count > 0[\s\S]*Refusing to remove catalog test item/i);
+  assert.equal((migration.match(/delete from public\.loose_parts/gi) ?? []).length, 1);
+  assert.equal((migration.match(/delete from public\.items/gi) ?? []).length, 1);
+  assert.match(migration, /delete from public\.items[\s\S]*item\.id = v_test_item_id[\s\S]*item\.code = '7 INV'/i);
 });
 
 test("migration preflights the complete existing namespace and fails clearly", () => {
