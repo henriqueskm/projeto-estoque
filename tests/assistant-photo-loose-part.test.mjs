@@ -44,7 +44,7 @@ test("separadores de INV são normalizados só para consulta e famílias conheci
     ["5", ["5INV015", "5INV028"]],
     ["7", ["7INV015", "7INV028"]],
   ]) {
-    for (const code of [`${family}-INV`, `${family} INV`, `${family}INV`]) {
+    for (const code of [`${family} INV`, `${family}-INV`, `${family}INV`]) {
       const resolution = resolveSupplierOrderPhotoCatalogCode(invertedCatalog, code);
       assert.equal(resolution.kind, "AMBIGUOUS", code);
       assert.deepEqual(resolution.candidates.map((candidate) => candidate.code), variants, code);
@@ -96,8 +96,43 @@ test("prévia exige escolha manual entre 015 e 028 e a escolha remove o bloqueio
 
 test("somente código genuinamente desconhecido permanece elegível para peça avulsa", () => {
   assert.equal(assessSupplierOrderPhotoLoosePartCode(invertedCatalog, "5 INV").allowed, false);
-  assert.equal(assessSupplierOrderPhotoLoosePartCode(invertedCatalog, "7-INV").allowed, false);
+  assert.equal(
+    assessSupplierOrderPhotoLoosePartCode(invertedCatalog, "5 INV").resolution.kind,
+    "AMBIGUOUS",
+  );
+  for (const code of ["7 INV", "7-INV", "7INV"]) {
+    const assessment = assessSupplierOrderPhotoLoosePartCode(invertedCatalog, code);
+    assert.equal(assessment.allowed, false, code);
+    assert.equal(assessment.resolution.kind, "AMBIGUOUS", code);
+  }
   assert.equal(assessSupplierOrderPhotoLoosePartCode(invertedCatalog, "P123").allowed, true);
+});
+
+test("foto classifica 7 INV como ambíguo e não como código cadastrável", async () => {
+  const extraction = structuredClone(base);
+  extraction.lines[0] = {
+    rawCode: "7 INV",
+    rawDescription: "SERVO BR-040 INVERTIDO",
+    quantity: 1,
+    needsReview: false,
+    warning: null,
+  };
+  const block = await interpretSupplierOrderPhoto({
+    ...dependencies(extraction),
+    loadCatalog: async () => invertedCatalog,
+  });
+  assert.deepEqual(block.lines[0].blockingReasons, ["CODE_AMBIGUOUS"]);
+  assert.deepEqual(
+    block.lines[0].catalogOptions.map((option) => option.code),
+    ["7INV015", "7INV028"],
+  );
+
+  const component = readFileSync(
+    new URL("../components/assistant-structured-block.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(component, /canCreateDirectly = line\.blockingReasons\.includes\("CODE_NOT_FOUND"\)/);
+  assert.doesNotMatch(component, /canCreateDirectly[\s\S]{0,120}CODE_AMBIGUOUS/);
 });
 
 test("código visualmente incerto não é confundido com ausência no catálogo", async () => {
@@ -146,12 +181,9 @@ test("endpoints são fixos, estritos, autenticados e não criam Pedido nem estoq
   assert.match(security, /isAssistantOrderPhotoSameOrigin/);
   assert.match(resolveRoute, /readExactJson\(request, \["code"\]\)/);
   assert.match(createRoute, /readExactJson\(request, \["code", "description"\]\)/);
-  assert.match(createRoute, /assessSupplierOrderPhotoLoosePartCode/);
-  assert.match(createRoute, /\.rpc\("create_loose_part"/);
-  assert.ok(
-    createRoute.lastIndexOf("assessSupplierOrderPhotoLoosePartCode") < createRoute.indexOf('.rpc("create_loose_part"'),
-    "o preflight de catálogo deve ocorrer antes da RPC",
-  );
+  assert.match(createRoute, /executeCatalogWrite/);
+  assert.match(createRoute, /kind: "CATALOG_ONLY_LOOSE_PART"/);
+  assert.doesNotMatch(createRoute, /\.rpc\("create_loose_part"/);
   assert.doesNotMatch(resolveRoute + createRoute, /Gemini|create_supplier_order|stock_inbound|movement_batch/);
 });
 

@@ -8,6 +8,10 @@ import {
   type InboundRequestLine,
   type PhysicalItemType,
 } from "@/lib/inbound-types";
+import {
+  CatalogWritePolicyError,
+  executeCatalogWrite,
+} from "@/lib/catalog-writer";
 import { createClient } from "@/lib/supabase/server";
 
 const maximumQuantity = 2_147_483_647;
@@ -327,6 +331,8 @@ function mapRpcError(code: string | undefined, message: string) {
     normalizedMessage.includes("different description") ||
     normalizedMessage.includes("another item type") ||
     normalizedMessage.includes("commercial configuration code") ||
+    normalizedMessage.includes("conflicts with existing catalog code") ||
+    normalizedMessage.includes("conflicts with physical catalog item") ||
     normalizedMessage.includes("loose-part subtype")
   ) {
     return "O código da nova peça já existe com outro tipo ou outra descrição. Revise o cadastro sem substituir os dados existentes.";
@@ -515,10 +521,11 @@ export async function submitStockInbound(
       }
     }
 
-    const { data, error } = await supabase.rpc("stock_inbound_lines", {
-      p_lines: normalized.lines,
-      p_idempotency_key: normalized.idempotencyKey,
-      p_description: normalized.description,
+    const { data, error } = await executeCatalogWrite(supabase, {
+      kind: "STOCK_INBOUND",
+      lines: normalized.lines,
+      idempotencyKey: normalized.idempotencyKey,
+      description: normalized.description,
     });
 
     if (error) {
@@ -539,7 +546,31 @@ export async function submitStockInbound(
     revalidatePath("/saida");
 
     return { ok: true, receipt };
-  } catch {
+  } catch (error) {
+    if (error instanceof CatalogWritePolicyError) {
+      if (error.reason === "CATALOG_READ_FAILED") {
+        return invalidRequest(
+          "Não foi possível validar o catálogo agora. Tente novamente.",
+        );
+      }
+
+      if (error.reason === "KNOWN_CODE") {
+        return invalidRequest(
+          `O código ${error.requestedCode} já corresponde ao catálogo oficial. Atualize a página e selecione o produto existente.`,
+        );
+      }
+
+      if (error.reason === "UNSUPPORTED_CODE") {
+        return invalidRequest(
+          `O código ${error.requestedCode} usa um formato não suportado. Informe o código oficial sem criar uma nova grafia.`,
+        );
+      }
+
+      return invalidRequest(
+        `O código ${error.requestedCode} é ambíguo no catálogo. Selecione manualmente o produto oficial.`,
+      );
+    }
+
     return invalidRequest(
       "Não foi possível concluir a entrada agora. Tente novamente.",
     );
