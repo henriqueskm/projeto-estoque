@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const container = process.env.SUPPLIER_ORDER_STALE_TEST_DB_CONTAINER
   ?? "supabase_db_nk_current_state_baseline";
 const database = process.env.SUPPLIER_ORDER_STALE_TEST_DB_NAME;
+const databaseUser = process.env.SUPPLIER_ORDER_STALE_TEST_DB_USER ?? "postgres";
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const migrationSql = readFileSync(
   resolve(
@@ -42,7 +43,7 @@ function psql(sql, { allowFailure = false } = {}) {
     return execFileSync(
       docker,
       [
-        "exec", container, "psql", "-U", "postgres", "-d", database,
+        "exec", container, "psql", "-U", databaseUser, "-d", database,
         "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-c", sql,
       ],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
@@ -58,7 +59,7 @@ function applyMigration() {
   execFileSync(
     docker,
     [
-      "exec", "-i", container, "psql", "-U", "postgres", "-d", database,
+      "exec", "-i", container, "psql", "-U", databaseUser, "-d", database,
       "-X", "-q", "-v", "ON_ERROR_STOP=1",
     ],
     {
@@ -93,27 +94,124 @@ function asUser(userId, statement, options) {
   return psql(authSql(userId, statement), options);
 }
 
-function concurrent(userId, statement) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(
-      docker,
-      [
-        "exec", container, "psql", "-U", "postgres", "-d", database,
-        "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-c",
-        authSql(userId, statement),
-      ],
-      { windowsHide: true },
-    );
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => (stdout += chunk));
-    child.stderr.on("data", (chunk) => (stderr += chunk));
+function spawnPsql(args, { interactive = false } = {}) {
+  const child = spawn(
+    docker,
+    [
+      "exec", ...(interactive ? ["-i"] : []), container,
+      "psql", "-U", databaseUser, "-d", database,
+      "-X", "-qAt", "-v", "ON_ERROR_STOP=1", ...args,
+    ],
+    { windowsHide: true, stdio: [interactive ? "pipe" : "ignore", "pipe", "pipe"] },
+  );
+  let stdout = "";
+  let stderr = "";
+  const outputWaiters = new Set();
+
+  function notifyOutputWaiters() {
+    for (const waiter of outputWaiters) waiter();
+  }
+
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+    notifyOutputWaiters();
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+    notifyOutputWaiters();
+  });
+
+  const completion = new Promise((resolvePromise, rejectPromise) => {
     child.on("error", rejectPromise);
     child.on("close", (exitCode) => {
+      notifyOutputWaiters();
       if (exitCode === 0) resolvePromise(stdout.trim());
       else rejectPromise(new Error(`${stdout}\n${stderr}`.trim()));
     });
   });
+
+  async function waitForOutput(pattern, label) {
+    const deadline = Date.now() + 15_000;
+    while (!pattern.test(`${stdout}\n${stderr}`)) {
+      const remaining = deadline - Date.now();
+      assert.ok(remaining > 0, `Timed out waiting for ${label}: ${stdout}\n${stderr}`);
+      await new Promise((resolvePromise) => {
+        let timeoutId;
+        const onOutput = () => {
+          clearTimeout(timeoutId);
+          outputWaiters.delete(onOutput);
+          resolvePromise();
+        };
+        outputWaiters.add(onOutput);
+        timeoutId = setTimeout(() => {
+          outputWaiters.delete(onOutput);
+          resolvePromise();
+        }, Math.min(remaining, 250));
+      });
+    }
+    return `${stdout}\n${stderr}`;
+  }
+
+  return { child, completion, waitForOutput };
+}
+
+function startHoldingTransaction(userId, statement) {
+  const session = spawnPsql([], { interactive: true });
+  session.child.stdin.write(`
+    begin;
+    select set_config('request.jwt.claim.sub', '${userId}', true);
+    set local role authenticated;
+    select 'NK57_BACKEND:' || pg_backend_pid();
+    ${statement};
+    select 'NK57_LOCK_HELD';
+  `);
+  return session;
+}
+
+function startConcurrentUser(userId, statement, applicationName) {
+  return spawnPsql([
+    "-c",
+    authSql(
+      userId,
+      `set application_name = '${applicationName}'; ${statement}`,
+    ),
+  ]);
+}
+
+async function waitForBackend(applicationName) {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const pid = Number(scalar(`
+      select coalesce(max(pid), 0)
+      from pg_stat_activity
+      where datname = '${database}'
+        and application_name = '${applicationName}'
+    `));
+    if (Number.isInteger(pid) && pid > 0) return pid;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+  }
+  assert.fail(`PostgreSQL never exposed application_name ${applicationName}`);
+}
+
+async function waitUntilBlocked(waitingPid, blockingPid) {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const blockers = scalar(
+      `select pg_blocking_pids(${waitingPid})::text`,
+    );
+    if (blockers
+      .slice(1, -1)
+      .split(",")
+      .filter(Boolean)
+      .map(Number)
+      .includes(blockingPid)) {
+      return;
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+  }
+  assert.fail(
+    `PostgreSQL never reported backend ${waitingPid} blocked by ${blockingPid}`,
+  );
 }
 
 function version(orderNumber) {
@@ -125,28 +223,125 @@ function version(orderNumber) {
 function snapshot(orderNumber) {
   return jsonFrom(
     scalar(`
+      with target_items as materialized (
+        select *
+        from public.supplier_order_items
+        where supplier_order_id = '${orderId(orderNumber)}'
+      ),
+      target_entries as materialized (
+        select *
+        from public.supplier_order_stock_entries
+        where supplier_order_id = '${orderId(orderNumber)}'
+      ),
+      target_entry_lines as materialized (
+        select entry_line.*
+        from public.supplier_order_stock_entry_lines as entry_line
+        where entry_line.supplier_order_stock_entry_id in (
+          select id from target_entries
+        )
+      ),
+      target_batches as materialized (
+        select batch.*
+        from public.movement_batches as batch
+        where batch.id in (select movement_batch_id from target_entries)
+      )
       select jsonb_build_object(
-        'updated_at', supplier_order.updated_at,
-        'cancelled_at', supplier_order.cancelled_at,
-        'picked_quantity', order_item.picked_quantity,
-        'stocked_quantity', order_item.stocked_quantity,
-        'cancelled_quantity', order_item.cancelled_quantity,
-        'event_count', (
-          select count(*) from public.supplier_order_events as event
-          where event.supplier_order_id = supplier_order.id
+        'supplier_orders', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+          from public.supplier_orders as value
+          where value.id = '${orderId(orderNumber)}'
         ),
-        'movement_count', (
-          select count(*)
-          from public.supplier_order_stock_entries as stock_entry
-          join public.stock_movements as movement
-            on movement.batch_id = stock_entry.movement_batch_id
-          where stock_entry.supplier_order_id = supplier_order.id
+        'supplier_order_items', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+          from target_items as value
+        ),
+        'supplier_order_events', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+          from public.supplier_order_events as value
+          where value.supplier_order_id = '${orderId(orderNumber)}'
+        ),
+        'stock_balances', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.item_id), '[]'::jsonb)
+          from public.stock_balances as value
+          where value.item_id in (
+            select item_id from target_items where item_id is not null
+          )
+        ),
+        'configuration_stock_balances', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.configuration_id), '[]'::jsonb)
+          from public.configuration_stock_balances as value
+          where value.configuration_id in (
+            select commercial_configuration_id
+            from target_items
+            where commercial_configuration_id is not null
+          )
+        ),
+        'movement_batches', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+          from target_batches as value
+        ),
+        'stock_movements', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+          from public.stock_movements as value
+          where value.batch_id in (select id from target_batches)
+        ),
+        'configuration_stock_movements', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+          from public.configuration_stock_movements as value
+          where value.batch_id in (select id from target_batches)
+        ),
+        'inbound_batch_lines', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+          from public.inbound_batch_lines as value
+          where value.id in (select inbound_batch_line_id from target_entry_lines)
+        ),
+        'supplier_order_stock_entries', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+          from target_entries as value
+        ),
+        'supplier_order_stock_entry_lines', (
+          select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+          from target_entry_lines as value
+        ),
+        'all_effects', jsonb_build_object(
+          'supplier_order_events', (
+            select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+            from public.supplier_order_events as value
+          ),
+          'stock_balances', (
+            select coalesce(jsonb_agg(to_jsonb(value) order by value.item_id), '[]'::jsonb)
+            from public.stock_balances as value
+          ),
+          'configuration_stock_balances', (
+            select coalesce(jsonb_agg(to_jsonb(value) order by value.configuration_id), '[]'::jsonb)
+            from public.configuration_stock_balances as value
+          ),
+          'movement_batches', (
+            select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+            from public.movement_batches as value
+          ),
+          'stock_movements', (
+            select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+            from public.stock_movements as value
+          ),
+          'configuration_stock_movements', (
+            select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+            from public.configuration_stock_movements as value
+          ),
+          'inbound_batch_lines', (
+            select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+            from public.inbound_batch_lines as value
+          ),
+          'supplier_order_stock_entries', (
+            select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+            from public.supplier_order_stock_entries as value
+          ),
+          'supplier_order_stock_entry_lines', (
+            select coalesce(jsonb_agg(to_jsonb(value) order by value.id), '[]'::jsonb)
+            from public.supplier_order_stock_entry_lines as value
+          )
         )
       )::text
-      from public.supplier_orders as supplier_order
-      join public.supplier_order_items as order_item
-        on order_item.supplier_order_id = supplier_order.id
-      where supplier_order.id = '${orderId(orderNumber)}'
     `),
   );
 }
@@ -158,9 +353,9 @@ function linePickup(orderNumber, expectedVersion, idempotencyKey, target = 1) {
   )`;
 }
 
-function markAll(orderNumber, expectedVersion, idempotencyKey) {
+function markAll(orderNumber, expectedVersion, idempotencyKey, description = null) {
   return `select public.mark_supplier_order_all_picked_checked(
-    '${orderId(orderNumber)}', null,
+    '${orderId(orderNumber)}', ${description === null ? "null" : `'${description}'`},
     '${expectedVersion}'::timestamptz, '${idempotencyKey}'
   )`;
 }
@@ -227,6 +422,12 @@ const checkedSignatures = [
   "public.cancel_supplier_order_checked(uuid,text,timestamptz,uuid)",
   "public.cancel_supplier_order_remaining_checked(uuid,text,timestamptz,uuid)",
 ];
+const privateCheckedSignatures = [
+  "private.set_supplier_order_item_picked_quantity_checked(uuid,integer,text,timestamptz,uuid,uuid,text)",
+  "private.mark_supplier_order_all_picked_checked(uuid,text,timestamptz,uuid,uuid,text)",
+  "private.cancel_supplier_order_checked(uuid,text,timestamptz,uuid,uuid,text)",
+  "private.cancel_supplier_order_remaining_checked(uuid,text,timestamptz,uuid,uuid,text)",
+];
 
 for (const signature of legacySignatures) {
   assert.equal(
@@ -254,14 +455,24 @@ for (const signature of checkedSignatures) {
   );
 }
 
-assert.equal(
-  scalar("select has_function_privilege('authenticated', 'private.cancel_supplier_order_checked(uuid,text,timestamptz,uuid,uuid,text)', 'execute')"),
-  "f",
-);
-assert.equal(
-  scalar("select has_function_privilege('authenticated', 'private.cancel_supplier_order_remaining_checked(uuid,text,timestamptz,uuid,uuid,text)', 'execute')"),
-  "f",
-);
+// Preserve server integrations on both the legacy and checked public APIs.
+for (const signature of checkedSignatures) {
+  assert.equal(
+    scalar(`select has_function_privilege('service_role', '${signature}', 'execute')`),
+    "t",
+    signature,
+  );
+}
+
+for (const signature of privateCheckedSignatures) {
+  for (const role of ["anon", "authenticated", "service_role"]) {
+    assert.equal(
+      scalar(`select has_function_privilege('${role}', '${signature}', 'execute')`),
+      "f",
+      `${role}: ${signature}`,
+    );
+  }
+}
 
 psql(`
   insert into auth.users (id, aud, role, created_at, updated_at) values
@@ -327,22 +538,35 @@ for (const [index, call] of successCalls.entries()) {
   const replay = jsonFrom(asUser(firstUser, call(orderNumber, v1, idempotencyKey)));
   assert.equal(replay.idempotent_replay, true);
   assert.deepEqual(snapshot(orderNumber), afterSuccess);
-  assert.equal(afterSuccess.event_count, 1);
+  const orderItem = afterSuccess.supplier_order_items[0];
+  assert.equal(afterSuccess.supplier_order_events.length, 1);
   assert.equal(
-    afterSuccess.picked_quantity,
+    orderItem.picked_quantity,
     expectedSuccessState[index].pickedQuantity,
   );
   assert.equal(
-    afterSuccess.cancelled_quantity,
+    orderItem.cancelled_quantity,
     expectedSuccessState[index].cancelledQuantity,
   );
   assert.equal(
-    afterSuccess.movement_count,
+    afterSuccess.stock_movements.length,
     expectedSuccessState[index].movementCount,
   );
+
+  const differentPayload =
+    index === 0
+      ? linePickup(orderNumber, v1, idempotencyKey, 2)
+      : index === 1
+        ? markAll(orderNumber, v1, idempotencyKey, "Payload diferente")
+        : index === 2
+          ? cancelAll(orderNumber, v1, idempotencyKey, "Outro cancelamento total")
+          : cancelRemaining(orderNumber, v1, idempotencyKey, "Outro cancelamento restante");
+  const mismatch = asUser(firstUser, differentPayload, { allowFailure: true });
+  assert.match(mismatch, /different supplier-order request/i);
+  assert.deepEqual(snapshot(orderNumber), afterSuccess);
 }
 
-console.log("4 OPERACOES VERSAO CORRETA + REPLAY: PASS");
+console.log("4 OPERACOES VERSAO CORRETA + REPLAY + PAYLOAD DIVERGENTE: PASS");
 
 // Two authenticated PostgreSQL sessions race from the same version. Exactly
 // one commits, while the waiter observes the new version and fails stale.
@@ -355,14 +579,31 @@ const raceCalls = [linePickup, markAll, cancelAll, cancelRemaining];
 for (const [index, call] of raceCalls.entries()) {
   const orderNumber = index + 9;
   const v1 = version(orderNumber);
-  const firstStatement = `${call(orderNumber, v1, key(130 + index * 2))}; select pg_sleep(0.5)`;
-  const secondStatement = call(orderNumber, v1, key(131 + index * 2));
-  const first = concurrent(firstUser, firstStatement);
-  await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
-  const outcomes = await Promise.allSettled([
-    first,
-    concurrent(secondUser, secondStatement),
-  ]);
+  const first = startHoldingTransaction(
+    firstUser,
+    call(orderNumber, v1, key(130 + index * 2)),
+  );
+  const firstOutput = await first.waitForOutput(/NK57_LOCK_HELD/, "first lock marker");
+  const firstPid = Number(firstOutput.match(/NK57_BACKEND:(\d+)/)?.[1]);
+  assert.ok(Number.isInteger(firstPid), firstOutput);
+
+  const second = startConcurrentUser(
+    secondUser,
+    call(orderNumber, v1, key(131 + index * 2)),
+    `nk57_waiter_${index}`,
+  );
+  const secondPid = await waitForBackend(`nk57_waiter_${index}`);
+
+  // This observed database handshake is the proof of overlap: session two is
+  // waiting on the row/advisory locks retained by session one's open tx.
+  await waitUntilBlocked(secondPid, firstPid);
+  assert.equal(
+    scalar(`select ${firstPid} = any(pg_blocking_pids(${secondPid}))`),
+    "t",
+  );
+
+  first.child.stdin.write("commit;\n\\q\n");
+  const outcomes = await Promise.allSettled([first.completion, second.completion]);
 
   assert.equal(outcomes.filter((outcome) => outcome.status === "fulfilled").length, 1);
   assert.equal(outcomes.filter((outcome) => outcome.status === "rejected").length, 1);
@@ -371,12 +612,12 @@ for (const [index, call] of raceCalls.entries()) {
     /supplier_order_version_conflict/i,
   );
   const afterRace = snapshot(orderNumber);
-  assert.equal(afterRace.event_count, 1);
+  assert.equal(afterRace.supplier_order_events.length, 1);
   assert.equal(
-    afterRace.movement_count,
+    afterRace.stock_movements.length,
     expectedSuccessState[index].movementCount,
   );
 }
 
-console.log("4 CORRIDAS REAIS EM DUAS SESSOES: PASS");
+console.log("4 CORRIDAS COM BLOQUEIO POSTGRESQL OBSERVADO: PASS");
 console.log("SUPPLIER_ORDER_STALE_CONFLICT_LOCAL_TESTS_PASSED");

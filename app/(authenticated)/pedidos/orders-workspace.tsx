@@ -37,7 +37,7 @@ import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { getSafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";
 import { getSupplierOrderGlobalActionVisibility } from "@/lib/supplier-order-global-actions";
-import { handleSupplierOrderStaleConflict } from "@/lib/supplier-order-stale-conflict";
+import { runSupplierOrderConfirmationMutation } from "@/lib/supplier-order-stale-conflict";
 import {
   isLatestSupplierOrderRequest,
   mergeSupplierOrderMedia,
@@ -2154,6 +2154,7 @@ function ConfirmationDialog({
   const reasonInputRef = useRef<HTMLTextAreaElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
+  const attemptSequenceRef = useRef(0);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -2173,6 +2174,13 @@ function ConfirmationDialog({
     onClose,
   );
 
+  useEffect(
+    () => () => {
+      attemptSequenceRef.current += 1;
+    },
+    [],
+  );
+
   function handleConfirm() {
     setError(null);
     const normalizedReason = reason.trim();
@@ -2188,55 +2196,53 @@ function ConfirmationDialog({
     const idempotencyKey =
       idempotencyKeyRef.current ?? crypto.randomUUID();
     idempotencyKeyRef.current = idempotencyKey;
+    const attemptSequence = ++attemptSequenceRef.current;
 
     startTransition(async () => {
-      const result =
-        kind === "MARK_ALL"
-          ? await markSupplierOrderAllPicked({
-              supplier_order_id: order.id,
-              description: null,
-              expected_updated_at: order.updatedAt,
-              idempotency_key: idempotencyKey,
-            })
-          : kind === "CANCEL"
-            ? await cancelSupplierOrder({
+      await runSupplierOrderConfirmationMutation({
+        supplierOrder: order,
+        idempotencyKey,
+        isCurrentAttempt: () =>
+          attemptSequence === attemptSequenceRef.current,
+        execute: ({ expected_updated_at, idempotency_key }) =>
+          kind === "MARK_ALL"
+            ? markSupplierOrderAllPicked({
                 supplier_order_id: order.id,
-                cancellation_note: normalizedReason,
-                expected_updated_at: order.updatedAt,
-                idempotency_key: idempotencyKey,
+                description: null,
+                expected_updated_at,
+                idempotency_key,
               })
-            : await cancelSupplierOrderRemaining({
-                supplier_order_id: order.id,
-                cancellation_note: normalizedReason,
-                expected_updated_at: order.updatedAt,
-                idempotency_key: idempotencyKey,
-              });
-
-      if (!result.ok) {
-        if (
-          handleSupplierOrderStaleConflict(result, {
-            clearAttempt: () => {
-              idempotencyKeyRef.current = null;
-            },
-            reload: onStale,
-          })
-        ) {
-          return;
-        }
-
-        setError(result.error);
-        return;
-      }
-
-      onSuccess(
-        kind === "MARK_ALL"
-          ? result.receipt.automaticStockEntry
-            ? `${quantityFormatter.format(result.receipt.automaticStockEntry.quantity)} unidades foram retiradas e adicionadas automaticamente ao estoque.`
-            : "As quantidades prontas foram retiradas. Confira a atualização do estoque."
-          : kind === "CANCEL"
-            ? "Pedido excluído das listas ativas e mantido no histórico."
-            : "Saldo restante excluído das listas ativas e mantido no histórico.",
-      );
+            : kind === "CANCEL"
+              ? cancelSupplierOrder({
+                  supplier_order_id: order.id,
+                  cancellation_note: normalizedReason,
+                  expected_updated_at,
+                  idempotency_key,
+                })
+              : cancelSupplierOrderRemaining({
+                  supplier_order_id: order.id,
+                  cancellation_note: normalizedReason,
+                  expected_updated_at,
+                  idempotency_key,
+                }),
+        clearAttempt: () => {
+          idempotencyKeyRef.current = null;
+        },
+        closeConfirmation: onClose,
+        onStale,
+        onError: setError,
+        onSuccess: (receipt) => {
+          onSuccess(
+            kind === "MARK_ALL"
+              ? receipt.automaticStockEntry
+                ? `${quantityFormatter.format(receipt.automaticStockEntry.quantity)} unidades foram retiradas e adicionadas automaticamente ao estoque.`
+                : "As quantidades prontas foram retiradas. Confira a atualização do estoque."
+              : kind === "CANCEL"
+                ? "Pedido excluído das listas ativas e mantido no histórico."
+                : "Saldo restante excluído das listas ativas e mantido no histórico.",
+          );
+        },
+      });
     });
   }
 
@@ -2971,10 +2977,7 @@ function OrderDetailsDialog({
         kind={confirmation}
         order={order}
         onClose={() => setConfirmation(null)}
-        onStale={(message) => {
-          setConfirmation(null);
-          onStale(message);
-        }}
+        onStale={onStale}
         onSuccess={(message) => {
           setConfirmation(null);
           onMutated(message);
