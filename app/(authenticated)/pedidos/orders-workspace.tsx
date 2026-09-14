@@ -37,6 +37,7 @@ import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { getSafisaPickupAlertKind } from "@/lib/safisa-pickup-alerts-contract";
 import { getSupplierOrderGlobalActionVisibility } from "@/lib/supplier-order-global-actions";
+import { handleSupplierOrderStaleConflict } from "@/lib/supplier-order-stale-conflict";
 import {
   isLatestSupplierOrderRequest,
   mergeSupplierOrderMedia,
@@ -2137,11 +2138,13 @@ function OrderFormDialog({
 function ConfirmationDialog({
   kind,
   onClose,
+  onStale,
   onSuccess,
   order,
 }: {
   kind: ConfirmationKind;
   onClose: () => void;
+  onStale: (message: string) => void;
   onSuccess: (message: string) => void;
   order: SupplierOrderSummary;
 }) {
@@ -2192,21 +2195,35 @@ function ConfirmationDialog({
           ? await markSupplierOrderAllPicked({
               supplier_order_id: order.id,
               description: null,
+              expected_updated_at: order.updatedAt,
               idempotency_key: idempotencyKey,
             })
           : kind === "CANCEL"
             ? await cancelSupplierOrder({
                 supplier_order_id: order.id,
                 cancellation_note: normalizedReason,
+                expected_updated_at: order.updatedAt,
                 idempotency_key: idempotencyKey,
               })
             : await cancelSupplierOrderRemaining({
                 supplier_order_id: order.id,
                 cancellation_note: normalizedReason,
+                expected_updated_at: order.updatedAt,
                 idempotency_key: idempotencyKey,
               });
 
       if (!result.ok) {
+        if (
+          handleSupplierOrderStaleConflict(result, {
+            clearAttempt: () => {
+              idempotencyKeyRef.current = null;
+            },
+            reload: onStale,
+          })
+        ) {
+          return;
+        }
+
         setError(result.error);
         return;
       }
@@ -2954,6 +2971,10 @@ function OrderDetailsDialog({
         kind={confirmation}
         order={order}
         onClose={() => setConfirmation(null)}
+        onStale={(message) => {
+          setConfirmation(null);
+          onStale(message);
+        }}
         onSuccess={(message) => {
           setConfirmation(null);
           onMutated(message);
@@ -4467,6 +4488,7 @@ function ActiveSupplierOrdersWorkspace({
           }
           onStale={(message) => {
             setFeedback(message);
+            setDetailReloadKey((current) => current + 1);
             router.refresh();
           }}
         />

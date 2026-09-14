@@ -567,7 +567,7 @@ function mapRpcError(
 
   if (code === "40001" || normalizedMessage.includes("changed after")) {
     return actionError(
-      "Este pedido foi alterado por outro usuário. Os dados foram atualizados.",
+      "Este pedido mudou depois que foi exibido. Os dados foram recarregados; revise o pedido antes de tentar novamente.",
       true,
     );
   }
@@ -944,6 +944,7 @@ export async function setSupplierOrderItemPickedQuantity(
       "supplier_order_item_id",
       "picked_quantity",
       "description",
+      "expected_updated_at",
       "idempotency_key",
     ]) ||
     !isUuid(request.supplier_order_item_id) ||
@@ -952,6 +953,8 @@ export async function setSupplierOrderItemPickedQuantity(
     request.picked_quantity < 0 ||
     request.picked_quantity > maximumInteger ||
     description === undefined ||
+    typeof request.expected_updated_at !== "string" ||
+    Number.isNaN(Date.parse(request.expected_updated_at)) ||
     !isUuid(request.idempotency_key)
   ) {
     return actionError(
@@ -963,6 +966,7 @@ export async function setSupplierOrderItemPickedQuantity(
     supplier_order_item_id: request.supplier_order_item_id.toLowerCase(),
     picked_quantity: request.picked_quantity,
     description,
+    expected_updated_at: request.expected_updated_at,
     idempotency_key: request.idempotency_key.toLowerCase(),
   };
 
@@ -976,11 +980,12 @@ export async function setSupplierOrderItemPickedQuantity(
     }
 
     const { data, error } = await context.supabase.rpc(
-      "set_supplier_order_item_picked_quantity",
+      "set_supplier_order_item_picked_quantity_checked",
       {
         p_supplier_order_item_id: normalized.supplier_order_item_id,
-        p_picked_quantity: normalized.picked_quantity,
+        p_target_picked_quantity: normalized.picked_quantity,
         p_description: normalized.description,
+        p_expected_order_updated_at: normalized.expected_updated_at,
         p_idempotency_key: normalized.idempotency_key,
       },
     );
@@ -1010,10 +1015,13 @@ export async function markSupplierOrderAllPicked(
     !hasOnlyFields(request, [
       "supplier_order_id",
       "description",
+      "expected_updated_at",
       "idempotency_key",
     ]) ||
     !isUuid(request.supplier_order_id) ||
     description === undefined ||
+    typeof request.expected_updated_at !== "string" ||
+    Number.isNaN(Date.parse(request.expected_updated_at)) ||
     !isUuid(request.idempotency_key)
   ) {
     return actionError("Não foi possível identificar esta retirada.");
@@ -1022,6 +1030,7 @@ export async function markSupplierOrderAllPicked(
   const normalized: SupplierOrderCommandInput = {
     supplier_order_id: request.supplier_order_id.toLowerCase(),
     description,
+    expected_updated_at: request.expected_updated_at,
     idempotency_key: request.idempotency_key.toLowerCase(),
   };
 
@@ -1035,10 +1044,11 @@ export async function markSupplierOrderAllPicked(
     }
 
     const { data, error } = await context.supabase.rpc(
-      "mark_supplier_order_all_picked",
+      "mark_supplier_order_all_picked_checked",
       {
         p_supplier_order_id: normalized.supplier_order_id,
         p_description: normalized.description,
+        p_expected_order_updated_at: normalized.expected_updated_at,
         p_idempotency_key: normalized.idempotency_key,
       },
     );
@@ -1052,7 +1062,9 @@ export async function markSupplierOrderAllPicked(
 }
 
 async function cancelSupplierOrderWithRpc(
-  rpcName: "cancel_supplier_order" | "cancel_supplier_order_remaining",
+  rpcName:
+    | "cancel_supplier_order_checked"
+    | "cancel_supplier_order_remaining_checked",
   input: unknown,
 ): Promise<SupplierOrderActionResult> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -1069,11 +1081,14 @@ async function cancelSupplierOrderWithRpc(
     !hasOnlyFields(request, [
       "supplier_order_id",
       "cancellation_note",
+      "expected_updated_at",
       "idempotency_key",
     ]) ||
     !isUuid(request.supplier_order_id) ||
     cancellationNote.length < 3 ||
     cancellationNote.length > maximumOperationDescriptionLength ||
+    typeof request.expected_updated_at !== "string" ||
+    Number.isNaN(Date.parse(request.expected_updated_at)) ||
     !isUuid(request.idempotency_key)
   ) {
     return actionError(
@@ -1084,6 +1099,7 @@ async function cancelSupplierOrderWithRpc(
   const normalized: SupplierOrderCancellationInput = {
     supplier_order_id: request.supplier_order_id.toLowerCase(),
     cancellation_note: cancellationNote,
+    expected_updated_at: request.expected_updated_at,
     idempotency_key: request.idempotency_key.toLowerCase(),
   };
 
@@ -1099,6 +1115,7 @@ async function cancelSupplierOrderWithRpc(
     const { data, error } = await context.supabase.rpc(rpcName, {
       p_supplier_order_id: normalized.supplier_order_id,
       p_cancellation_note: normalized.cancellation_note,
+      p_expected_order_updated_at: normalized.expected_updated_at,
       p_idempotency_key: normalized.idempotency_key,
     });
 
@@ -1116,13 +1133,16 @@ async function cancelSupplierOrderWithRpc(
 export async function cancelSupplierOrder(
   input: unknown,
 ): Promise<SupplierOrderActionResult> {
-  return cancelSupplierOrderWithRpc("cancel_supplier_order", input);
+  return cancelSupplierOrderWithRpc("cancel_supplier_order_checked", input);
 }
 
 export async function cancelSupplierOrderRemaining(
   input: unknown,
 ): Promise<SupplierOrderActionResult> {
-  return cancelSupplierOrderWithRpc("cancel_supplier_order_remaining", input);
+  return cancelSupplierOrderWithRpc(
+    "cancel_supplier_order_remaining_checked",
+    input,
+  );
 }
 
 export async function finalizeSupplierOrder(
