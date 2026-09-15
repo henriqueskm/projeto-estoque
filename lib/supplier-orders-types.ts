@@ -205,18 +205,21 @@ export type SetSupplierOrderPickedQuantityInput = {
   supplier_order_item_id: string;
   picked_quantity: number;
   description: string | null;
+  expected_updated_at: string;
   idempotency_key: string;
 };
 
 export type SupplierOrderCommandInput = {
   supplier_order_id: string;
   description: string | null;
+  expected_updated_at: string;
   idempotency_key: string;
 };
 
 export type SupplierOrderCancellationInput = {
   supplier_order_id: string;
   cancellation_note: string;
+  expected_updated_at: string;
   idempotency_key: string;
 };
 
