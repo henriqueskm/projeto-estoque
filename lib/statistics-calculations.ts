@@ -39,11 +39,13 @@ export type StatisticsOutboundLineRow = StatisticsInboundLineRow & {
 export type StatisticsStockMovementRow = {
   batch_id: string;
   item_id: string;
+  quantity_change: number;
 };
 
 export type StatisticsConfigurationMovementRow = {
   batch_id: string;
   configuration_id: string;
+  quantity_change: number;
 };
 
 export type StatisticsAssemblyOperationRow = {
@@ -281,8 +283,8 @@ function buildTimeline(
   currentStart: Date,
   currentEndExclusive: Date,
   batchesById: Map<string, StatisticsBatchRow>,
-  inboundLines: StatisticsInboundLineRow[],
-  outboundLines: StatisticsOutboundLineRow[],
+  inboundLines: Array<{ batch_id: string; quantity: number }>,
+  outboundLines: Array<{ batch_id: string; quantity: number }>,
 ): StatisticsTimelinePoint[] {
   const bucketDays = period <= 30 ? 1 : 7;
   const bucketCount = Math.ceil(period / bucketDays);
@@ -367,6 +369,87 @@ function sumMapQuantities(quantities: Map<string, number>) {
   );
 }
 
+type EffectiveExternalLine = {
+  batch_id: string;
+  item_id: string | null;
+  configuration_id: string | null;
+  quantity: number;
+};
+
+function buildEffectiveExternalLines(
+  movementType: "INBOUND" | "OUTBOUND",
+  officialLines: StatisticsInboundLineRow[],
+  batchById: Map<string, StatisticsBatchRow>,
+  commercialCodeById: Map<string, StatisticsCommercialCodeRow>,
+  stockMovements: StatisticsStockMovementRow[],
+  configurationMovements: StatisticsConfigurationMovementRow[],
+) {
+  const batchesWithOfficialLines = new Set(
+    officialLines.map((line) => line.batch_id),
+  );
+  const effectiveLines: EffectiveExternalLine[] = officialLines.map((line) => ({
+    batch_id: line.batch_id,
+    item_id: line.item_id,
+    configuration_id: line.commercial_configuration_code_id
+      ? (commercialCodeById.get(line.commercial_configuration_code_id)
+          ?.configuration_id ?? null)
+      : null,
+    quantity: line.quantity,
+  }));
+
+  function fallbackQuantity(batchId: string, quantityChange: number) {
+    const batch = batchById.get(batchId);
+
+    if (
+      !batch ||
+      batch.movement_type !== movementType ||
+      batchesWithOfficialLines.has(batchId)
+    ) {
+      return null;
+    }
+
+    if (movementType === "INBOUND") {
+      return quantityChange > 0 ? quantityChange : null;
+    }
+
+    return quantityChange < 0 ? -quantityChange : null;
+  }
+
+  stockMovements.forEach((movement) => {
+    const quantity = fallbackQuantity(
+      movement.batch_id,
+      movement.quantity_change,
+    );
+
+    if (quantity !== null) {
+      effectiveLines.push({
+        batch_id: movement.batch_id,
+        item_id: movement.item_id,
+        configuration_id: null,
+        quantity,
+      });
+    }
+  });
+
+  configurationMovements.forEach((movement) => {
+    const quantity = fallbackQuantity(
+      movement.batch_id,
+      movement.quantity_change,
+    );
+
+    if (quantity !== null) {
+      effectiveLines.push({
+        batch_id: movement.batch_id,
+        item_id: null,
+        configuration_id: movement.configuration_id,
+        quantity,
+      });
+    }
+  });
+
+  return effectiveLines;
+}
+
 export function calculateStatistics(
   input: StatisticsCalculationInput,
 ): StatisticsData {
@@ -386,6 +469,22 @@ export function calculateStatistics(
     ]),
   );
   const aliases = aliasesByConfiguration(input.commercialCodes);
+  const effectiveInboundLines = buildEffectiveExternalLines(
+    "INBOUND",
+    input.inboundLines,
+    batchById,
+    commercialCodeById,
+    input.stockMovements,
+    input.configurationMovements,
+  );
+  const effectiveOutboundLines = buildEffectiveExternalLines(
+    "OUTBOUND",
+    input.outboundLines,
+    batchById,
+    commercialCodeById,
+    input.stockMovements,
+    input.configurationMovements,
+  );
 
   function belongsToRange(
     batchId: string,
@@ -403,7 +502,7 @@ export function calculateStatistics(
     return timestamp >= start.getTime() && timestamp < endExclusive.getTime();
   }
 
-  const currentInboundLines = input.inboundLines.filter((line) =>
+  const currentInboundLines = effectiveInboundLines.filter((line) =>
     belongsToRange(
       line.batch_id,
       range.currentStart,
@@ -411,7 +510,7 @@ export function calculateStatistics(
       "INBOUND",
     ),
   );
-  const previousInboundLines = input.inboundLines.filter((line) =>
+  const previousInboundLines = effectiveInboundLines.filter((line) =>
     belongsToRange(
       line.batch_id,
       range.previousStart,
@@ -419,7 +518,7 @@ export function calculateStatistics(
       "INBOUND",
     ),
   );
-  const currentOutboundLines = input.outboundLines.filter((line) =>
+  const currentOutboundLines = effectiveOutboundLines.filter((line) =>
     belongsToRange(
       line.batch_id,
       range.currentStart,
@@ -427,7 +526,7 @@ export function calculateStatistics(
       "OUTBOUND",
     ),
   );
-  const previousOutboundLines = input.outboundLines.filter((line) =>
+  const previousOutboundLines = effectiveOutboundLines.filter((line) =>
     belongsToRange(
       line.batch_id,
       range.previousStart,
@@ -472,7 +571,7 @@ export function calculateStatistics(
   // A unidade comercial é a quantidade solicitada nas linhas externas:
   // código comercial = com kit; item SERVO direto = sem kit.
   const withKit = currentOutboundLines
-    .filter((line) => line.commercial_configuration_code_id)
+    .filter((line) => line.configuration_id)
     .reduce((total, line) => total + line.quantity, 0);
   const withoutKit = currentOutboundLines
     .filter(
@@ -489,18 +588,12 @@ export function calculateStatistics(
   const loosePartOutbound = new Map<string, number>();
 
   currentOutboundLines.forEach((line) => {
-    if (line.commercial_configuration_code_id) {
-      const commercialCode = commercialCodeById.get(
-        line.commercial_configuration_code_id,
+    if (line.configuration_id) {
+      addQuantity(
+        configurationOutbound,
+        line.configuration_id,
+        line.quantity,
       );
-
-      if (commercialCode) {
-        addQuantity(
-          configurationOutbound,
-          commercialCode.configuration_id,
-          line.quantity,
-        );
-      }
 
       return;
     }
