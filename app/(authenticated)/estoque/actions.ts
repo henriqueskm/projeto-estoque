@@ -53,8 +53,11 @@ type AuthenticatedContext = {
   supabase: Awaited<ReturnType<typeof createClient>>;
 };
 
-function adjustmentError(error: string): StockAdjustmentActionResult {
-  return { ok: false, error };
+function adjustmentError(
+  error: string,
+  stale = false,
+): StockAdjustmentActionResult {
+  return stale ? { ok: false, error, stale: true } : { ok: false, error };
 }
 
 function minimumStockError(error: string): MinimumStockActionResult {
@@ -244,27 +247,55 @@ function parseConfigurationOperationReceipt(
 function mapAdjustmentRpcError(code: string | undefined, message: string) {
   const normalizedMessage = message.toLocaleLowerCase("en-US");
 
+  if (
+    code === "40001" ||
+    normalizedMessage.includes("stock_adjustment_quantity_conflict")
+  ) {
+    return {
+      message: "O estoque mudou desde que você abriu esta tela.",
+      stale: true,
+    } as const;
+  }
+
   if (code === "42501" || code === "28000") {
-    return "Sua sessão não está disponível. Entre novamente para continuar.";
+    return {
+      message: "Sua sessão não está disponível. Entre novamente para continuar.",
+      stale: false,
+    } as const;
   }
 
   if (normalizedMessage.includes("idempotency_key")) {
-    return "Esta tentativa já foi usada com um ajuste diferente. Feche a janela, confira os dados e tente novamente.";
+    return {
+      message: "Esta tentativa já foi usada com um ajuste diferente. Feche a janela, confira os dados e tente novamente.",
+      stale: false,
+    } as const;
   }
 
   if (normalizedMessage.includes("does not exist")) {
-    return "Este cadastro não está mais disponível. Atualize a página e tente novamente.";
+    return {
+      message: "Este cadastro não está mais disponível. Atualize a página e tente novamente.",
+      stale: false,
+    } as const;
   }
 
   if (code === "22003") {
-    return "A quantidade informada excede o limite permitido.";
+    return {
+      message: "A quantidade informada excede o limite permitido.",
+      stale: false,
+    } as const;
   }
 
   if (code === "22023" || code === "23514") {
-    return "Os dados do ajuste não são mais válidos. Atualize a página e confira o saldo novamente.";
+    return {
+      message: "Os dados do ajuste não são mais válidos. Atualize a página e confira o saldo novamente.",
+      stale: false,
+    } as const;
   }
 
-  return "Não foi possível ajustar o estoque. Confira os dados e tente novamente.";
+  return {
+    message: "Não foi possível ajustar o estoque. Confira os dados e tente novamente.",
+    stale: false,
+  } as const;
 }
 
 function mapMinimumStockRpcError(
@@ -356,6 +387,7 @@ export async function adjustInventoryStock(
     "target_kind",
     "target_id",
     "counted_quantity",
+    "expected_quantity",
     "reason",
     "idempotency_key",
   ]);
@@ -367,6 +399,7 @@ export async function adjustInventoryStock(
     typeof request.target_id !== "string" ||
     !uuidPattern.test(request.target_id) ||
     !isPostgresInteger(request.counted_quantity) ||
+    !isPostgresInteger(request.expected_quantity) ||
     typeof request.reason !== "string" ||
     typeof request.idempotency_key !== "string" ||
     !uuidPattern.test(request.idempotency_key)
@@ -426,8 +459,8 @@ export async function adjustInventoryStock(
 
     const rpcName =
       request.target_kind === "ITEM"
-        ? "adjust_item_stock"
-        : "adjust_configuration_stock";
+        ? "adjust_item_stock_checked"
+        : "adjust_configuration_stock_checked";
     const targetArgument =
       request.target_kind === "ITEM"
         ? { p_item_id: request.target_id }
@@ -435,12 +468,14 @@ export async function adjustInventoryStock(
     const { data, error } = await context.supabase.rpc(rpcName, {
       ...targetArgument,
       p_counted_quantity: request.counted_quantity,
+      p_expected_quantity: request.expected_quantity,
       p_reason: reason,
       p_idempotency_key: request.idempotency_key.toLowerCase(),
     });
 
     if (error) {
-      return adjustmentError(mapAdjustmentRpcError(error.code, error.message));
+      const mapped = mapAdjustmentRpcError(error.code, error.message);
+      return adjustmentError(mapped.message, mapped.stale);
     }
 
     const receipt = parseAdjustmentReceipt(data);

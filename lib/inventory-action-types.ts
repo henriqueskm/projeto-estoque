@@ -53,7 +53,7 @@ export type StockAdjustmentReceipt = {
 
 export type StockAdjustmentActionResult =
   | { ok: true; receipt: StockAdjustmentReceipt }
-  | { ok: false; error: string };
+  | { ok: false; error: string; stale?: true };
 
 export type MinimumStockReceipt = {
   changeApplied: boolean;

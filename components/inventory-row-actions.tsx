@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import {
@@ -25,9 +26,13 @@ export function InventoryRowActions({
   target,
   imageUrl = null,
 }: InventoryRowActionsProps) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [activeDialog, setActiveDialog] = useState<ActiveDialog>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{
+    message: string;
+    tone: "SUCCESS" | "STALE";
+  } | null>(null);
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -42,10 +47,18 @@ export function InventoryRowActions({
   }, []);
 
   const finishAction = useCallback((message: string) => {
-    setFeedback(message);
+    setFeedback({ message, tone: "SUCCESS" });
     setActiveDialog(null);
     window.requestAnimationFrame(() => triggerRef.current?.focus());
   }, []);
+
+  const handleStaleAdjustment = useCallback(
+    (message: string) => {
+      setFeedback({ message, tone: "STALE" });
+      router.refresh();
+    },
+    [router],
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -224,6 +237,7 @@ export function InventoryRowActions({
         <InventoryAdjustmentDialog
           target={target}
           onClose={closeDialog}
+          onStale={handleStaleAdjustment}
           onSuccess={finishAction}
         />
       ) : null}
@@ -257,9 +271,13 @@ export function InventoryRowActions({
       {feedback ? (
         <div
           role="status"
-          className="fixed right-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-3 z-[70] mx-auto flex max-w-md items-start justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-xl lg:right-5 lg:bottom-5 lg:left-auto"
+          className={`fixed right-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-3 z-[70] mx-auto flex max-w-md items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-semibold shadow-xl lg:right-5 lg:bottom-5 lg:left-auto ${
+            feedback.tone === "STALE"
+              ? "border-amber-300 bg-amber-50 text-amber-950"
+              : "border-emerald-300 bg-emerald-50 text-emerald-950"
+          }`}
         >
-          <span className="leading-5">{feedback}</span>
+          <span className="leading-5">{feedback.message}</span>
           <button
             type="button"
             onClick={() => setFeedback(null)}

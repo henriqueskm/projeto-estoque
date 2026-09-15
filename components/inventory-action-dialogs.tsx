@@ -20,6 +20,7 @@ import type {
   InventoryActionTarget,
   InventoryConfigurationActionTarget,
 } from "@/lib/inventory-action-types";
+import { runStockAdjustmentSubmission } from "@/lib/stock-adjustment-stale-conflict";
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 const maximumInteger = 2_147_483_647;
@@ -149,8 +150,12 @@ function currentTargetQuantity(target: InventoryActionTarget) {
 export function InventoryAdjustmentDialog({
   target,
   onClose,
+  onStale,
   onSuccess,
-}: DialogBaseProps & { target: InventoryActionTarget }) {
+}: DialogBaseProps & {
+  target: InventoryActionTarget;
+  onStale: (message: string, targetId: string) => void;
+}) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -160,6 +165,7 @@ export function InventoryAdjustmentDialog({
   );
   const [reason, setReason] = useState("");
   const idempotencyKeyRef = useRef<string | null>(null);
+  const attemptSequenceRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const isLooseComponent =
@@ -169,6 +175,13 @@ export function InventoryAdjustmentDialog({
   const currentQuantity = currentTargetQuantity(target);
 
   useAccessibleDialog(dialogRef, quantityInputRef, isPending, onClose);
+
+  useEffect(
+    () => () => {
+      attemptSequenceRef.current += 1;
+    },
+    [],
+  );
 
   function renewIdempotencyKey() {
     idempotencyKeyRef.current = crypto.randomUUID();
@@ -200,34 +213,38 @@ export function InventoryAdjustmentDialog({
     const idempotencyKey =
       idempotencyKeyRef.current ?? crypto.randomUUID();
     idempotencyKeyRef.current = idempotencyKey;
+    const attemptSequence = ++attemptSequenceRef.current;
 
     startTransition(async () => {
-      const result = await adjustInventoryStock({
-        target_kind: target.kind,
-        target_id:
-          target.kind === "ITEM" ? target.itemId : target.configurationId,
-        counted_quantity: quantity,
+      await runStockAdjustmentSubmission({
+        target,
+        countedQuantity: quantity,
         reason: normalizedReason,
-        idempotency_key: idempotencyKey,
+        idempotencyKey,
+        isCurrentAttempt: () =>
+          attemptSequence === attemptSequenceRef.current,
+        execute: adjustInventoryStock,
+        clearAttempt: () => {
+          idempotencyKeyRef.current = null;
+        },
+        closeDialog: onClose,
+        onStale,
+        onError: setError,
+        onSuccess: (receipt) => {
+          if (!receipt.adjustmentApplied) {
+            onSuccess("Saldo conferido. Nenhum ajuste foi necessário.");
+            return;
+          }
+
+          const changeLabel =
+            receipt.quantityChange > 0
+              ? `+${receipt.quantityChange}`
+              : String(receipt.quantityChange);
+          onSuccess(
+            `Estoque ajustado para ${receipt.quantityAfter} (${changeLabel}).`,
+          );
+        },
       });
-
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-
-      if (!result.receipt.adjustmentApplied) {
-        onSuccess("Saldo conferido. Nenhum ajuste foi necessário.");
-        return;
-      }
-
-      const changeLabel =
-        result.receipt.quantityChange > 0
-          ? `+${result.receipt.quantityChange}`
-          : String(result.receipt.quantityChange);
-      onSuccess(
-        `Estoque ajustado para ${result.receipt.quantityAfter} (${changeLabel}).`,
-      );
     });
   }
 

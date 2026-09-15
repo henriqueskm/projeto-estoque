@@ -48,6 +48,8 @@
     "test:supplier-order-negotiation-identity:cli-local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/supplier-order-negotiation-identity.cli.local.ps1",
     "test:supplier-order-stale-conflicts": "node --experimental-strip-types --experimental-loader ./tests/supplier-order-stale-conflict-loader.mjs --test tests/supplier-order-stale-conflict.test.mjs",
     "test:supplier-order-stale-conflicts:local": "node tests/supplier-order-stale-conflict.local.mjs",
+    "test:stock-adjustment-stale-conflicts": "node --experimental-strip-types --experimental-loader ./tests/stock-adjustment-stale-conflict-loader.mjs --test tests/stock-adjustment-stale-conflict.test.mjs",
+    "test:stock-adjustment-stale-conflicts:local": "node tests/stock-adjustment-stale-conflict.local.mjs",
     "test:atomic-pickup-stock-entry": "node --test tests/atomic-pickup-stock-entry.test.mjs",
     "test:atomic-pickup-stock-entry:local": "node tests/atomic-pickup-stock-entry.local.mjs",
     "test:catalog-only-loose-part-creation": "node --test tests/catalog-only-loose-part-creation.test.mjs",
