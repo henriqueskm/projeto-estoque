@@ -14,6 +14,7 @@ import {
   type StatisticsStockBalanceRow,
   type StatisticsStockMovementRow,
 } from "@/lib/statistics-calculations";
+import { fetchAllStatisticsRows } from "@/lib/statistics-pagination";
 import {
   statisticsPeriods,
   type StatisticsDataResult,
@@ -53,7 +54,9 @@ async function fetchRowsByBatchIds<T>(
   fetchChunk: (
     client: SupabaseClient,
     ids: string[],
-  ) => PromiseLike<{ data: unknown[] | null; error: unknown }>,
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: unknown }>,
   client: SupabaseClient,
 ) {
   if (batchIds.length === 0) {
@@ -61,7 +64,11 @@ async function fetchRowsByBatchIds<T>(
   }
 
   const results = await Promise.all(
-    chunks(batchIds).map((ids) => fetchChunk(client, ids)),
+    chunks(batchIds).map((ids) =>
+      fetchAllStatisticsRows<T>((from, to) =>
+        fetchChunk(client, ids, from, to),
+      ),
+    ),
   );
 
   return {
@@ -92,30 +99,55 @@ export async function loadStatisticsData(
       stockBalancesResult,
       configurationBalancesResult,
     ] = await Promise.all([
-      supabase
-        .from("movement_batches")
-        .select("id, movement_type, occurred_at")
-        .gte("occurred_at", range.previousStart.toISOString())
-        .lt("occurred_at", range.currentEndExclusive.toISOString())
-        .order("occurred_at", { ascending: true })
-        .order("id", { ascending: true }),
-      supabase
-        .from("items")
-        .select(
-          "id, code, description, item_type, minimum_stock, is_active",
-        ),
-      supabase
-        .from("commercial_configurations")
-        .select(
-          "id, description, servo_id, installation_kit_id, minimum_stock, is_active",
-        ),
-      supabase
-        .from("commercial_configuration_codes")
-        .select("id, configuration_id, code, is_active"),
-      supabase.from("stock_balances").select("item_id, quantity"),
-      supabase
-        .from("configuration_stock_balances")
-        .select("configuration_id, quantity"),
+      fetchAllStatisticsRows<StatisticsBatchRow>((from, to) =>
+        supabase
+          .from("movement_batches")
+          .select("id, movement_type, occurred_at")
+          .gte("occurred_at", range.previousStart.toISOString())
+          .lt("occurred_at", range.currentEndExclusive.toISOString())
+          .order("occurred_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      fetchAllStatisticsRows<StatisticsItemRow>((from, to) =>
+        supabase
+          .from("items")
+          .select(
+            "id, code, description, item_type, minimum_stock, is_active",
+          )
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      fetchAllStatisticsRows<StatisticsConfigurationRow>((from, to) =>
+        supabase
+          .from("commercial_configurations")
+          .select(
+            "id, description, servo_id, installation_kit_id, minimum_stock, is_active",
+          )
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      fetchAllStatisticsRows<StatisticsCommercialCodeRow>((from, to) =>
+        supabase
+          .from("commercial_configuration_codes")
+          .select("id, configuration_id, code, is_active")
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      fetchAllStatisticsRows<StatisticsStockBalanceRow>((from, to) =>
+        supabase
+          .from("stock_balances")
+          .select("item_id, quantity")
+          .order("item_id", { ascending: true })
+          .range(from, to),
+      ),
+      fetchAllStatisticsRows<StatisticsConfigurationBalanceRow>((from, to) =>
+        supabase
+          .from("configuration_stock_balances")
+          .select("configuration_id, quantity")
+          .order("configuration_id", { ascending: true })
+          .range(from, to),
+      ),
     ]);
 
     const initialError = [
@@ -142,53 +174,68 @@ export async function loadStatisticsData(
     ] = await Promise.all([
       fetchRowsByBatchIds<StatisticsInboundLineRow>(
         batchIds,
-        (client, ids) =>
+        (client, ids, from, to) =>
           client
             .from("inbound_batch_lines")
             .select(
-              "batch_id, item_id, commercial_configuration_code_id, quantity",
+              "id, batch_id, item_id, commercial_configuration_code_id, quantity",
             )
-            .in("batch_id", ids),
+            .in("batch_id", ids)
+            .order("batch_id", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
         supabase,
       ),
       fetchRowsByBatchIds<StatisticsOutboundLineRow>(
         batchIds,
-        (client, ids) =>
+        (client, ids, from, to) =>
           client
             .from("outbound_batch_lines")
             .select(
-              "batch_id, item_id, commercial_configuration_code_id, quantity, assembled_quantity_used, auto_assembled_quantity",
+              "id, batch_id, item_id, commercial_configuration_code_id, quantity, assembled_quantity_used, auto_assembled_quantity",
             )
-            .in("batch_id", ids),
+            .in("batch_id", ids)
+            .order("batch_id", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
         supabase,
       ),
       fetchRowsByBatchIds<StatisticsStockMovementRow>(
         batchIds,
-        (client, ids) =>
+        (client, ids, from, to) =>
           client
             .from("stock_movements")
-            .select("batch_id, item_id")
-            .in("batch_id", ids),
+            .select("id, batch_id, item_id, quantity_change")
+            .in("batch_id", ids)
+            .order("batch_id", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
         supabase,
       ),
       fetchRowsByBatchIds<StatisticsConfigurationMovementRow>(
         batchIds,
-        (client, ids) =>
+        (client, ids, from, to) =>
           client
             .from("configuration_stock_movements")
-            .select("batch_id, configuration_id")
-            .in("batch_id", ids),
+            .select("id, batch_id, configuration_id, quantity_change")
+            .in("batch_id", ids)
+            .order("batch_id", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
         supabase,
       ),
       fetchRowsByBatchIds<StatisticsAssemblyOperationRow>(
         batchIds,
-        (client, ids) =>
+        (client, ids, from, to) =>
           client
             .from("assembly_operations")
             .select(
-              "batch_id, configuration_id, operation_type, quantity, commercial_code_snapshot",
+              "id, batch_id, configuration_id, operation_type, quantity, commercial_code_snapshot",
             )
-            .in("batch_id", ids),
+            .in("batch_id", ids)
+            .order("batch_id", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
         supabase,
       ),
     ]);
