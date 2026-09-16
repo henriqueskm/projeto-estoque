@@ -60,6 +60,7 @@ export function filterVehicleApplications(
   category: VehicleApplicationCategory | "ALL",
 ) {
   const normalizedQuery = normalizeVehicleApplicationSearch(query);
+  const isCommercialCodeQuery = /^\d{1,2}[a-z]{1,3}$/.test(normalizedQuery);
 
   return applications.filter((application) => {
     if (category !== "ALL" && application.category !== category) {
@@ -70,17 +71,22 @@ export function filterVehicleApplications(
       return true;
     }
 
-    const searchableText = [
+    if (isCommercialCodeQuery) {
+      return (
+        normalizeVehicleApplicationSearch(application.sourceKitCode ?? "") ===
+        normalizedQuery
+      );
+    }
+
+    const searchableFields = [
       application.sourceKitCode,
       application.sourceServoLabel,
       application.vehicleModel,
       application.observation,
-    ]
-      .filter(Boolean)
-      .join(" ");
+    ].filter((value): value is string => Boolean(value));
 
-    return normalizeVehicleApplicationSearch(searchableText).includes(
-      normalizedQuery,
+    return searchableFields.some((value) =>
+      normalizeVehicleApplicationSearch(value).includes(normalizedQuery),
     );
   });
 }

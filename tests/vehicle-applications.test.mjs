@@ -174,6 +174,82 @@ test("search tolerates case, accents, spaces and hyphens without changing record
   );
 });
 
+test("commercial-code searches match only the exact source kit code", () => {
+  const exact = application({ id: "7a", sourceKitCode: "7A" });
+  const prefixed = ["7AB", "7AC", "7AF"].map((sourceKitCode) =>
+    application({
+      id: sourceKitCode.toLowerCase(),
+      sourceKitCode,
+      sourceRow: sourceKitCode.charCodeAt(2),
+    }),
+  );
+  const crossedFields = application({
+    id: "crossed-fields",
+    sourceKitCode: "9A",
+    sourceServoLabel: "Servo 2",
+    vehicleModel: "A",
+    observation: null,
+  });
+  const mapPayloadApplication = (row) =>
+    application({
+      id: `${row.source_sheet}:${row.source_row}`,
+      sourceKitCode: row.source_kit_code,
+      sourceServoLabel: row.source_servo_label,
+      vehicleModel: row.vehicle_model,
+      observation: row.observation,
+      sourceSheet: row.source_sheet,
+      sourceRow: row.source_row,
+      sortOrder: row.sort_order,
+    });
+  const fordApplications = payload.applications
+    .filter((row) => row.brand_slug === "ford")
+    .map(mapPayloadApplication);
+  const mercedesApplications = payload.applications
+    .filter((row) => row.brand_slug === "mercedes-benz")
+    .map(mapPayloadApplication);
+
+  for (const query of ["7A", "7 A", "7-A"]) {
+    assert.deepEqual(
+      filterVehicleApplications([exact, ...prefixed], query, "ALL").map(
+        (row) => row.id,
+      ),
+      ["7a"],
+    );
+  }
+
+  assert.ok(
+    ["7AC", "7AF"].every((code) =>
+      fordApplications.some((row) => row.sourceKitCode === code),
+    ),
+  );
+  assert.ok(
+    mercedesApplications.some((row) => row.sourceKitCode === "7AB"),
+  );
+  const mercedesExactResults = filterVehicleApplications(
+    mercedesApplications,
+    "7A",
+    "ALL",
+  );
+  assert.ok(mercedesExactResults.length > 0);
+  assert.ok(
+    mercedesExactResults.every((row) => row.sourceKitCode === "7A"),
+  );
+  assert.deepEqual(
+    filterVehicleApplications(fordApplications, "7A", "ALL").map(
+      (row) => row.id,
+    ),
+    [],
+    "Ford has 7AB/7AC/7AF but no 7A and must return no result",
+  );
+  assert.deepEqual(
+    filterVehicleApplications([crossedFields], "2A", "ALL").map(
+      (row) => row.id,
+    ),
+    [],
+    "a code must not be assembled across searchable fields",
+  );
+});
+
 test("category filters expose only matching records", () => {
   const rows = [
     application({ id: "truck" }),

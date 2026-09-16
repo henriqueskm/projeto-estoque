@@ -70,29 +70,35 @@ function number(sql) {
   return Number(scalar(sql));
 }
 
-function applyMigration() {
-  execFileSync(
-    docker,
-    [
-      "exec",
-      "-i",
-      container,
-      "psql",
-      "-U",
-      "supabase_admin",
-      "-d",
-      database,
-      "-X",
-      "-q",
-      "-v",
-      "ON_ERROR_STOP=1",
-    ],
-    {
-      encoding: "utf8",
-      input: migrationSql,
-      stdio: ["pipe", "pipe", "pipe"],
-    },
-  );
+function applyMigration(sql = migrationSql, { allowFailure = false } = {}) {
+  try {
+    return execFileSync(
+      docker,
+      [
+        "exec",
+        "-i",
+        container,
+        "psql",
+        "-U",
+        "supabase_admin",
+        "-d",
+        database,
+        "-X",
+        "-q",
+        "-v",
+        "ON_ERROR_STOP=1",
+      ],
+      {
+        encoding: "utf8",
+        input: sql,
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    ).trim();
+  } catch (error) {
+    const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}`.trim();
+    if (allowFailure) return output;
+    throw new Error(output, { cause: error });
+  }
 }
 
 function catalogDigest() {
@@ -121,6 +127,20 @@ console.log("ALVO CONFIRMADO: POSTGRESQL LOCAL/DESCARTAVEL ANTES DA MIGRATION NK
 
 const catalogBefore = catalogDigest();
 assert.equal(scalar("select to_regclass('public.vehicle_applications') is null"), "t");
+const tamperedMigration = migrationSql.replace(
+  '"vehicle_model":"608"',
+  '"vehicle_model":"608 TAMPERED"',
+);
+assert.notEqual(tamperedMigration, migrationSql);
+assert.match(
+  applyMigration(tamperedMigration, { allowFailure: true }),
+  /payload digest does not match/i,
+);
+assert.equal(
+  scalar("select to_regclass('public.vehicle_applications') is null"),
+  "t",
+  "a tampered payload must fail before any imported table remains",
+);
 applyMigration();
 assert.equal(catalogDigest(), catalogBefore, "the master catalog must remain unchanged");
 
