@@ -27,14 +27,27 @@ begin
       'SERVO BR-040 INVER SEM KIT'
     or v_test_item.item_type is distinct from 'LOOSE_PART'
     or v_test_item.minimum_stock is distinct from 0
-    or v_test_item.is_active is distinct from true
-    or v_test_item.created_by is distinct from v_expected_created_by
+    or v_test_item.is_active is distinct from true then
+    raise exception using
+      errcode = '23514',
+      message = format(
+        'Refusing to prepare catalog test item %s because its exact commercial identity changed.',
+        v_test_item_id
+      );
+  end if;
+
+  if v_test_item.created_by is null
+    and v_test_item.created_by_name_snapshot is null then
+    return;
+  end if;
+
+  if v_test_item.created_by is distinct from v_expected_created_by
     or v_test_item.created_by_name_snapshot is distinct from
       'Henrique Klein' then
     raise exception using
       errcode = '23514',
       message = format(
-        'Refusing to remove catalog test item %s because its exact identity or audit fields changed.',
+        'Refusing to remove catalog test item %s because its exact audit signature changed.',
         v_test_item_id
       );
   end if;
