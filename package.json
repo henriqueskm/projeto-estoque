@@ -60,7 +60,9 @@
     "test:catalog-only-loose-part-creation:local": "node tests/catalog-only-loose-part-creation.local.mjs",
     "test:catalog-only-loose-part-creation:cli-local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/catalog-only-loose-part-creation.cli.local.ps1",
     "test:deployment-reset": "node --test tests/deployment-operational-reset.test.mjs",
-    "test:deployment-reset:local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/deployment-operational-reset.cli.local.ps1"
+    "test:deployment-reset:local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/deployment-operational-reset.cli.local.ps1",
+    "test:vehicle-applications": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/vehicle-applications.test.mjs",
+    "test:vehicle-applications:local": "node tests/vehicle-applications-migration.local.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",

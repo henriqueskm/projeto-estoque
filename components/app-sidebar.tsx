@@ -14,6 +14,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { PushAwareLogoutForm } from "@/components/push-aware-logout-form";
 import { SafisaPickupAlertBell } from "@/components/safisa-pickup-alerts";
 import {
+  ApplicationsIcon,
   AssistantIcon,
   ChevronDownIcon,
   ClockIcon,
@@ -150,6 +151,15 @@ function NavigationContent({
             onNavigate={onNavigate}
           >
             <StockIcon className="size-5" />
+          </NavigationLink>
+
+          <NavigationLink
+            href="/aplicacoes"
+            label="Aplicações"
+            pathname={pathname}
+            onNavigate={onNavigate}
+          >
+            <ApplicationsIcon className="size-5" />
           </NavigationLink>
 
           <div>
