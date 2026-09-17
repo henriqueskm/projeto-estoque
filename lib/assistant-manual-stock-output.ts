@@ -29,6 +29,7 @@ import {
   loadManualStockOutputTargetsByIds,
   resolveManualStockOutputTargets,
 } from "@/lib/assistant-stock-output-data";
+import { loadConfigurationDisassemblyTargetsByServoId } from "@/lib/assistant-configuration-disassembly-data";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeServoModel } from "@/lib/servo-model-search";
 import {
@@ -40,6 +41,10 @@ import {
   type OutboundPreviewInputLine,
 } from "@/lib/outbound-preview";
 import type { OutboundCatalogOption } from "@/lib/outbound-types";
+import {
+  planConfigurationOutputSuggestion,
+  planLooseServoOutputSuggestion,
+} from "@/lib/ai/manual-stock-output-suggestions.mjs";
 
 export { ASSISTANT_MANUAL_STOCK_OUTPUT_DESCRIPTION };
 
@@ -94,15 +99,136 @@ function createTargetClarification(quantity: number, targets: AssistantStockOutp
   return { message: block.fallbackText, structuredBlock: block };
 }
 
-function createPreviewForTarget(
+function createConfigurationAssemblySuggestion(
+  target: AssistantStockOutputTarget,
+  quantity: number,
+): AssistantChatSuccess {
+  const suggestion = planConfigurationOutputSuggestion(target, quantity);
+  if (
+    target.kind !== "COMMERCIAL_CODE" ||
+    !target.servo ||
+    !target.installationKit ||
+    suggestion.kind !== "ASSEMBLY_REQUIRED"
+  ) {
+    return answer(errorBlock(
+      "Estoque insuficiente",
+      `O máximo possível agora é ${suggestion.maximumPossible} unidade${suggestion.maximumPossible === 1 ? "" : "s"}. Nenhuma saída ou montagem foi executada.`,
+    ));
+  }
+  const assemblyQuantity = suggestion.assemblyQuantity ?? 0;
+  if (!Number.isSafeInteger(assemblyQuantity) || assemblyQuantity < 1) {
+    return answer(errorBlock(
+      "Estoque insuficiente",
+      "Não foi possível calcular uma montagem segura. Nenhuma operação foi executada.",
+    ));
+  }
+
+  const block: AssistantClarificationBlock = {
+    kind: "assistant_clarification",
+    title: "Montagem necessária antes da saída",
+    message: `Há ${target.currentStock} montada${target.currentStock === 1 ? "" : "s"}. Monte ${assemblyQuantity} e, depois da confirmação, solicite uma nova saída para revalidar os saldos.`,
+    options: [
+      {
+        id: "output-assemble-required",
+        label: `Montar ${assemblyQuantity} · Cód. ${target.aliases.join(" / ") || target.displayCode}`.slice(0, 60),
+        prompt: `Preparar montagem de ${assemblyQuantity} unidade${assemblyQuantity === 1 ? "" : "s"} do Cód. ${target.displayCode}.`,
+        description: `Servo ${target.servo.code}: ${target.servo.currentStock} avulso(s) · Kit ${target.installationKit.code}: ${target.installationKit.currentStock} avulso(s).`.slice(0, 180),
+        category: "inventory",
+        configurationAssemblySelection: {
+          action: "configuration_assembly_target",
+          commercialCodeId: target.targetId,
+          quantity: assemblyQuantity,
+        },
+      },
+      { id: "output-cancel", label: "Cancelar", prompt: "Cancelar esta saída.", category: "inventory" },
+    ],
+    fallbackText: `A saída não foi preparada. Confirme primeiro a montagem de ${assemblyQuantity}; depois solicite a saída novamente.`,
+  };
+  return { message: block.fallbackText, structuredBlock: block };
+}
+
+async function createLooseServoDisassemblySuggestion(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  target: AssistantStockOutputTarget,
+  quantity: number,
+): Promise<AssistantChatSuccess> {
+  const shortage = Math.max(0, quantity - target.currentStock);
+  const loaded = await loadConfigurationDisassemblyTargetsByServoId(
+    supabase,
+    target.targetId,
+  );
+  if (loaded.failed) {
+    return answer(errorBlock(
+      "Consulta indisponível",
+      "Não foi possível conferir as configurações montadas agora. Nenhuma saída ou desmontagem foi executada.",
+    ));
+  }
+
+  const mountedTargets = loaded.targets
+    .filter((candidate) => candidate.currentStock > 0)
+    .sort((first, second) =>
+      second.currentStock - first.currentStock ||
+      first.displayCode.localeCompare(second.displayCode, "pt-BR", { numeric: true }),
+    );
+  const suggestion = planLooseServoOutputSuggestion(
+    target.currentStock,
+    quantity,
+    mountedTargets,
+  );
+  if (suggestion.kind === "INSUFFICIENT") {
+    return answer(errorBlock(
+      "Estoque insuficiente",
+      `Há ${target.currentStock} Servo${target.currentStock === 1 ? "" : "s"} sem kit e ${suggestion.recoverableMounted} montado${suggestion.recoverableMounted === 1 ? "" : "s"}. O máximo possível é ${suggestion.maximumPossible}. Nenhuma saída ou desmontagem foi executada.`,
+    ));
+  }
+  if (suggestion.kind !== "DISASSEMBLY_OPTIONS") {
+    return answer(errorBlock(
+      "Desmontagens múltiplas necessárias",
+      `Faltam ${shortage} Servo${shortage === 1 ? "" : "s"} sem kit, mas o saldo recuperável está dividido entre várias configurações. Para preservar o lote inteiro, faça as desmontagens explicitamente e solicite a saída novamente. Nenhuma operação foi executada.`,
+    ));
+  }
+
+  const visibleTargets = suggestion.options.slice(0, 5) as typeof mountedTargets;
+  const block: AssistantClarificationBlock = {
+    kind: "assistant_clarification",
+    title: "Escolha de qual configuração desmontar",
+    message: `Faltam ${shortage} Servo${shortage === 1 ? "" : "s"} sem kit. A desmontagem é uma ação separada; depois de confirmá-la, solicite uma nova saída.`,
+    options: [
+      ...visibleTargets.map((candidate, index) => ({
+        id: `output-disassemble-${index + 1}`,
+        label: `Desmontar ${shortage} · Cód. ${candidate.aliases.join(" / ") || candidate.displayCode}`.slice(0, 60),
+        prompt: `Preparar desmontagem de ${shortage} unidade${shortage === 1 ? "" : "s"} do Cód. ${candidate.displayCode}.`,
+        description: `Servo ${candidate.servo.code} · Kit ${candidate.installationKit.code} · Montado ${candidate.currentStock} · Necessário ${shortage}.`.slice(0, 180),
+        category: "inventory" as const,
+        configurationDisassemblySelection: {
+          action: "configuration_disassembly_target" as const,
+          commercialCodeId: candidate.commercialCodeId,
+          quantity: shortage,
+        },
+      })),
+      { id: "output-cancel", label: "Cancelar", prompt: "Cancelar esta saída.", category: "inventory" as const },
+    ],
+    fallbackText: "Escolha uma configuração para gerar a prévia de desmontagem. Nenhuma saída foi preparada.",
+  };
+  return { message: block.fallbackText, structuredBlock: block };
+}
+
+async function createPreviewForTarget(
+  supabase: Awaited<ReturnType<typeof createClient>>,
   target: AssistantStockOutputTarget,
   quantity: number,
   context: { userId: string; profileName: string | null },
-): AssistantChatSuccess {
+): Promise<AssistantChatSuccess> {
   const projection = calculateManualStockOutputProjection(target.currentStock, target.availableStock, quantity);
   if (!projection.sufficient) {
+    if (target.kind === "ITEM" && target.typeLabel === "Servo sem kit") {
+      return createLooseServoDisassemblySuggestion(supabase, target, quantity);
+    }
     return answer(errorBlock("Estoque insuficiente",
       `O Cód. ${target.displayCode} possui ${target.availableStock} unidade${target.availableStock === 1 ? "" : "s"} disponível${target.availableStock === 1 ? "" : "eis"}. Nenhuma saída foi executada.`));
+  }
+  if (projection.autoAssembledQuantity > 0) {
+    return createConfigurationAssemblySuggestion(target, quantity);
   }
   const signed = createManualStockOutputProposalToken({ userId: context.userId,
     lines: [{ kind: target.kind, targetId: target.targetId, quantity }], idempotencyKey: randomUUID() },
@@ -342,6 +468,12 @@ async function createManualStockOutputBatchPreview(
       `${batchProjection.errors[0] ?? "O estoque não atende a lista informada."} A lista inteira foi bloqueada e nenhuma saída foi executada.`,
     ));
   }
+  if (batchProjection.autoAssembledQuantity > 0) {
+    return answer(errorBlock(
+      "Montagem necessária",
+      "A lista depende de montagem. Para preservar o lote inteiro, confirme as montagens separadamente e solicite uma nova saída. Nenhuma operação foi executada.",
+    ));
+  }
   const itemProjectionById = new Map(batchProjection.itemLines.map((line) => [line.option.id, line]));
   const commercialProjectionById = new Map(
     batchProjection.commercialLines.map((line) => [line.option.commercialCodeId, line]),
@@ -446,7 +578,7 @@ export async function createAssistantManualStockOutputPreview(
   if (resolved.targets.length > 1) return request.requestedIdentity === null
     ? createManualStockOutputAmbiguity(request.quantity, request.targetQuery)
     : createTargetClarification(request.quantity, resolved.targets);
-  return createPreviewForTarget(resolved.targets[0], request.quantity, context);
+  return createPreviewForTarget(supabase, resolved.targets[0], request.quantity, context);
 }
 
 export async function createAssistantManualStockOutputPreviewFromSelection(
@@ -466,7 +598,7 @@ export async function createAssistantManualStockOutputPreviewFromSelection(
   const target = resolved.targets.get(`${selection.targetKind}:${selection.targetId}`);
   if (resolved.failed || !target) return answer(errorBlock("Alvo indisponível",
     "O item ou código comercial não está mais ativo. Gere uma nova prévia."));
-  return createPreviewForTarget(target, selection.quantity, context);
+  return createPreviewForTarget(supabase, target, selection.quantity, context);
 }
 
 type RpcReceipt = { movement_batch_id?: unknown; lines_processed?: unknown; total_quantity?: unknown; auto_assembled_quantity?: unknown };
@@ -490,16 +622,6 @@ export async function confirmAssistantManualStockOutput(proposalToken: string): 
       expired ? "expired" : "error"), contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
   }
   const payload = verified.payload;
-  const before = await loadManualStockOutputTargetsByIds(supabase, payload.lines);
-  const targets = payload.lines.map((line) => before.targets.get(`${line.kind}:${line.targetId}`));
-  if (before.failed || targets.some((target) => !target)) return { block: errorBlock("Alvo indisponível",
-    "Um item ou código comercial não está mais ativo. Gere uma nova prévia."), contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
-  const currentProjection = buildManualStockOutputBatchProjection(
-    payload.lines.map((line, index) => ({ target: targets[index]!, quantity: line.quantity })),
-  );
-  if (!currentProjection || !currentProjection.isValid) {
-    return { block: errorBlock("Estoque insuficiente", "O saldo mudou e não atende mais à saída. Gere uma nova prévia."), contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
-  }
   const existingBatch = await supabase.from("movement_batches").select("id")
     .eq("user_id", userId).eq("idempotency_key", payload.idempotencyKey).maybeSingle();
   const { data, error } = await supabase.rpc("stock_outbound_items", {
@@ -508,13 +630,16 @@ export async function confirmAssistantManualStockOutput(proposalToken: string): 
       : { kind: "COMMERCIAL_CODE", commercial_code_id: line.targetId, quantity: line.quantity }),
     p_idempotency_key: payload.idempotencyKey,
     p_description: ASSISTANT_MANUAL_STOCK_OUTPUT_DESCRIPTION,
+    p_allow_auto_assembly: false,
   });
   if (error) {
     const message = error.message.toLowerCase();
     const safeMessage = message.includes("idempotency") || message.includes("different")
       ? "Esta chave já foi usada com dados diferentes. Gere uma nova prévia."
-      : message.includes("insufficient") || message.includes("saldo") || message.includes("stock")
-        ? "O saldo disponível mudou. Gere uma nova prévia."
+      : message.includes("automatic assembly") || message.includes("montagem")
+        ? "A saída agora exige uma montagem separada. Gere uma nova prévia."
+        : message.includes("insufficient") || message.includes("saldo") || message.includes("stock")
+          ? "O saldo disponível mudou. Gere uma nova prévia."
         : message.includes("inactive") || message.includes("does not exist")
           ? "O item ou código comercial não está mais disponível. Gere uma nova prévia."
           : "Não foi possível registrar a saída manual agora.";
@@ -541,6 +666,9 @@ export async function confirmAssistantManualStockOutput(proposalToken: string): 
     return { block, contextSupplierOrderId: null, contextSupplierOrderCatalogCode: null };
   }
   try {
+    const before = await loadManualStockOutputTargetsByIds(supabase, payload.lines);
+    const targets = payload.lines.map((line) => before.targets.get(`${line.kind}:${line.targetId}`));
+    if (before.failed || targets.some((target) => !target)) throw new Error("refresh_target_failed");
     const [stockMovementsResult, configurationMovementsResult] = await Promise.all([
       supabase.from("stock_movements").select("item_id, quantity_change, quantity_before, quantity_after, created_at").eq("batch_id", batchId),
       supabase.from("configuration_stock_movements").select("configuration_id, quantity_change, quantity_before, quantity_after, created_at").eq("batch_id", batchId),

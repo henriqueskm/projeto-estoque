@@ -299,6 +299,7 @@ function sanitizeStructuredBlock(
       return { block, mediaReferences: [] };
     case "purchase_recommendation_list":
     case "assistant_statistics":
+    case "assistant_attention_orders":
     case "supplier_order_aggregate":
     case "supplier_order_ambiguity":
       return { block, mediaReferences: [] };

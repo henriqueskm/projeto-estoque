@@ -91,6 +91,34 @@ function answerWithSemanticFake(message, semanticResult, dependencies = {}, cont
   );
 }
 
+function servoInventoryBlock(model = "MBF-015") {
+  return {
+    kind: "servo_model_inventory_breakdown",
+    scope: "FULL_MODEL",
+    model: { official: model, normalized: model.replace(/[^A-Z0-9]/g, "") },
+    bareServo: null,
+    looseQuantity: 4,
+    mountedQuantity: 6,
+    totalQuantity: 10,
+    configurations: [],
+    totalConfigurations: 0,
+    remainingConfigurations: 0,
+    inventoryHref: "/estoque",
+    fallbackText: `${model}: 4 sem kit + 6 montados = 10 no total.`,
+  };
+}
+
+function inventorySummaryBlock(code, status = "FOUND") {
+  return {
+    kind: "inventory_item_summary",
+    status,
+    metric: "STOCK",
+    title: status === "FOUND" ? `Cód. ${code}` : "Item não encontrado",
+    results: status === "FOUND" ? [{ displayCode: code }] : [],
+    fallbackText: status === "FOUND" ? `Cód. ${code}: estoque consultado.` : "Não encontrei esse item.",
+  };
+}
+
 test("HELP diferencia explicação de pedido operacional e não produz linhas de ação", async () => {
   const cases = [
     ["como faço para dar saída aqui pelo chat?", "MANUAL_STOCK_OUTPUT"],
@@ -480,6 +508,100 @@ test("QUERY seleciona apenas consultas oficiais existentes", async () => {
     const { outcome } = await classifyWithFake(message, { intent: "QUERY", query });
     assert.equal(outcome.status, "ROUTED", message);
     assert.deepEqual(outcome.result, { intent: "QUERY", query }, message);
+  }
+});
+
+test("consulta por modelo prioriza código físico exato e mostra avulso, montado e total", async () => {
+  for (const model of ["MBF-015", "MBF-025", "VF-040", "BR-040"]) {
+    for (const semanticStatus of ["ROUTED", "FALLBACK"]) {
+      const calls = [];
+      const dependencies = {
+        semanticRouter: async () => semanticStatus === "ROUTED"
+          ? {
+              status: "ROUTED",
+              result: { intent: "QUERY", query: { kind: "INVENTORY_ITEM", targetQuery: model, metric: "STOCK" } },
+              model: "semantic-fake",
+            }
+          : { status: "FALLBACK", reason: "TIMEOUT" },
+        itemLookupReader: async (query) => {
+          calls.push(["lookup", query]);
+          return { exact_code_match: false };
+        },
+        servoModelInventoryReader: async (query) => {
+          calls.push(["model", query]);
+          return servoInventoryBlock(model);
+        },
+        inventorySummaryReader: async () => {
+          throw new Error("modelo não deve cair no resumo de item");
+        },
+      };
+      const answer = await answerAssistantQuestion(
+        `quantos ${model} tem?`,
+        null, null, null, "Henrique", "test-user", "Henrique Klein",
+        null, null, null, null, null, null, [], emptyContext, dependencies,
+      );
+      assert.equal(answer.message, `Você tem 10 ${model} no total.`, `${model} ${semanticStatus}`);
+      assert.equal(answer.structuredBlock?.looseQuantity, 4, `${model} ${semanticStatus}`);
+      assert.equal(answer.structuredBlock?.mountedQuantity, 6, `${model} ${semanticStatus}`);
+      assert.equal(answer.structuredBlock?.totalQuantity, 10, `${model} ${semanticStatus}`);
+      assert.deepEqual(calls, [["lookup", model], ["model", model]], `${model} ${semanticStatus}`);
+    }
+  }
+});
+
+test("código físico e alias exatos vencem modelo; inexistente permanece NOT_FOUND", async () => {
+  for (const code of ["091", "KT-18", "1B", "2A"]) {
+    let modelCalls = 0;
+    const answer = await answerWithSemanticFake(
+      `quantos ${code} tem?`,
+      { intent: "QUERY", query: { kind: "INVENTORY_ITEM", targetQuery: code, metric: "STOCK" } },
+      {
+        itemLookupReader: async () => ({ exact_code_match: true }),
+        inventorySummaryReader: async () => inventorySummaryBlock(code),
+        servoModelInventoryReader: async () => { modelCalls += 1; return servoInventoryBlock(); },
+      },
+    );
+    assert.equal(answer.structuredBlock?.kind, "inventory_item_summary", code);
+    assert.equal(answer.structuredBlock?.results[0].displayCode, code, code);
+    assert.equal(modelCalls, 0, code);
+  }
+
+  const missing = await answerWithSemanticFake(
+    "quantos ZZZ-999 tem?",
+    { intent: "QUERY", query: { kind: "INVENTORY_ITEM", targetQuery: "ZZZ-999", metric: "STOCK" } },
+    {
+      itemLookupReader: async () => ({ exact_code_match: false }),
+      servoModelInventoryReader: async () => null,
+      inventorySummaryReader: async () => inventorySummaryBlock("ZZZ-999", "NOT_FOUND"),
+    },
+  );
+  assert.equal(missing.structuredBlock?.status, "NOT_FOUND");
+});
+
+test("consulta preserva qualificador completo da variante do modelo", async () => {
+  for (const semanticStatus of ["ROUTED", "FALLBACK"]) {
+    const queries = [];
+    const dependencies = {
+      semanticRouter: async () => semanticStatus === "ROUTED"
+        ? {
+            status: "ROUTED",
+            result: { intent: "QUERY", query: { kind: "INVENTORY_ITEM", targetQuery: "MBF-015 Deslocado", metric: "STOCK" } },
+            model: "semantic-fake",
+          }
+        : { status: "FALLBACK", reason: "TIMEOUT" },
+      itemLookupReader: async () => ({ exact_code_match: false }),
+      servoModelInventoryReader: async (query) => {
+        queries.push(query);
+        return servoInventoryBlock("MBF-015 Deslocado");
+      },
+    };
+    const answer = await answerAssistantQuestion(
+      "quantos MBF-015 Deslocado tem?",
+      null, null, null, "Henrique", "test-user", "Henrique Klein",
+      null, null, null, null, null, null, [], emptyContext, dependencies,
+    );
+    assert.deepEqual(queries, ["MBF-015 Deslocado"], semanticStatus);
+    assert.equal(answer.structuredBlock?.model.official, "MBF-015 Deslocado", semanticStatus);
   }
 });
 

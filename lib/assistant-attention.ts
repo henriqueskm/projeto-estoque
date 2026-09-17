@@ -1,5 +1,16 @@
 export const assistantAttentionMaxItems = 5;
 export const assistantAttentionDetailLineLimit = 5;
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function buildAssistantSupplierOrderHref(
+  supplierOrderId: string,
+  view: "active" | "history",
+) {
+  if (!uuidPattern.test(supplierOrderId)) return null;
+  const params = new URLSearchParams({ view, order: supplierOrderId.toLowerCase() });
+  return `/pedidos?${params.toString()}`;
+}
 
 export type AssistantAttentionSeverity =
   | "CRITICAL"
@@ -66,8 +77,10 @@ export type AssistantAttentionItem =
         readyQuantity: number;
       };
       detail: AssistantAttentionDetail<{
+        supplierOrderId: string;
         negotiationNumber: string;
         quantity: number;
+        href: string;
       }>;
     })
   | (AssistantAttentionBaseItem & {
@@ -76,8 +89,10 @@ export type AssistantAttentionItem =
         waitingStockQuantity: number;
       };
       detail: AssistantAttentionDetail<{
+        supplierOrderId: string;
         negotiationNumber: string;
         quantity: number;
+        href: string;
       }>;
     });
 
@@ -206,7 +221,9 @@ function buildReadyPickupItem(
   snapshots: AssistantAttentionReadyPickupSnapshot[],
 ): AssistantAttentionItem | null {
   const orders = uniqueByOrderId(snapshots).filter(
-    (order) => safeQuantity(order.readyWaitingPickupQuantity) > 0,
+    (order) =>
+      safeQuantity(order.readyWaitingPickupQuantity) > 0 &&
+      Boolean(buildAssistantSupplierOrderHref(order.supplierOrderId, "active")),
   );
 
   if (orders.length === 0) return null;
@@ -225,8 +242,10 @@ function buildReadyPickupItem(
     metadata: { readyQuantity },
     detail: limitDetailLines(
       orders.map((order) => ({
+        supplierOrderId: order.supplierOrderId.toLowerCase(),
         negotiationNumber: order.negotiationNumber,
         quantity: safeQuantity(order.readyWaitingPickupQuantity),
+        href: buildAssistantSupplierOrderHref(order.supplierOrderId, "active")!,
       })),
     ),
   };
@@ -236,7 +255,10 @@ function buildPendingStockItem(
   snapshots: AssistantAttentionPendingStockSnapshot[],
 ): AssistantAttentionItem | null {
   const orders = uniqueByOrderId(snapshots)
-    .filter((order) => safeQuantity(order.waitingStockQuantity) > 0)
+    .filter((order) =>
+      safeQuantity(order.waitingStockQuantity) > 0 &&
+      Boolean(buildAssistantSupplierOrderHref(order.supplierOrderId, "active")),
+    )
     .sort(
       (first, second) =>
         safeQuantity(second.waitingStockQuantity) -
@@ -262,8 +284,10 @@ function buildPendingStockItem(
     metadata: { waitingStockQuantity },
     detail: limitDetailLines(
       orders.map((order) => ({
+        supplierOrderId: order.supplierOrderId.toLowerCase(),
         negotiationNumber: order.negotiationNumber,
         quantity: safeQuantity(order.waitingStockQuantity),
+        href: buildAssistantSupplierOrderHref(order.supplierOrderId, "active")!,
       })),
     ),
   };
