@@ -33,6 +33,8 @@ export type AssistantAttentionReadyPickupSnapshot = {
   supplierOrderId: string;
   negotiationNumber: string;
   readyWaitingPickupQuantity: number;
+  isActiveOrder: boolean;
+  isInHistory: boolean;
 };
 
 export type AssistantAttentionPendingStockSnapshot = {
@@ -222,6 +224,8 @@ function buildReadyPickupItem(
 ): AssistantAttentionItem | null {
   const orders = uniqueByOrderId(snapshots).filter(
     (order) =>
+      order.isActiveOrder === true &&
+      order.isInHistory === false &&
       safeQuantity(order.readyWaitingPickupQuantity) > 0 &&
       Boolean(buildAssistantSupplierOrderHref(order.supplierOrderId, "active")),
   );

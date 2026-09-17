@@ -181,9 +181,31 @@ const originalBalances = testFootprint(target.configuration_id, target.servo_id,
 applyMigration();
 assert.equal(scalar("select to_regprocedure('public.stock_outbound_items(jsonb,uuid,text,boolean)') is not null"), "t");
 assert.equal(scalar("select has_function_privilege('authenticated', 'public.stock_outbound_items(jsonb,uuid,text,boolean)', 'execute')"), "t");
+assert.equal(scalar("select has_function_privilege('authenticated', 'public.stock_outbound_items(jsonb,uuid,text)', 'execute')"), "t");
 assert.equal(scalar("select has_function_privilege('anon', 'public.stock_outbound_items(jsonb,uuid,text,boolean)', 'execute')"), "f");
-assert.equal(scalar("select has_function_privilege('service_role', 'public.stock_outbound_items(jsonb,uuid,text,boolean)', 'execute')"), "f");
-assert.equal(scalar("select has_function_privilege('service_role', 'public.stock_outbound_items(jsonb,uuid,text)', 'execute')"), "f");
+assert.equal(scalar("select has_function_privilege('anon', 'public.stock_outbound_items(jsonb,uuid,text)', 'execute')"), "f");
+assert.equal(scalar("select has_function_privilege('service_role', 'public.stock_outbound_items(jsonb,uuid,text,boolean)', 'execute')"), "t");
+assert.equal(scalar("select has_function_privilege('service_role', 'public.stock_outbound_items(jsonb,uuid,text)', 'execute')"), "t");
+assert.equal(scalar(`
+  select not exists (
+    select 1
+    from aclexplode(coalesce(
+      (select proacl from pg_proc where oid = 'public.stock_outbound_items(jsonb,uuid,text,boolean)'::regprocedure),
+      acldefault('f', 0)
+    ))
+    where grantee = 0 and privilege_type = 'EXECUTE'
+  )
+`), "t");
+assert.equal(scalar(`
+  select not exists (
+    select 1
+    from aclexplode(coalesce(
+      (select proacl from pg_proc where oid = 'public.stock_outbound_items(jsonb,uuid,text)'::regprocedure),
+      acldefault('f', 0)
+    ))
+    where grantee = 0 and privilege_type = 'EXECUTE'
+  )
+`), "t");
 
 psql(`
   insert into auth.users (id, aud, role, created_at, updated_at)

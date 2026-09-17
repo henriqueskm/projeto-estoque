@@ -161,10 +161,20 @@ test("saída em lote consolida alvos repetidos sem misturar identidades", () => 
 
 test("saída em lote bloqueia antes da única RPC e preserva revalidação", () => {
   const source = readFileSync(new URL("../lib/assistant-manual-stock-output.ts", import.meta.url), "utf8");
+  const suggestionSection = source.slice(
+    source.indexOf("async function createOutputBatchPreparationSuggestion"),
+    source.indexOf("function createOutputBatchIdentityClarification"),
+  );
   assert.equal((source.match(/\.rpc\("stock_outbound_items"/g) ?? []).length, 1);
   assert.match(source, /p_allow_auto_assembly:\s*false/);
   assert.match(source, /A lista inteira foi bloqueada e nenhuma saída foi executada/);
   assert.match(source, /buildOutboundPreview/);
+  assert.match(suggestionSection, /configurationAssemblySelection/);
+  assert.match(suggestionSection, /configurationDisassemblySelection/);
+  assert.match(suggestionSection, /seenConfigurationIds/);
+  assert.match(suggestionSection, /componentsUsedByCommercialLines/);
+  assert.match(suggestionSection, /solicite a saída inteira novamente/);
+  assert.doesNotMatch(suggestionSection, /\.rpc\(|createManualStockOutputProposalToken/);
 });
 
 test("planejamento em lote bloqueia disputa conjunta pelos mesmos componentes", () => {
@@ -271,7 +281,10 @@ test("sugestões de saída são somente leitura e nunca escolhem montagem ou des
       shortage: 3,
       recoverableMounted: 7,
       maximumPossible: 8,
-      options: configurations,
+      options: configurations.map((configuration) => ({
+        ...configuration,
+        suggestedQuantity: 3,
+      })),
     },
   );
   assert.deepEqual(
@@ -284,7 +297,32 @@ test("sugestões de saída são somente leitura e nunca escolhem montagem ou des
       shortage: 5,
       recoverableMounted: 5,
       maximumPossible: 5,
+      options: [
+        { commercialCodeId: "code-a", currentStock: 2, suggestedQuantity: 2 },
+        { commercialCodeId: "code-b", currentStock: 3, suggestedQuantity: 3 },
+      ],
     },
+  );
+  const splitSuggestion = planLooseServoOutputSuggestion(0, 5, [
+    { configurationId: "configuration-a", commercialCodeId: "code-a", currentStock: 2 },
+    { configurationId: "configuration-b", commercialCodeId: "code-b", currentStock: 3 },
+  ]);
+  assert.deepEqual(
+    splitSuggestion.options.map(({ configurationId, suggestedQuantity }) => ({
+      configurationId,
+      suggestedQuantity,
+    })),
+    [
+      { configurationId: "configuration-a", suggestedQuantity: 2 },
+      { configurationId: "configuration-b", suggestedQuantity: 3 },
+    ],
+  );
+  assert.equal(
+    splitSuggestion.options.reduce(
+      (total, option) => total + option.suggestedQuantity,
+      0,
+    ),
+    splitSuggestion.shortage,
   );
   assert.deepEqual(
     planLooseServoOutputSuggestion(1, 10, configurations),
@@ -323,8 +361,8 @@ test("migration pública mantém um writer canônico e políticas de montagem ex
   assert.equal((migration.match(/private\.stock_outbound_items\(/g) ?? []).length, 2);
   assert.doesNotMatch(migration, /insert into public\.(?:movement_batches|outbound_batch_lines|stock_movements|assembly_operations)/i);
   assert.match(migration, /revoke all on function public\.stock_outbound_items\(jsonb, uuid, text, boolean\)[\s\S]*from public, anon, authenticated/);
-  assert.match(migration, /grant execute on function public\.stock_outbound_items\(jsonb, uuid, text, boolean\)\s*to authenticated/);
-  assert.doesNotMatch(migration, /to authenticated, service_role/);
+  assert.match(migration, /grant execute on function public\.stock_outbound_items\(jsonb, uuid, text, boolean\)\s*to authenticated, service_role/);
+  assert.match(migration, /grant execute on function public\.stock_outbound_items\(jsonb, uuid, text\)\s*to authenticated, service_role/);
 });
 
 test("qualificadores com e sem kit restringem a identidade", () => {

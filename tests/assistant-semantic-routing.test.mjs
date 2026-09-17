@@ -578,6 +578,39 @@ test("código físico e alias exatos vencem modelo; inexistente permanece NOT_FO
   assert.equal(missing.structuredBlock?.status, "NOT_FOUND");
 });
 
+test("fallback semântico mantém código ou alias exato acima do leitor de modelo", async () => {
+  for (const code of ["KT-18", "MBF-015"]) {
+    const calls = [];
+    const answer = await answerAssistantQuestion(
+      `quantos ${code} tem?`,
+      null, null, null, "Henrique", "test-user", "Henrique Klein",
+      null, null, null, null, null, null, [], emptyContext,
+      {
+        semanticRouter: async () => ({ status: "FALLBACK", reason: "TIMEOUT" }),
+        itemLookupReader: async (query) => {
+          calls.push(["lookup", query]);
+          return { exact_code_match: true };
+        },
+        inventorySummaryReader: async (query, metric) => {
+          calls.push(["summary", query, metric]);
+          return inventorySummaryBlock(code);
+        },
+        servoModelInventoryReader: async () => {
+          calls.push(["model"]);
+          return servoInventoryBlock(code);
+        },
+      },
+    );
+
+    assert.equal(answer.structuredBlock?.kind, "inventory_item_summary", code);
+    assert.equal(answer.structuredBlock?.results[0].displayCode, code, code);
+    assert.deepEqual(calls, [
+      ["lookup", code],
+      ["summary", code, "STOCK"],
+    ], code);
+  }
+});
+
 test("consulta preserva qualificador completo da variante do modelo", async () => {
   for (const semanticStatus of ["ROUTED", "FALLBACK"]) {
     const queries = [];

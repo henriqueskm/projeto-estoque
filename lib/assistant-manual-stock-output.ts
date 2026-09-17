@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type {
   AssistantChatSuccess,
   AssistantClarificationBlock,
+  AssistantClarificationOption,
   AssistantManualStockOutputConfirmationResult,
   AssistantManualStockOutputPreviewBlock,
   AssistantManualStockOutputResultBlock,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/ai/manual-stock-list-routing.mjs";
 import {
   buildOutboundPreview,
+  type OutboundPreview,
   type OutboundPreviewInputLine,
 } from "@/lib/outbound-preview";
 import type { OutboundCatalogOption } from "@/lib/outbound-types";
@@ -181,34 +183,37 @@ async function createLooseServoDisassemblySuggestion(
       `Há ${target.currentStock} Servo${target.currentStock === 1 ? "" : "s"} sem kit e ${suggestion.recoverableMounted} montado${suggestion.recoverableMounted === 1 ? "" : "s"}. O máximo possível é ${suggestion.maximumPossible}. Nenhuma saída ou desmontagem foi executada.`,
     ));
   }
-  if (suggestion.kind !== "DISASSEMBLY_OPTIONS") {
-    return answer(errorBlock(
-      "Desmontagens múltiplas necessárias",
-      `Faltam ${shortage} Servo${shortage === 1 ? "" : "s"} sem kit, mas o saldo recuperável está dividido entre várias configurações. Para preservar o lote inteiro, faça as desmontagens explicitamente e solicite a saída novamente. Nenhuma operação foi executada.`,
-    ));
-  }
-
-  const visibleTargets = suggestion.options.slice(0, 5) as typeof mountedTargets;
+  const visibleTargets = suggestion.options.slice(0, 5) as Array<
+    (typeof mountedTargets)[number] & { suggestedQuantity: number }
+  >;
+  const requiresMultiple = suggestion.kind === "MULTIPLE_DISASSEMBLIES_REQUIRED";
   const block: AssistantClarificationBlock = {
     kind: "assistant_clarification",
-    title: "Escolha de qual configuração desmontar",
-    message: `Faltam ${shortage} Servo${shortage === 1 ? "" : "s"} sem kit. A desmontagem é uma ação separada; depois de confirmá-la, solicite uma nova saída.`,
+    title: requiresMultiple
+      ? "Desmontagens separadas necessárias"
+      : "Escolha de qual configuração desmontar",
+    message: requiresMultiple
+      ? `Faltam ${shortage} Servo${shortage === 1 ? "" : "s"} sem kit e o saldo está dividido. Cada opção prepara somente uma desmontagem; confirme uma por vez e solicite a saída novamente para revalidar o lote.`
+      : `Faltam ${shortage} Servo${shortage === 1 ? "" : "s"} sem kit. A desmontagem é uma ação separada; depois de confirmá-la, solicite uma nova saída.`,
     options: [
-      ...visibleTargets.map((candidate, index) => ({
-        id: `output-disassemble-${index + 1}`,
-        label: `Desmontar ${shortage} · Cód. ${candidate.aliases.join(" / ") || candidate.displayCode}`.slice(0, 60),
-        prompt: `Preparar desmontagem de ${shortage} unidade${shortage === 1 ? "" : "s"} do Cód. ${candidate.displayCode}.`,
-        description: `Servo ${candidate.servo.code} · Kit ${candidate.installationKit.code} · Montado ${candidate.currentStock} · Necessário ${shortage}.`.slice(0, 180),
-        category: "inventory" as const,
-        configurationDisassemblySelection: {
-          action: "configuration_disassembly_target" as const,
-          commercialCodeId: candidate.commercialCodeId,
-          quantity: shortage,
-        },
-      })),
+      ...visibleTargets.map((candidate, index) => {
+        const disassemblyQuantity = candidate.suggestedQuantity;
+        return {
+          id: `output-disassemble-${index + 1}`,
+          label: `Desmontar ${disassemblyQuantity} · Cód. ${candidate.aliases.join(" / ") || candidate.displayCode}`.slice(0, 60),
+          prompt: `Preparar desmontagem de ${disassemblyQuantity} unidade${disassemblyQuantity === 1 ? "" : "s"} do Cód. ${candidate.displayCode}.`,
+          description: `Servo ${candidate.servo.code} · Kit ${candidate.installationKit.code} · Montado ${candidate.currentStock} · Necessário no total ${shortage}.`.slice(0, 180),
+          category: "inventory" as const,
+          configurationDisassemblySelection: {
+            action: "configuration_disassembly_target" as const,
+            commercialCodeId: candidate.commercialCodeId,
+            quantity: disassemblyQuantity,
+          },
+        };
+      }),
       { id: "output-cancel", label: "Cancelar", prompt: "Cancelar esta saída.", category: "inventory" as const },
     ],
-    fallbackText: "Escolha uma configuração para gerar a prévia de desmontagem. Nenhuma saída foi preparada.",
+    fallbackText: "Escolha uma configuração para gerar somente a prévia de desmontagem. Nenhuma saída foi preparada; depois da operação, solicite a saída novamente.",
   };
   return { message: block.fallbackText, structuredBlock: block };
 }
@@ -329,6 +334,136 @@ function buildManualStockOutputBatchProjection(
     previewInput.push({ option, quantity: line.quantity });
   }
   return buildOutboundPreview(previewInput);
+}
+
+type ResolvedOutputBatchLine = {
+  target: AssistantStockOutputTarget;
+  quantity: number;
+};
+
+async function createOutputBatchPreparationSuggestion(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  lines: ResolvedOutputBatchLine[],
+  projection: OutboundPreview,
+): Promise<AssistantChatSuccess | null> {
+  const options: AssistantClarificationOption[] = [];
+  const seenConfigurationIds = new Set<string>();
+  const targetByCommercialCodeId = new Map(
+    lines
+      .filter((line) => line.target.kind === "COMMERCIAL_CODE")
+      .map((line) => [line.target.targetId, line.target]),
+  );
+
+  if (projection.isValid) {
+    for (const line of projection.commercialLines) {
+      if (line.autoAssembledQuantity < 1) continue;
+      const target = targetByCommercialCodeId.get(
+        line.option.commercialCodeId,
+      );
+      if (
+        !target?.configurationId ||
+        !target.servo ||
+        !target.installationKit ||
+        seenConfigurationIds.has(target.configurationId) ||
+        line.autoAssembledQuantity > target.autoAssemblyCapacity
+      ) {
+        continue;
+      }
+      seenConfigurationIds.add(target.configurationId);
+      const quantity = line.autoAssembledQuantity;
+      options.push({
+        id: `output-batch-assemble-${options.length + 1}`,
+        label: `Montar ${quantity} · Cód. ${target.aliases.join(" / ") || target.displayCode}`.slice(0, 60),
+        prompt: `Preparar montagem de ${quantity} unidade${quantity === 1 ? "" : "s"} do Cód. ${target.displayCode}.`,
+        description: `Servo ${target.servo.code}: ${target.servo.currentStock} avulso(s) · Kit ${target.installationKit.code}: ${target.installationKit.currentStock} avulso(s).`.slice(0, 180),
+        category: "inventory",
+        configurationAssemblySelection: {
+          action: "configuration_assembly_target",
+          commercialCodeId: target.targetId,
+          quantity,
+        },
+      });
+    }
+  }
+
+  const componentsUsedByCommercialLines = new Set(
+    lines.flatMap((line) =>
+      line.target.kind === "COMMERCIAL_CODE"
+        ? [line.target.servo?.id, line.target.installationKit?.id].filter(
+            (id): id is string => Boolean(id),
+          )
+        : [],
+    ),
+  );
+  for (const line of lines) {
+    const { target, quantity } = line;
+    if (
+      target.kind !== "ITEM" ||
+      target.typeLabel !== "Servo sem kit" ||
+      quantity <= target.currentStock ||
+      componentsUsedByCommercialLines.has(target.targetId)
+    ) {
+      continue;
+    }
+    const loaded = await loadConfigurationDisassemblyTargetsByServoId(
+      supabase,
+      target.targetId,
+    );
+    if (loaded.failed) return null;
+    const mountedTargets = loaded.targets
+      .filter((candidate) => candidate.currentStock > 0)
+      .sort((first, second) =>
+        second.currentStock - first.currentStock ||
+        first.displayCode.localeCompare(second.displayCode, "pt-BR", { numeric: true }),
+      );
+    const suggestion = planLooseServoOutputSuggestion(
+      target.currentStock,
+      quantity,
+      mountedTargets,
+    );
+    if (
+      suggestion.kind !== "DISASSEMBLY_OPTIONS" &&
+      suggestion.kind !== "MULTIPLE_DISASSEMBLIES_REQUIRED"
+    ) {
+      continue;
+    }
+    for (const candidate of suggestion.options) {
+      if (seenConfigurationIds.has(candidate.configurationId)) continue;
+      seenConfigurationIds.add(candidate.configurationId);
+      const disassemblyQuantity = candidate.suggestedQuantity;
+      options.push({
+        id: `output-batch-disassemble-${options.length + 1}`,
+        label: `Desmontar ${disassemblyQuantity} · Cód. ${candidate.aliases.join(" / ") || candidate.displayCode}`.slice(0, 60),
+        prompt: `Preparar desmontagem de ${disassemblyQuantity} unidade${disassemblyQuantity === 1 ? "" : "s"} do Cód. ${candidate.displayCode}.`,
+        description: `Servo ${candidate.servo.code} · Kit ${candidate.installationKit.code} · Montado ${candidate.currentStock} · Necessário para a lista ${suggestion.shortage}.`.slice(0, 180),
+        category: "inventory",
+        configurationDisassemblySelection: {
+          action: "configuration_disassembly_target",
+          commercialCodeId: candidate.commercialCodeId,
+          quantity: disassemblyQuantity,
+        },
+      });
+    }
+  }
+
+  const visibleOptions = options.slice(0, 5);
+  if (!visibleOptions.length) return null;
+  const block: AssistantClarificationBlock = {
+    kind: "assistant_clarification",
+    title: "Operações separadas necessárias",
+    message: "A lista depende de montagem ou desmontagem. Cada opção prepara somente uma operação oficial; confirme uma por vez e depois solicite a saída inteira novamente para revalidar todos os saldos.",
+    options: [
+      ...visibleOptions,
+      {
+        id: "output-cancel",
+        label: "Cancelar",
+        prompt: "Cancelar esta saída.",
+        category: "inventory",
+      },
+    ],
+    fallbackText: "Nenhuma saída foi preparada. Escolha uma operação separada e, depois de confirmá-la, solicite a saída inteira novamente.",
+  };
+  return { message: block.fallbackText, structuredBlock: block };
 }
 
 function createOutputBatchIdentityClarification(
@@ -463,16 +598,25 @@ async function createManualStockOutputBatchPreview(
     return answer(errorBlock("Consulta indisponível", "Não foi possível validar todos os componentes da lista agora. Nenhuma saída foi executada."));
   }
   if (!batchProjection.isValid) {
+    const preparation = await createOutputBatchPreparationSuggestion(
+      supabase,
+      consolidatedLines,
+      batchProjection,
+    );
+    if (preparation) return preparation;
     return answer(errorBlock(
       "Estoque insuficiente",
       `${batchProjection.errors[0] ?? "O estoque não atende a lista informada."} A lista inteira foi bloqueada e nenhuma saída foi executada.`,
     ));
   }
   if (batchProjection.autoAssembledQuantity > 0) {
-    return answer(errorBlock(
-      "Montagem necessária",
-      "A lista depende de montagem. Para preservar o lote inteiro, confirme as montagens separadamente e solicite uma nova saída. Nenhuma operação foi executada.",
-    ));
+    const preparation = await createOutputBatchPreparationSuggestion(
+      supabase,
+      consolidatedLines,
+      batchProjection,
+    );
+    if (preparation) return preparation;
+    return answer(errorBlock("Montagem necessária", "A lista depende de montagem, mas não foi possível preparar uma opção segura. Nenhuma operação foi executada."));
   }
   const itemProjectionById = new Map(batchProjection.itemLines.map((line) => [line.option.id, line]));
   const commercialProjectionById = new Map(

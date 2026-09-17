@@ -36,6 +36,8 @@ function summary(overrides = {}) {
     pickedQuantity: 0,
     readyWaitingPickupQuantity: 4,
     cancelledAt: null,
+    isActiveOrder: true,
+    isInHistory: false,
     ...overrides,
   };
 }
@@ -55,7 +57,18 @@ test("groups the official line reader into a single partial order alert", () => 
     readyWaitingPickupQuantity: 4,
     validOrderedQuantity: 10,
     readyQuantity: 4,
+    isActiveOrder: true,
+    isInHistory: false,
   });
+});
+
+test("omits finalized orders even when they still have ready pickup quantity", () => {
+  const alerts = groupSafisaPickupAlertLines(
+    [line("order-a", "1212", 4)],
+    [summary({ isActiveOrder: false, isInHistory: true })],
+  );
+
+  assert.deepEqual(alerts, []);
 });
 
 test("classifies fully ready orders, including partial pickup and cancellations", () => {

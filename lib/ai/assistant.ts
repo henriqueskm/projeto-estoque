@@ -1988,12 +1988,12 @@ export async function answerAssistantQuestion(
         )
       : null;
 
-    if (directInventoryRoute && exactLookup?.exact_code_match) {
+    if (explicitInventoryQuery && exactLookup?.exact_code_match) {
       const summaryBlock = await executeStockQuery(() =>
         (dependencies.inventorySummaryReader ??
           consultAssistantInventoryItemSummary)(
-          directInventoryRoute.queryCode,
-          directInventoryRoute.metric,
+          directInventoryRoute?.queryCode ?? explicitInventoryQuery,
+          directInventoryRoute?.metric ?? "STOCK",
         ),
       );
 

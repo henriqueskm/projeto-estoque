@@ -179,10 +179,10 @@ revoke all on function public.stock_outbound_items(jsonb, uuid, text, boolean)
 from public, anon, authenticated;
 
 grant execute on function public.stock_outbound_items(jsonb, uuid, text, boolean)
-to authenticated;
+to authenticated, service_role;
 
 revoke all on function public.stock_outbound_items(jsonb, uuid, text)
 from public, anon, authenticated;
 
 grant execute on function public.stock_outbound_items(jsonb, uuid, text)
-to authenticated;
+to authenticated, service_role;

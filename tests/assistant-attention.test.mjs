@@ -29,6 +29,11 @@ function input(overrides = {}) {
     readyPickupOrders: [],
     pendingStockOrders: [],
     ...overrides,
+    readyPickupOrders: (overrides.readyPickupOrders ?? []).map((order) => ({
+      isActiveOrder: true,
+      isInHistory: false,
+      ...order,
+    })),
   };
 }
 
@@ -143,6 +148,28 @@ test("ready_quantity ainda não retirada aparece agrupada por Pedido", () => {
   assert.equal(card?.count, 2);
   assert.equal(card?.metadata.readyQuantity, 5);
   assert.match(card?.summary ?? "", /2 Pedidos têm 5 unidades prontas/);
+});
+
+test("Pedido finalizado com retirada pronta não aparece na atenção operacional", () => {
+  const result = buildAssistantAttentionSummary(
+    input({
+      readyPickupOrders: [
+        {
+          supplierOrderId: orderOne,
+          negotiationNumber: "40959",
+          readyWaitingPickupQuantity: 2,
+          isActiveOrder: false,
+          isInHistory: true,
+        },
+      ],
+    }),
+    generatedAt,
+  );
+
+  assert.equal(
+    result.items.some((item) => item.kind === "SAFISA_READY_PICKUP"),
+    false,
+  );
 });
 
 test("picked_quantity ainda não estocada aparece como entrada pendente", () => {
@@ -515,6 +542,9 @@ test("loader usa readers oficiais controlados e não chama Gemini", async () => 
     attentionData,
     /id, negotiation_number, order_date, waiting_stock_quantity, is_active_order/,
   );
+  const pickupReader = read("lib/safisa-pickup-alerts.ts");
+  assert.match(pickupReader, /is_active_order, is_in_history/);
+  assert.match(pickupReader, /\.eq\("is_active_order", true\)/);
   assert.doesNotMatch(attentionData, /Gemini|routeAssistantMessageSemantically|@google\/genai/);
   assert.doesNotMatch(homePage, /Gemini|routeAssistantMessageSemantically|@google\/genai/);
 });

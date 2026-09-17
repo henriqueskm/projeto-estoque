@@ -125,6 +125,8 @@ export async function loadAssistantAttention(
             negotiationNumber: alert.negotiationNumber,
             readyWaitingPickupQuantity:
               alert.readyWaitingPickupQuantity,
+            isActiveOrder: alert.isActiveOrder,
+            isInHistory: alert.isInHistory,
           })),
           pendingStockOrders,
         },
