@@ -60,7 +60,14 @@ export function filterVehicleApplications(
   category: VehicleApplicationCategory | "ALL",
 ) {
   const normalizedQuery = normalizeVehicleApplicationSearch(query);
-  const isCommercialCodeQuery = /^\d{1,2}[a-z]{1,3}$/.test(normalizedQuery);
+  const sourceKitCodes = new Set(
+    applications.flatMap((application) =>
+      application.sourceKitCode
+        ? [normalizeVehicleApplicationSearch(application.sourceKitCode)]
+        : [],
+    ),
+  );
+  const isCommercialCodeQuery = sourceKitCodes.has(normalizedQuery);
 
   return applications.filter((application) => {
     if (category !== "ALL" && application.category !== category) {
@@ -79,7 +86,6 @@ export function filterVehicleApplications(
     }
 
     const searchableFields = [
-      application.sourceKitCode,
       application.sourceServoLabel,
       application.vehicleModel,
       application.observation,

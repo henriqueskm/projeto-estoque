@@ -250,6 +250,38 @@ test("commercial-code searches match only the exact source kit code", () => {
   );
 });
 
+test("alphanumeric observation searches remain available outside the source kit set", () => {
+  const metalforApplications = payload.applications
+    .filter((row) => row.brand_slug === "metalfor")
+    .map((row) =>
+      application({
+        id: `${row.source_sheet}:${row.source_row}`,
+        sourceKitCode: row.source_kit_code,
+        sourceServoLabel: row.source_servo_label,
+        vehicleModel: row.vehicle_model,
+        observation: row.observation,
+        sourceSheet: row.source_sheet,
+        sourceRow: row.source_row,
+        sortOrder: row.sort_order,
+      }),
+    );
+
+  assert.deepEqual(
+    filterVehicleApplications(metalforApplications, "6BT", "ALL").map(
+      (row) => row.id,
+    ),
+    ["METALFOR:7"],
+  );
+  assert.deepEqual(
+    filterVehicleApplications(
+      metalforApplications,
+      "motor cummins",
+      "ALL",
+    ).map((row) => row.id),
+    ["METALFOR:7"],
+  );
+});
+
 test("category filters expose only matching records", () => {
   const rows = [
     application({ id: "truck" }),
