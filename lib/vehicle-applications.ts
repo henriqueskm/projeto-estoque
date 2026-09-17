@@ -31,6 +31,11 @@ type ApplicationRow = {
   sort_order: number;
 };
 
+type SourceKitCodeRow = {
+  id: string;
+  source_kit_code: string;
+};
+
 const applicationPageSize = 100;
 
 const brandLogoPaths: Record<string, string> = {
@@ -105,6 +110,7 @@ export async function loadVehicleApplicationBrands(): Promise<{
 export async function loadVehicleApplicationsByBrand(slug: string): Promise<{
   brand: VehicleApplicationBrand | null;
   applications: VehicleApplication[] | null;
+  authoritativeSourceKitCodes: string[] | null;
   error: string | null;
 }> {
   try {
@@ -119,17 +125,23 @@ export async function loadVehicleApplicationsByBrand(slug: string): Promise<{
       return {
         brand: null,
         applications: null,
+        authoritativeSourceKitCodes: null,
         error: "Não foi possível carregar esta marca agora.",
       };
     }
 
     if (!brandResult.data) {
-      return { brand: null, applications: null, error: null };
+      return {
+        brand: null,
+        applications: null,
+        authoritativeSourceKitCodes: null,
+        error: null,
+      };
     }
 
     const brand = mapBrand(brandResult.data as BrandRow);
-    const rows = await fetchVehicleApplicationPages<ApplicationRow>(
-      async (from, to) => {
+    const [rows, sourceKitCodeRows] = await Promise.all([
+      fetchVehicleApplicationPages<ApplicationRow>(async (from, to) => {
         const result = await supabase
           .from("vehicle_applications")
           .select(
@@ -144,19 +156,37 @@ export async function loadVehicleApplicationsByBrand(slug: string): Promise<{
         }
 
         return (result.data ?? []) as ApplicationRow[];
-      },
-      applicationPageSize,
-    );
+      }, applicationPageSize),
+      fetchVehicleApplicationPages<SourceKitCodeRow>(async (from, to) => {
+        const result = await supabase
+          .from("vehicle_applications")
+          .select("id, source_kit_code")
+          .not("source_kit_code", "is", null)
+          .order("source_kit_code", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to);
+
+        if (result.error) {
+          throw result.error;
+        }
+
+        return (result.data ?? []) as SourceKitCodeRow[];
+      }, applicationPageSize),
+    ]);
 
     return {
       brand,
       applications: rows.map(mapApplication),
+      authoritativeSourceKitCodes: Array.from(
+        new Set(sourceKitCodeRows.map((row) => row.source_kit_code)),
+      ),
       error: null,
     };
   } catch {
     return {
       brand: null,
       applications: null,
+      authoritativeSourceKitCodes: null,
       error: "Não foi possível carregar as aplicações desta marca agora.",
     };
   }

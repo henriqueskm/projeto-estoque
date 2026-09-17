@@ -18,10 +18,13 @@ export default async function BrandApplicationsPage({
 
   return (
     <main className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-6 sm:py-7 lg:px-8">
-      {result.brand && result.applications ? (
+      {result.brand &&
+      result.applications &&
+      result.authoritativeSourceKitCodes ? (
         <ApplicationsWorkspace
           brand={result.brand}
           applications={result.applications}
+          authoritativeSourceKitCodes={result.authoritativeSourceKitCodes}
         />
       ) : (
         <>

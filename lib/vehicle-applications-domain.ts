@@ -58,13 +58,12 @@ export function filterVehicleApplications(
   applications: VehicleApplication[],
   query: string,
   category: VehicleApplicationCategory | "ALL",
+  authoritativeSourceKitCodes: readonly string[],
 ) {
   const normalizedQuery = normalizeVehicleApplicationSearch(query);
   const sourceKitCodes = new Set(
-    applications.flatMap((application) =>
-      application.sourceKitCode
-        ? [normalizeVehicleApplicationSearch(application.sourceKitCode)]
-        : [],
+    authoritativeSourceKitCodes.map((sourceKitCode) =>
+      normalizeVehicleApplicationSearch(sourceKitCode),
     ),
   );
   const isCommercialCodeQuery = sourceKitCodes.has(normalizedQuery);

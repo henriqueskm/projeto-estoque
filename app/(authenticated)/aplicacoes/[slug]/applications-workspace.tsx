@@ -16,6 +16,7 @@ import {
 type ApplicationsWorkspaceProps = {
   brand: VehicleApplicationBrand;
   applications: VehicleApplication[];
+  authoritativeSourceKitCodes: string[];
 };
 
 const categoryOrder: VehicleApplicationCategory[] = [
@@ -31,6 +32,7 @@ function applicationCountLabel(count: number) {
 export function ApplicationsWorkspace({
   brand,
   applications,
+  authoritativeSourceKitCodes,
 }: ApplicationsWorkspaceProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<
@@ -44,8 +46,14 @@ export function ApplicationsWorkspace({
     [applications],
   );
   const filteredApplications = useMemo(
-    () => filterVehicleApplications(applications, query, category),
-    [applications, category, query],
+    () =>
+      filterVehicleApplications(
+        applications,
+        query,
+        category,
+        authoritativeSourceKitCodes,
+      ),
+    [applications, authoritativeSourceKitCodes, category, query],
   );
   const groups = useMemo(
     () => groupVehicleApplications(filteredApplications),

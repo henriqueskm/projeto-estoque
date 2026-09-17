@@ -23,6 +23,13 @@ const payloadMatch = migration.match(
 );
 assert.ok(payloadMatch, "the self-contained migration payload must exist");
 const payload = JSON.parse(payloadMatch[1]);
+const authoritativeSourceKitCodes = Array.from(
+  new Set(
+    payload.applications.flatMap((row) =>
+      row.source_kit_code ? [row.source_kit_code] : [],
+    ),
+  ),
+);
 
 function application(overrides = {}) {
   return {
@@ -41,6 +48,20 @@ function application(overrides = {}) {
     sortOrder: 1,
     ...overrides,
   };
+}
+
+function mapPayloadApplication(row) {
+  return application({
+    id: `${row.source_sheet}:${row.source_row}`,
+    category: row.category,
+    sourceKitCode: row.source_kit_code,
+    sourceServoLabel: row.source_servo_label,
+    vehicleModel: row.vehicle_model,
+    observation: row.observation,
+    sourceSheet: row.source_sheet,
+    sourceRow: row.source_row,
+    sortOrder: row.sort_order,
+  });
 }
 
 test("authoritative payload preserves exact approved counts and pending codes", () => {
@@ -153,23 +174,43 @@ test("search tolerates case, accents, spaces and hyphens without changing record
 
   assert.equal(normalizeVehicleApplicationSearch(" BR-040 "), "br040");
   assert.deepEqual(
-    filterVehicleApplications(rows, "1418 atego", "ALL").map(
+    filterVehicleApplications(
+      rows,
+      "1418 atego",
+      "ALL",
+      authoritativeSourceKitCodes,
+    ).map(
       (row) => row.id,
     ),
     ["application-1"],
   );
   assert.deepEqual(
-    filterVehicleApplications(rows, "BR 040", "ALL").map((row) => row.id),
+    filterVehicleApplications(
+      rows,
+      "BR 040",
+      "ALL",
+      authoritativeSourceKitCodes,
+    ).map((row) => row.id),
     ["application-1", "application-2"],
   );
   assert.deepEqual(
-    filterVehicleApplications(rows, "nao da instalacao", "ALL").map(
+    filterVehicleApplications(
+      rows,
+      "nao da instalacao",
+      "ALL",
+      authoritativeSourceKitCodes,
+    ).map(
       (row) => row.id,
     ),
     ["restriction"],
   );
   assert.deepEqual(
-    filterVehicleApplications(rows, "7 C", "ALL").map((row) => row.id),
+    filterVehicleApplications(
+      rows,
+      "7 C",
+      "ALL",
+      authoritativeSourceKitCodes,
+    ).map((row) => row.id),
     ["application-2"],
   );
 });
@@ -190,30 +231,49 @@ test("commercial-code searches match only the exact source kit code", () => {
     vehicleModel: "A",
     observation: null,
   });
-  const mapPayloadApplication = (row) =>
-    application({
-      id: `${row.source_sheet}:${row.source_row}`,
-      sourceKitCode: row.source_kit_code,
-      sourceServoLabel: row.source_servo_label,
-      vehicleModel: row.vehicle_model,
-      observation: row.observation,
-      sourceSheet: row.source_sheet,
-      sourceRow: row.source_row,
-      sortOrder: row.sort_order,
-    });
   const fordApplications = payload.applications
     .filter((row) => row.brand_slug === "ford")
     .map(mapPayloadApplication);
   const mercedesApplications = payload.applications
     .filter((row) => row.brand_slug === "mercedes-benz")
     .map(mapPayloadApplication);
+  const agraleApplications = payload.applications
+    .filter((row) => row.brand_slug === "agrale")
+    .map(mapPayloadApplication);
+  const metalforApplications = payload.applications
+    .filter((row) => row.brand_slug === "metalfor")
+    .map(mapPayloadApplication);
+
+  assert.ok(
+    payload.applications.some(
+      (row) => row.brand_slug !== "agrale" && row.source_kit_code === "2C",
+    ),
+  );
+  assert.ok(
+    payload.applications.some(
+      (row) => row.brand_slug !== "metalfor" && row.source_kit_code === "6B",
+    ),
+  );
 
   for (const query of ["7A", "7 A", "7-A"]) {
     assert.deepEqual(
-      filterVehicleApplications([exact, ...prefixed], query, "ALL").map(
-        (row) => row.id,
-      ),
+      filterVehicleApplications(
+        [exact, ...prefixed],
+        query,
+        "ALL",
+        authoritativeSourceKitCodes,
+      ).map((row) => row.id),
       ["7a"],
+    );
+    assert.deepEqual(
+      filterVehicleApplications(
+        agraleApplications,
+        query,
+        "ALL",
+        authoritativeSourceKitCodes,
+      ),
+      [],
+      `Agrale must not fall back to observation text for ${query}`,
     );
   }
 
@@ -229,22 +289,49 @@ test("commercial-code searches match only the exact source kit code", () => {
     mercedesApplications,
     "7A",
     "ALL",
+    authoritativeSourceKitCodes,
   );
   assert.ok(mercedesExactResults.length > 0);
   assert.ok(
     mercedesExactResults.every((row) => row.sourceKitCode === "7A"),
   );
   assert.deepEqual(
-    filterVehicleApplications(fordApplications, "7A", "ALL").map(
-      (row) => row.id,
-    ),
+    filterVehicleApplications(
+      fordApplications,
+      "7A",
+      "ALL",
+      authoritativeSourceKitCodes,
+    ).map((row) => row.id),
     [],
     "Ford has 7AB/7AC/7AF but no 7A and must return no result",
   );
   assert.deepEqual(
-    filterVehicleApplications([crossedFields], "2A", "ALL").map(
-      (row) => row.id,
+    filterVehicleApplications(
+      agraleApplications,
+      "2C",
+      "ALL",
+      authoritativeSourceKitCodes,
     ),
+    [],
+    "Agrale must not match 2C across model and observation text",
+  );
+  assert.deepEqual(
+    filterVehicleApplications(
+      metalforApplications,
+      "6B",
+      "ALL",
+      authoritativeSourceKitCodes,
+    ),
+    [],
+    "Metalfor must not match the global code 6B inside observation 6BT",
+  );
+  assert.deepEqual(
+    filterVehicleApplications(
+      [crossedFields],
+      "2A",
+      "ALL",
+      authoritativeSourceKitCodes,
+    ).map((row) => row.id),
     [],
     "a code must not be assembled across searchable fields",
   );
@@ -253,23 +340,15 @@ test("commercial-code searches match only the exact source kit code", () => {
 test("alphanumeric observation searches remain available outside the source kit set", () => {
   const metalforApplications = payload.applications
     .filter((row) => row.brand_slug === "metalfor")
-    .map((row) =>
-      application({
-        id: `${row.source_sheet}:${row.source_row}`,
-        sourceKitCode: row.source_kit_code,
-        sourceServoLabel: row.source_servo_label,
-        vehicleModel: row.vehicle_model,
-        observation: row.observation,
-        sourceSheet: row.source_sheet,
-        sourceRow: row.source_row,
-        sortOrder: row.sort_order,
-      }),
-    );
+    .map(mapPayloadApplication);
 
   assert.deepEqual(
-    filterVehicleApplications(metalforApplications, "6BT", "ALL").map(
-      (row) => row.id,
-    ),
+    filterVehicleApplications(
+      metalforApplications,
+      "6BT",
+      "ALL",
+      authoritativeSourceKitCodes,
+    ).map((row) => row.id),
     ["METALFOR:7"],
   );
   assert.deepEqual(
@@ -277,6 +356,7 @@ test("alphanumeric observation searches remain available outside the source kit 
       metalforApplications,
       "motor cummins",
       "ALL",
+      authoritativeSourceKitCodes,
     ).map((row) => row.id),
     ["METALFOR:7"],
   );
@@ -290,8 +370,33 @@ test("category filters expose only matching records", () => {
   ];
 
   assert.deepEqual(
-    filterVehicleApplications(rows, "", "BUS").map((row) => row.id),
+    filterVehicleApplications(
+      rows,
+      "",
+      "BUS",
+      authoritativeSourceKitCodes,
+    ).map((row) => row.id),
     ["bus"],
+  );
+  assert.deepEqual(
+    filterVehicleApplications(
+      rows,
+      "7A",
+      "BUS",
+      authoritativeSourceKitCodes,
+    ).map((row) => row.id),
+    ["bus"],
+    "category filtering must apply to exact source kit searches",
+  );
+  assert.deepEqual(
+    filterVehicleApplications(
+      rows,
+      "1418 atego",
+      "MICROBUS",
+      authoritativeSourceKitCodes,
+    ).map((row) => row.id),
+    ["microbus"],
+    "category filtering must apply to textual searches",
   );
 });
 
