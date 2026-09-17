@@ -128,6 +128,26 @@ export function ArrowLeftIcon(props: IconProps) {
   );
 }
 
+export function ArrowRightIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="m9 18 6-6-6-6M15 12H4" />
+    </svg>
+  );
+}
+
+export function ApplicationsIcon(props: IconProps) {
+  return (
+    <svg {...commonProps} {...props}>
+      <path d="M4 15.5V9l2-4h12l2 4v6.5" />
+      <path d="M3 11h18M7 11l1-3h8l1 3" />
+      <circle cx="7" cy="15.5" r="1.5" />
+      <circle cx="17" cy="15.5" r="1.5" />
+      <path d="M5.5 17v2h3v-2m7 0v2h3v-2" />
+    </svg>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <svg {...commonProps} {...props}>
