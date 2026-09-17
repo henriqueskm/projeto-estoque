@@ -17,6 +17,8 @@ export type SafisaPickupAlertOrderSummary = {
   pickedQuantity: number;
   readyWaitingPickupQuantity: number;
   cancelledAt: string | null;
+  isActiveOrder: boolean;
+  isInHistory: boolean;
 };
 
 export type SafisaPickupAlert = {
@@ -27,6 +29,8 @@ export type SafisaPickupAlert = {
   readyWaitingPickupQuantity: number;
   validOrderedQuantity: number;
   readyQuantity: number;
+  isActiveOrder: true;
+  isInHistory: false;
 };
 
 function safeQuantity(value: number) {
@@ -92,7 +96,10 @@ export function groupSafisaPickupAlertLines(
     .map((supplierOrderId) => summaryByOrderId.get(supplierOrderId))
     .filter(
       (summary): summary is SafisaPickupAlertOrderSummary =>
-        summary !== undefined && summary.cancelledAt === null,
+        summary !== undefined &&
+        summary.cancelledAt === null &&
+        summary.isActiveOrder === true &&
+        summary.isInHistory === false,
     )
     .map((summary) => {
       const kind = getSafisaPickupAlertKind(summary);
@@ -118,6 +125,8 @@ export function groupSafisaPickupAlertLines(
         readyWaitingPickupQuantity,
         validOrderedQuantity: Math.max(0, orderedQuantity - cancelledQuantity),
         readyQuantity: safeQuantity(summary.readyQuantity),
+        isActiveOrder: true as const,
+        isInHistory: false as const,
       };
     })
     .filter((alert): alert is SafisaPickupAlert => Boolean(alert))

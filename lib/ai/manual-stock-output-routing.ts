@@ -27,6 +27,15 @@ export type ManualStockOutputRoute =
 
 const maximumInteger = 2_147_483_647;
 
+function looksLikeServoModel(value: string) {
+  const compact = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleUpperCase("pt-BR")
+    .replace(/[\s._/\\-]+/g, "");
+  return /^[A-Z]{2,}[A-Z\d]*\d+[A-Z\d]*$/.test(compact) && !/^KT\d/.test(compact);
+}
+
 function normalizeAssistantText(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("pt-BR").trim();
@@ -150,7 +159,9 @@ export function routeManualStockOutputAction(rawMessage: string): ManualStockOut
     ? "COMMERCIAL_CODE" as const
     : /\b(sem kit|kit de instalacao|kit de reparo|peca|avulso|avulsa)\b/.test(message)
       ? "ITEM" as const
-      : null;
+      : looksLikeServoModel(targetQuery)
+        ? "ITEM" as const
+        : null;
   if (requiresManualStockIdentityChoice(message, requestedIdentity)) {
     return { kind: "AMBIGUOUS_TARGET", quantity, targetQuery };
   }

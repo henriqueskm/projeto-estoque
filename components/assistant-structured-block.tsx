@@ -13,6 +13,7 @@ import type {
   AssistantInventoryAlertsBlock,
   AssistantInventoryItemSummaryBlock,
   AssistantInventoryItemSummaryTarget,
+  AssistantAttentionOrderBlock,
   AssistantMediaDescriptor,
   AssistantPurchaseRecommendationBlock,
   AssistantSupplierOrderAggregateBlock,
@@ -1423,6 +1424,51 @@ function SupplierOrderCard({
         Abrir pedido
       </span>
     </Link>
+  );
+}
+
+function AssistantAttentionOrders({
+  block,
+}: {
+  block: AssistantAttentionOrderBlock;
+}) {
+  return (
+    <div className="min-w-0">
+      <h3 className="text-base font-black text-text-primary sm:text-lg">
+        {block.title}
+      </h3>
+      <p className="mt-1 text-xs font-semibold text-text-muted sm:text-sm">
+        {block.summary}
+      </p>
+      <div className="mt-3 grid gap-2">
+        {block.orders.map((order) => (
+          <article
+            key={order.supplierOrderId}
+            className="rounded-xl border border-border-neutral bg-app-background/60 p-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-mono text-sm font-black text-violet-900">
+                Pedido {order.negotiationNumber}
+              </span>
+              <span className="text-xs font-black text-text-primary">
+                {quantityFormatter.format(order.quantity)} {order.quantity === 1 ? "unidade" : "unidades"}
+              </span>
+            </div>
+            <Link
+              href={order.href}
+              className="nk-focus mt-3 inline-flex min-h-11 items-center rounded-xl bg-brand-charcoal px-3 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
+            >
+              Abrir Pedido
+            </Link>
+          </article>
+        ))}
+      </div>
+      {block.remainingCount > 0 ? (
+        <p className="mt-2 text-xs font-bold text-text-muted">
+          + {quantityFormatter.format(block.remainingCount)} {block.remainingCount === 1 ? "Pedido adicional" : "Pedidos adicionais"}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -3037,6 +3083,8 @@ export function AssistantStructuredBlockView({
       return <InventoryItemSummaryBlock block={block} />;
     case "servo_model_inventory_breakdown":
       return <ServoModelInventoryBreakdown block={block} />;
+    case "assistant_attention_orders":
+      return <AssistantAttentionOrders block={block} />;
     case "catalog_media":
       return <CatalogMediaBlock block={block} />;
     case "supplier_order_list":

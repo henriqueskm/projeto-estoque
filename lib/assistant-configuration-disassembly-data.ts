@@ -29,7 +29,7 @@ async function buildTargets(supabase: SupabaseClient, codeRows: CodeRow[]) {
   const [configurationsResult, configurationBalancesResult, aliasesResult] = await Promise.all([
     supabase.from("commercial_configurations").select("id, description, servo_id, installation_kit_id").in("id", configurationIds),
     supabase.from("configuration_stock_balances").select("configuration_id, quantity").in("configuration_id", configurationIds),
-    supabase.from("commercial_configuration_codes").select("id, code, configuration_id").in("configuration_id", configurationIds),
+    supabase.from("commercial_configuration_codes").select("id, code, configuration_id").in("configuration_id", configurationIds).eq("is_active", true),
   ]);
   if (configurationsResult.error || configurationBalancesResult.error || aliasesResult.error ||
     (configurationsResult.data?.length ?? 0) !== configurationIds.length) return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: true };
@@ -52,7 +52,12 @@ async function buildTargets(supabase: SupabaseClient, codeRows: CodeRow[]) {
     aliasesByConfiguration.set(alias.configuration_id, [...(aliasesByConfiguration.get(alias.configuration_id) ?? []), alias]);
   }
   const unique = new Map<string, AssistantConfigurationDisassemblyTarget>();
-  for (const selected of codeRows) {
+  const orderedCodes = [...codeRows].sort(
+    (first, second) =>
+      first.configuration_id.localeCompare(second.configuration_id) ||
+      first.code.localeCompare(second.code, "pt-BR", { numeric: true }),
+  );
+  for (const selected of orderedCodes) {
     const configuration = configurationById.get(selected.configuration_id);
     const servo = configuration ? itemById.get(configuration.servo_id) : null;
     const installationKit = configuration ? itemById.get(configuration.installation_kit_id) : null;
@@ -116,4 +121,36 @@ export async function loadConfigurationDisassemblyTargetByCodeId(supabase: Supab
   if (result.error || !result.data) return { target: null, failed: true };
   const enriched = await buildTargets(supabase, [result.data as CodeRow]);
   return { target: enriched.targets[0] ?? null, failed: enriched.failed || enriched.targets.length !== 1 };
+}
+
+export async function loadConfigurationDisassemblyTargetsByServoId(
+  supabase: SupabaseClient,
+  servoId: string,
+) {
+  const configurationsResult = await supabase
+    .from("commercial_configurations")
+    .select("id")
+    .eq("servo_id", servoId)
+    .eq("is_active", true);
+  if (configurationsResult.error) {
+    return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: true };
+  }
+
+  const configurationIds = Array.from(
+    new Set((configurationsResult.data ?? []).map((row) => row.id as string)),
+  );
+  if (!configurationIds.length) {
+    return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: false };
+  }
+
+  const codesResult = await supabase
+    .from("commercial_configuration_codes")
+    .select("id, code, configuration_id")
+    .in("configuration_id", configurationIds)
+    .eq("is_active", true);
+  if (codesResult.error) {
+    return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: true };
+  }
+
+  return buildTargets(supabase, (codesResult.data ?? []) as CodeRow[]);
 }

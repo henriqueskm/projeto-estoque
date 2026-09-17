@@ -1,5 +1,6 @@
 import type { AssistantAttentionItem } from "@/lib/assistant-attention";
 import type { AssistantConversationMessage } from "@/lib/assistant-session";
+import type { AssistantAttentionOrderBlock } from "@/lib/assistant-types";
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
 const uuidPattern =
@@ -70,9 +71,33 @@ export function createAssistantAttentionMessage(
   item: AssistantAttentionItem,
   id: string,
 ): AssistantConversationMessage {
+  const content = formatAssistantAttentionDetail(item);
+  if (
+    item.kind === "SAFISA_READY_PICKUP" ||
+    item.kind === "SUPPLIER_ORDER_PENDING_STOCK"
+  ) {
+    const block: AssistantAttentionOrderBlock = {
+      kind: "assistant_attention_orders",
+      alertKind: item.kind,
+      title: item.kind === "SAFISA_READY_PICKUP"
+        ? "Itens prontos para retirada"
+        : "Aguardando entrada no estoque",
+      summary: item.summary,
+      orders: item.detail.lines.map((line) => ({
+        supplierOrderId: line.supplierOrderId,
+        negotiationNumber: line.negotiationNumber,
+        quantity: line.quantity,
+        href: line.href,
+      })),
+      remainingCount: item.detail.remainingCount,
+      fallbackText: content,
+    };
+    return { id, role: "assistant", content, structuredBlock: block };
+  }
+
   return {
     id,
     role: "assistant",
-    content: formatAssistantAttentionDetail(item),
+    content,
   };
 }

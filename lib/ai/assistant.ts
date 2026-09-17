@@ -124,6 +124,9 @@ import {
 
 export type AssistantQuestionDependencies = Partial<{
   semanticRouter: typeof routeAssistantMessageSemantically;
+  itemLookupReader: typeof consultAssistantItem;
+  inventorySummaryReader: typeof consultAssistantInventoryItemSummary;
+  servoModelInventoryReader: typeof consultAssistantServoModelInventory;
   purchaseRecommendationReader: typeof consultAssistantPurchaseRecommendations;
   supplierOrderReader: typeof consultAssistantSupplierOrders;
   manualStockOutputPreview: typeof createAssistantManualStockOutputPreview;
@@ -1043,6 +1046,7 @@ function answerServoModelInventoryQuantity(
 
   return {
     message,
+    ...(view === "TOTAL" ? { structuredBlock: block } : {}),
     followUpText:
       view === "TOTAL"
         ? "Se quiser, separo quantos estão com kit e quantos estão sem kit."
@@ -1153,8 +1157,30 @@ async function answerSemanticQuery(
   });
 
   if (plan.kind === "INVENTORY_ITEM") {
+    const lookup = await executeStockQuery(() =>
+      (dependencies.itemLookupReader ?? consultAssistantItem)(plan.queryCode),
+    );
+    const modelCandidate = extractServoModelCandidate(plan.queryCode);
+    if (!lookup.exact_code_match && modelCandidate) {
+      const modelBlock = await executeStockQuery(() =>
+        (dependencies.servoModelInventoryReader ??
+          consultAssistantServoModelInventory)(plan.queryCode),
+      );
+      if (modelBlock) {
+        const view = routeServoModelInventoryView(message);
+        return view === "BREAKDOWN"
+          ? answerServoModelInventoryAction(modelBlock, {
+              action: "show_servo_model_inventory_breakdown",
+              normalizedModel: modelBlock.model.normalized,
+            })
+          : view === "BOX_AMBIGUOUS"
+            ? answerAmbiguousServoModelBoxes(plan.queryCode)
+            : answerServoModelInventoryQuantity(modelBlock, view);
+      }
+    }
     const summaryBlock = await executeStockQuery(() =>
-      consultAssistantInventoryItemSummary(plan.queryCode, plan.metric),
+      (dependencies.inventorySummaryReader ??
+        consultAssistantInventoryItemSummary)(plan.queryCode, plan.metric),
     );
     return {
       message: summaryBlock.fallbackText,
@@ -1633,13 +1659,22 @@ export async function answerAssistantQuestion(
           };
         }
 
-        const lines = semanticResult.action.lines.map((line) => ({
-          ...line,
-          requiresIdentityChoice: requiresManualStockIdentityChoice(
-            line.targetQuery,
-            line.requestedIdentity,
-          ),
-        }));
+        const lines = semanticResult.action.lines.map((line) => {
+          const requestedIdentity =
+            semanticResult.action.kind === "MANUAL_STOCK_OUTPUT" &&
+            line.requestedIdentity === null &&
+            extractServoModelCandidate(line.targetQuery)
+              ? "ITEM" as const
+              : line.requestedIdentity;
+          return {
+            ...line,
+            requestedIdentity,
+            requiresIdentityChoice: requiresManualStockIdentityChoice(
+              line.targetQuery,
+              requestedIdentity,
+            ),
+          };
+        });
 
         if (semanticResult.action.kind === "MANUAL_STOCK_ENTRY") {
           if (lines.length === 1 && lines[0].requiresIdentityChoice) {
@@ -1936,34 +1971,70 @@ export async function answerAssistantQuestion(
   }
   if (hasClearInventoryQueryIntent(message)) {
     const explicitInventoryModel = extractServoModelCandidate(message);
+    const directInventoryRoute = routeInventoryItemSummaryQuestion(
+      message,
+      null,
+    );
+    const explicitInventoryQuery =
+      directInventoryRoute?.queryCode ??
+      extractExplicitItemQuery(message) ??
+      explicitInventoryModel;
 
-    if (explicitInventoryModel) {
+    const exactLookup = explicitInventoryQuery
+      ? await executeStockQuery(() =>
+          (dependencies.itemLookupReader ?? consultAssistantItem)(
+            explicitInventoryQuery,
+          ),
+        )
+      : null;
+
+    if (explicitInventoryQuery && exactLookup?.exact_code_match) {
+      const summaryBlock = await executeStockQuery(() =>
+        (dependencies.inventorySummaryReader ??
+          consultAssistantInventoryItemSummary)(
+          directInventoryRoute?.queryCode ?? explicitInventoryQuery,
+          directInventoryRoute?.metric ?? "STOCK",
+        ),
+      );
+
+      return {
+        message: summaryBlock.fallbackText,
+        structuredBlock: summaryBlock,
+        contextItemQuery:
+          summaryBlock.status === "FOUND"
+            ? (summaryBlock.results[0]?.displayCode ?? null)
+            : null,
+        contextItemReferenceKind:
+          summaryBlock.status === "FOUND" ? "CATALOG_CODE" : null,
+        contextSupplierOrderId: null,
+        contextSupplierOrderCatalogCode: null,
+      };
+    }
+
+    if (explicitInventoryModel && explicitInventoryQuery) {
       const view = routeServoModelInventoryView(message);
 
       if (view === "BOX_AMBIGUOUS") {
-        return answerAmbiguousServoModelBoxes(explicitInventoryModel);
+        return answerAmbiguousServoModelBoxes(explicitInventoryQuery);
       }
 
       const block = await executeStockQuery(() =>
-        consultAssistantServoModelInventory(explicitInventoryModel),
+        (dependencies.servoModelInventoryReader ??
+          consultAssistantServoModelInventory)(explicitInventoryQuery),
       );
 
       return view === "BREAKDOWN"
         ? answerServoModelInventoryAction(block, {
             action: "show_servo_model_inventory_breakdown",
-            normalizedModel: explicitInventoryModel,
+            normalizedModel: normalizeServoModel(explicitInventoryQuery),
           })
         : answerServoModelInventoryQuantity(block, view);
     }
 
-    const directInventoryRoute = routeInventoryItemSummaryQuestion(
-      message,
-      null,
-    );
-
     if (directInventoryRoute) {
       const summaryBlock = await executeStockQuery(() =>
-        consultAssistantInventoryItemSummary(
+        (dependencies.inventorySummaryReader ??
+          consultAssistantInventoryItemSummary)(
           directInventoryRoute.queryCode,
           directInventoryRoute.metric,
         ),

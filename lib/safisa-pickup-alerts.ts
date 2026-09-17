@@ -36,6 +36,10 @@ function integerValue(value: unknown): number | null {
     : null;
 }
 
+function booleanValue(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function parseAlertLines(value: unknown): {
   lines: SafisaPickupAlertLine[];
   total: number;
@@ -92,8 +96,16 @@ function parseOrderSummary(value: unknown): SafisaPickupAlertOrderSummary | null
   const supplierOrderId = stringValue(value.id);
   const negotiationNumber = stringValue(value.negotiation_number);
   const orderDate = stringValue(value.order_date);
+  const isActiveOrder = booleanValue(value.is_active_order);
+  const isInHistory = booleanValue(value.is_in_history);
 
-  if (!supplierOrderId || !negotiationNumber || !orderDate) {
+  if (
+    !supplierOrderId ||
+    !negotiationNumber ||
+    !orderDate ||
+    isActiveOrder === null ||
+    isInHistory === null
+  ) {
     return null;
   }
 
@@ -110,6 +122,8 @@ function parseOrderSummary(value: unknown): SafisaPickupAlertOrderSummary | null
     ),
     cancelledAt:
       typeof value.cancelled_at === "string" ? value.cancelled_at : null,
+    isActiveOrder,
+    isInHistory,
   };
 }
 
@@ -150,9 +164,10 @@ export async function loadSafisaPickupAlerts(
   const { data: summariesData, error: summariesError } = await supabase
     .from("supplier_order_summaries")
     .select(
-      "id, negotiation_number, order_date, ordered_quantity, cancelled_quantity, ready_quantity, picked_quantity, ready_waiting_pickup_quantity, cancelled_at",
+      "id, negotiation_number, order_date, ordered_quantity, cancelled_quantity, ready_quantity, picked_quantity, ready_waiting_pickup_quantity, cancelled_at, is_active_order, is_in_history",
     )
-    .in("id", orderIds);
+    .in("id", orderIds)
+    .eq("is_active_order", true);
 
   if (summariesError) {
     return {
