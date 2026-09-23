@@ -23,6 +23,7 @@ import {
   classifyAssistantIntent,
   extractCatalogMediaCode,
   extractExplicitItemQuery,
+  extractInventoryItemSummaryMetric,
   getExplicitGreeting,
   getStandaloneGreeting,
   hasClearInventoryQueryIntent,
@@ -131,6 +132,8 @@ export type AssistantQuestionDependencies = Partial<{
   supplierOrderReader: typeof consultAssistantSupplierOrders;
   manualStockOutputPreview: typeof createAssistantManualStockOutputPreview;
   manualStockOutputBatchPreview: typeof createAssistantManualStockOutputBatchPreview;
+  configurationAssemblyPreview: typeof createAssistantConfigurationAssemblyPreviewFromSelection;
+  configurationDisassemblyPreview: typeof createAssistantConfigurationDisassemblyPreviewFromSelection;
   supplierOrderPickupPreview: typeof createAssistantSupplierOrderPickupPreview;
 }>;
 
@@ -1574,14 +1577,16 @@ export async function answerAssistantQuestion(
   }
 
   if (configurationAssemblySelection) {
-    return createAssistantConfigurationAssemblyPreviewFromSelection(
+    return (dependencies.configurationAssemblyPreview ??
+      createAssistantConfigurationAssemblyPreviewFromSelection)(
       configurationAssemblySelection,
       { userId, profileName },
     );
   }
 
   if (configurationDisassemblySelection) {
-    return createAssistantConfigurationDisassemblyPreviewFromSelection(
+    return (dependencies.configurationDisassemblyPreview ??
+      createAssistantConfigurationDisassemblyPreviewFromSelection)(
       configurationDisassemblySelection,
       { userId, profileName },
     );
@@ -1970,6 +1975,7 @@ export async function answerAssistantQuestion(
     };
   }
   if (hasClearInventoryQueryIntent(message)) {
+    const fallbackInventoryMetric = extractInventoryItemSummaryMetric(message);
     const explicitInventoryModel = extractServoModelCandidate(message);
     const directInventoryRoute = routeInventoryItemSummaryQuestion(
       message,
@@ -1988,12 +1994,16 @@ export async function answerAssistantQuestion(
         )
       : null;
 
-    if (explicitInventoryQuery && exactLookup?.exact_code_match) {
+    if (
+      fallbackInventoryMetric &&
+      explicitInventoryQuery &&
+      exactLookup?.exact_code_match
+    ) {
       const summaryBlock = await executeStockQuery(() =>
         (dependencies.inventorySummaryReader ??
           consultAssistantInventoryItemSummary)(
-          directInventoryRoute?.queryCode ?? explicitInventoryQuery,
-          directInventoryRoute?.metric ?? "STOCK",
+          explicitInventoryQuery,
+          fallbackInventoryMetric,
         ),
       );
 

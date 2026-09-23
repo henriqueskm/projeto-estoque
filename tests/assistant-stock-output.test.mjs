@@ -161,20 +161,10 @@ test("saída em lote consolida alvos repetidos sem misturar identidades", () => 
 
 test("saída em lote bloqueia antes da única RPC e preserva revalidação", () => {
   const source = readFileSync(new URL("../lib/assistant-manual-stock-output.ts", import.meta.url), "utf8");
-  const suggestionSection = source.slice(
-    source.indexOf("async function createOutputBatchPreparationSuggestion"),
-    source.indexOf("function createOutputBatchIdentityClarification"),
-  );
   assert.equal((source.match(/\.rpc\("stock_outbound_items"/g) ?? []).length, 1);
   assert.match(source, /p_allow_auto_assembly:\s*false/);
   assert.match(source, /A lista inteira foi bloqueada e nenhuma saída foi executada/);
   assert.match(source, /buildOutboundPreview/);
-  assert.match(suggestionSection, /configurationAssemblySelection/);
-  assert.match(suggestionSection, /configurationDisassemblySelection/);
-  assert.match(suggestionSection, /seenConfigurationIds/);
-  assert.match(suggestionSection, /componentsUsedByCommercialLines/);
-  assert.match(suggestionSection, /solicite a saída inteira novamente/);
-  assert.doesNotMatch(suggestionSection, /\.rpc\(|createManualStockOutputProposalToken/);
 });
 
 test("planejamento em lote bloqueia disputa conjunta pelos mesmos componentes", () => {

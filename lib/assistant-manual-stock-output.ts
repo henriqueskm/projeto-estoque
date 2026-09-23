@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import type {
   AssistantChatSuccess,
   AssistantClarificationBlock,
-  AssistantClarificationOption,
   AssistantManualStockOutputConfirmationResult,
   AssistantManualStockOutputPreviewBlock,
   AssistantManualStockOutputResultBlock,
@@ -39,7 +38,6 @@ import {
 } from "@/lib/ai/manual-stock-list-routing.mjs";
 import {
   buildOutboundPreview,
-  type OutboundPreview,
   type OutboundPreviewInputLine,
 } from "@/lib/outbound-preview";
 import type { OutboundCatalogOption } from "@/lib/outbound-types";
@@ -47,6 +45,10 @@ import {
   planConfigurationOutputSuggestion,
   planLooseServoOutputSuggestion,
 } from "@/lib/ai/manual-stock-output-suggestions.mjs";
+import {
+  buildManualStockOutputBatchPreparationBlock,
+  type ManualStockOutputDisassemblySource,
+} from "@/lib/ai/manual-stock-output-batch-preparation";
 
 export { ASSISTANT_MANUAL_STOCK_OUTPUT_DESCRIPTION };
 
@@ -344,125 +346,31 @@ type ResolvedOutputBatchLine = {
 async function createOutputBatchPreparationSuggestion(
   supabase: Awaited<ReturnType<typeof createClient>>,
   lines: ResolvedOutputBatchLine[],
-  projection: OutboundPreview,
+  projection: ReturnType<typeof buildOutboundPreview>,
 ): Promise<AssistantChatSuccess | null> {
-  const options: AssistantClarificationOption[] = [];
-  const seenConfigurationIds = new Set<string>();
-  const targetByCommercialCodeId = new Map(
+  const shortageServoIds = Array.from(new Set(
     lines
-      .filter((line) => line.target.kind === "COMMERCIAL_CODE")
-      .map((line) => [line.target.targetId, line.target]),
-  );
-
-  if (projection.isValid) {
-    for (const line of projection.commercialLines) {
-      if (line.autoAssembledQuantity < 1) continue;
-      const target = targetByCommercialCodeId.get(
-        line.option.commercialCodeId,
+      .filter((line) =>
+        line.target.kind === "ITEM" &&
+        line.target.typeLabel === "Servo sem kit" &&
+        line.quantity > line.target.currentStock,
+      )
+      .map((line) => line.target.targetId),
+  ));
+  const disassemblySources: ManualStockOutputDisassemblySource[] =
+    await Promise.all(shortageServoIds.map(async (servoId) => {
+      const loaded = await loadConfigurationDisassemblyTargetsByServoId(
+        supabase,
+        servoId,
       );
-      if (
-        !target?.configurationId ||
-        !target.servo ||
-        !target.installationKit ||
-        seenConfigurationIds.has(target.configurationId) ||
-        line.autoAssembledQuantity > target.autoAssemblyCapacity
-      ) {
-        continue;
-      }
-      seenConfigurationIds.add(target.configurationId);
-      const quantity = line.autoAssembledQuantity;
-      options.push({
-        id: `output-batch-assemble-${options.length + 1}`,
-        label: `Montar ${quantity} · Cód. ${target.aliases.join(" / ") || target.displayCode}`.slice(0, 60),
-        prompt: `Preparar montagem de ${quantity} unidade${quantity === 1 ? "" : "s"} do Cód. ${target.displayCode}.`,
-        description: `Servo ${target.servo.code}: ${target.servo.currentStock} avulso(s) · Kit ${target.installationKit.code}: ${target.installationKit.currentStock} avulso(s).`.slice(0, 180),
-        category: "inventory",
-        configurationAssemblySelection: {
-          action: "configuration_assembly_target",
-          commercialCodeId: target.targetId,
-          quantity,
-        },
-      });
-    }
-  }
-
-  const componentsUsedByCommercialLines = new Set(
-    lines.flatMap((line) =>
-      line.target.kind === "COMMERCIAL_CODE"
-        ? [line.target.servo?.id, line.target.installationKit?.id].filter(
-            (id): id is string => Boolean(id),
-          )
-        : [],
-    ),
-  );
-  for (const line of lines) {
-    const { target, quantity } = line;
-    if (
-      target.kind !== "ITEM" ||
-      target.typeLabel !== "Servo sem kit" ||
-      quantity <= target.currentStock ||
-      componentsUsedByCommercialLines.has(target.targetId)
-    ) {
-      continue;
-    }
-    const loaded = await loadConfigurationDisassemblyTargetsByServoId(
-      supabase,
-      target.targetId,
-    );
-    if (loaded.failed) return null;
-    const mountedTargets = loaded.targets
-      .filter((candidate) => candidate.currentStock > 0)
-      .sort((first, second) =>
-        second.currentStock - first.currentStock ||
-        first.displayCode.localeCompare(second.displayCode, "pt-BR", { numeric: true }),
-      );
-    const suggestion = planLooseServoOutputSuggestion(
-      target.currentStock,
-      quantity,
-      mountedTargets,
-    );
-    if (
-      suggestion.kind !== "DISASSEMBLY_OPTIONS" &&
-      suggestion.kind !== "MULTIPLE_DISASSEMBLIES_REQUIRED"
-    ) {
-      continue;
-    }
-    for (const candidate of suggestion.options) {
-      if (seenConfigurationIds.has(candidate.configurationId)) continue;
-      seenConfigurationIds.add(candidate.configurationId);
-      const disassemblyQuantity = candidate.suggestedQuantity;
-      options.push({
-        id: `output-batch-disassemble-${options.length + 1}`,
-        label: `Desmontar ${disassemblyQuantity} · Cód. ${candidate.aliases.join(" / ") || candidate.displayCode}`.slice(0, 60),
-        prompt: `Preparar desmontagem de ${disassemblyQuantity} unidade${disassemblyQuantity === 1 ? "" : "s"} do Cód. ${candidate.displayCode}.`,
-        description: `Servo ${candidate.servo.code} · Kit ${candidate.installationKit.code} · Montado ${candidate.currentStock} · Necessário para a lista ${suggestion.shortage}.`.slice(0, 180),
-        category: "inventory",
-        configurationDisassemblySelection: {
-          action: "configuration_disassembly_target",
-          commercialCodeId: candidate.commercialCodeId,
-          quantity: disassemblyQuantity,
-        },
-      });
-    }
-  }
-
-  const visibleOptions = options.slice(0, 5);
-  if (!visibleOptions.length) return null;
-  const block: AssistantClarificationBlock = {
-    kind: "assistant_clarification",
-    title: "Operações separadas necessárias",
-    message: "A lista depende de montagem ou desmontagem. Cada opção prepara somente uma operação oficial; confirme uma por vez e depois solicite a saída inteira novamente para revalidar todos os saldos.",
-    options: [
-      ...visibleOptions,
-      {
-        id: "output-cancel",
-        label: "Cancelar",
-        prompt: "Cancelar esta saída.",
-        category: "inventory",
-      },
-    ],
-    fallbackText: "Nenhuma saída foi preparada. Escolha uma operação separada e, depois de confirmá-la, solicite a saída inteira novamente.",
-  };
+      return { servoId, failed: loaded.failed, targets: loaded.targets };
+    }));
+  const block = buildManualStockOutputBatchPreparationBlock({
+    lines,
+    projection,
+    disassemblySources,
+  });
+  if (!block) return null;
   return { message: block.fallbackText, structuredBlock: block };
 }
 

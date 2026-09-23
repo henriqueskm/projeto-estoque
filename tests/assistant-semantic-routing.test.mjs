@@ -10,6 +10,7 @@ import {
   resolveAssistantSemanticRouterModel,
   routeAssistantMessageSemantically,
 } from "../lib/ai/assistant-semantic-router.ts";
+import { extractInventoryItemSummaryMetric } from "../lib/ai/assistant-routing.ts";
 import {
   assistantCapabilities,
   buildAssistantCapabilityHelp,
@@ -578,11 +579,19 @@ test("código físico e alias exatos vencem modelo; inexistente permanece NOT_FO
   assert.equal(missing.structuredBlock?.status, "NOT_FOUND");
 });
 
-test("fallback semântico mantém código ou alias exato acima do leitor de modelo", async () => {
-  for (const code of ["KT-18", "MBF-015"]) {
+test("fallback semântico mantém métrica explícita de código model-like acima do leitor de modelo", async () => {
+  const cases = [
+    ["quantos KT-18 tem?", "KT-18", "STOCK"],
+    ["qual o estoque mínimo do MBF-015?", "MBF-015", "MINIMUM"],
+    ["qual a situação do MBF-015?", "MBF-015", "STATUS"],
+    ["quanto falta para o mínimo do MBF-015?", "MBF-015", "SHORTFALL"],
+    ["qual a descrição do MBF-015?", "MBF-015", "DESCRIPTION"],
+    ["qual a composição do MBF-015?", "MBF-015", "COMPOSITION"],
+  ];
+  for (const [message, code, metric] of cases) {
     const calls = [];
     const answer = await answerAssistantQuestion(
-      `quantos ${code} tem?`,
+      message,
       null, null, null, "Henrique", "test-user", "Henrique Klein",
       null, null, null, null, null, null, [], emptyContext,
       {
@@ -604,11 +613,50 @@ test("fallback semântico mantém código ou alias exato acima do leitor de mode
 
     assert.equal(answer.structuredBlock?.kind, "inventory_item_summary", code);
     assert.equal(answer.structuredBlock?.results[0].displayCode, code, code);
+    assert.equal(extractInventoryItemSummaryMetric(message), metric, message);
     assert.deepEqual(calls, [
       ["lookup", code],
-      ["summary", code, "STOCK"],
+      ["summary", code, metric],
     ], code);
   }
+});
+
+test("extração de métrica preserva a precedência operacional", () => {
+  assert.equal(extractInventoryItemSummaryMetric("composição e descrição do 1B"), "COMPOSITION");
+  assert.equal(extractInventoryItemSummaryMetric("descrição e mínimo do 1B"), "DESCRIPTION");
+  assert.equal(extractInventoryItemSummaryMetric("quanto falta para o mínimo e situação do 1B"), "SHORTFALL");
+  assert.equal(extractInventoryItemSummaryMetric("mínimo e situação do 1B"), "MINIMUM");
+  assert.equal(extractInventoryItemSummaryMetric("situação e saldo do 1B"), "STATUS");
+  assert.equal(extractInventoryItemSummaryMetric("saldo do 1B"), "STOCK");
+});
+
+test("fallback semântico consulta modelo somente quando o candidato não é código exato", async () => {
+  const calls = [];
+  const answer = await answerAssistantQuestion(
+    "qual a composição do MBF-015?",
+    null, null, null, "Henrique", "test-user", "Henrique Klein",
+    null, null, null, null, null, null, [], emptyContext,
+    {
+      semanticRouter: async () => ({ status: "FALLBACK", reason: "TIMEOUT" }),
+      itemLookupReader: async (query) => {
+        calls.push(["lookup", query]);
+        return { exact_code_match: false };
+      },
+      inventorySummaryReader: async () => {
+        throw new Error("resumo exato não deve ser chamado");
+      },
+      servoModelInventoryReader: async (query) => {
+        calls.push(["model", query]);
+        return servoInventoryBlock(query);
+      },
+    },
+  );
+
+  assert.deepEqual(calls, [
+    ["lookup", "MBF-015"],
+    ["model", "MBF-015"],
+  ]);
+  assert.equal(answer.structuredBlock?.kind, "servo_model_inventory_breakdown");
 });
 
 test("consulta preserva qualificador completo da variante do modelo", async () => {
