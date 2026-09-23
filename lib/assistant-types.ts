@@ -739,6 +739,21 @@ export type AssistantServoModelInventoryBreakdownBlock = {
   fallbackText: string;
 };
 
+export type AssistantAttentionOrderBlock = {
+  kind: "assistant_attention_orders";
+  alertKind: "SAFISA_READY_PICKUP" | "SUPPLIER_ORDER_PENDING_STOCK";
+  title: string;
+  summary: string;
+  orders: Array<{
+    supplierOrderId: string;
+    negotiationNumber: string;
+    quantity: number;
+    href: string;
+  }>;
+  remainingCount: number;
+  fallbackText: string;
+};
+
 export type AssistantSupplierOrderCard = {
   id: string;
   negotiationNumber: string;
@@ -1093,6 +1108,7 @@ export type AssistantStructuredBlock =
   | AssistantCatalogMediaBlock
   | AssistantInventoryItemSummaryBlock
   | AssistantServoModelInventoryBreakdownBlock
+  | AssistantAttentionOrderBlock
   | AssistantSupplierOrderListBlock
   | AssistantSupplierOrderDetailBlock
   | AssistantSupplierOrderAggregateBlock
@@ -3108,6 +3124,48 @@ export function parseAssistantStructuredBlock(
 
   if (value.kind === "servo_model_inventory_breakdown") {
     return parseServoModelInventoryBreakdown(value);
+  }
+
+  if (value.kind === "assistant_attention_orders") {
+    const orders = Array.isArray(value.orders)
+      ? value.orders.map((order) => {
+          if (
+            !isRecord(order) ||
+            typeof order.supplierOrderId !== "string" ||
+            !uuidPattern.test(order.supplierOrderId) ||
+            typeof order.negotiationNumber !== "string" ||
+            !order.negotiationNumber.trim() ||
+            order.negotiationNumber.length > 120 ||
+            !isNonnegativeInteger(order.quantity) ||
+            order.quantity === 0 ||
+            !isSafeSupplierOrdersHref(order.href, order.supplierOrderId)
+          ) return null;
+          return {
+            supplierOrderId: order.supplierOrderId.toLowerCase(),
+            negotiationNumber: order.negotiationNumber.trim(),
+            quantity: order.quantity,
+            href: order.href,
+          };
+        })
+      : [];
+    if (
+      !["SAFISA_READY_PICKUP", "SUPPLIER_ORDER_PENDING_STOCK"].includes(String(value.alertKind)) ||
+      typeof value.title !== "string" || !value.title.trim() || value.title.length > 120 ||
+      typeof value.summary !== "string" || !value.summary.trim() || value.summary.length > 500 ||
+      orders.length < 1 || orders.length > 5 || orders.some((order) => order === null) ||
+      new Set(orders.map((order) => order?.supplierOrderId)).size !== orders.length ||
+      !isNonnegativeInteger(value.remainingCount) ||
+      typeof value.fallbackText !== "string" || !value.fallbackText.trim() || value.fallbackText.length > 1000
+    ) return null;
+    return {
+      kind: value.kind,
+      alertKind: value.alertKind as AssistantAttentionOrderBlock["alertKind"],
+      title: value.title.trim(),
+      summary: value.summary.trim(),
+      orders: orders as AssistantAttentionOrderBlock["orders"],
+      remainingCount: value.remainingCount,
+      fallbackText: value.fallbackText.trim(),
+    };
   }
 
   if (

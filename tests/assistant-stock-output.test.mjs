@@ -27,6 +27,10 @@ import {
 import { expireStockEntryPreview } from "../lib/ai/assistant-action-persistence.ts";
 import { consolidateResolvedManualStockLines } from "../lib/ai/manual-stock-list-routing.mjs";
 import { buildOutboundPreview } from "../lib/outbound-preview.ts";
+import {
+  planConfigurationOutputSuggestion,
+  planLooseServoOutputSuggestion,
+} from "../lib/ai/manual-stock-output-suggestions.mjs";
 
 const secret = "local-test-secret-with-at-least-thirty-two-characters";
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -128,10 +132,11 @@ test("saída preserva item único e limite de doze linhas", () => {
   assert.equal(routeManualStockOutputAction(`baixa nessa lista:\n${thirteenLines}`).kind, "INVALID");
 });
 
-test("lista de saída preserva ambiguidade e rejeita quantidades inseguras", () => {
-  const ambiguous = routeManualStockOutputAction("Baixa:\n2 do MBF-015\n1 do 091");
-  assert.equal(ambiguous.kind, "BATCH_ACTION");
-  assert.equal(ambiguous.lines[0].requiresIdentityChoice, true);
+test("lista de saída interpreta modelo de Servo como item físico e rejeita quantidades inseguras", () => {
+  const routed = routeManualStockOutputAction("Baixa:\n2 do MBF-015\n1 do 091");
+  assert.equal(routed.kind, "BATCH_ACTION");
+  assert.equal(routed.lines[0].requestedIdentity, "ITEM");
+  assert.equal(routed.lines[0].requiresIdentityChoice, false);
   for (const phrase of [
     "Baixa:\n2 do 2A\n0 do 091",
     "Baixa:\n2 do 2A\n-1 do 091",
@@ -157,7 +162,7 @@ test("saída em lote consolida alvos repetidos sem misturar identidades", () => 
 test("saída em lote bloqueia antes da única RPC e preserva revalidação", () => {
   const source = readFileSync(new URL("../lib/assistant-manual-stock-output.ts", import.meta.url), "utf8");
   assert.equal((source.match(/\.rpc\("stock_outbound_items"/g) ?? []).length, 1);
-  assert.match(source, /const currentProjection = buildManualStockOutputBatchProjection/);
+  assert.match(source, /p_allow_auto_assembly:\s*false/);
   assert.match(source, /A lista inteira foi bloqueada e nenhuma saída foi executada/);
   assert.match(source, /buildOutboundPreview/);
 });
@@ -227,11 +232,128 @@ test("não intercepta retirada vinculada a Pedido", () => {
   assert.equal(routeManualStockOutputAction("Retire 1 do 1H no Pedido Teste 04.").kind, "NOT_MANUAL_STOCK_OUTPUT");
 });
 
-test("modelo sem qualificador exige esclarecimento", () => {
+test("modelo sem qualificador representa Servo físico avulso na saída", () => {
   const result = routeManualStockOutputAction("Retire 2 unidades do MBF015.");
-  assert.equal(result.kind, "AMBIGUOUS_TARGET");
-  assert.equal(result.quantity, 2);
-  assert.equal(result.targetQuery, "MBF015");
+  assert.equal(result.kind, "ACTION");
+  assert.deepEqual(result.request, {
+    quantity: 2,
+    targetQuery: "MBF015",
+    requestedIdentity: "ITEM",
+  });
+});
+
+test("sugestões de saída são somente leitura e nunca escolhem montagem ou desmontagem arbitrariamente", () => {
+  assert.deepEqual(
+    planConfigurationOutputSuggestion({ currentStock: 4, autoAssemblyCapacity: 3 }, 3),
+    { kind: "AVAILABLE", maximumPossible: 7 },
+  );
+  assert.deepEqual(
+    planConfigurationOutputSuggestion({ currentStock: 1, autoAssemblyCapacity: 4 }, 4),
+    { kind: "ASSEMBLY_REQUIRED", assemblyQuantity: 3, maximumPossible: 5 },
+  );
+  assert.deepEqual(
+    planConfigurationOutputSuggestion({ currentStock: 1, autoAssemblyCapacity: 2 }, 5),
+    { kind: "INSUFFICIENT", maximumPossible: 3 },
+  );
+
+  const configurations = [
+    { commercialCodeId: "code-a", currentStock: 3 },
+    { commercialCodeId: "code-b", currentStock: 4 },
+  ];
+  assert.deepEqual(
+    planLooseServoOutputSuggestion(5, 4, configurations),
+    { kind: "AVAILABLE", maximumPossible: 5 },
+  );
+  assert.deepEqual(
+    planLooseServoOutputSuggestion(1, 4, configurations),
+    {
+      kind: "DISASSEMBLY_OPTIONS",
+      shortage: 3,
+      recoverableMounted: 7,
+      maximumPossible: 8,
+      options: configurations.map((configuration) => ({
+        ...configuration,
+        suggestedQuantity: 3,
+      })),
+    },
+  );
+  assert.deepEqual(
+    planLooseServoOutputSuggestion(0, 5, [
+      { commercialCodeId: "code-a", currentStock: 2 },
+      { commercialCodeId: "code-b", currentStock: 3 },
+    ]),
+    {
+      kind: "MULTIPLE_DISASSEMBLIES_REQUIRED",
+      shortage: 5,
+      recoverableMounted: 5,
+      maximumPossible: 5,
+      options: [
+        { commercialCodeId: "code-a", currentStock: 2, suggestedQuantity: 2 },
+        { commercialCodeId: "code-b", currentStock: 3, suggestedQuantity: 3 },
+      ],
+    },
+  );
+  const splitSuggestion = planLooseServoOutputSuggestion(0, 5, [
+    { configurationId: "configuration-a", commercialCodeId: "code-a", currentStock: 2 },
+    { configurationId: "configuration-b", commercialCodeId: "code-b", currentStock: 3 },
+  ]);
+  assert.deepEqual(
+    splitSuggestion.options.map(({ configurationId, suggestedQuantity }) => ({
+      configurationId,
+      suggestedQuantity,
+    })),
+    [
+      { configurationId: "configuration-a", suggestedQuantity: 2 },
+      { configurationId: "configuration-b", suggestedQuantity: 3 },
+    ],
+  );
+  assert.equal(
+    splitSuggestion.options.reduce(
+      (total, option) => total + option.suggestedQuantity,
+      0,
+    ),
+    splitSuggestion.shortage,
+  );
+  assert.deepEqual(
+    planLooseServoOutputSuggestion(1, 10, configurations),
+    { kind: "INSUFFICIENT", shortage: 9, recoverableMounted: 7, maximumPossible: 8 },
+  );
+
+  const source = readFileSync(new URL("../lib/assistant-manual-stock-output.ts", import.meta.url), "utf8");
+  assert.match(source, /configurationAssemblySelection/);
+  assert.match(source, /configurationDisassemblySelection/);
+  assert.match(source, /p_allow_auto_assembly:\s*false/);
+  assert.doesNotMatch(source, /\.rpc\([^)]*(?:assembly|disassembly)/i);
+});
+
+test("confirmação reconhece replay antes do preflight de saldo", () => {
+  const source = readFileSync(new URL("../lib/assistant-manual-stock-output.ts", import.meta.url), "utf8");
+  const existingBatchIndex = source.indexOf('from("movement_batches")');
+  const rpcIndex = source.indexOf('.rpc("stock_outbound_items"', existingBatchIndex);
+  const targetLoadIndex = source.indexOf("loadManualStockOutputTargetsByIds(supabase, payload.lines)", existingBatchIndex);
+  assert.ok(existingBatchIndex >= 0);
+  assert.ok(rpcIndex > existingBatchIndex);
+  assert.ok(targetLoadIndex > rpcIndex);
+  assert.match(source, /idempotentReplay:\s*Boolean\(existingBatch\.data\?\.id && existingBatch\.data\.id === batchId\)/);
+});
+
+test("migration pública mantém um writer canônico e políticas de montagem explícitas", () => {
+  const migration = readFileSync(
+    new URL("../supabase/migrations/20260917120000_add_stock_outbound_auto_assembly_policy.sql", import.meta.url),
+    "utf8",
+  );
+  assert.match(migration, /stock_outbound_items\(\s*p_lines jsonb,\s*p_idempotency_key uuid,\s*p_description text,\s*p_allow_auto_assembly boolean\s*\)/s);
+  assert.doesNotMatch(migration, /p_allow_auto_assembly boolean\s+default/i);
+  assert.match(migration, /p_description,\s*true\s*\)/s);
+  assert.ok(migration.indexOf("if found then") < migration.indexOf("if not p_allow_auto_assembly then"));
+  assert.match(migration, /for update/);
+  assert.match(migration, /Automatic assembly is disabled/);
+  assert.equal((migration.match(/private\.stock_outbound_items\(/g) ?? []).length, 2);
+  assert.doesNotMatch(migration, /insert into public\.(?:movement_batches|outbound_batch_lines|stock_movements|assembly_operations)/i);
+  assert.match(migration, /revoke all on function public\.stock_outbound_items\(jsonb, uuid, text, boolean\)\s*from public, anon, authenticated, service_role/);
+  assert.match(migration, /grant execute on function public\.stock_outbound_items\(jsonb, uuid, text, boolean\)\s*to authenticated;/);
+  assert.match(migration, /revoke all on function public\.stock_outbound_items\(jsonb, uuid, text\)\s*from public, anon, authenticated, service_role/);
+  assert.match(migration, /grant execute on function public\.stock_outbound_items\(jsonb, uuid, text\)\s*to authenticated;/);
 });
 
 test("qualificadores com e sem kit restringem a identidade", () => {

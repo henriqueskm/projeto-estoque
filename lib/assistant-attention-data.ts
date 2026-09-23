@@ -14,7 +14,18 @@ type PendingStockRow = {
   negotiation_number: string;
   order_date: string;
   waiting_stock_quantity: number;
+  is_active_order: boolean;
 };
+
+export function isAssistantPendingStockOrderEligible(
+  row: Pick<PendingStockRow, "waiting_stock_quantity" | "is_active_order">,
+) {
+  return (
+    row.is_active_order === true &&
+    Number.isSafeInteger(row.waiting_stock_quantity) &&
+    row.waiting_stock_quantity > 0
+  );
+}
 
 export type AssistantAttentionResult =
   | { data: AssistantAttentionSummary; error: null }
@@ -35,8 +46,9 @@ async function loadPendingStockOrders(): Promise<
   const supabase = await createClient();
   const result = await supabase
     .from("supplier_order_summaries")
-    .select("id, negotiation_number, order_date, waiting_stock_quantity")
+    .select("id, negotiation_number, order_date, waiting_stock_quantity, is_active_order")
     .gt("waiting_stock_quantity", 0)
+    .eq("is_active_order", true)
     .order("waiting_stock_quantity", { ascending: false })
     .order("order_date", { ascending: false });
 
@@ -47,12 +59,12 @@ async function loadPendingStockOrders(): Promise<
     rows.some(
       (row) =>
         typeof row.id !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(row.id) ||
         typeof row.negotiation_number !== "string" ||
         !/^\d{1,120}$/.test(row.negotiation_number) ||
         typeof row.order_date !== "string" ||
         !/^\d{4}-\d{2}-\d{2}$/.test(row.order_date) ||
-        !Number.isSafeInteger(row.waiting_stock_quantity) ||
-        row.waiting_stock_quantity < 0,
+        !isAssistantPendingStockOrderEligible(row),
     )
   ) {
     return null;
@@ -113,6 +125,8 @@ export async function loadAssistantAttention(
             negotiationNumber: alert.negotiationNumber,
             readyWaitingPickupQuantity:
               alert.readyWaitingPickupQuantity,
+            isActiveOrder: alert.isActiveOrder,
+            isInHistory: alert.isInHistory,
           })),
           pendingStockOrders,
         },

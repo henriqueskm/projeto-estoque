@@ -253,9 +253,7 @@ export function hasClearInventoryQueryIntent(message: string) {
     return false;
   }
 
-  return /\b(quanto|quantos|quanta|quantas|tenho|temos|tem|estoque|saldo|quantidade|disponivel|situacao|baixo|baixa|pouco|minimo|composicao|configuracoes|qual\s+kit|qual\s+servo)\b/.test(
-    normalizedMessage,
-  );
+  return extractInventoryItemSummaryMetric(message) !== null;
 }
 
 function hasItemQueryIntent(message: string) {
@@ -627,10 +625,18 @@ export function routeInventoryItemSummaryQuestion(
     return null;
   }
 
+  const metric = extractInventoryItemSummaryMetric(message);
+  return metric ? { queryCode, metric } : null;
+}
+
+export function extractInventoryItemSummaryMetric(
+  message: string,
+): AssistantInventoryItemSummaryMetric | null {
+  const normalizedMessage = normalizeAssistantText(message);
   const asksComposition =
     /\b(composicao|forma(?:m|do|da|dos|das)|qual\s+servo|qual\s+kit|servo\s+e\s+kit)\b/.test(
       normalizedMessage,
-    );
+    ) || /\bconfiguracoes\b/.test(normalizedMessage);
   const asksDescription =
     /\b(o\s+que\s+e|descricao|descreva)\b/.test(normalizedMessage) ||
     /\bqual\s+e\b.{0,24}\b(codigo|item|servo|kit|reparo|peca|caixa|configuracao)\b/.test(
@@ -650,30 +656,13 @@ export function routeInventoryItemSummaryQuestion(
       normalizedMessage,
     ) || /^(?:e\s+)?(?:o|a)\s+(?:c[oó]d(?:igo)?\s+)?(?=[a-z0-9/-]*\d)[a-z0-9]+(?:[/-][a-z0-9]+)*\b/.test(normalizedMessage);
 
-  const metric: AssistantInventoryItemSummaryMetric = asksComposition
-    ? "COMPOSITION"
-    : asksDescription
-      ? "DESCRIPTION"
-      : asksShortfall
-        ? "SHORTFALL"
-        : asksMinimum
-          ? "MINIMUM"
-          : asksStatus
-            ? "STATUS"
-            : "STOCK";
-
-  if (
-    !asksComposition &&
-    !asksDescription &&
-    !asksShortfall &&
-    !asksMinimum &&
-    !asksStatus &&
-    !asksStock
-  ) {
-    return null;
-  }
-
-  return { queryCode, metric };
+  if (asksComposition) return "COMPOSITION";
+  if (asksDescription) return "DESCRIPTION";
+  if (asksShortfall) return "SHORTFALL";
+  if (asksMinimum) return "MINIMUM";
+  if (asksStatus) return "STATUS";
+  if (asksStock) return "STOCK";
+  return null;
 }
 
 export function getExplicitGreeting(message: string) {
