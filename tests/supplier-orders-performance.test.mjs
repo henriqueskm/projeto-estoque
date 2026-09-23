@@ -140,6 +140,13 @@ function createFakeClient(fixtures, options = {}) {
           call.filters.push(["limit", value]);
           return builder;
         },
+        range(from, to) {
+          call.filters.push(["range", from, to]);
+          return Promise.resolve({
+            data: rows.slice(from, Math.min(to + 1, from + 1_000)),
+            error,
+          });
+        },
         async maybeSingle() {
           return { data: rows[0] ?? null, error };
         },
@@ -456,7 +463,7 @@ test("detail core reports query failures without starting media enrichment", asy
 
 test("item search returns only accessible summary ids, not hydrated details", async () => {
   const client = createFakeClient({
-    supplier_order_item_details: [{ supplier_order_id: orderId }],
+    supplier_order_item_details: [{ id: itemRow().id, supplier_order_id: orderId }],
     supplier_order_summaries: [{ id: orderId }],
   });
   const result = await searchSupplierOrderIdsWithClient("active", "1B", client);
@@ -465,7 +472,7 @@ test("item search returns only accessible summary ids, not hydrated details", as
     "supplier_order_item_details",
     "supplier_order_summaries",
   ]);
-  assert.equal(client.calls[0].selected, "supplier_order_id");
+  assert.equal(client.calls[0].selected, "id, supplier_order_id");
 });
 
 test("late detail response cannot replace a newer selection", () => {

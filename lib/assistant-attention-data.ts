@@ -8,6 +8,7 @@ import {
 import { loadPurchaseRecommendations } from "@/lib/purchase-recommendations";
 import { loadCurrentSafisaPickupAlerts } from "@/lib/safisa-pickup-alerts";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 
 type PendingStockRow = {
   id: string;
@@ -44,13 +45,18 @@ async function loadPendingStockOrders(): Promise<
   AssistantAttentionPendingStockSnapshot[] | null
 > {
   const supabase = await createClient();
-  const result = await supabase
-    .from("supplier_order_summaries")
-    .select("id, negotiation_number, order_date, waiting_stock_quantity, is_active_order")
-    .gt("waiting_stock_quantity", 0)
-    .eq("is_active_order", true)
-    .order("waiting_stock_quantity", { ascending: false })
-    .order("order_date", { ascending: false });
+  const result = await fetchAllSupabaseRows<PendingStockRow>(
+    (from, to) => supabase
+      .from("supplier_order_summaries")
+      .select("id, negotiation_number, order_date, waiting_stock_quantity, is_active_order")
+      .gt("waiting_stock_quantity", 0)
+      .eq("is_active_order", true)
+      .order("waiting_stock_quantity", { ascending: false })
+      .order("order_date", { ascending: false })
+      .order("id")
+      .range(from, to),
+    (row) => row.id,
+  );
 
   if (result.error) return null;
 

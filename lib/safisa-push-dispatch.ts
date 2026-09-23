@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BatchResponse, Messaging } from "firebase-admin/messaging";
 import { getFirebaseAdminMessaging } from "@/lib/firebase-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -177,11 +178,19 @@ export async function dispatchSafisaFullyReadyPush(
     const event = parsePushEvent(claimedData);
     if (!event) return claimedData === null ? "not_pending" : "failed";
 
-    const { data: subscriptionData, error: subscriptionError } = await adminClient
-      .from("push_subscriptions")
-      .select("id, firebase_installation_id, profiles!inner(is_active)")
-      .eq("enabled", true)
-      .eq("profiles.is_active", true);
+    const {
+      data: subscriptionData,
+      error: subscriptionError,
+    } = await fetchAllSupabaseRows<Record<string, unknown>>(
+      (from, to) => adminClient
+        .from("push_subscriptions")
+        .select("id, firebase_installation_id, profiles!inner(is_active)")
+        .eq("enabled", true)
+        .eq("profiles.is_active", true)
+        .order("id")
+        .range(from, to),
+      (row) => typeof row.id === "string" ? row.id : "",
+    );
 
     if (subscriptionError) {
       await completeEvent(adminClient, event.id, "FAILED", "SUBSCRIPTION_READ_FAILED");

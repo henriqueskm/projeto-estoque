@@ -19,6 +19,7 @@ import { createSupplierOrderStockEntryAction } from "@/app/(authenticated)/pedid
 import { mapSupplierOrderItem, mapSupplierOrderSummary, supplierOrderItemSelect, supplierOrderSummarySelect, type SupplierOrderItemRow, type SupplierOrderSummaryRow } from "@/lib/supplier-orders-data";
 import type { SupplierOrderItem, SupplierOrderSummary } from "@/lib/supplier-orders-types";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 
 const maximumPreviewLines = 20;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -56,9 +57,13 @@ async function loadOrderById(supabase: Awaited<ReturnType<typeof createClient>>,
   const result = await supabase.from("supplier_order_summaries").select(supplierOrderSummarySelect).eq("id", id).maybeSingle();
   return { order: result.data ? mapSupplierOrderSummary(result.data as SupplierOrderSummaryRow) : null, failed: Boolean(result.error) };
 }
-async function loadLines(supabase: Awaited<ReturnType<typeof createClient>>, orderId: string) {
-  const result = await supabase.from("supplier_order_item_details").select(supplierOrderItemSelect)
-    .eq("supplier_order_id", orderId).order("position").limit(1001);
+export async function loadLines(supabase: Awaited<ReturnType<typeof createClient>>, orderId: string) {
+  const result = await fetchAllSupabaseRows<SupplierOrderItemRow>(
+    (from, to) => supabase.from("supplier_order_item_details").select(supplierOrderItemSelect)
+      .eq("supplier_order_id", orderId).order("position").order("id").range(from, to),
+    (row) => row.id,
+    { rowLimit: 1001 },
+  );
   return { items: ((result.data ?? []) as SupplierOrderItemRow[]).map(mapSupplierOrderItem).filter((item): item is SupplierOrderItem => Boolean(item)),
     failed: Boolean(result.error) || (result.data?.length ?? 0) > 1000 };
 }

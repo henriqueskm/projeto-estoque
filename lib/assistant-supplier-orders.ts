@@ -33,6 +33,10 @@ import {
 } from "@/lib/servo-model-search";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { createClient } from "@/lib/supabase/server";
+import {
+  fetchAllSupabaseRows,
+  fetchAllSupabaseRowsByChunks,
+} from "@/lib/supabase-read-pagination";
 
 const listLimit = 10;
 const detailItemLimit = 20;
@@ -56,6 +60,7 @@ type ItemRow = {
 };
 
 type CodeRow = {
+  id: string;
   configuration_id: string;
   code: string;
   is_active: boolean;
@@ -120,13 +125,18 @@ async function loadCatalogSearchItems(
   supabase: SupabaseServerClient,
   catalogSearch: string,
 ) {
-  const exactResult = await supabase
-    .from("supplier_order_item_details")
-    .select(supplierOrderItemSelect)
-    .or(
-      `code_snapshot.ilike.${catalogSearch},commercial_code_snapshot.ilike.${catalogSearch}`,
-    )
-    .limit(aggregateSafetyLimit + 1);
+  const exactResult = await fetchAllSupabaseRows<SupplierOrderItemRow>(
+    (from, to) => supabase
+      .from("supplier_order_item_details")
+      .select(supplierOrderItemSelect)
+      .or(
+        `code_snapshot.ilike.${catalogSearch},commercial_code_snapshot.ilike.${catalogSearch}`,
+      )
+      .order("id")
+      .range(from, to),
+    (row) => row.id,
+    { rowLimit: aggregateSafetyLimit + 1 },
+  );
 
   if (
     exactResult.error ||
@@ -149,10 +159,15 @@ async function loadCatalogSearchItems(
     return exactItems;
   }
 
-  const result = await supabase
-    .from("supplier_order_item_details")
-    .select(supplierOrderItemSelect)
-    .limit(aggregateSafetyLimit + 1);
+  const result = await fetchAllSupabaseRows<SupplierOrderItemRow>(
+    (from, to) => supabase
+      .from("supplier_order_item_details")
+      .select(supplierOrderItemSelect)
+      .order("id")
+      .range(from, to),
+    (row) => row.id,
+    { rowLimit: aggregateSafetyLimit + 1 },
+  );
 
   if (result.error || (result.data?.length ?? 0) > aggregateSafetyLimit) {
     throw new AssistantDataError();
@@ -542,26 +557,32 @@ async function attachItemMedia(
     return new Map<string, AssistantMediaDescriptor>();
   }
 
-  const filters = [
-    configurationIds.length > 0
-      ? `id.in.(${configurationIds.join(",")})`
-      : null,
-    installationKitIds.length > 0
-      ? `installation_kit_id.in.(${installationKitIds.join(",")})`
-      : null,
-  ].filter(Boolean);
-  const configurationsResult = await supabase
-    .from("commercial_configurations")
-    .select(
-      "id, description, image_path, servo_id, installation_kit_id, is_active",
-    )
-    .or(filters.join(","));
+  const [directConfigurationsResult, compatibleConfigurationsResult] =
+    await Promise.all([
+      fetchAllSupabaseRowsByChunks<string, ConfigurationRow>(
+        configurationIds,
+        (ids, from, to) => supabase.from("commercial_configurations").select("id, description, image_path, servo_id, installation_kit_id, is_active").in("id", ids).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRowsByChunks<string, ConfigurationRow>(
+        installationKitIds,
+        (ids, from, to) => supabase.from("commercial_configurations").select("id, description, image_path, servo_id, installation_kit_id, is_active").in("installation_kit_id", ids).order("id").range(from, to),
+        (row) => row.id,
+      ),
+    ]);
 
-  if (configurationsResult.error) {
+  if (directConfigurationsResult.error || compatibleConfigurationsResult.error) {
     throw new AssistantDataError();
   }
 
-  const configurations = (configurationsResult.data ?? []) as ConfigurationRow[];
+  const configurations = Array.from(
+    new Map(
+      [
+        ...(directConfigurationsResult.data ?? []),
+        ...(compatibleConfigurationsResult.data ?? []),
+      ].map((configuration) => [configuration.id, configuration]),
+    ).values(),
+  );
   const relatedItemIds = Array.from(
     new Set(
       configurations.flatMap((configuration) => [
@@ -575,24 +596,21 @@ async function attachItemMedia(
   );
   const [itemsResult, modelsResult, codesResult, imageUrls] =
     await Promise.all([
-      relatedItemIds.length > 0
-        ? supabase
-            .from("items")
-            .select("id, code, description, item_type, is_active")
-            .in("id", relatedItemIds)
-        : Promise.resolve({ data: [], error: null }),
-      relatedItemIds.length > 0
-        ? supabase
-            .from("servo_models")
-            .select("item_id, model")
-            .in("item_id", relatedItemIds)
-        : Promise.resolve({ data: [], error: null }),
-      relatedConfigurationIds.length > 0
-        ? supabase
-            .from("commercial_configuration_codes")
-            .select("configuration_id, code, is_active")
-            .in("configuration_id", relatedConfigurationIds)
-        : Promise.resolve({ data: [], error: null }),
+      fetchAllSupabaseRowsByChunks<string, ItemRow>(
+        relatedItemIds,
+        (ids, from, to) => supabase.from("items").select("id, code, description, item_type, is_active").in("id", ids).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRowsByChunks<string, ServoModelRow>(
+        relatedItemIds,
+        (ids, from, to) => supabase.from("servo_models").select("item_id, model").in("item_id", ids).order("item_id").range(from, to),
+        (row) => row.item_id,
+      ),
+      fetchAllSupabaseRowsByChunks<string, CodeRow>(
+        relatedConfigurationIds,
+        (ids, from, to) => supabase.from("commercial_configuration_codes").select("id, configuration_id, code, is_active").in("configuration_id", ids).order("id").range(from, to),
+        (row) => row.id,
+      ),
       createCommercialImageUrlMap(
         supabase,
         configurations.map((configuration) => configuration.image_path),
@@ -719,22 +737,30 @@ async function loadDetailItems(
   query: SupplierOrderAssistantQuery,
   catalogItems: SupplierOrderItem[] | null,
 ) {
-  let itemsQuery = supabase
-    .from("supplier_order_item_details")
-    .select(supplierOrderItemSelect)
-    .eq("supplier_order_id", orderId)
-    .order("position", { ascending: true });
+  const buildItemsQuery = () => {
+    let itemsQuery = supabase
+      .from("supplier_order_item_details")
+      .select(supplierOrderItemSelect)
+      .eq("supplier_order_id", orderId)
+      .order("position", { ascending: true })
+      .order("id", { ascending: true });
 
-  if (query.lineFocus === "WAITING_PICKUP") {
-    itemsQuery = itemsQuery.gt("waiting_pickup_quantity", 0);
-  }
-  if (query.lineFocus === "WAITING_STOCK") {
-    itemsQuery = itemsQuery.gt("waiting_stock_quantity", 0);
-  }
+    if (query.lineFocus === "WAITING_PICKUP") {
+      itemsQuery = itemsQuery.gt("waiting_pickup_quantity", 0);
+    }
+    if (query.lineFocus === "WAITING_STOCK") {
+      itemsQuery = itemsQuery.gt("waiting_stock_quantity", 0);
+    }
+    return itemsQuery;
+  };
 
-  const result = await itemsQuery.limit(
-    query.catalogCode ? aggregateSafetyLimit + 1 : detailItemLimit + 1,
-  );
+  const result = query.catalogCode
+    ? await fetchAllSupabaseRows<SupplierOrderItemRow>(
+        (from, to) => buildItemsQuery().range(from, to),
+        (row) => row.id,
+        { rowLimit: aggregateSafetyLimit + 1 },
+      )
+    : await buildItemsQuery().limit(detailItemLimit + 1);
   if (
     result.error ||
     (query.catalogCode &&

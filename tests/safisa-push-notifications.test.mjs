@@ -83,6 +83,13 @@ function fakeAdmin({ event = eventFixture, subscriptions = [] } = {}) {
       const query = {
         select() { return query; },
         eq() { return query; },
+        order() { return query; },
+        range(from, to) {
+          return Promise.resolve({
+            data: subscriptions.slice(from, Math.min(to + 1, from + 1_000)),
+            error: null,
+          });
+        },
         update() { return query; },
         in(_field, values) {
           disabledIds.push(...values);
@@ -1498,7 +1505,7 @@ test("server dispatch succeeds once and records SENT", async () => {
 });
 
 test("server dispatch limits each multicast request to 500 FIDs", async () => {
-  const subscriptions = Array.from({ length: 501 }, (_, index) => subscription(index + 1));
+  const subscriptions = Array.from({ length: 1_001 }, (_, index) => subscription(index + 1));
   const admin = fakeAdmin({ subscriptions });
   const batchSizes = [];
   const result = await dispatchSafisaFullyReadyPush(eventFixture.supplier_order_id, {
@@ -1510,7 +1517,7 @@ test("server dispatch limits each multicast request to 500 FIDs", async () => {
   });
 
   assert.equal(result, "sent");
-  assert.deepEqual(batchSizes, [500, 1]);
+  assert.deepEqual(batchSizes, [500, 500, 1]);
 });
 
 test("server dispatch handles no recipients, unregistered FIDs, partial multicast, failure, and timeout", async () => {

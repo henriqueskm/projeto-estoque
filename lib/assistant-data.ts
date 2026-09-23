@@ -36,6 +36,10 @@ import {
   type PhysicalStockItemType,
 } from "@/lib/stock-calculations";
 import { createClient } from "@/lib/supabase/server";
+import {
+  fetchAllSupabaseRows,
+  fetchAllSupabaseRowsByChunks,
+} from "@/lib/supabase-read-pagination";
 
 type ItemRow = {
   id: string;
@@ -67,6 +71,7 @@ type CommercialConfigurationRow = {
 };
 
 type CommercialConfigurationCodeRow = {
+  id: string;
   configuration_id: string;
   code: string;
   is_active: boolean;
@@ -129,25 +134,34 @@ async function loadAssistantStockSnapshot(): Promise<AssistantStockSnapshot> {
     configurationBalancesResult,
     repairCompatibilitiesResult,
   ] = await Promise.all([
-    supabase
-      .from("items")
-      .select("id, code, description, item_type, minimum_stock, is_active"),
-    supabase.from("servo_models").select("item_id, model"),
-    supabase.from("stock_balances").select("item_id, quantity"),
-    supabase
-      .from("commercial_configurations")
-      .select(
-        "id, description, servo_id, installation_kit_id, minimum_stock, is_active, image_path",
-      ),
-    supabase
-      .from("commercial_configuration_codes")
-      .select("configuration_id, code, is_active"),
-    supabase
-      .from("configuration_stock_balances")
-      .select("configuration_id, quantity"),
-    supabase
-      .from("servo_repair_compatibility")
-      .select("servo_id, repair_kit_id"),
+    fetchAllSupabaseRows<ItemRow>(
+      (from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRows<ServoModelRow>(
+      (from, to) => supabase.from("servo_models").select("item_id, model").order("item_id").range(from, to),
+      (row) => row.item_id,
+    ),
+    fetchAllSupabaseRows<StockBalanceRow>(
+      (from, to) => supabase.from("stock_balances").select("item_id, quantity").order("item_id").range(from, to),
+      (row) => row.item_id,
+    ),
+    fetchAllSupabaseRows<CommercialConfigurationRow>(
+      (from, to) => supabase.from("commercial_configurations").select("id, description, servo_id, installation_kit_id, minimum_stock, is_active, image_path").order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRows<CommercialConfigurationCodeRow>(
+      (from, to) => supabase.from("commercial_configuration_codes").select("id, configuration_id, code, is_active").order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRows<ConfigurationBalanceRow>(
+      (from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").order("configuration_id").range(from, to),
+      (row) => row.configuration_id,
+    ),
+    fetchAllSupabaseRows<RepairCompatibilityRow>(
+      (from, to) => supabase.from("servo_repair_compatibility").select("servo_id, repair_kit_id").order("servo_id").order("repair_kit_id").range(from, to),
+      (row) => `${row.servo_id}:${row.repair_kit_id}`,
+    ),
   ]);
 
   const readError = [
@@ -644,7 +658,7 @@ async function loadAssistantCatalogMediaSnapshot(
       .limit(2),
     supabase
       .from("commercial_configuration_codes")
-      .select("configuration_id, code, is_active")
+      .select("id, configuration_id, code, is_active")
       .eq("code", queryCode)
       .eq("is_active", true)
       .limit(2),
@@ -672,14 +686,20 @@ async function loadAssistantCatalogMediaSnapshot(
           .select(configurationSelect)
           .in("id", exactConfigurationIds)
       : Promise.resolve({ data: [], error: null });
-  const compatibleConfigurationsPromise =
-    installationKitIds.length > 0
-      ? supabase
-          .from("commercial_configurations")
-          .select(configurationSelect)
-          .in("installation_kit_id", installationKitIds)
-          .eq("is_active", true)
-      : Promise.resolve({ data: [], error: null });
+  const compatibleConfigurationsPromise = fetchAllSupabaseRowsByChunks<
+    string,
+    CommercialConfigurationRow
+  >(
+    installationKitIds,
+    (ids, from, to) => supabase
+      .from("commercial_configurations")
+      .select(configurationSelect)
+      .in("installation_kit_id", ids)
+      .eq("is_active", true)
+      .order("id")
+      .range(from, to),
+    (row) => row.id,
+  );
   const [exactConfigurationsResult, compatibleConfigurationsResult] =
     await Promise.all([
       exactConfigurationsPromise,
@@ -716,30 +736,27 @@ async function loadAssistantCatalogMediaSnapshot(
   const servoIds = Array.from(
     new Set(configurations.map((configuration) => configuration.servo_id)),
   );
-  const componentItemsPromise =
-    componentItemIds.length > 0
-      ? supabase
-          .from("items")
-          .select(
-            "id, code, description, item_type, minimum_stock, is_active",
-          )
-          .in("id", componentItemIds)
-      : Promise.resolve({ data: [], error: null });
-  const aliasesPromise =
-    configurationIds.length > 0
-      ? supabase
-          .from("commercial_configuration_codes")
-          .select("configuration_id, code, is_active")
-          .in("configuration_id", configurationIds)
-          .eq("is_active", true)
-      : Promise.resolve({ data: [], error: null });
-  const servoModelsPromise =
-    servoIds.length > 0
-      ? supabase
-          .from("servo_models")
-          .select("item_id, model")
-          .in("item_id", servoIds)
-      : Promise.resolve({ data: [], error: null });
+  const componentItemsPromise = fetchAllSupabaseRowsByChunks<string, ItemRow>(
+    componentItemIds,
+    (ids, from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").in("id", ids).order("id").range(from, to),
+    (row) => row.id,
+  );
+  const aliasesPromise = fetchAllSupabaseRowsByChunks<
+    string,
+    CommercialConfigurationCodeRow
+  >(
+    configurationIds,
+    (ids, from, to) => supabase.from("commercial_configuration_codes").select("id, configuration_id, code, is_active").in("configuration_id", ids).eq("is_active", true).order("id").range(from, to),
+    (row) => row.id,
+  );
+  const servoModelsPromise = fetchAllSupabaseRowsByChunks<
+    string,
+    ServoModelRow
+  >(
+    servoIds,
+    (ids, from, to) => supabase.from("servo_models").select("item_id, model").in("item_id", ids).order("item_id").range(from, to),
+    (row) => row.item_id,
+  );
   const [componentItemsResult, aliasesResult, servoModelsResult] =
     await Promise.all([
       componentItemsPromise,
@@ -786,7 +803,7 @@ async function loadAssistantExactItemSnapshot(
       .limit(2),
     supabase
       .from("commercial_configuration_codes")
-      .select("configuration_id, code, is_active")
+      .select("id, configuration_id, code, is_active")
       .eq("code", queryCode)
       .eq("is_active", true)
       .limit(2),
@@ -817,20 +834,22 @@ async function loadAssistantExactItemSnapshot(
           .select(configurationSelect)
           .in("id", exactConfigurationIds)
       : Promise.resolve({ data: [], error: null });
-  const servoConfigurationsPromise =
-    exactServoIds.length > 0
-      ? supabase
-          .from("commercial_configurations")
-          .select(configurationSelect)
-          .in("servo_id", exactServoIds)
-      : Promise.resolve({ data: [], error: null });
-  const kitConfigurationsPromise =
-    exactInstallationKitIds.length > 0
-      ? supabase
-          .from("commercial_configurations")
-          .select(configurationSelect)
-          .in("installation_kit_id", exactInstallationKitIds)
-      : Promise.resolve({ data: [], error: null });
+  const servoConfigurationsPromise = fetchAllSupabaseRowsByChunks<
+    string,
+    CommercialConfigurationRow
+  >(
+    exactServoIds,
+    (ids, from, to) => supabase.from("commercial_configurations").select(configurationSelect).in("servo_id", ids).order("id").range(from, to),
+    (row) => row.id,
+  );
+  const kitConfigurationsPromise = fetchAllSupabaseRowsByChunks<
+    string,
+    CommercialConfigurationRow
+  >(
+    exactInstallationKitIds,
+    (ids, from, to) => supabase.from("commercial_configurations").select(configurationSelect).in("installation_kit_id", ids).order("id").range(from, to),
+    (row) => row.id,
+  );
   const [
     exactConfigurationsResult,
     servoConfigurationsResult,
@@ -876,44 +895,43 @@ async function loadAssistantExactItemSnapshot(
   const servoModelIds = Array.from(
     new Set(configurations.map((configuration) => configuration.servo_id)),
   );
-  const componentItemsPromise =
-    componentItemIds.length > 0
-      ? supabase
-          .from("items")
-          .select(
-            "id, code, description, item_type, minimum_stock, is_active",
-          )
-          .in("id", componentItemIds)
-      : Promise.resolve({ data: [], error: null });
-  const aliasesPromise =
-    configurationIds.length > 0
-      ? supabase
-          .from("commercial_configuration_codes")
-          .select("configuration_id, code, is_active")
-          .in("configuration_id", configurationIds)
-          .eq("is_active", true)
-      : Promise.resolve({ data: [], error: null });
-  const stockBalancesPromise =
-    relevantItemIds.length > 0
-      ? supabase
-          .from("stock_balances")
-          .select("item_id, quantity")
-          .in("item_id", relevantItemIds)
-      : Promise.resolve({ data: [], error: null });
-  const configurationBalancesPromise =
-    configurationIds.length > 0
-      ? supabase
-          .from("configuration_stock_balances")
-          .select("configuration_id, quantity")
-          .in("configuration_id", configurationIds)
-      : Promise.resolve({ data: [], error: null });
-  const servoModelsPromise =
-    servoModelIds.length > 0
-      ? supabase
-          .from("servo_models")
-          .select("item_id, model")
-          .in("item_id", servoModelIds)
-      : Promise.resolve({ data: [], error: null });
+  const componentItemsPromise = fetchAllSupabaseRowsByChunks<string, ItemRow>(
+    componentItemIds,
+    (ids, from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").in("id", ids).order("id").range(from, to),
+    (row) => row.id,
+  );
+  const aliasesPromise = fetchAllSupabaseRowsByChunks<
+    string,
+    CommercialConfigurationCodeRow
+  >(
+    configurationIds,
+    (ids, from, to) => supabase.from("commercial_configuration_codes").select("id, configuration_id, code, is_active").in("configuration_id", ids).eq("is_active", true).order("id").range(from, to),
+    (row) => row.id,
+  );
+  const stockBalancesPromise = fetchAllSupabaseRowsByChunks<
+    string,
+    StockBalanceRow
+  >(
+    relevantItemIds,
+    (ids, from, to) => supabase.from("stock_balances").select("item_id, quantity").in("item_id", ids).order("item_id").range(from, to),
+    (row) => row.item_id,
+  );
+  const configurationBalancesPromise = fetchAllSupabaseRowsByChunks<
+    string,
+    ConfigurationBalanceRow
+  >(
+    configurationIds,
+    (ids, from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").in("configuration_id", ids).order("configuration_id").range(from, to),
+    (row) => row.configuration_id,
+  );
+  const servoModelsPromise = fetchAllSupabaseRowsByChunks<
+    string,
+    ServoModelRow
+  >(
+    servoModelIds,
+    (ids, from, to) => supabase.from("servo_models").select("item_id, model").in("item_id", ids).order("item_id").range(from, to),
+    (row) => row.item_id,
+  );
   const [
     componentItemsResult,
     aliasesResult,

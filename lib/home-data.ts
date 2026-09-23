@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 import {
   calculatePhysicalStockSummary,
   type PhysicalStockSummary,
@@ -27,6 +28,7 @@ type CommercialConfigurationRow = {
 };
 
 type CommercialConfigurationCodeRow = {
+  id: string;
   configuration_id: string;
   is_active: boolean;
 };
@@ -99,21 +101,26 @@ export async function loadHomeData(): Promise<HomeDataResult> {
       configurationCodesResult,
       configurationBalancesResult,
     ] = await Promise.all([
-      supabase
-        .from("items")
-        .select("id, item_type, minimum_stock, is_active"),
-      supabase.from("stock_balances").select("item_id, quantity"),
-      supabase
-        .from("commercial_configurations")
-        .select(
-          "id, servo_id, installation_kit_id, minimum_stock, is_active",
-        ),
-      supabase
-        .from("commercial_configuration_codes")
-        .select("configuration_id, is_active"),
-      supabase
-        .from("configuration_stock_balances")
-        .select("configuration_id, quantity"),
+      fetchAllSupabaseRows<ItemRow>(
+        (from, to) => supabase.from("items").select("id, item_type, minimum_stock, is_active").order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<StockBalanceRow>(
+        (from, to) => supabase.from("stock_balances").select("item_id, quantity").order("item_id").range(from, to),
+        (row) => row.item_id,
+      ),
+      fetchAllSupabaseRows<CommercialConfigurationRow>(
+        (from, to) => supabase.from("commercial_configurations").select("id, servo_id, installation_kit_id, minimum_stock, is_active").order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<CommercialConfigurationCodeRow>(
+        (from, to) => supabase.from("commercial_configuration_codes").select("id, configuration_id, is_active").order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<ConfigurationBalanceRow>(
+        (from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").order("configuration_id").range(from, to),
+        (row) => row.configuration_id,
+      ),
     ]);
 
     const readError = [
