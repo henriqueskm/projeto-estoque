@@ -350,9 +350,10 @@ test("migration pública mantém um writer canônico e políticas de montagem ex
   assert.match(migration, /Automatic assembly is disabled/);
   assert.equal((migration.match(/private\.stock_outbound_items\(/g) ?? []).length, 2);
   assert.doesNotMatch(migration, /insert into public\.(?:movement_batches|outbound_batch_lines|stock_movements|assembly_operations)/i);
-  assert.match(migration, /revoke all on function public\.stock_outbound_items\(jsonb, uuid, text, boolean\)[\s\S]*from public, anon, authenticated/);
-  assert.match(migration, /grant execute on function public\.stock_outbound_items\(jsonb, uuid, text, boolean\)\s*to authenticated, service_role/);
-  assert.match(migration, /grant execute on function public\.stock_outbound_items\(jsonb, uuid, text\)\s*to authenticated, service_role/);
+  assert.match(migration, /revoke all on function public\.stock_outbound_items\(jsonb, uuid, text, boolean\)\s*from public, anon, authenticated, service_role/);
+  assert.match(migration, /grant execute on function public\.stock_outbound_items\(jsonb, uuid, text, boolean\)\s*to authenticated;/);
+  assert.match(migration, /revoke all on function public\.stock_outbound_items\(jsonb, uuid, text\)\s*from public, anon, authenticated, service_role/);
+  assert.match(migration, /grant execute on function public\.stock_outbound_items\(jsonb, uuid, text\)\s*to authenticated;/);
 });
 
 test("qualificadores com e sem kit restringem a identidade", () => {

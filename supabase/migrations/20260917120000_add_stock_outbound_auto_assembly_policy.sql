@@ -176,13 +176,13 @@ as $$
 $$;
 
 revoke all on function public.stock_outbound_items(jsonb, uuid, text, boolean)
-from public, anon, authenticated;
+from public, anon, authenticated, service_role;
 
 grant execute on function public.stock_outbound_items(jsonb, uuid, text, boolean)
-to authenticated, service_role;
+to authenticated;
 
 revoke all on function public.stock_outbound_items(jsonb, uuid, text)
-from public, anon, authenticated;
+from public, anon, authenticated, service_role;
 
 grant execute on function public.stock_outbound_items(jsonb, uuid, text)
-to authenticated, service_role;
+to authenticated;
