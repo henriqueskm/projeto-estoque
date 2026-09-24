@@ -5,8 +5,8 @@ Base auditada: `ebaf0c129a4b35f9e1078d016c266f68f84554fd`
 
 ## Escopo e classificação
 
-Foram inventariados os 225 `select` reais de `lib/`. O `select` de um
-`textarea` não faz parte do inventário.
+Foram inventariados 225 `select` reais no código de aplicação: 196 em `lib/`
+e 29 em `app/`. O `select` de um `textarea` não faz parte do inventário.
 
 | Classe | Significado | Sites |
 | --- | --- | ---: |
@@ -125,3 +125,16 @@ estoque, autorização ou regras operacionais.
 
 Não houve migration, alteração de schema/RLS/auth, escrita remota, mudança de
 Gemini, dependência nova ou aumento de `max_rows`.
+
+## Validação humana
+
+O teste humano no Preview foi concluído com sucesso em 2026-09-23. Foram
+validados Home, Estoque e buscas, Entrada, Saída, Pedidos e detalhes,
+consultas de estoque/atenção/Pedidos pela Assistente, desmontagem, Histórico e
+paginação, além dos principais fluxos em mobile. Nenhuma regressão funcional
+foi encontrada.
+
+Permanecem aceitos como backlog não bloqueante os dois MINORs do Senior
+Reviewer: a telemetria pode subestimar o número de páginas consultadas e um
+fanout extremo da busca de Pedidos ainda pode executar concorrência sem limite
+explícito.
