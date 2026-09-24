@@ -125,7 +125,6 @@ export async function readSharedCatalogSnapshot(
     phase: "structural_read",
     durationMs: Math.round(performance.now() - startedAt),
     streamCount: 4,
-    waveCount: 1,
     rowCount: snapshot.items.length + snapshot.servoModels.length + snapshot.configurations.length + snapshot.commercialCodes.length,
     payloadBytes: performancePayloadBytes(snapshot),
   });

@@ -139,8 +139,8 @@ export type SupplierOrdersDataResult<T> =
 type PerformanceMetric = {
   loader: "summaries" | "detail_core" | "detail_media" | "catalog" | "search";
   durationMs: number;
-  queryCount: number;
-  waveCount: number;
+  queryCount?: number;
+  waveCount?: number;
   rowCount: number;
   payloadBytes: number;
   detail_core_ms?: number;
@@ -558,8 +558,6 @@ export async function loadSupplierOrderSummariesWithClient(
   logPerformance({
     loader: "summaries",
     durationMs: Math.round(performance.now() - startedAt),
-    queryCount: 1,
-    waveCount: 1,
     rowCount: summaries.length,
     payloadBytes: measurePayload(data),
   });
@@ -891,14 +889,9 @@ export async function loadSupplierOrderCatalogWithClient(
   );
   const signedUrlsMs = Math.round(performance.now() - signedUrlsStartedAt);
   const data = buildCatalog(rows, imageUrlByPath);
-  const signedUrlOperationCount = Number(
-    rows.configurations.some((configuration) => Boolean(configuration.image_path)),
-  );
   logPerformance({
     loader: "catalog",
     durationMs: Math.round(performance.now() - startedAt),
-    queryCount: 4 + signedUrlOperationCount,
-    waveCount: 1 + signedUrlOperationCount,
     rowCount: data.physicalItems.length + data.configurations.length,
     payloadBytes: measurePayload(data),
     signed_urls_ms: signedUrlsMs,
@@ -987,8 +980,6 @@ export async function searchSupplierOrderIdsWithClient(
   logPerformance({
     loader: "search",
     durationMs: Math.round(performance.now() - startedAt),
-    queryCount: 1 + summaryResults.length,
-    waveCount: 2,
     rowCount: data.orderIds.length,
     payloadBytes: measurePayload(data),
   });

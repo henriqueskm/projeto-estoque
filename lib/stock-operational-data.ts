@@ -78,7 +78,7 @@ export async function loadFreshStockBalances(
     ),
   ]);
 
-  logPerformanceAudit({ loader: "stock", phase: "fresh_balances", durationMs: Math.round(performance.now() - startedAt), streamCount: 2, waveCount: 1, rowCount: (stockBalancesResult.data?.length ?? 0) + (configurationBalancesResult.data?.length ?? 0) });
+  logPerformanceAudit({ loader: "stock", phase: "fresh_balances", durationMs: Math.round(performance.now() - startedAt), streamCount: 2, rowCount: (stockBalancesResult.data?.length ?? 0) + (configurationBalancesResult.data?.length ?? 0) });
   return {
     stockBalancesResult,
     configurationBalancesResult,
@@ -110,7 +110,7 @@ export async function loadFreshMinimumStocks(
     ),
   ]);
 
-  logPerformanceAudit({ loader: "stock", phase: "fresh_minimums", durationMs: Math.round(performance.now() - startedAt), streamCount: 2, waveCount: 1, rowCount: (itemMinimumsResult.data?.length ?? 0) + (configurationMinimumsResult.data?.length ?? 0) });
+  logPerformanceAudit({ loader: "stock", phase: "fresh_minimums", durationMs: Math.round(performance.now() - startedAt), streamCount: 2, rowCount: (itemMinimumsResult.data?.length ?? 0) + (configurationMinimumsResult.data?.length ?? 0) });
   return {
     itemMinimumsResult,
     configurationMinimumsResult,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFile } from "node:fs/promises";
 import {
   isPerformanceAuditEnabled,
   logPerformanceAudit,
@@ -53,4 +54,10 @@ test("Preview emits only the supplied structural metrics", async () => {
     else process.env.VERCEL_ENV = previousVercelEnv;
     console.info = previousInfo;
   }
+});
+
+test("roteiro de medição não interpreta streams paginados como waves medidas", async () => {
+  const report = await readFile(new URL("../docs/PERFORMANCE_BOTTLENECK_AUDIT.md", import.meta.url), "utf8");
+  assert.match(report, /spans paginados omitem `queryCount` e `waveCount`/);
+  assert.match(report, /`streamCount` indica leitores lógicos, não número real de round trips ou de waves/);
 });
