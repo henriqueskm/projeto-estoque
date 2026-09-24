@@ -17,6 +17,18 @@ const recentResultWindowMs = 15_000;
 
 type RequestMode = "foreground" | "background" | "warm";
 
+function getRecommendationLoadMode(
+  data: PurchaseRecommendationsData | null,
+  confirmedAt: number,
+  now = Date.now(),
+): Exclude<RequestMode, "warm"> | null {
+  if (!data) return "foreground";
+
+  return now - confirmedAt > recentResultWindowMs
+    ? "background"
+    : null;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -183,20 +195,17 @@ export function PurchaseRecommendationLauncher({
     setIsOpen(false);
     isOpenRef.current = false;
 
-    const historyState = window.history.state as
-      | Record<string, unknown>
-      | null;
+    const historyState = window.history.state;
 
-    if (historyState?.[recommendationHistoryMarker] === true) {
+    if (
+      isRecord(historyState) &&
+      historyState[recommendationHistoryMarker] === true
+    ) {
       window.history.back();
       return;
     }
 
-    window.history.replaceState(
-      historyState,
-      "",
-      recommendationUrl(false),
-    );
+    window.history.replaceState(null, "", recommendationUrl(false));
   }, []);
 
   const open = useCallback(() => {
@@ -207,21 +216,18 @@ export function PurchaseRecommendationLauncher({
       new URL(window.location.href).searchParams.get("view") !==
       recommendationsView
     ) {
-      const historyState = isRecord(window.history.state)
-        ? window.history.state
-        : {};
       window.history.pushState(
-        { ...historyState, [recommendationHistoryMarker]: true },
+        { [recommendationHistoryMarker]: true },
         "",
         recommendationUrl(true),
       );
     }
 
-    if (!dataRef.current) {
-      void loadRecommendations("foreground");
-    } else if (Date.now() - confirmedAtRef.current > recentResultWindowMs) {
-      void loadRecommendations("background");
-    }
+    const loadMode = getRecommendationLoadMode(
+      dataRef.current,
+      confirmedAtRef.current,
+    );
+    if (loadMode) void loadRecommendations(loadMode);
   }, [loadRecommendations]);
 
   useEffect(() => {
@@ -240,8 +246,12 @@ export function PurchaseRecommendationLauncher({
       setIsOpen(nextIsOpen);
       isOpenRef.current = nextIsOpen;
 
-      if (nextIsOpen && !dataRef.current) {
-        void loadRecommendations("foreground");
+      if (nextIsOpen) {
+        const loadMode = getRecommendationLoadMode(
+          dataRef.current,
+          confirmedAtRef.current,
+        );
+        if (loadMode) void loadRecommendations(loadMode);
       }
     }, 0);
 
