@@ -8,12 +8,14 @@ import { loadSharedCatalogSnapshot } from "@/lib/shared-catalog";
 import { buildStockCatalogBase } from "@/lib/stock-catalog-base";
 import { loadFreshStockBalances } from "@/lib/stock-operational-data";
 import { createClient } from "@/lib/supabase/server";
+import { logPerformanceAudit, performancePayloadBytes } from "@/lib/performance-audit";
 
 export type OutboundCatalogResult =
   | { data: OutboundCatalog; error: null }
   | { data: null; error: string };
 
 export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
+  const startedAt = performance.now();
   try {
     const supabase = await createClient();
     const [snapshot, operationalState] = await Promise.all([
@@ -30,11 +32,13 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
       };
     }
 
+    const buildStartedAt = performance.now();
     const base = buildStockCatalogBase(
       snapshot,
       stockBalancesResult.data ?? [],
       configurationBalancesResult.data ?? [],
     );
+    logPerformanceAudit({ loader: "outbound", phase: "base_transform", durationMs: Math.round(performance.now() - buildStartedAt), rowCount: base.physicalItems.length + base.commercialCodes.length });
     const imageUrlByPath = await createCommercialImageUrlMap(
       supabase,
       base.commercialCodes.map((configuration) => configuration.imagePath),
@@ -78,7 +82,9 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
       }),
     );
 
-    return { data: { physicalItems, commercialCodes }, error: null };
+    const data = { physicalItems, commercialCodes };
+    logPerformanceAudit({ loader: "outbound", phase: "total", durationMs: Math.round(performance.now() - startedAt), rowCount: physicalItems.length + commercialCodes.length, payloadBytes: performancePayloadBytes(data) });
+    return { data, error: null };
   } catch {
     return {
       data: null,

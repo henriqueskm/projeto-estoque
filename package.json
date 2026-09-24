@@ -47,6 +47,7 @@
     "test:statistics-completeness": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/statistics-completeness.test.mjs && node --experimental-strip-types --experimental-loader ./tests/statistics-data-loader.mjs --test tests/statistics-data-pagination.test.mjs",
     "test:pagination-completeness": "node --experimental-strip-types --test tests/supabase-read-pagination.test.mjs && node --experimental-strip-types --experimental-loader ./tests/pagination-completeness-loader.mjs --test tests/pagination-consumers.test.mjs tests/assistant-pagination-guards.test.mjs",
     "test:shared-catalog-cache": "node --experimental-strip-types --experimental-loader ./tests/shared-catalog-cache-loader.mjs --test tests/shared-catalog-cache.test.mjs",
+    "test:performance-audit": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/performance-audit.test.mjs",
     "test:supplier-order-global-actions": "node --experimental-strip-types --test tests/supplier-order-global-actions.test.mjs",
     "test:supplier-orders-performance": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/supplier-orders-performance.test.mjs",
     "test:supplier-order-negotiation-identity": "node --test tests/supplier-order-negotiation-identity.test.mjs",

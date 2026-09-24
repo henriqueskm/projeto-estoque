@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { measurePerformanceAudit } from "@/lib/performance-audit";
 import { StatisticsIcon, StockIcon } from "@/components/icons";
 import {
   loadStatisticsData,
@@ -594,7 +595,7 @@ export default async function StatisticsPage({
   searchParams,
 }: StatisticsPageProps) {
   const period = parseStatisticsPeriod(await searchParams);
-  const result = await loadStatisticsData(period);
+  const result = await measurePerformanceAudit("statistics", "page_data", () => loadStatisticsData(period));
   const statistics = result.data;
   const attentionCount = statistics
     ? statistics.currentStock.lowStockItems +
@@ -602,7 +603,7 @@ export default async function StatisticsPage({
     : 0;
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <main data-nk-perf-ready="/estatisticas" className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
       <div>
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-charcoal text-brand-gold">

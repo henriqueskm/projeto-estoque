@@ -9,6 +9,7 @@ import { loadPurchaseRecommendations } from "@/lib/purchase-recommendations";
 import { loadCurrentSafisaPickupAlerts } from "@/lib/safisa-pickup-alerts";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
+import { logPerformanceAudit, measurePerformanceAudit } from "@/lib/performance-audit";
 
 type PendingStockRow = {
   id: string;
@@ -93,12 +94,13 @@ const defaultDependencies: AssistantAttentionDataDependencies = {
 export async function loadAssistantAttention(
   dependencies: AssistantAttentionDataDependencies = defaultDependencies,
 ): Promise<AssistantAttentionResult> {
+  const startedAt = performance.now();
   try {
     const [purchaseResult, pickupResult, pendingStockOrders] =
       await Promise.all([
-        dependencies.loadPurchaseRecommendations(),
-        dependencies.loadSafisaPickupAlerts(),
-        dependencies.loadPendingStockOrders(),
+        measurePerformanceAudit("attention", "purchase_recommendations", dependencies.loadPurchaseRecommendations),
+        measurePerformanceAudit("attention", "safisa", dependencies.loadSafisaPickupAlerts),
+        measurePerformanceAudit("attention", "pending_orders", dependencies.loadPendingStockOrders),
       ]);
 
     if (
@@ -112,6 +114,7 @@ export async function loadAssistantAttention(
       };
     }
 
+    logPerformanceAudit({ loader: "attention", phase: "total", durationMs: Math.round(performance.now() - startedAt) });
     return {
       data: buildAssistantAttentionSummary(
         {

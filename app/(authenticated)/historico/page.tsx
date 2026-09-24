@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { measurePerformanceAudit } from "@/lib/performance-audit";
 import {
   ArrowLeftIcon,
   ClockIcon,
@@ -162,12 +163,12 @@ export default async function HistoryPage({
   searchParams,
 }: HistoryPageProps) {
   const filters = parseHistoryFilters(await searchParams);
-  const historyResult = await loadHistoryList(filters);
+  const historyResult = await measurePerformanceAudit("history", "page_data", () => loadHistoryList(filters));
   const history = historyResult.data;
   const filtered = hasActiveFilters(filters);
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
+    <main data-nk-perf-ready="/historico" className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
       <Link
         href="/"
         className="nk-focus inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-bold text-text-primary transition hover:bg-surface"

@@ -14,6 +14,7 @@ import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-imag
 import { createCompatibleKitImageMap } from "@/lib/compatible-kit-images";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { loadSharedCatalogSnapshot } from "@/lib/shared-catalog";
+import { logPerformanceAudit, performancePayloadBytes } from "@/lib/performance-audit";
 import {
   buildFreshMinimumStockMaps,
   loadFreshMinimumStocks,
@@ -109,6 +110,7 @@ function getStockState(totalQuantity: number, minimumStock: number): StockState 
 }
 
 export async function loadInventoryData(): Promise<InventoryDataResult> {
+  const startedAt = performance.now();
   try {
     const supabase = await createClient();
     const [snapshot, operationalState, minimumState] = await Promise.all([
@@ -142,6 +144,7 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
       itemMinimumsResult.data ?? [],
       configurationMinimumsResult.data ?? [],
     );
+    const transformStartedAt = performance.now();
     const items: ItemRow[] = snapshot.items.map((item) => ({
       ...item,
       minimum_stock: minimumByItemId.get(item.id)!,
@@ -339,6 +342,7 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
           second.id,
         ),
     );
+    logPerformanceAudit({ loader: "inventory", phase: "transform_before_images", durationMs: Math.round(performance.now() - transformStartedAt) });
     const imageUrlByPath = await createCommercialImageUrlMap(
       supabase,
       sortedConfigurationDrafts.map(
@@ -395,16 +399,15 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
           : [],
     }));
 
-    return {
-      data: {
-        summary,
-        physicalItems: physicalItemsWithImages,
-        configurations: catalogConfigurations,
-        physicalCatalogCount: physicalCatalog.length,
-        configurationCatalogCount: configurationCatalog.length,
-      },
-      error: null,
+    const data = {
+      summary,
+      physicalItems: physicalItemsWithImages,
+      configurations: catalogConfigurations,
+      physicalCatalogCount: physicalCatalog.length,
+      configurationCatalogCount: configurationCatalog.length,
     };
+    logPerformanceAudit({ loader: "inventory", phase: "total", durationMs: Math.round(performance.now() - startedAt), rowCount: data.physicalItems.length + data.configurations.length, payloadBytes: performancePayloadBytes(data) });
+    return { data, error: null };
   } catch {
     return {
       data: null,

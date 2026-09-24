@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logPerformanceAudit } from "@/lib/performance-audit";
 
 const commercialCatalogImagesBucket = "commercial-catalog-images";
 const signedUrlLifetimeSeconds = 10 * 60;
@@ -18,11 +19,13 @@ export async function createCommercialImageUrlMap(
     return signedUrlByPath;
   }
 
+  const startedAt = performance.now();
   const { data, error } = await supabase.storage
     .from(commercialCatalogImagesBucket)
     .createSignedUrls(uniquePaths, signedUrlLifetimeSeconds);
 
   if (error || !data) {
+    logPerformanceAudit({ loader: "images", phase: "signed_urls_error", durationMs: Math.round(performance.now() - startedAt), imagePathCount: uniquePaths.length });
     return signedUrlByPath;
   }
 
@@ -31,6 +34,8 @@ export async function createCommercialImageUrlMap(
       signedUrlByPath.set(image.path, image.signedUrl);
     }
   });
+
+  logPerformanceAudit({ loader: "images", phase: "signed_urls", durationMs: Math.round(performance.now() - startedAt), imagePathCount: uniquePaths.length, rowCount: signedUrlByPath.size });
 
   return signedUrlByPath;
 }
