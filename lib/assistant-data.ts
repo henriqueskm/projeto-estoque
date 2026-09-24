@@ -1721,25 +1721,33 @@ export async function consultAssistantInventoryMultiItemSummary(
   const rawEntries: AssistantInventoryMultiItemEntry[] = requestedCodes.map(
     (requestedCode, index) => {
       const normalizedCode = normalizeSearch(normalizedCodes[index]);
-      const physicalMatches = physicalItems.flatMap((item) => {
-        const exactCode = normalizeSearch(item.code) === normalizedCode;
-        const exactModel =
-          item.kind === "SERVO" &&
-          matchesServoModel(normalizedCodes[index], item.model);
-        return exactCode || exactModel
-          ? [{ item, matchedByModel: exactModel && !exactCode }]
-          : [];
-      });
-      const configurationMatches = configurations.filter(
-        (configuration) =>
-          configuration.aliases.some(
-            (alias) => normalizeSearch(alias) === normalizedCode,
-          ) ||
-          matchesServoModel(
-            normalizedCodes[index],
-            configuration.servo.model,
-          ),
+      const exactPhysicalMatches = physicalItems.filter(
+        (item) => normalizeSearch(item.code) === normalizedCode,
       );
+      const exactConfigurationMatches = configurations.filter(
+        (configuration) => configuration.aliases.some(
+          (alias) => normalizeSearch(alias) === normalizedCode,
+        ),
+      );
+      const hasExactMatch =
+        exactPhysicalMatches.length > 0 ||
+        exactConfigurationMatches.length > 0;
+      const physicalMatches = hasExactMatch
+        ? exactPhysicalMatches.map((item) => ({ item, matchedByModel: false }))
+        : physicalItems.flatMap((item) =>
+            item.kind === "SERVO" &&
+            matchesServoModel(normalizedCodes[index], item.model)
+              ? [{ item, matchedByModel: true }]
+              : [],
+          );
+      const configurationMatches = hasExactMatch
+        ? exactConfigurationMatches
+        : configurations.filter((configuration) =>
+            matchesServoModel(
+              normalizedCodes[index],
+              configuration.servo.model,
+            ),
+          );
       const physicalTargets = physicalMatches.map(({ item, matchedByModel }) => {
         const currentStock =
           matchedByModel && item.kind === "SERVO"

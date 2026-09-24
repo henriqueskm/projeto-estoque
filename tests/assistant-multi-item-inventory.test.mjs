@@ -240,6 +240,55 @@ test("resolver real separa Servo sem kit e configurações montadas para modelo 
   assert.equal(model?.resolvedCode, null);
 });
 
+test("código físico exato vence colisão com modelo normalizado", async () => {
+  const snapshot = {
+    items: [
+      { id: "servo", code: "2", description: "SERVO MBF-025", item_type: "SERVO", minimum_stock: 1, is_active: true },
+      { id: "kit", code: "KT-18", description: "KIT KT-18", item_type: "INSTALLATION_KIT", minimum_stock: 2, is_active: true },
+      { id: "part", code: "MBF025", description: "PEÇA MBF025", item_type: "LOOSE_PART", minimum_stock: 1, is_active: true },
+    ],
+    servoModels: [{ item_id: "servo", model: "MBF-025" }],
+    stockBalances: [{ item_id: "servo", quantity: 5 }, { item_id: "kit", quantity: 7 }, { item_id: "part", quantity: 9 }],
+    configurations: [{ id: "config", description: "MBF-025 + KT-18", servo_id: "servo", installation_kit_id: "kit", minimum_stock: 1, is_active: true, image_path: null }],
+    configurationCodes: [{ id: "alias", configuration_id: "config", code: "2A", is_active: true }],
+    configurationBalances: [{ configuration_id: "config", quantity: 3 }],
+    repairCompatibilities: [],
+  };
+  const block = await consultAssistantInventoryMultiItemSummary(
+    ["MBF025", "KT-18"], "STOCK", async () => snapshot,
+  );
+  const collision = block.entries.find((entry) => entry.normalizedCode === "MBF025");
+  assert.equal(collision?.status, "FOUND");
+  assert.deepEqual(
+    collision?.results.map((result) => [result.displayCode, result.itemType, result.currentStock]),
+    [["MBF025", "LOOSE_PART", 9]],
+  );
+});
+
+test("alias comercial exato vence colisão com modelo normalizado", async () => {
+  const snapshot = {
+    items: [
+      { id: "servo", code: "2", description: "SERVO MBF-025", item_type: "SERVO", minimum_stock: 1, is_active: true },
+      { id: "kit", code: "KT-18", description: "KIT KT-18", item_type: "INSTALLATION_KIT", minimum_stock: 2, is_active: true },
+    ],
+    servoModels: [{ item_id: "servo", model: "MBF-025" }],
+    stockBalances: [{ item_id: "servo", quantity: 5 }, { item_id: "kit", quantity: 7 }],
+    configurations: [{ id: "config", description: "MBF-025 + KT-18", servo_id: "servo", installation_kit_id: "kit", minimum_stock: 1, is_active: true, image_path: null }],
+    configurationCodes: [{ id: "alias", configuration_id: "config", code: "MBF025", is_active: true }],
+    configurationBalances: [{ configuration_id: "config", quantity: 3 }],
+    repairCompatibilities: [],
+  };
+  const block = await consultAssistantInventoryMultiItemSummary(
+    ["MBF025", "KT-18"], "STOCK", async () => snapshot,
+  );
+  const collision = block.entries.find((entry) => entry.normalizedCode === "MBF025");
+  assert.equal(collision?.status, "FOUND");
+  assert.deepEqual(
+    collision?.results.map((result) => [result.displayCode, result.itemType, result.currentStock]),
+    [["MBF025", "COMPLETE_BOX", 3]],
+  );
+});
+
 test("Tenho 2 do 5G permanece unitário e consultas unitárias não regridem", async () => {
   assert.equal(routeInventoryMultiItemSummaryQuestion("Tenho 2 do 5G?"), null);
   for (const [message, metric] of [["Tenho 2 do 5G?", "STOCK"], ["Qual o mínimo do 5G?", "MINIMUM"]]) {
