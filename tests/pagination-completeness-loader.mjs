@@ -18,7 +18,34 @@ export async function resolve(specifier, context, nextResolve) {
   if (specifier === "@/lib/supabase/server") {
     return {
       url: `data:text/javascript,${encodeURIComponent(
-        "export async function createClient(){return globalThis.__NK63_PAGINATION_CLIENT__}",
+        "export async function createClient(){const client=globalThis.__NK63_PAGINATION_CLIENT__;client.auth??={getSession:async()=>({data:{session:{access_token:'pagination-test-token',user:{id:'pagination-test-user'}}},error:null})};return client}",
+      )}`,
+      shortCircuit: true,
+    };
+  }
+
+  if (specifier === "@/lib/auth") {
+    return {
+      url: `data:text/javascript,${encodeURIComponent(
+        "export async function requireActiveProfile(){return {id:'pagination-test-user',name:'Pagination Test',displayName:'Pagination Test',email:'pagination@example.com',hasRegisteredName:true}}",
+      )}`,
+      shortCircuit: true,
+    };
+  }
+
+  if (specifier === "@supabase/supabase-js") {
+    return {
+      url: `data:text/javascript,${encodeURIComponent(
+        "export function createClient(){return globalThis.__NK63_PAGINATION_CLIENT__}",
+      )}`,
+      shortCircuit: true,
+    };
+  }
+
+  if (specifier === "next/cache") {
+    return {
+      url: `data:text/javascript,${encodeURIComponent(
+        "export function unstable_cache(callback){return callback} export function revalidateTag(){} export function revalidatePath(){}",
       )}`,
       shortCircuit: true,
     };

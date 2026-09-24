@@ -13,8 +13,13 @@ import {
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 import { createCompatibleKitImageMap } from "@/lib/compatible-kit-images";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
+import { loadSharedCatalogSnapshot } from "@/lib/shared-catalog";
+import {
+  buildFreshMinimumStockMaps,
+  loadFreshMinimumStocks,
+  loadFreshStockBalances,
+} from "@/lib/stock-operational-data";
 import { createClient } from "@/lib/supabase/server";
-import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 
 type ItemRow = {
   id: string;
@@ -106,47 +111,20 @@ function getStockState(totalQuantity: number, minimumStock: number): StockState 
 export async function loadInventoryData(): Promise<InventoryDataResult> {
   try {
     const supabase = await createClient();
-    const [
-      itemsResult,
-      servoModelsResult,
-      stockBalancesResult,
-      configurationsResult,
-      configurationCodesResult,
-      configurationBalancesResult,
-    ] = await Promise.all([
-      fetchAllSupabaseRows<ItemRow>(
-        (from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").order("id").range(from, to),
-        (row) => row.id,
-      ),
-      fetchAllSupabaseRows<ServoModelRow>(
-        (from, to) => supabase.from("servo_models").select("item_id, model").order("item_id").range(from, to),
-        (row) => row.item_id,
-      ),
-      fetchAllSupabaseRows<StockBalanceRow>(
-        (from, to) => supabase.from("stock_balances").select("item_id, quantity").order("item_id").range(from, to),
-        (row) => row.item_id,
-      ),
-      fetchAllSupabaseRows<CommercialConfigurationRow>(
-        (from, to) => supabase.from("commercial_configurations").select("id, description, servo_id, installation_kit_id, is_active, image_path, minimum_stock").order("id").range(from, to),
-        (row) => row.id,
-      ),
-      fetchAllSupabaseRows<CommercialConfigurationCodeRow>(
-        (from, to) => supabase.from("commercial_configuration_codes").select("id, configuration_id, code, is_active").order("id").range(from, to),
-        (row) => row.id,
-      ),
-      fetchAllSupabaseRows<ConfigurationBalanceRow>(
-        (from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").order("configuration_id").range(from, to),
-        (row) => row.configuration_id,
-      ),
+    const [snapshot, operationalState, minimumState] = await Promise.all([
+      loadSharedCatalogSnapshot(),
+      loadFreshStockBalances(supabase),
+      loadFreshMinimumStocks(supabase),
     ]);
+    const { stockBalancesResult, configurationBalancesResult } =
+      operationalState;
+    const { itemMinimumsResult, configurationMinimumsResult } = minimumState;
 
     const readError = [
-      itemsResult.error,
-      servoModelsResult.error,
       stockBalancesResult.error,
-      configurationsResult.error,
-      configurationCodesResult.error,
       configurationBalancesResult.error,
+      itemMinimumsResult.error,
+      configurationMinimumsResult.error,
     ].find(Boolean);
 
     if (readError) {
@@ -156,13 +134,27 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
       };
     }
 
-    const items = (itemsResult.data ?? []) as ItemRow[];
-    const servoModels = (servoModelsResult.data ?? []) as ServoModelRow[];
+    const {
+      itemMinimumById: minimumByItemId,
+      configurationMinimumById: minimumByConfigurationId,
+    } = buildFreshMinimumStockMaps(
+      snapshot,
+      itemMinimumsResult.data ?? [],
+      configurationMinimumsResult.data ?? [],
+    );
+    const items: ItemRow[] = snapshot.items.map((item) => ({
+      ...item,
+      minimum_stock: minimumByItemId.get(item.id)!,
+    }));
+    const servoModels = snapshot.servoModels as ServoModelRow[];
     const stockBalances = (stockBalancesResult.data ?? []) as StockBalanceRow[];
-    const configurations = (configurationsResult.data ??
-      []) as CommercialConfigurationRow[];
-    const configurationCodes = (configurationCodesResult.data ??
-      []) as CommercialConfigurationCodeRow[];
+    const configurations: CommercialConfigurationRow[] =
+      snapshot.configurations.map((configuration) => ({
+        ...configuration,
+        minimum_stock: minimumByConfigurationId.get(configuration.id)!,
+      }));
+    const configurationCodes =
+      snapshot.commercialCodes as CommercialConfigurationCodeRow[];
     const configurationBalances = (configurationBalancesResult.data ??
       []) as ConfigurationBalanceRow[];
     const activeItems = items.filter((item) => item.is_active);

@@ -19,6 +19,12 @@ import {
   type SupplierOrderSummaryRow,
 } from "@/lib/supplier-orders-data";
 import { createClient } from "@/lib/supabase/server";
+import { loadSharedCatalogSnapshot } from "@/lib/shared-catalog";
+import {
+  buildFreshMinimumStockMaps,
+  loadFreshMinimumStocks,
+  loadFreshStockBalances,
+} from "@/lib/stock-operational-data";
 import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 
 type ItemRow = {
@@ -84,34 +90,15 @@ export async function loadPurchaseRecommendations(
   try {
     const supabase = suppliedClient ?? (await createClient());
     const [
-      itemsResult,
-      stockBalancesResult,
-      configurationsResult,
-      configurationCodesResult,
-      configurationBalancesResult,
+      snapshot,
+      operationalState,
+      minimumState,
       orderSummariesResult,
       orderItemsResult,
     ] = await Promise.all([
-      fetchAllSupabaseRows<ItemRow>(
-        (from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").order("id").range(from, to),
-        (row) => row.id,
-      ),
-      fetchAllSupabaseRows<StockBalanceRow>(
-        (from, to) => supabase.from("stock_balances").select("item_id, quantity").order("item_id").range(from, to),
-        (row) => row.item_id,
-      ),
-      fetchAllSupabaseRows<ConfigurationRow>(
-        (from, to) => supabase.from("commercial_configurations").select("id, description, servo_id, installation_kit_id, minimum_stock, is_active").order("id").range(from, to),
-        (row) => row.id,
-      ),
-      fetchAllSupabaseRows<ConfigurationCodeRow>(
-        (from, to) => supabase.from("commercial_configuration_codes").select("id, code, configuration_id, is_active").order("id").range(from, to),
-        (row) => row.id,
-      ),
-      fetchAllSupabaseRows<ConfigurationBalanceRow>(
-        (from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").order("configuration_id").range(from, to),
-        (row) => row.configuration_id,
-      ),
+      loadSharedCatalogSnapshot(),
+      loadFreshStockBalances(supabase),
+      loadFreshMinimumStocks(supabase),
       fetchAllSupabaseRows<SupplierOrderSummaryRow>(
         (from, to) => supabase.from("supplier_order_summaries").select(supplierOrderSummarySelect).order("id").range(from, to),
         (row) => row.id,
@@ -121,12 +108,14 @@ export async function loadPurchaseRecommendations(
         (row) => row.id,
       ),
     ]);
+    const { stockBalancesResult, configurationBalancesResult } =
+      operationalState;
+    const { itemMinimumsResult, configurationMinimumsResult } = minimumState;
     const readError = [
-      itemsResult.error,
       stockBalancesResult.error,
-      configurationsResult.error,
-      configurationCodesResult.error,
       configurationBalancesResult.error,
+      itemMinimumsResult.error,
+      configurationMinimumsResult.error,
       orderSummariesResult.error,
       orderItemsResult.error,
     ].find(Boolean);
@@ -138,13 +127,30 @@ export async function loadPurchaseRecommendations(
       };
     }
 
-    const items = (itemsResult.data ?? []) as ItemRow[];
+    const { itemMinimumById, configurationMinimumById } =
+      buildFreshMinimumStockMaps(
+        snapshot,
+        itemMinimumsResult.data ?? [],
+        configurationMinimumsResult.data ?? [],
+      );
+    const items: ItemRow[] = snapshot.items.map((item) => ({
+      ...item,
+      minimum_stock: itemMinimumById.get(item.id)!,
+    }));
     const stockBalances = (stockBalancesResult.data ??
       []) as StockBalanceRow[];
-    const configurations = (configurationsResult.data ??
-      []) as ConfigurationRow[];
-    const configurationCodes = (configurationCodesResult.data ??
-      []) as ConfigurationCodeRow[];
+    const configurations: ConfigurationRow[] = snapshot.configurations.map(
+      (configuration) => ({
+        id: configuration.id,
+        description: configuration.description,
+        servo_id: configuration.servo_id,
+        installation_kit_id: configuration.installation_kit_id,
+        minimum_stock: configurationMinimumById.get(configuration.id)!,
+        is_active: configuration.is_active,
+      }),
+    );
+    const configurationCodes =
+      snapshot.commercialCodes as ConfigurationCodeRow[];
     const configurationBalances = (configurationBalancesResult.data ??
       []) as ConfigurationBalanceRow[];
     const summaryRows = (orderSummariesResult.data ??
