@@ -7,6 +7,10 @@ import {
 } from "@/lib/inbound-types";
 import { createClient } from "@/lib/supabase/server";
 import {
+  chunkSupabaseFilterValues,
+  fetchAllSupabaseRows,
+} from "@/lib/supabase-read-pagination";
+import {
   supplierOrderClosureKinds,
   supplierOrderEventTypes,
   supplierOrderStatuses,
@@ -359,15 +363,22 @@ function mapEvent(row: EventRow): SupplierOrderEvent | null {
 async function loadCatalogRows(client: SupplierOrdersClient) {
   const [itemsResult, modelsResult, configurationsResult, codesResult] =
     await Promise.all([
-      client
-        .from("items")
-        .select("id, code, description, item_type, is_active")
-        .in("item_type", [...physicalItemTypes]),
-      client.from("servo_models").select("item_id, model"),
-      client.from("commercial_configurations").select(configurationSelect),
-      client
-        .from("commercial_configuration_codes")
-        .select("id, code, configuration_id, is_active"),
+      fetchAllSupabaseRows<ItemRow>(
+        (from, to) => client.from("items").select("id, code, description, item_type, is_active").in("item_type", [...physicalItemTypes]).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<ServoModelRow>(
+        (from, to) => client.from("servo_models").select("item_id, model").order("item_id").range(from, to),
+        (row) => row.item_id,
+      ),
+      fetchAllSupabaseRows<ConfigurationRow>(
+        (from, to) => client.from("commercial_configurations").select(configurationSelect).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<CommercialCodeRow>(
+        (from, to) => client.from("commercial_configuration_codes").select("id, code, configuration_id, is_active").order("id").range(from, to),
+        (row) => row.id,
+      ),
     ]);
   const error = [
     itemsResult.error,
@@ -512,20 +523,29 @@ export async function loadSupplierOrderSummariesWithClient(
   const startedAt = performance.now();
   const classificationColumn =
     view === "history" ? "is_in_history" : "is_active_order";
-  let query = client
-    .from("supplier_order_summaries")
-    .select(supplierOrderListSummarySelect)
-    .eq(classificationColumn, true);
-  query =
-    view === "history"
-      ? query
-          .order("closed_at", { ascending: false })
-          .order("order_date", { ascending: false })
-          .order("created_at", { ascending: false })
-      : query
-          .order("order_date", { ascending: false })
-          .order("created_at", { ascending: false });
-  const result = await query;
+  const result = await fetchAllSupabaseRows<
+    Parameters<typeof mapSupplierOrderListSummary>[0]
+  >(
+    (from, to) => {
+      let query = client
+        .from("supplier_order_summaries")
+        .select(supplierOrderListSummarySelect)
+        .eq(classificationColumn, true);
+      query =
+        view === "history"
+          ? query
+              .order("closed_at", { ascending: false })
+              .order("order_date", { ascending: false })
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+          : query
+              .order("order_date", { ascending: false })
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false });
+      return query.range(from, to);
+    },
+    (row) => row.id,
+  );
   if (result.error) {
     return { data: null, error: "Não foi possível carregar os pedidos agora." };
   }
@@ -914,13 +934,20 @@ export async function searchSupplierOrderIdsWithClient(
   const startedAt = performance.now();
   const term = sanitizeSearchTerm(search);
   if (term.length < 2) return { data: { orderIds: [] }, error: null };
-  const itemResult = await client
-    .from("supplier_order_item_details")
-    .select("supplier_order_id")
-    .or(
-      `code_snapshot.ilike.%${term}%,description_snapshot.ilike.%${term}%,model_snapshot.ilike.%${term}%,commercial_code_snapshot.ilike.%${term}%`,
-    )
-    .limit(250);
+  const itemResult = await fetchAllSupabaseRows<{
+    id: string;
+    supplier_order_id: string;
+  }>(
+    (from, to) => client
+      .from("supplier_order_item_details")
+      .select("id, supplier_order_id")
+      .or(
+        `code_snapshot.ilike.%${term}%,description_snapshot.ilike.%${term}%,model_snapshot.ilike.%${term}%,commercial_code_snapshot.ilike.%${term}%`,
+      )
+      .order("id")
+      .range(from, to),
+    (row) => row.id,
+  );
   if (itemResult.error) {
     return { data: null, error: "Não foi possível pesquisar os pedidos agora." };
   }
@@ -936,23 +963,31 @@ export async function searchSupplierOrderIdsWithClient(
   }
   const classificationColumn =
     view === "history" ? "is_in_history" : "is_active_order";
-  const summaryResult = await client
-    .from("supplier_order_summaries")
-    .select("id")
-    .in("id", candidateIds)
-    .eq(classificationColumn, true);
-  if (summaryResult.error) {
+  const summaryResults = await Promise.all(
+    chunkSupabaseFilterValues(candidateIds).map((ids) =>
+      fetchAllSupabaseRows<{ id: string }>(
+        (from, to) => client
+          .from("supplier_order_summaries")
+          .select("id")
+          .in("id", ids)
+          .eq(classificationColumn, true)
+          .order("id")
+          .range(from, to),
+        (row) => row.id,
+      ),
+    ),
+  );
+  if (summaryResults.some((result) => result.error)) {
     return { data: null, error: "Não foi possível pesquisar os pedidos agora." };
   }
+  const summaryRows = summaryResults.flatMap((result) => result.data ?? []);
   const data = {
-    orderIds: ((summaryResult.data ?? []) as { id: string }[]).map(
-      (row) => row.id,
-    ),
+    orderIds: summaryRows.map((row) => row.id),
   };
   logPerformance({
     loader: "search",
     durationMs: Math.round(performance.now() - startedAt),
-    queryCount: 2,
+    queryCount: 1 + summaryResults.length,
     waveCount: 2,
     rowCount: data.orderIds.length,
     payloadBytes: measurePayload(data),

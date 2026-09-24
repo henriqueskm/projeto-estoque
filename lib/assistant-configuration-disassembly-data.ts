@@ -4,6 +4,10 @@ import type { AssistantConfigurationDisassemblyTarget } from "@/lib/assistant-ty
 import { matchesExactManualStockEntryModel } from "@/lib/ai/manual-stock-entry-routing";
 import { normalizeCatalogSearchText } from "@/lib/servo-model-search";
 import { createClient } from "@/lib/supabase/server";
+import {
+  fetchAllSupabaseRows,
+  fetchAllSupabaseRowsByChunks,
+} from "@/lib/supabase-read-pagination";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 type CodeRow = { id: string; code: string; configuration_id: string };
@@ -27,17 +31,37 @@ async function buildTargets(supabase: SupabaseClient, codeRows: CodeRow[]) {
   const configurationIds = Array.from(new Set(codeRows.map((row) => row.configuration_id)));
   if (!codeIds.length || !configurationIds.length) return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: false };
   const [configurationsResult, configurationBalancesResult, aliasesResult] = await Promise.all([
-    supabase.from("commercial_configurations").select("id, description, servo_id, installation_kit_id").in("id", configurationIds),
-    supabase.from("configuration_stock_balances").select("configuration_id, quantity").in("configuration_id", configurationIds),
-    supabase.from("commercial_configuration_codes").select("id, code, configuration_id").in("configuration_id", configurationIds).eq("is_active", true),
+    fetchAllSupabaseRowsByChunks<string, ConfigurationRow>(
+      configurationIds,
+      (ids, from, to) => supabase.from("commercial_configurations").select("id, description, servo_id, installation_kit_id").in("id", ids).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRowsByChunks<string, ConfigurationBalanceRow>(
+      configurationIds,
+      (ids, from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").in("configuration_id", ids).order("configuration_id").range(from, to),
+      (row) => row.configuration_id,
+    ),
+    fetchAllSupabaseRowsByChunks<string, CodeRow>(
+      configurationIds,
+      (ids, from, to) => supabase.from("commercial_configuration_codes").select("id, code, configuration_id").in("configuration_id", ids).eq("is_active", true).order("id").range(from, to),
+      (row) => row.id,
+    ),
   ]);
   if (configurationsResult.error || configurationBalancesResult.error || aliasesResult.error ||
     (configurationsResult.data?.length ?? 0) !== configurationIds.length) return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: true };
   const configurations = (configurationsResult.data ?? []) as ConfigurationRow[];
   const componentIds = Array.from(new Set(configurations.flatMap((row) => [row.servo_id, row.installation_kit_id])));
   const [itemsResult, balancesResult] = await Promise.all([
-    supabase.from("items").select("id, code, description").in("id", componentIds),
-    supabase.from("stock_balances").select("item_id, quantity").in("item_id", componentIds),
+    fetchAllSupabaseRowsByChunks<string, ItemRow>(
+      componentIds,
+      (ids, from, to) => supabase.from("items").select("id, code, description").in("id", ids).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRowsByChunks<string, BalanceRow>(
+      componentIds,
+      (ids, from, to) => supabase.from("stock_balances").select("item_id, quantity").in("item_id", ids).order("item_id").range(from, to),
+      (row) => row.item_id,
+    ),
   ]);
   if (itemsResult.error || balancesResult.error || (itemsResult.data?.length ?? 0) !== componentIds.length) {
     return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: true };
@@ -127,11 +151,10 @@ export async function loadConfigurationDisassemblyTargetsByServoId(
   supabase: SupabaseClient,
   servoId: string,
 ) {
-  const configurationsResult = await supabase
-    .from("commercial_configurations")
-    .select("id")
-    .eq("servo_id", servoId)
-    .eq("is_active", true);
+  const configurationsResult = await fetchAllSupabaseRows<{ id: string }>(
+    (from, to) => supabase.from("commercial_configurations").select("id").eq("servo_id", servoId).eq("is_active", true).order("id").range(from, to),
+    (row) => row.id,
+  );
   if (configurationsResult.error) {
     return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: true };
   }
@@ -143,11 +166,11 @@ export async function loadConfigurationDisassemblyTargetsByServoId(
     return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: false };
   }
 
-  const codesResult = await supabase
-    .from("commercial_configuration_codes")
-    .select("id, code, configuration_id")
-    .in("configuration_id", configurationIds)
-    .eq("is_active", true);
+  const codesResult = await fetchAllSupabaseRowsByChunks<string, CodeRow>(
+    configurationIds,
+    (ids, from, to) => supabase.from("commercial_configuration_codes").select("id, code, configuration_id").in("configuration_id", ids).eq("is_active", true).order("id").range(from, to),
+    (row) => row.id,
+  );
   if (codesResult.error) {
     return { targets: [] as AssistantConfigurationDisassemblyTarget[], failed: true };
   }

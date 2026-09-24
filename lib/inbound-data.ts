@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
+import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 import {
   physicalItemTypes,
   type InboundCatalog,
@@ -72,24 +73,30 @@ export async function getInboundCatalog(): Promise<InboundCatalogResult> {
       servoModelsResult,
       configurationBalancesResult,
     ] = await Promise.all([
-      supabase
-        .from("items")
-        .select("id, code, description, item_type")
-        .eq("is_active", true)
-        .in("item_type", [...physicalItemTypes]),
-      supabase.from("stock_balances").select("item_id, quantity"),
-      supabase
-        .from("commercial_configuration_codes")
-        .select("id, code, configuration_id")
-        .eq("is_active", true),
-      supabase
-        .from("commercial_configurations")
-        .select("id, description, image_path, servo_id, installation_kit_id")
-        .eq("is_active", true),
-      supabase.from("servo_models").select("item_id, model"),
-      supabase
-        .from("configuration_stock_balances")
-        .select("configuration_id, quantity"),
+      fetchAllSupabaseRows<ItemRow>(
+        (from, to) => supabase.from("items").select("id, code, description, item_type").eq("is_active", true).in("item_type", [...physicalItemTypes]).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<BalanceRow>(
+        (from, to) => supabase.from("stock_balances").select("item_id, quantity").order("item_id").range(from, to),
+        (row) => row.item_id,
+      ),
+      fetchAllSupabaseRows<CommercialCodeRow>(
+        (from, to) => supabase.from("commercial_configuration_codes").select("id, code, configuration_id").eq("is_active", true).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<CommercialConfigurationRow>(
+        (from, to) => supabase.from("commercial_configurations").select("id, description, image_path, servo_id, installation_kit_id").eq("is_active", true).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<ServoModelRow>(
+        (from, to) => supabase.from("servo_models").select("item_id, model").order("item_id").range(from, to),
+        (row) => row.item_id,
+      ),
+      fetchAllSupabaseRows<ConfigurationBalanceRow>(
+        (from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").order("configuration_id").range(from, to),
+        (row) => row.configuration_id,
+      ),
     ]);
 
     const readError = [

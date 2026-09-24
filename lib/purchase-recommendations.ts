@@ -19,6 +19,7 @@ import {
   type SupplierOrderSummaryRow,
 } from "@/lib/supplier-orders-data";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 
 type ItemRow = {
   id: string;
@@ -48,6 +49,7 @@ type ConfigurationRow = {
 };
 
 type ConfigurationCodeRow = {
+  id: string;
   code: string;
   configuration_id: string;
   is_active: boolean;
@@ -86,30 +88,34 @@ export async function loadPurchaseRecommendations(): Promise<PurchaseRecommendat
       orderSummariesResult,
       orderItemsResult,
     ] = await Promise.all([
-      supabase
-        .from("items")
-        .select("id, code, description, item_type, minimum_stock, is_active"),
-      supabase.from("stock_balances").select("item_id, quantity"),
-      supabase
-        .from("commercial_configurations")
-        .select(
-          "id, description, servo_id, installation_kit_id, minimum_stock, is_active",
-        ),
-      supabase
-        .from("commercial_configuration_codes")
-        .select("code, configuration_id, is_active"),
-      supabase
-        .from("configuration_stock_balances")
-        .select("configuration_id, quantity"),
-      supabase
-        .from("supplier_order_summaries")
-        .select(supplierOrderSummarySelect),
-      supabase
-        .from("supplier_order_item_details")
-        .select(supplierOrderItemSelect)
-        .or(
-          "waiting_pickup_quantity.gt.0,waiting_stock_quantity.gt.0",
-        ),
+      fetchAllSupabaseRows<ItemRow>(
+        (from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<StockBalanceRow>(
+        (from, to) => supabase.from("stock_balances").select("item_id, quantity").order("item_id").range(from, to),
+        (row) => row.item_id,
+      ),
+      fetchAllSupabaseRows<ConfigurationRow>(
+        (from, to) => supabase.from("commercial_configurations").select("id, description, servo_id, installation_kit_id, minimum_stock, is_active").order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<ConfigurationCodeRow>(
+        (from, to) => supabase.from("commercial_configuration_codes").select("id, code, configuration_id, is_active").order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<ConfigurationBalanceRow>(
+        (from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").order("configuration_id").range(from, to),
+        (row) => row.configuration_id,
+      ),
+      fetchAllSupabaseRows<SupplierOrderSummaryRow>(
+        (from, to) => supabase.from("supplier_order_summaries").select(supplierOrderSummarySelect).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<SupplierOrderItemRow>(
+        (from, to) => supabase.from("supplier_order_item_details").select(supplierOrderItemSelect).or("waiting_pickup_quantity.gt.0,waiting_stock_quantity.gt.0").order("id").range(from, to),
+        (row) => row.id,
+      ),
     ]);
     const readError = [
       itemsResult.error,

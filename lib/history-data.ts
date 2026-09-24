@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 import {
   getHistoryBalanceLabel,
   historyItemTypeLabels,
@@ -548,36 +549,26 @@ export async function loadHistoryList(
       configurationResult,
       assemblyResult,
     ] = await Promise.all([
-      supabase
-        .from("inbound_batch_lines")
-        .select(
-          "id, batch_id, item_id, commercial_configuration_code_id, quantity, created_at",
-        )
-        .in("batch_id", batchIds),
-      supabase
-        .from("outbound_batch_lines")
-        .select(
-          "id, batch_id, item_id, commercial_configuration_code_id, quantity, assembled_quantity_used, auto_assembled_quantity, created_at",
-        )
-        .in("batch_id", batchIds),
-      supabase
-        .from("stock_movements")
-        .select(
-          "id, batch_id, item_id, quantity_change, quantity_before, quantity_after, created_at",
-        )
-        .in("batch_id", batchIds),
-      supabase
-        .from("configuration_stock_movements")
-        .select(
-          "id, batch_id, configuration_id, quantity_change, quantity_before, quantity_after, created_at",
-        )
-        .in("batch_id", batchIds),
-      supabase
-        .from("assembly_operations")
-        .select(
-          "id, batch_id, configuration_id, operation_type, quantity, created_at",
-        )
-        .in("batch_id", batchIds),
+      fetchAllSupabaseRows<InboundLineRow>(
+        (from, to) => supabase.from("inbound_batch_lines").select("id, batch_id, item_id, commercial_configuration_code_id, quantity, created_at").in("batch_id", batchIds).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<OutboundLineRow>(
+        (from, to) => supabase.from("outbound_batch_lines").select("id, batch_id, item_id, commercial_configuration_code_id, quantity, assembled_quantity_used, auto_assembled_quantity, created_at").in("batch_id", batchIds).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<StockMovementRow>(
+        (from, to) => supabase.from("stock_movements").select("id, batch_id, item_id, quantity_change, quantity_before, quantity_after, created_at").in("batch_id", batchIds).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<ConfigurationMovementRow>(
+        (from, to) => supabase.from("configuration_stock_movements").select("id, batch_id, configuration_id, quantity_change, quantity_before, quantity_after, created_at").in("batch_id", batchIds).order("id").range(from, to),
+        (row) => row.id,
+      ),
+      fetchAllSupabaseRows<AssemblyOperationRow>(
+        (from, to) => supabase.from("assembly_operations").select("id, batch_id, configuration_id, operation_type, quantity, created_at").in("batch_id", batchIds).order("id").range(from, to),
+        (row) => row.id,
+      ),
     ]);
 
     const relatedError = [

@@ -1,6 +1,7 @@
 import { physicalItemTypes } from "@/lib/inbound-types";
 import type { createClient } from "@/lib/supabase/server";
 import type { SupplierOrderPhotoCatalogTarget } from "@/lib/assistant-supplier-order-photo";
+import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 export {
   assessSupplierOrderPhotoLoosePartCode,
   normalizeSupplierOrderPhotoCode,
@@ -15,12 +16,18 @@ export async function loadSupplierOrderPhotoCatalog(
   supabase: SupabaseClient,
 ): Promise<SupplierOrderPhotoCatalogTarget[]> {
   const [itemsResult, configurationsResult, codesResult] = await Promise.all([
-    supabase.from("items").select("id, code, description, item_type, is_active")
-      .in("item_type", [...physicalItemTypes]).eq("is_active", true),
-    supabase.from("commercial_configurations")
-      .select("id, description, servo_id, installation_kit_id, is_active").eq("is_active", true),
-    supabase.from("commercial_configuration_codes")
-      .select("id, code, configuration_id, is_active").eq("is_active", true),
+    fetchAllSupabaseRows<{ id: string; code: string; description: string; item_type: string; is_active: boolean }>(
+      (from, to) => supabase.from("items").select("id, code, description, item_type, is_active").in("item_type", [...physicalItemTypes]).eq("is_active", true).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRows<{ id: string; description: string | null; servo_id: string; installation_kit_id: string; is_active: boolean }>(
+      (from, to) => supabase.from("commercial_configurations").select("id, description, servo_id, installation_kit_id, is_active").eq("is_active", true).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRows<{ id: string; code: string; configuration_id: string; is_active: boolean }>(
+      (from, to) => supabase.from("commercial_configuration_codes").select("id, code, configuration_id, is_active").eq("is_active", true).order("id").range(from, to),
+      (row) => row.id,
+    ),
   ]);
   if (itemsResult.error || configurationsResult.error || codesResult.error) {
     throw new SupplierOrderPhotoCatalogError("Catalog read failed");

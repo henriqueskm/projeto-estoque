@@ -52,6 +52,7 @@ import {
   normalizeCatalogSearchText,
 } from "@/lib/servo-model-search";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
 
 const maximumAmbiguityOptions = 6;
 const maximumPreviewLines = 20;
@@ -442,16 +443,21 @@ async function loadSummariesByNegotiation(
   };
 }
 
-async function loadOrderItems(
+export async function loadOrderItems(
   supabase: SupabaseServerClient,
   orderId: string,
 ) {
-  const result = await supabase
-    .from("supplier_order_item_details")
-    .select(supplierOrderItemSelect)
-    .eq("supplier_order_id", orderId)
-    .order("position", { ascending: true })
-    .limit(1001);
+  const result = await fetchAllSupabaseRows<SupplierOrderItemRow>(
+    (from, to) => supabase
+      .from("supplier_order_item_details")
+      .select(supplierOrderItemSelect)
+      .eq("supplier_order_id", orderId)
+      .order("position", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+    (row) => row.id,
+    { rowLimit: 1001 },
+  );
 
   if (result.error || (result.data?.length ?? 0) > 1000) {
     return { items: [], failed: true };
@@ -489,7 +495,7 @@ async function loadOrderItemById(
   };
 }
 
-async function loadItemsForOrders(
+export async function loadItemsForOrders(
   supabase: SupabaseServerClient,
   orderIds: string[],
 ) {
@@ -505,16 +511,27 @@ async function loadItemsForOrders(
     };
   }
 
-  const maximumRows = uniqueOrderIds.length * 1000;
-  const result = await supabase
-    .from("supplier_order_item_details")
-    .select(supplierOrderItemSelect)
-    .in("supplier_order_id", uniqueOrderIds)
-    .order("supplier_order_id", { ascending: true })
-    .order("position", { ascending: true })
-    .limit(maximumRows + 1);
+  const results = await Promise.all(
+    uniqueOrderIds.map((orderId) =>
+      fetchAllSupabaseRows<SupplierOrderItemRow>(
+        (from, to) => supabase
+          .from("supplier_order_item_details")
+          .select(supplierOrderItemSelect)
+          .eq("supplier_order_id", orderId)
+          .order("position", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+        (row) => row.id,
+        { rowLimit: 1001 },
+      ),
+    ),
+  );
 
-  if (result.error || (result.data?.length ?? 0) > maximumRows) {
+  if (
+    results.some(
+      (result) => result.error || (result.data?.length ?? 0) > 1000,
+    )
+  ) {
     return {
       itemsByOrder: new Map<string, SupplierOrderItem[]>(),
       failed: true,
@@ -525,7 +542,7 @@ async function loadItemsForOrders(
     uniqueOrderIds.map((orderId) => [orderId, []]),
   );
 
-  ((result.data ?? []) as SupplierOrderItemRow[])
+  results.flatMap((result) => result.data ?? [])
     .map(mapSupplierOrderItem)
     .filter((item): item is SupplierOrderItem => Boolean(item))
     .forEach((item) => {
@@ -535,17 +552,22 @@ async function loadItemsForOrders(
   return { itemsByOrder, failed: false };
 }
 
-async function findOrdersContainingCode(
+export async function findOrdersContainingCode(
   supabase: SupabaseServerClient,
   code: string,
 ) {
-  const exactResult = await supabase
-    .from("supplier_order_item_details")
-    .select(supplierOrderItemSelect)
-    .or(
-      `code_snapshot.ilike.${code},commercial_code_snapshot.ilike.${code}`,
-    )
-    .limit(1001);
+  const exactResult = await fetchAllSupabaseRows<SupplierOrderItemRow>(
+    (from, to) => supabase
+      .from("supplier_order_item_details")
+      .select(supplierOrderItemSelect)
+      .or(
+        `code_snapshot.ilike.${code},commercial_code_snapshot.ilike.${code}`,
+      )
+      .order("id")
+      .range(from, to),
+    (row) => row.id,
+    { rowLimit: 1001 },
+  );
 
   if (exactResult.error || (exactResult.data?.length ?? 0) > 1000) {
     return { candidates: [], failed: true };
@@ -563,10 +585,15 @@ async function findOrdersContainingCode(
   let lines = exactLines;
 
   if (lines.length === 0) {
-    const linesResult = await supabase
-      .from("supplier_order_item_details")
-      .select(supplierOrderItemSelect)
-      .limit(1001);
+    const linesResult = await fetchAllSupabaseRows<SupplierOrderItemRow>(
+      (from, to) => supabase
+        .from("supplier_order_item_details")
+        .select(supplierOrderItemSelect)
+        .order("id")
+        .range(from, to),
+      (row) => row.id,
+      { rowLimit: 1001 },
+    );
 
     if (
       linesResult.error ||
