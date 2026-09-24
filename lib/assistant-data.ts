@@ -982,7 +982,7 @@ async function loadAssistantExactItemsSnapshot(
 ): Promise<AssistantStockSnapshot> {
   const supabase = await createClient();
   const uniqueCodes = Array.from(new Set(queryCodes));
-  const [itemsResult, exactCodesResult] = await Promise.all([
+  const [itemsResult, exactCodesResult, allServoModelsResult] = await Promise.all([
     fetchAllSupabaseRows<ItemRow>(
       (from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").in("code", uniqueCodes).eq("is_active", true).order("id").range(from, to),
       (row) => row.id,
@@ -991,11 +991,36 @@ async function loadAssistantExactItemsSnapshot(
       (from, to) => supabase.from("commercial_configuration_codes").select("id, configuration_id, code, is_active").in("code", uniqueCodes).eq("is_active", true).order("id").range(from, to),
       (row) => row.id,
     ),
+    fetchAllSupabaseRows<ServoModelRow>(
+      (from, to) => supabase.from("servo_models").select("item_id, model").order("item_id").range(from, to),
+      (row) => row.item_id,
+    ),
   ]);
 
-  if (itemsResult.error || exactCodesResult.error) throw new AssistantDataError();
+  if (itemsResult.error || exactCodesResult.error || allServoModelsResult.error) {
+    throw new AssistantDataError();
+  }
 
-  const exactItems = (itemsResult.data ?? []) as ItemRow[];
+  const requestedModels = new Set(
+    queryCodes.map(normalizeServoModel).filter(Boolean),
+  );
+  const allServoModels = (allServoModelsResult.data ?? []) as ServoModelRow[];
+  const matchingModelRows = allServoModels.filter((row) =>
+    row.model ? requestedModels.has(normalizeServoModel(row.model)) : false,
+  );
+  const modelItemsResult = await fetchAllSupabaseRowsByChunks<string, ItemRow>(
+    matchingModelRows.map((row) => row.item_id),
+    (ids, from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").in("id", ids).eq("is_active", true).order("id").range(from, to),
+    (row) => row.id,
+  );
+  if (modelItemsResult.error) throw new AssistantDataError();
+
+  const exactItemById = new Map<string, ItemRow>();
+  [
+    ...((itemsResult.data ?? []) as ItemRow[]),
+    ...((modelItemsResult.data ?? []) as ItemRow[]),
+  ].forEach((item) => exactItemById.set(item.id, item));
+  const exactItems = Array.from(exactItemById.values());
   const exactCodes = (exactCodesResult.data ?? []) as CommercialConfigurationCodeRow[];
   const configurationSelect = "id, description, servo_id, installation_kit_id, minimum_stock, is_active, image_path";
   const configurationIds = Array.from(new Set(exactCodes.map((row) => row.configuration_id)));
@@ -1027,8 +1052,13 @@ async function loadAssistantExactItemsSnapshot(
   const allConfigurationIds = configurations.map((row) => row.id);
   const componentItemIds = Array.from(new Set(configurations.flatMap((row) => [row.servo_id, row.installation_kit_id])));
   const relevantItemIds = Array.from(new Set([...exactItems.map((item) => item.id), ...componentItemIds]));
-  const relevantServoIds = Array.from(new Set(configurations.map((row) => row.servo_id)));
-  const [componentItems, aliases, balances, configurationBalances, servoModels] = await Promise.all([
+  const relevantServoIds = Array.from(
+    new Set([
+      ...servoIds,
+      ...configurations.map((row) => row.servo_id),
+    ]),
+  );
+  const [componentItems, aliases, balances, configurationBalances] = await Promise.all([
     fetchAllSupabaseRowsByChunks<string, ItemRow>(
       componentItemIds,
       (ids, from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").in("id", ids).order("id").range(from, to),
@@ -1049,19 +1079,14 @@ async function loadAssistantExactItemsSnapshot(
       (ids, from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").in("configuration_id", ids).order("configuration_id").range(from, to),
       (row) => row.configuration_id,
     ),
-    fetchAllSupabaseRowsByChunks<string, ServoModelRow>(
-      relevantServoIds,
-      (ids, from, to) => supabase.from("servo_models").select("item_id, model").in("item_id", ids).order("item_id").range(from, to),
-      (row) => row.item_id,
-    ),
   ]);
-  if (componentItems.error || aliases.error || balances.error || configurationBalances.error || servoModels.error) throw new AssistantDataError();
+  if (componentItems.error || aliases.error || balances.error || configurationBalances.error) throw new AssistantDataError();
 
   const itemById = new Map<string, ItemRow>();
   [...exactItems, ...((componentItems.data ?? []) as ItemRow[])].forEach((item) => itemById.set(item.id, item));
   return {
     items: Array.from(itemById.values()),
-    servoModels: (servoModels.data ?? []) as ServoModelRow[],
+    servoModels: allServoModels.filter((row) => relevantServoIds.includes(row.item_id)),
     stockBalances: (balances.data ?? []) as StockBalanceRow[],
     configurations,
     configurationCodes: (aliases.data ?? []) as CommercialConfigurationCodeRow[],
@@ -1696,17 +1721,30 @@ export async function consultAssistantInventoryMultiItemSummary(
   const rawEntries: AssistantInventoryMultiItemEntry[] = requestedCodes.map(
     (requestedCode, index) => {
       const normalizedCode = normalizeSearch(normalizedCodes[index]);
-      const physicalMatches = physicalItems.filter(
-        (item) => normalizeSearch(item.code) === normalizedCode,
+      const physicalMatches = physicalItems.flatMap((item) => {
+        const exactCode = normalizeSearch(item.code) === normalizedCode;
+        const exactModel =
+          item.kind === "SERVO" &&
+          matchesServoModel(normalizedCodes[index], item.model);
+        return exactCode || exactModel
+          ? [{ item, matchedByModel: exactModel && !exactCode }]
+          : [];
+      });
+      const configurationMatches = configurations.filter(
+        (configuration) =>
+          configuration.aliases.some(
+            (alias) => normalizeSearch(alias) === normalizedCode,
+          ) ||
+          matchesServoModel(
+            normalizedCodes[index],
+            configuration.servo.model,
+          ),
       );
-      const configurationMatches = configurations.filter((configuration) =>
-        configuration.aliases.some(
-          (alias) => normalizeSearch(alias) === normalizedCode,
-        ),
-      );
-      const physicalTargets = physicalMatches.map((item) => {
+      const physicalTargets = physicalMatches.map(({ item, matchedByModel }) => {
         const currentStock =
-          item.kind === "SERVO" || item.kind === "INSTALLATION_KIT"
+          matchedByModel && item.kind === "SERVO"
+            ? item.loose_quantity
+            : item.kind === "SERVO" || item.kind === "INSTALLATION_KIT"
             ? (item.total_quantity ?? item.loose_quantity)
             : item.loose_quantity;
         const minimumStock = item.minimum_stock > 0 ? item.minimum_stock : null;

@@ -1538,7 +1538,8 @@ function InventoryMultiItemSummary({
                         href={option.href}
                         className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-border-neutral px-3 text-xs font-black text-text-primary"
                       >
-                        Cód. {option.displayCode} · {option.typeLabel}
+                        Cód. {option.displayCode} · {option.typeLabel} ·{" "}
+                        {quantityFormatter.format(option.currentStock)}
                       </Link>
                     ))}
                   </div>

@@ -140,6 +140,10 @@ test("bloco representa inexistente e ambíguo entre resultados válidos", async 
   const response = await answer("Saldo de 2A, 7ZZ e AMB-1", { inventoryMultiSummaryReader: async (codes) => multiBlock(codes) });
   assert.deepEqual(response.structuredBlock?.entries.map(({ status }) => status), ["FOUND", "NOT_FOUND", "AMBIGUOUS"]);
   assert.equal(response.structuredBlock?.entries[2].results.length, 2);
+  assert.equal(
+    parseAssistantStructuredBlock(response.structuredBlock)?.kind,
+    "inventory_multi_item_summary",
+  );
 });
 
 test("aliases oficiais podem compartilhar alvo sem apagar o solicitado", () => {
@@ -188,6 +192,52 @@ test("resolver real deduplica aliases por identidade e mantém igualdade exata",
   });
   const kit = block.entries.find((entry) => entry.normalizedCode === "KT-18");
   assert.equal(kit?.results[0].currentStock, 17);
+});
+
+test("resolver real encontra modelo único junto de código físico", async () => {
+  const snapshot = {
+    items: [
+      { id: "servo", code: "2", description: "SERVO MBF-025", item_type: "SERVO", minimum_stock: 1, is_active: true },
+      { id: "kit", code: "KT-18", description: "KIT KT-18", item_type: "INSTALLATION_KIT", minimum_stock: 2, is_active: true },
+    ],
+    servoModels: [{ item_id: "servo", model: "MBF-025" }],
+    stockBalances: [{ item_id: "servo", quantity: 5 }, { item_id: "kit", quantity: 7 }],
+    configurations: [], configurationCodes: [], configurationBalances: [], repairCompatibilities: [],
+  };
+  const block = await consultAssistantInventoryMultiItemSummary(
+    ["MBF025", "KT-18"], "STOCK", async () => snapshot,
+  );
+  const model = block.entries.find((entry) => entry.normalizedCode === "MBF025");
+  assert.equal(model?.status, "FOUND");
+  assert.equal(model?.results[0].displayCode, "2");
+  assert.equal(model?.results[0].itemType, "SERVO");
+  assert.equal(model?.results[0].currentStock, 5);
+  assert.equal(block.entries.find((entry) => entry.normalizedCode === "KT-18")?.status, "FOUND");
+});
+
+test("resolver real separa Servo sem kit e configurações montadas para modelo ambíguo", async () => {
+  const snapshot = {
+    items: [
+      { id: "servo", code: "2", description: "SERVO MBF-025", item_type: "SERVO", minimum_stock: 1, is_active: true },
+      { id: "kit", code: "KT-18", description: "KIT KT-18", item_type: "INSTALLATION_KIT", minimum_stock: 2, is_active: true },
+    ],
+    servoModels: [{ item_id: "servo", model: "MBF-025" }],
+    stockBalances: [{ item_id: "servo", quantity: 5 }, { item_id: "kit", quantity: 7 }],
+    configurations: [{ id: "config", description: "MBF-025 + KT-18", servo_id: "servo", installation_kit_id: "kit", minimum_stock: 1, is_active: true, image_path: null }],
+    configurationCodes: [{ id: "alias", configuration_id: "config", code: "2A", is_active: true }],
+    configurationBalances: [{ configuration_id: "config", quantity: 3 }],
+    repairCompatibilities: [],
+  };
+  const block = await consultAssistantInventoryMultiItemSummary(
+    ["MBF-025", "KT-18"], "STOCK", async () => snapshot,
+  );
+  const model = block.entries.find((entry) => entry.normalizedCode === "MBF-025");
+  assert.equal(model?.status, "AMBIGUOUS");
+  assert.deepEqual(
+    model?.results.map((result) => [result.displayCode, result.itemType, result.currentStock]),
+    [["2", "SERVO", 5], ["2A", "COMPLETE_BOX", 3]],
+  );
+  assert.equal(model?.resolvedCode, null);
 });
 
 test("Tenho 2 do 5G permanece unitário e consultas unitárias não regridem", async () => {
