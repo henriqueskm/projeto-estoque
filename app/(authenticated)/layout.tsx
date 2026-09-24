@@ -5,11 +5,13 @@ import { AuthenticatedProfileProvider } from "@/components/authenticated-profile
 import { SafisaPickupAlertProvider } from "@/components/safisa-pickup-alert-provider";
 import { PushNotificationProvider } from "@/components/push-notification-provider";
 import { requireActiveProfile } from "@/lib/auth";
+import { PerformanceAuditPanel } from "@/components/performance-audit-panel";
+import { measurePerformanceAudit } from "@/lib/performance-audit";
 
 export default async function AuthenticatedLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  const profile = await requireActiveProfile();
+  const profile = await measurePerformanceAudit("auth", "layout_profile", requireActiveProfile);
 
   return (
     <AuthenticatedProfileProvider
@@ -30,6 +32,7 @@ export default async function AuthenticatedLayout({
               <div className="min-h-dvh pt-16 lg:pt-0 lg:pl-64">
                 {children}
               </div>
+              {(process.env.NODE_ENV !== "production" || process.env.VERCEL_ENV === "preview") ? <PerformanceAuditPanel /> : null}
             </div>
           </AssistantConversationProvider>
         </PushNotificationProvider>

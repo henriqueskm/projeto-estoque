@@ -3,6 +3,7 @@ import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import type { SharedCatalogSnapshot } from "@/lib/shared-catalog";
 import { fetchAllSupabaseRows } from "@/lib/supabase-read-pagination";
+import { logPerformanceAudit } from "@/lib/performance-audit";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -55,6 +56,7 @@ export function buildFreshMinimumStockMaps(
 export async function loadFreshStockBalances(
   supabase: Pick<SupabaseClient, "from">,
 ) {
+  const startedAt = performance.now();
   const [stockBalancesResult, configurationBalancesResult] = await Promise.all([
     fetchAllSupabaseRows<StockBalanceRow>(
       (from, to) =>
@@ -76,6 +78,7 @@ export async function loadFreshStockBalances(
     ),
   ]);
 
+  logPerformanceAudit({ loader: "stock", phase: "fresh_balances", durationMs: Math.round(performance.now() - startedAt), streamCount: 2, waveCount: 1, rowCount: (stockBalancesResult.data?.length ?? 0) + (configurationBalancesResult.data?.length ?? 0) });
   return {
     stockBalancesResult,
     configurationBalancesResult,
@@ -85,6 +88,7 @@ export async function loadFreshStockBalances(
 export async function loadFreshMinimumStocks(
   supabase: Pick<SupabaseClient, "from">,
 ) {
+  const startedAt = performance.now();
   const [itemMinimumsResult, configurationMinimumsResult] = await Promise.all([
     fetchAllSupabaseRows<ItemMinimumStockRow>(
       (from, to) =>
@@ -106,6 +110,7 @@ export async function loadFreshMinimumStocks(
     ),
   ]);
 
+  logPerformanceAudit({ loader: "stock", phase: "fresh_minimums", durationMs: Math.round(performance.now() - startedAt), streamCount: 2, waveCount: 1, rowCount: (itemMinimumsResult.data?.length ?? 0) + (configurationMinimumsResult.data?.length ?? 0) });
   return {
     itemMinimumsResult,
     configurationMinimumsResult,

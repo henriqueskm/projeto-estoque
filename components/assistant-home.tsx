@@ -1324,6 +1324,7 @@ export function AssistantHome({
 
   return (
     <main
+      data-nk-perf-ready="/"
       onClickCapture={handleInternalNavigation}
       className="relative -mt-16 flex h-dvh min-h-0 flex-col overflow-hidden lg:mt-0"
     >
