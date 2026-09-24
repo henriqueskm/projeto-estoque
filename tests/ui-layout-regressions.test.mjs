@@ -12,6 +12,29 @@ test("a new or restored empty conversation starts at its saved scroll position",
   assert.doesNotMatch(home, /scrollTop > 0 \? scrollTop : conversation\.scrollHeight/);
 });
 
+test("sidebar keeps the shell mounted and warms routes selectively", () => {
+  const sidebar = read("components/app-sidebar.tsx");
+  const layout = read("app/(authenticated)/layout.tsx");
+
+  assert.match(layout, /<AppSidebar/);
+  assert.match(layout, /\{children\}/);
+  assert.match(sidebar, /prefetch=\{false\}/);
+  assert.match(sidebar, /const idleWarmRoutes = \[/);
+  assert.match(sidebar, /"\/estoque"[\s\S]*"\/entrada"[\s\S]*"\/saida"/);
+  assert.match(sidebar, /"\/pedidos"[\s\S]*"\/aplicacoes"/);
+  assert.doesNotMatch(
+    sidebar.slice(
+      sidebar.indexOf("const idleWarmRoutes"),
+      sidebar.indexOf("function isCurrentSection"),
+    ),
+    /estatisticas|historico/,
+  );
+  assert.match(sidebar, /isCurrentSection\(pathname, href\)/);
+  assert.match(sidebar, /requestIdleCallback/);
+  assert.match(sidebar, /scheduleNext\(600\)/);
+  assert.match(sidebar, /onNavigate=\{\(\) => closeDrawer\(\)\}/);
+});
+
 test("proactive Assistant attention replaces shortcuts without shifting the conversation", () => {
   const home = read("components/assistant-home.tsx");
   const attention = read("components/assistant-attention-summary.tsx");

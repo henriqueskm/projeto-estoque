@@ -2,7 +2,7 @@ export default function VehicleApplicationsLoading() {
   return (
     <main
       aria-label="Carregando aplicações"
-      className="mx-auto w-full max-w-7xl animate-pulse px-3 py-5 sm:px-6 sm:py-8 lg:px-8"
+      className="mx-auto w-full max-w-7xl px-3 py-5 motion-safe:animate-pulse sm:px-6 sm:py-8 lg:px-8"
     >
       <div className="h-10 w-52 rounded-xl bg-slate-200" />
       <div className="mt-3 h-6 w-72 max-w-full rounded-lg bg-slate-200" />

@@ -76,9 +76,13 @@ function compareCodes(first: string, second: string) {
 
 export { findPurchaseRecommendationItemsByCode };
 
-export async function loadPurchaseRecommendations(): Promise<PurchaseRecommendationsResult> {
+type PurchaseRecommendationsClient = Awaited<ReturnType<typeof createClient>>;
+
+export async function loadPurchaseRecommendations(
+  suppliedClient?: PurchaseRecommendationsClient,
+): Promise<PurchaseRecommendationsResult> {
   try {
-    const supabase = await createClient();
+    const supabase = suppliedClient ?? (await createClient());
     const [
       itemsResult,
       stockBalancesResult,

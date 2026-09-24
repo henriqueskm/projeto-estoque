@@ -1,13 +1,8 @@
 import { AssistantHome } from "@/components/assistant-home";
 import { loadAssistantAttention } from "@/lib/assistant-attention-data";
 
-export default async function HomePage() {
-  const attentionResult = await loadAssistantAttention();
+export default function HomePage() {
+  const attentionPromise = loadAssistantAttention();
 
-  return (
-    <AssistantHome
-      attention={attentionResult.data}
-      attentionError={attentionResult.error}
-    />
-  );
+  return <AssistantHome attentionPromise={attentionPromise} />;
 }

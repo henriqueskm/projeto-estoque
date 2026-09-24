@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type {
   PurchaseRecommendationItem,
@@ -254,6 +253,11 @@ async function copyTextWithFallback(text: string) {
 export function PurchaseRecommendationPanel({
   data,
   error,
+  refreshError,
+  isLoading,
+  isRefreshing,
+  onClose,
+  onRetry,
 }: {
   data:
     | Pick<
@@ -262,8 +266,13 @@ export function PurchaseRecommendationPanel({
       > & { summary: PurchaseRecommendationSummary }
     | null;
   error: string | null;
+  refreshError: string | null;
+  isLoading: boolean;
+  isRefreshing: boolean;
+  onClose: () => void;
+  onRetry: () => void;
 }) {
-  const router = useRouter();
+  const dialogRef = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [activeTab, setActiveTab] =
     useState<RecommendationTab>("buy-now");
@@ -282,7 +291,43 @@ export function PurchaseRecommendationPanel({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        router.replace("/estoque");
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialogRef.current) {
+        return;
+      }
+
+      const focusableElements = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements.at(-1);
+      const activeElement =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+
+      if (!firstElement || !lastElement) {
+        return;
+      }
+
+      if (!activeElement || !focusableElements.includes(activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? lastElement : firstElement).focus();
+        return;
+      }
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
       }
     }
 
@@ -293,7 +338,7 @@ export function PurchaseRecommendationPanel({
       window.removeEventListener("keydown", handleKeyDown);
       previousFocus?.focus();
     };
-  }, [router]);
+  }, [onClose]);
 
   const tabs = [
     {
@@ -346,10 +391,12 @@ export function PurchaseRecommendationPanel({
       <button
         type="button"
         aria-label="Fechar lista recomendada"
+        tabIndex={-1}
         className="absolute inset-0 bg-brand-charcoal/55"
-        onClick={() => router.replace("/estoque")}
+        onClick={onClose}
       />
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="purchase-recommendation-title"
@@ -376,7 +423,7 @@ export function PurchaseRecommendationPanel({
             </div>
             <button
               type="button"
-              onClick={() => router.replace("/estoque")}
+              onClick={onClose}
               className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-border-neutral bg-white text-xl font-black text-text-primary hover:bg-slate-50"
               aria-label="Fechar lista recomendada"
             >
@@ -403,15 +450,63 @@ export function PurchaseRecommendationPanel({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-4">
-          {error || !data ? (
+          {error ? (
             <div
               role="alert"
               className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm font-semibold text-red-900"
             >
-              {error ?? "Não foi possível carregar a lista recomendada."}
+              <p>{error}</p>
+              <button
+                type="button"
+                onClick={onRetry}
+                disabled={isLoading}
+                className="nk-focus mt-3 inline-flex min-h-11 items-center rounded-xl border border-red-300 bg-white px-3 text-sm font-black text-red-900 transition hover:bg-red-100 disabled:cursor-wait disabled:opacity-60"
+              >
+                {isLoading ? "Carregando..." : "Tentar novamente"}
+              </button>
+            </div>
+          ) : isLoading || !data ? (
+            <div
+              role="status"
+              aria-label="Carregando lista recomendada"
+              className="space-y-3 motion-safe:animate-pulse"
+            >
+              <div className="grid grid-cols-3 gap-1 rounded-xl border border-border-neutral bg-white p-1">
+                {Array.from({ length: 3 }, (_, index) => (
+                  <div
+                    key={index}
+                    className="h-11 rounded-lg bg-border-neutral/50"
+                  />
+                ))}
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div
+                    key={index}
+                    className="h-44 rounded-xl border border-border-neutral bg-white"
+                  />
+                ))}
+              </div>
+              <span className="sr-only">Carregando recomendações.</span>
             </div>
           ) : (
             <>
+              {isRefreshing ? (
+                <p
+                  role="status"
+                  className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-900"
+                >
+                  Atualizando a lista com os dados mais recentes...
+                </p>
+              ) : null}
+              {refreshError ? (
+                <p
+                  role="alert"
+                  className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-950"
+                >
+                  {refreshError} A última lista confirmada continua visível.
+                </p>
+              ) : null}
               <div
                 role="tablist"
                 aria-label="Grupos da lista recomendada"

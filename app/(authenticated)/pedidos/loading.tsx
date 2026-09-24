@@ -1,7 +1,7 @@
 export default function SupplierOrdersLoading() {
   return (
     <main
-      className="mx-auto w-full max-w-7xl animate-pulse px-3 py-4 sm:px-6 sm:py-6 lg:px-8"
+      className="mx-auto w-full max-w-7xl px-3 py-4 motion-safe:animate-pulse sm:px-6 sm:py-6 lg:px-8"
       aria-busy="true"
       aria-label="Carregando pedidos"
     >

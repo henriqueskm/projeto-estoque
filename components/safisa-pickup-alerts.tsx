@@ -74,7 +74,9 @@ export function SafisaPickupAlertBell({
     ? isComplete
       ? `${orderLabel(alertCount)} aguardando retirada Safisa`
       : "Pedidos Safisa com unidades aguardando retirada"
-    : "Retiradas Safisa";
+    : hasConfirmedData
+      ? "Retiradas Safisa"
+      : "Conferindo retiradas Safisa";
 
   return (
     <div ref={rootRef} className="relative shrink-0">
@@ -115,6 +117,8 @@ export function SafisaPickupAlertBell({
               <p className="mt-0.5 text-xs font-semibold text-text-muted">
                 {error
                   ? error
+                  : !hasConfirmedData
+                    ? "Conferindo retiradas Safisa..."
                   : alertCount
                   ? isComplete
                     ? `${orderLabel(alertCount)} aguardando retirada`
@@ -137,7 +141,18 @@ export function SafisaPickupAlertBell({
 
           <PushNotificationControl />
 
-          {alerts.length ? (
+          {!hasConfirmedData && !error ? (
+            <div
+              role="status"
+              className="space-y-2 py-5 motion-safe:animate-pulse"
+            >
+              <div className="h-16 rounded-xl bg-app-background" />
+              <div className="h-16 rounded-xl bg-app-background" />
+              <span className="sr-only">
+                Carregando retiradas Safisa.
+              </span>
+            </div>
+          ) : alerts.length ? (
             <div className="mt-2.5 space-y-2">
               {alerts.slice(0, 10).map((alert) => (
                 <article
