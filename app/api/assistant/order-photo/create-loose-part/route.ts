@@ -38,7 +38,9 @@ export async function POST(request: Request) {
     if (!result || typeof result.code !== "string" || typeof result.description !== "string" || typeof result.created !== "boolean") {
       return assistantOrderPhotoJson({ error: "A peça foi processada, mas não foi possível atualizar a prévia." }, 502);
     }
-    if (result.created) invalidateNkCatalog();
+    // Invalidate successful idempotent replays too. A previous request may
+    // have committed the item but lost its response before invalidating.
+    invalidateNkCatalog();
     return assistantOrderPhotoJson({ code: result.code, description: result.description, created: result.created }, 200);
   } catch (error) {
     if (error instanceof CatalogWritePolicyError) {

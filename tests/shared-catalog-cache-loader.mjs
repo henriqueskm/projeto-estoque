@@ -76,6 +76,35 @@ export async function resolve(specifier, context, nextResolve) {
     };
   }
 
+  if (specifier === "@/lib/assistant-order-photo-route") {
+    return {
+      url: moduleUrl(`
+        export function assistantOrderPhotoJson(body, status) {
+          return Response.json(body, { status });
+        }
+        export async function authenticateAssistantOrderPhotoRequest() {
+          return { supabase: {} };
+        }
+        export async function readExactJson(request) {
+          return request.json();
+        }
+      `),
+      shortCircuit: true,
+    };
+  }
+
+  if (specifier === "@/lib/catalog-writer") {
+    return {
+      url: moduleUrl(`
+        export class CatalogWritePolicyError extends Error {}
+        export async function executeCatalogWrite(client, write) {
+          return globalThis.__NK66_EXECUTE_CATALOG_WRITE__(client, write);
+        }
+      `),
+      shortCircuit: true,
+    };
+  }
+
   if (specifier === "next/cache") {
     return {
       url: moduleUrl(`
@@ -95,6 +124,7 @@ export async function resolve(specifier, context, nextResolve) {
         }
 
         export function revalidateTag(tag) {
+          globalThis.__NK66_REVALIDATE_CALLS__.push(tag);
           for (const [key, entry] of globalThis.__NK66_PERSISTENT_CACHE__) {
             if (entry.tags.includes(tag)) {
               globalThis.__NK66_PERSISTENT_CACHE__.delete(key);

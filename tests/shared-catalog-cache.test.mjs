@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test, { beforeEach } from "node:test";
 
+import { POST as createPhotoLoosePart } from "../app/api/assistant/order-photo/create-loose-part/route.ts";
 import { getInboundCatalog } from "../lib/inbound-data.ts";
 import { loadInventoryData } from "../lib/inventory-data.ts";
 import { getOutboundCatalog } from "../lib/outbound-data.ts";
@@ -113,9 +114,13 @@ beforeEach(() => {
   globalThis.__NK66_CURRENT_AUTH__ = null;
   globalThis.__NK66_BOUND_TOKENS__ = [];
   globalThis.__NK66_CACHE_LOOKUPS__ = [];
+  globalThis.__NK66_REVALIDATE_CALLS__ = [];
   globalThis.__NK66_PERSISTENT_CACHE__ = new Map();
   globalThis.__NK66_CLIENTS_BY_TOKEN__ = new Map();
   globalThis.__NK66_REQUEST_CLIENT__ = null;
+  globalThis.__NK66_EXECUTE_CATALOG_WRITE__ = async () => {
+    throw new Error("catalog writer test double was not configured");
+  };
 });
 
 test("cache persistente é isolado por usuário e preenchido pelo JWT/RLS correspondente", async () => {
@@ -209,6 +214,69 @@ test("misses concorrentes entre requests seguem a semântica real do Next e inva
     true,
   );
   assert.equal(client.calls.length, 12, "post-invalidation read blocks for a fresh fill");
+});
+
+test("retry created:false recupera cache quando o primeiro commit perdeu a resposta", async () => {
+  const tables = catalogFixture("A");
+  const client = fakeCatalogClient(tables);
+  globalThis.__NK66_CLIENTS_BY_TOKEN__.set("token-user-a", client);
+  authenticate("user-a");
+
+  const beforeCommit = await loadSharedCatalogForCurrentRequest();
+  assert.equal(beforeCommit.items.some((item) => item.code === "RECOVERED"), false);
+
+  // Modela a primeira RPC já commitada no banco. A resposta/processo se perde
+  // antes de o endpoint alcançar invalidateNkCatalog().
+  tables.items.push({
+    id: "recovered-part",
+    code: "RECOVERED",
+    description: "Peça recuperada",
+    item_type: "LOOSE_PART",
+    is_active: true,
+  });
+  const staleAfterLostResponse = await loadSharedCatalogForCurrentRequest();
+  assert.equal(
+    staleAfterLostResponse.items.some((item) => item.code === "RECOVERED"),
+    false,
+  );
+
+  globalThis.__NK66_EXECUTE_CATALOG_WRITE__ = async (_client, write) => {
+    assert.deepEqual(write, {
+      kind: "CATALOG_ONLY_LOOSE_PART",
+      code: "RECOVERED",
+      description: "Peça recuperada",
+    });
+    return {
+      data: {
+        code: "RECOVERED",
+        description: "Peça recuperada",
+        created: false,
+      },
+      error: null,
+    };
+  };
+  const response = await createPhotoLoosePart(
+    new Request("https://nk.invalid/api/assistant/order-photo/create-loose-part", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        code: "RECOVERED",
+        description: "Peça recuperada",
+      }),
+    }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    code: "RECOVERED",
+    description: "Peça recuperada",
+    created: false,
+  });
+  assert.deepEqual(globalThis.__NK66_REVALIDATE_CALLS__, [
+    "nk-shared-catalog-v1",
+  ]);
+
+  const recovered = await loadSharedCatalogForCurrentRequest();
+  assert.equal(recovered.items.some((item) => item.code === "RECOVERED"), true);
 });
 
 test("snapshot guarda apenas path estável; saldos e mínimos são relidos e alteram builders", async () => {
@@ -350,7 +418,7 @@ test("Entrada, Saída e Estoque compartilham metadados, mas renovam estado e sig
   );
 });
 
-test("somente writers que realmente criam catálogo disparam invalidação", async () => {
+test("writers de catálogo invalidam; operações sem catálogo não invalidam", async () => {
   const sharedCatalog = await readFile(
     new URL("../lib/shared-catalog.ts", import.meta.url),
     "utf8",
@@ -379,7 +447,8 @@ test("somente writers que realmente criam catálogo disparam invalidação", asy
     inboundAction,
     /normalized\.lines\.some\(\(line\) => line\.kind === "NEW_LOOSE_PART"\)[\s\S]*invalidateNkCatalog\(\)/u,
   );
-  assert.match(photoWriter, /if \(result\.created\) invalidateNkCatalog\(\)/u);
+  assert.match(photoWriter, /invalidateNkCatalog\(\);\s*return assistantOrderPhotoJson/u);
+  assert.doesNotMatch(photoWriter, /if \(result\.created\)/u);
   assert.match(
     sharedCatalog,
     /loadSharedCatalogSnapshot = cache\(\s*loadSharedCatalogForCurrentRequest/u,
