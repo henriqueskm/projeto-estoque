@@ -12,6 +12,7 @@ import {
   CatalogWritePolicyError,
   executeCatalogWrite,
 } from "@/lib/catalog-writer";
+import { invalidateNkCatalog } from "@/lib/shared-catalog";
 import { createClient } from "@/lib/supabase/server";
 
 const maximumQuantity = 2_147_483_647;
@@ -538,6 +539,10 @@ export async function submitStockInbound(
       return invalidRequest(
         "A entrada foi processada, mas o comprovante não pôde ser carregado. Não altere os dados; tente confirmar novamente para recuperar o mesmo lote.",
       );
+    }
+
+    if (normalized.lines.some((line) => line.kind === "NEW_LOOSE_PART")) {
+      invalidateNkCatalog();
     }
 
     revalidatePath("/");

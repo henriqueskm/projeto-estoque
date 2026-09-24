@@ -5,6 +5,7 @@ import {
   CatalogWritePolicyError,
   executeCatalogWrite,
 } from "@/lib/catalog-writer";
+import { invalidateNkCatalog } from "@/lib/shared-catalog";
 
 function friendlyError(message: string) {
   if (/commercial configuration/i.test(message)) return "Este código já pertence a um código comercial.";
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
     if (!result || typeof result.code !== "string" || typeof result.description !== "string" || typeof result.created !== "boolean") {
       return assistantOrderPhotoJson({ error: "A peça foi processada, mas não foi possível atualizar a prévia." }, 502);
     }
+    if (result.created) invalidateNkCatalog();
     return assistantOrderPhotoJson({ code: result.code, description: result.description, created: result.created }, 200);
   } catch (error) {
     if (error instanceof CatalogWritePolicyError) {

@@ -1,3 +1,6 @@
+import "server-only";
+
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -9,7 +12,7 @@ export type ActiveProfile = {
   hasRegisteredName: boolean;
 };
 
-export async function requireActiveProfile(): Promise<ActiveProfile> {
+async function loadActiveProfile(): Promise<ActiveProfile> {
   const supabase = await createClient();
   const { data: claimsData, error: claimsError } =
     await supabase.auth.getClaims();
@@ -55,3 +58,8 @@ export async function requireActiveProfile(): Promise<ActiveProfile> {
     hasRegisteredName: Boolean(registeredName),
   };
 }
+
+// Authentication/profile checks are request-scoped only. This avoids duplicate
+// work between the authenticated layout and data loaders without persisting an
+// authorization decision across requests.
+export const requireActiveProfile = cache(loadActiveProfile);
