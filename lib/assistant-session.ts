@@ -208,6 +208,8 @@ function sanitizeStructuredBlock(
         },
         mediaReferences: deduplicateMediaReferences(mediaReferences),
       };
+    case "inventory_multi_item_summary":
+      return { block, mediaReferences: [] };
     case "servo_model_inventory_breakdown":
       if (block.bareServo?.mediaDescriptor) {
         mediaReferences.push({

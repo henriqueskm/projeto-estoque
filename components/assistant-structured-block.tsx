@@ -13,6 +13,7 @@ import type {
   AssistantInventoryAlertsBlock,
   AssistantInventoryItemSummaryBlock,
   AssistantInventoryItemSummaryTarget,
+  AssistantInventoryMultiItemSummaryBlock,
   AssistantAttentionOrderBlock,
   AssistantMediaDescriptor,
   AssistantPurchaseRecommendationBlock,
@@ -1469,6 +1470,112 @@ function AssistantAttentionOrders({
         </p>
       ) : null}
     </div>
+  );
+}
+
+function InventoryMultiItemSummary({
+  block,
+}: {
+  block: AssistantInventoryMultiItemSummaryBlock;
+}) {
+  return (
+    <section className="min-w-0">
+      <header>
+        <p className="text-[0.65rem] font-black tracking-[0.14em] text-brand-gold-ink uppercase">
+          Estoque
+        </p>
+        <h3 className="text-base font-black text-text-primary sm:text-lg">
+          Estoque consultado
+        </h3>
+        <p className="mt-1 text-xs font-semibold text-text-muted">
+          {quantityFormatter.format(block.requestedCount)} códigos solicitados
+        </p>
+      </header>
+
+      <div className="mt-3 grid gap-2">
+        {block.entries.map((entry, index) => {
+          const target = entry.results[0];
+          const requestedLabel = entry.requestedCodes.join(" / ");
+          return (
+            <article
+              key={`${entry.normalizedCode}-${index}`}
+              className="min-w-0 rounded-xl border border-border-neutral bg-surface p-3 shadow-sm"
+            >
+              <header className="flex flex-wrap items-center justify-between gap-2">
+                <span className="max-w-full break-words rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-black text-text-primary">
+                  Cód. {requestedLabel}
+                </span>
+                <span
+                  className={`rounded-full px-2 py-1 text-[0.62rem] font-black tracking-[0.08em] uppercase ${
+                    entry.status === "FOUND"
+                      ? "bg-emerald-100 text-emerald-900"
+                      : entry.status === "AMBIGUOUS"
+                        ? "bg-amber-100 text-amber-950"
+                        : "bg-red-100 text-red-900"
+                  }`}
+                >
+                  {entry.status === "FOUND"
+                    ? "Encontrado"
+                    : entry.status === "AMBIGUOUS"
+                      ? "Ambíguo"
+                      : "Não encontrado"}
+                </span>
+              </header>
+
+              {entry.status === "NOT_FOUND" ? (
+                <p className="mt-2 text-sm font-semibold text-text-muted">
+                  Nenhum cadastro exato foi encontrado.
+                </p>
+              ) : entry.status === "AMBIGUOUS" ? (
+                <div className="mt-2">
+                  <p className="text-sm font-semibold text-text-muted">
+                    Escolha uma das identidades encontradas:
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {entry.results.map((option) => (
+                      <Link
+                        key={`${option.targetKind}-${option.targetId}`}
+                        href={option.href}
+                        className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-border-neutral px-3 text-xs font-black text-text-primary"
+                      >
+                        Cód. {option.displayCode} · {option.typeLabel}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : target ? (
+                <div className="mt-2">
+                  {entry.equivalentCodes.length > 1 ? (
+                    <p className="text-xs font-bold text-text-muted">
+                      Configuração compartilhada: {entry.equivalentCodes.join(" / ")}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 break-words text-sm font-black text-text-primary">
+                    {target.description}
+                  </p>
+                  {entry.commercialDetails ? (
+                    <dl className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                      <div><dt className="font-bold text-text-muted">Montados</dt><dd className="text-lg font-black tabular-nums text-text-primary">{quantityFormatter.format(entry.commercialDetails.mountedQuantity)}</dd></div>
+                      <div><dt className="font-bold text-text-muted">Servo {entry.commercialDetails.servoCode} sem kit</dt><dd className="text-lg font-black tabular-nums text-text-primary">{quantityFormatter.format(entry.commercialDetails.servoLooseQuantity)}</dd></div>
+                      <div><dt className="font-bold text-text-muted">Kit {entry.commercialDetails.installationKitCode} avulso</dt><dd className="text-lg font-black tabular-nums text-text-primary">{quantityFormatter.format(entry.commercialDetails.installationKitLooseQuantity)}</dd></div>
+                      <div><dt className="font-bold text-text-muted">Pode montar</dt><dd className="text-lg font-black tabular-nums text-text-primary">{quantityFormatter.format(entry.commercialDetails.maximumAssemblable)}</dd></div>
+                    </dl>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap items-end justify-between gap-2 border-t border-border-neutral pt-2">
+                      <div><span className="block text-[0.62rem] font-black tracking-wide text-text-muted uppercase">Estoque atual</span><strong className="text-xl font-black tabular-nums text-text-primary">{quantityFormatter.format(target.currentStock)}</strong> <span className="text-xs font-bold text-text-muted">{target.stockUnitLabel}</span></div>
+                      <span className={`rounded-full px-2 py-1 text-[0.62rem] font-black ${inventoryStatusClasses[target.status]}`}>{target.statusLabel}</span>
+                    </div>
+                  )}
+                  <Link href={target.href} className="nk-focus mt-2 inline-flex min-h-11 items-center rounded-xl border border-border-neutral px-3 text-xs font-black text-text-primary">
+                    Abrir no Estoque
+                  </Link>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -3081,6 +3188,8 @@ export function AssistantStructuredBlockView({
       return <InventoryAlertsBlock block={block} />;
     case "inventory_item_summary":
       return <InventoryItemSummaryBlock block={block} />;
+    case "inventory_multi_item_summary":
+      return <InventoryMultiItemSummary block={block} />;
     case "servo_model_inventory_breakdown":
       return <ServoModelInventoryBreakdown block={block} />;
     case "assistant_attention_orders":
