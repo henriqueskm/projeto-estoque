@@ -739,6 +739,34 @@ export type AssistantServoModelInventoryBreakdownBlock = {
   fallbackText: string;
 };
 
+export type AssistantInventoryMultiItemEntry = {
+  requestedCodes: string[];
+  normalizedCode: string;
+  status: "FOUND" | "AMBIGUOUS" | "NOT_FOUND";
+  results: AssistantInventoryItemSummaryTarget[];
+  resolvedCode: string | null;
+  equivalentCodes: string[];
+  commercialDetails?: {
+    mountedQuantity: number;
+    servoCode: string;
+    servoDescription: string;
+    servoLooseQuantity: number;
+    installationKitCode: string;
+    installationKitDescription: string;
+    installationKitLooseQuantity: number;
+    maximumAssemblable: number;
+  };
+};
+
+export type AssistantInventoryMultiItemSummaryBlock = {
+  kind: "inventory_multi_item_summary";
+  metric: "STOCK";
+  entries: AssistantInventoryMultiItemEntry[];
+  requestedCount: number;
+  inventoryHref: "/estoque";
+  fallbackText: string;
+};
+
 export type AssistantAttentionOrderBlock = {
   kind: "assistant_attention_orders";
   alertKind: "SAFISA_READY_PICKUP" | "SUPPLIER_ORDER_PENDING_STOCK";
@@ -1107,6 +1135,7 @@ export type AssistantStructuredBlock =
   | AssistantInventoryAlertsBlock
   | AssistantCatalogMediaBlock
   | AssistantInventoryItemSummaryBlock
+  | AssistantInventoryMultiItemSummaryBlock
   | AssistantServoModelInventoryBreakdownBlock
   | AssistantAttentionOrderBlock
   | AssistantSupplierOrderListBlock
@@ -1748,6 +1777,77 @@ function parseInventoryItemSummaryTarget(
       ? {
           composition:
             composition as AssistantInventoryItemSummaryTarget["composition"],
+        }
+      : {}),
+  };
+}
+
+function parseInventoryMultiItemEntry(
+  value: unknown,
+): AssistantInventoryMultiItemEntry | null {
+  if (!isRecord(value) || !Array.isArray(value.requestedCodes)) return null;
+  const requestedCodes = value.requestedCodes.filter(
+    (code): code is string =>
+      typeof code === "string" && Boolean(code.trim()) && code.length <= assistantQueryMaxLength,
+  );
+  const results = Array.isArray(value.results)
+    ? value.results.map(parseInventoryItemSummaryTarget)
+    : [];
+  const equivalentCodes = Array.isArray(value.equivalentCodes)
+    ? value.equivalentCodes.filter(
+        (code): code is string => typeof code === "string" && Boolean(code.trim()),
+      )
+    : [];
+  const details = value.commercialDetails;
+  const hasValidDetails =
+    details === undefined ||
+    (isRecord(details) &&
+      isNonnegativeInteger(details.mountedQuantity) &&
+      typeof details.servoCode === "string" && Boolean(details.servoCode.trim()) &&
+      typeof details.servoDescription === "string" && Boolean(details.servoDescription.trim()) &&
+      isNonnegativeInteger(details.servoLooseQuantity) &&
+      typeof details.installationKitCode === "string" && Boolean(details.installationKitCode.trim()) &&
+      typeof details.installationKitDescription === "string" && Boolean(details.installationKitDescription.trim()) &&
+      isNonnegativeInteger(details.installationKitLooseQuantity) &&
+      isNonnegativeInteger(details.maximumAssemblable) &&
+      details.maximumAssemblable ===
+        Math.min(details.servoLooseQuantity, details.installationKitLooseQuantity));
+
+  if (
+    requestedCodes.length === 0 ||
+    requestedCodes.length !== value.requestedCodes.length ||
+    typeof value.normalizedCode !== "string" ||
+    !value.normalizedCode.trim() ||
+    !["FOUND", "AMBIGUOUS", "NOT_FOUND"].includes(String(value.status)) ||
+    !Array.isArray(value.results) ||
+    results.some((result) => result === null) ||
+    !Array.isArray(value.equivalentCodes) ||
+    equivalentCodes.length !== value.equivalentCodes.length ||
+    (value.status === "NOT_FOUND" && results.length !== 0) ||
+    (value.status === "FOUND" && results.length !== 1) ||
+    (value.status === "AMBIGUOUS" && results.length < 2) ||
+    (value.status === "FOUND"
+      ? typeof value.resolvedCode !== "string" || !value.resolvedCode.trim()
+      : value.resolvedCode !== null) ||
+    !hasValidDetails ||
+    (details !== undefined &&
+      (value.status !== "FOUND" ||
+        results[0]?.targetKind !== "commercial_configuration"))
+  ) {
+    return null;
+  }
+
+  return {
+    requestedCodes,
+    normalizedCode: value.normalizedCode,
+    status: value.status as AssistantInventoryMultiItemEntry["status"],
+    results: results as AssistantInventoryItemSummaryTarget[],
+    resolvedCode: value.resolvedCode as string | null,
+    equivalentCodes,
+    ...(details !== undefined
+      ? {
+          commercialDetails:
+            details as AssistantInventoryMultiItemEntry["commercialDetails"],
         }
       : {}),
   };
@@ -3118,6 +3218,40 @@ export function parseAssistantStructuredBlock(
         results as AssistantInventoryItemSummaryTarget[],
       inventoryHref: value.inventoryHref,
       primaryText: value.primaryText,
+      fallbackText: value.fallbackText,
+    };
+  }
+
+  if (value.kind === "inventory_multi_item_summary") {
+    const entries = Array.isArray(value.entries)
+      ? value.entries.map(parseInventoryMultiItemEntry)
+      : [];
+    const requestedCount = entries.reduce(
+      (count, entry) => count + (entry?.requestedCodes.length ?? 0),
+      0,
+    );
+    if (
+      value.metric !== "STOCK" ||
+      !Array.isArray(value.entries) ||
+      entries.length === 0 ||
+      entries.length > 20 ||
+      entries.some((entry) => entry === null) ||
+      !isNonnegativeInteger(value.requestedCount) ||
+      value.requestedCount < 2 ||
+      value.requestedCount > 20 ||
+      value.requestedCount !== requestedCount ||
+      value.inventoryHref !== "/estoque" ||
+      typeof value.fallbackText !== "string" ||
+      !value.fallbackText.trim()
+    ) {
+      return null;
+    }
+    return {
+      kind: "inventory_multi_item_summary",
+      metric: "STOCK",
+      entries: entries as AssistantInventoryMultiItemEntry[],
+      requestedCount: value.requestedCount,
+      inventoryHref: "/estoque",
       fallbackText: value.fallbackText,
     };
   }

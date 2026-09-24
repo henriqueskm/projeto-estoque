@@ -17,6 +17,8 @@ import {
   type AssistantInventoryItemSummaryBlock,
   type AssistantInventoryItemSummaryMetric,
   type AssistantInventoryItemSummaryTarget,
+  type AssistantInventoryMultiItemEntry,
+  type AssistantInventoryMultiItemSummaryBlock,
   type AssistantItemLookupResult,
   type AssistantMediaDescriptor,
   type AssistantPhysicalItemResult,
@@ -975,6 +977,124 @@ async function loadAssistantExactItemSnapshot(
   };
 }
 
+async function loadAssistantExactItemsSnapshot(
+  queryCodes: string[],
+): Promise<AssistantStockSnapshot> {
+  const supabase = await createClient();
+  const uniqueCodes = Array.from(new Set(queryCodes));
+  const [itemsResult, exactCodesResult, allServoModelsResult] = await Promise.all([
+    fetchAllSupabaseRows<ItemRow>(
+      (from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").in("code", uniqueCodes).eq("is_active", true).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRows<CommercialConfigurationCodeRow>(
+      (from, to) => supabase.from("commercial_configuration_codes").select("id, configuration_id, code, is_active").in("code", uniqueCodes).eq("is_active", true).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRows<ServoModelRow>(
+      (from, to) => supabase.from("servo_models").select("item_id, model").order("item_id").range(from, to),
+      (row) => row.item_id,
+    ),
+  ]);
+
+  if (itemsResult.error || exactCodesResult.error || allServoModelsResult.error) {
+    throw new AssistantDataError();
+  }
+
+  const requestedModels = new Set(
+    queryCodes.map(normalizeServoModel).filter(Boolean),
+  );
+  const allServoModels = (allServoModelsResult.data ?? []) as ServoModelRow[];
+  const matchingModelRows = allServoModels.filter((row) =>
+    row.model ? requestedModels.has(normalizeServoModel(row.model)) : false,
+  );
+  const modelItemsResult = await fetchAllSupabaseRowsByChunks<string, ItemRow>(
+    matchingModelRows.map((row) => row.item_id),
+    (ids, from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").in("id", ids).eq("is_active", true).order("id").range(from, to),
+    (row) => row.id,
+  );
+  if (modelItemsResult.error) throw new AssistantDataError();
+
+  const exactItemById = new Map<string, ItemRow>();
+  [
+    ...((itemsResult.data ?? []) as ItemRow[]),
+    ...((modelItemsResult.data ?? []) as ItemRow[]),
+  ].forEach((item) => exactItemById.set(item.id, item));
+  const exactItems = Array.from(exactItemById.values());
+  const exactCodes = (exactCodesResult.data ?? []) as CommercialConfigurationCodeRow[];
+  const configurationSelect = "id, description, servo_id, installation_kit_id, minimum_stock, is_active, image_path";
+  const configurationIds = Array.from(new Set(exactCodes.map((row) => row.configuration_id)));
+  const servoIds = exactItems.filter((item) => item.item_type === "SERVO").map((item) => item.id);
+  const kitIds = exactItems.filter((item) => item.item_type === "INSTALLATION_KIT").map((item) => item.id);
+  const [exactConfigurations, servoConfigurations, kitConfigurations] = await Promise.all([
+    fetchAllSupabaseRowsByChunks<string, CommercialConfigurationRow>(
+      configurationIds,
+      (ids, from, to) => supabase.from("commercial_configurations").select(configurationSelect).in("id", ids).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRowsByChunks<string, CommercialConfigurationRow>(
+      servoIds,
+      (ids, from, to) => supabase.from("commercial_configurations").select(configurationSelect).in("servo_id", ids).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRowsByChunks<string, CommercialConfigurationRow>(
+      kitIds,
+      (ids, from, to) => supabase.from("commercial_configurations").select(configurationSelect).in("installation_kit_id", ids).order("id").range(from, to),
+      (row) => row.id,
+    ),
+  ]);
+  if (exactConfigurations.error || servoConfigurations.error || kitConfigurations.error) throw new AssistantDataError();
+
+  const configurationById = new Map<string, CommercialConfigurationRow>();
+  [...(exactConfigurations.data ?? []), ...(servoConfigurations.data ?? []), ...(kitConfigurations.data ?? [])]
+    .forEach((row) => configurationById.set(row.id, row));
+  const configurations = Array.from(configurationById.values());
+  const allConfigurationIds = configurations.map((row) => row.id);
+  const componentItemIds = Array.from(new Set(configurations.flatMap((row) => [row.servo_id, row.installation_kit_id])));
+  const relevantItemIds = Array.from(new Set([...exactItems.map((item) => item.id), ...componentItemIds]));
+  const relevantServoIds = Array.from(
+    new Set([
+      ...servoIds,
+      ...configurations.map((row) => row.servo_id),
+    ]),
+  );
+  const [componentItems, aliases, balances, configurationBalances] = await Promise.all([
+    fetchAllSupabaseRowsByChunks<string, ItemRow>(
+      componentItemIds,
+      (ids, from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").in("id", ids).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRowsByChunks<string, CommercialConfigurationCodeRow>(
+      allConfigurationIds,
+      (ids, from, to) => supabase.from("commercial_configuration_codes").select("id, configuration_id, code, is_active").in("configuration_id", ids).eq("is_active", true).order("id").range(from, to),
+      (row) => row.id,
+    ),
+    fetchAllSupabaseRowsByChunks<string, StockBalanceRow>(
+      relevantItemIds,
+      (ids, from, to) => supabase.from("stock_balances").select("item_id, quantity").in("item_id", ids).order("item_id").range(from, to),
+      (row) => row.item_id,
+    ),
+    fetchAllSupabaseRowsByChunks<string, ConfigurationBalanceRow>(
+      allConfigurationIds,
+      (ids, from, to) => supabase.from("configuration_stock_balances").select("configuration_id, quantity").in("configuration_id", ids).order("configuration_id").range(from, to),
+      (row) => row.configuration_id,
+    ),
+  ]);
+  if (componentItems.error || aliases.error || balances.error || configurationBalances.error) throw new AssistantDataError();
+
+  const itemById = new Map<string, ItemRow>();
+  [...exactItems, ...((componentItems.data ?? []) as ItemRow[])].forEach((item) => itemById.set(item.id, item));
+  return {
+    items: Array.from(itemById.values()),
+    servoModels: allServoModels.filter((row) => relevantServoIds.includes(row.item_id)),
+    stockBalances: (balances.data ?? []) as StockBalanceRow[],
+    configurations,
+    configurationCodes: (aliases.data ?? []) as CommercialConfigurationCodeRow[],
+    configurationBalances: (configurationBalances.data ?? []) as ConfigurationBalanceRow[],
+    repairCompatibilities: [],
+  };
+}
+
 export async function consultAssistantCatalogMedia(
   rawCode: string,
 ): Promise<AssistantCatalogMediaBlock> {
@@ -1573,6 +1693,200 @@ export async function consultAssistantInventoryItemSummary(
     inventoryHref,
     primaryText: getInventorySummaryPrimaryText(metric, target),
     fallbackText: getInventorySummaryFallback(target),
+  };
+}
+
+export async function consultAssistantInventoryMultiItemSummary(
+  rawCodes: string[],
+  metric: AssistantInventoryItemSummaryMetric,
+  snapshotReader: (
+    queryCodes: string[],
+  ) => Promise<AssistantStockSnapshot> = loadAssistantExactItemsSnapshot,
+): Promise<AssistantInventoryMultiItemSummaryBlock> {
+  if (metric !== "STOCK" || rawCodes.length < 2 || rawCodes.length > 20) {
+    throw new AssistantDataError();
+  }
+
+  const requestedCodes = rawCodes.map((code) => code.trim()).filter(Boolean);
+  if (requestedCodes.length !== rawCodes.length) throw new AssistantDataError();
+  const normalizedCodes = requestedCodes.map((code) =>
+    code.toLocaleUpperCase("pt-BR"),
+  );
+  if (normalizedCodes.some((code) => code.length > assistantQueryMaxLength)) {
+    throw new AssistantDataError();
+  }
+
+  const snapshot = await snapshotReader(normalizedCodes);
+  const { physicalItems, configurations } = buildLookupCatalog(snapshot);
+  const rawEntries: AssistantInventoryMultiItemEntry[] = requestedCodes.map(
+    (requestedCode, index) => {
+      const normalizedCode = normalizeSearch(normalizedCodes[index]);
+      const exactPhysicalMatches = physicalItems.filter(
+        (item) => normalizeSearch(item.code) === normalizedCode,
+      );
+      const exactConfigurationMatches = configurations.filter(
+        (configuration) => configuration.aliases.some(
+          (alias) => normalizeSearch(alias) === normalizedCode,
+        ),
+      );
+      const hasExactMatch =
+        exactPhysicalMatches.length > 0 ||
+        exactConfigurationMatches.length > 0;
+      const physicalMatches = hasExactMatch
+        ? exactPhysicalMatches.map((item) => ({ item, matchedByModel: false }))
+        : physicalItems.flatMap((item) =>
+            item.kind === "SERVO" &&
+            matchesServoModel(normalizedCodes[index], item.model)
+              ? [{ item, matchedByModel: true }]
+              : [],
+          );
+      const configurationMatches = hasExactMatch
+        ? exactConfigurationMatches
+        : configurations.filter((configuration) =>
+            matchesServoModel(
+              normalizedCodes[index],
+              configuration.servo.model,
+            ),
+          );
+      const physicalTargets = physicalMatches.map(({ item, matchedByModel }) => {
+        const currentStock =
+          matchedByModel && item.kind === "SERVO"
+            ? item.loose_quantity
+            : item.kind === "SERVO" || item.kind === "INSTALLATION_KIT"
+            ? (item.total_quantity ?? item.loose_quantity)
+            : item.loose_quantity;
+        const minimumStock = item.minimum_stock > 0 ? item.minimum_stock : null;
+        return {
+          targetKind: "item" as const,
+          targetId: item.item_id,
+          displayCode: item.code,
+          itemType: item.kind,
+          typeLabel: physicalItemTypeLabels[item.kind],
+          description: item.description,
+          currentStock,
+          minimumStock,
+          stockUnitLabel: getSummaryStockUnitLabel(item.kind, currentStock),
+          ...getInventorySummaryStatus(currentStock, minimumStock),
+          href: buildInventoryTargetHref("item", item.item_id),
+          mediaDescriptor: null,
+        } satisfies AssistantInventoryItemSummaryTarget;
+      });
+      const configurationTargets = configurationMatches.map((configuration) => {
+        const currentStock = configuration.assembled_quantity;
+        const minimumStock = configuration.minimum_stock > 0 ? configuration.minimum_stock : null;
+        return {
+          targetKind: "commercial_configuration" as const,
+          targetId: configuration.configuration_id,
+          displayCode:
+            configuration.aliases.find(
+              (alias) => normalizeSearch(alias) === normalizedCode,
+            ) ?? configuration.aliases[0],
+          itemType: "COMPLETE_BOX" as const,
+          typeLabel: customerFacingInventoryLabels.completeServoKit,
+          description: configuration.description,
+          currentStock,
+          minimumStock,
+          stockUnitLabel: getSummaryStockUnitLabel("COMPLETE_BOX", currentStock),
+          ...getInventorySummaryStatus(currentStock, minimumStock),
+          href: buildInventoryTargetHref(
+            "commercial_configuration",
+            configuration.configuration_id,
+          ),
+          mediaDescriptor: null,
+          composition: {
+            servoCode: configuration.servo.code,
+            servoDescription: configuration.servo.description,
+            installationKitCode: configuration.installation_kit.code,
+            installationKitDescription: configuration.installation_kit.description,
+          },
+        } satisfies AssistantInventoryItemSummaryTarget;
+      });
+      const results = [...physicalTargets, ...configurationTargets].sort(
+        (first, second) =>
+          compareCodes(first.displayCode, second.displayCode) ||
+          first.targetKind.localeCompare(second.targetKind) ||
+          first.targetId.localeCompare(second.targetId),
+      );
+      const status =
+        results.length === 0
+          ? "NOT_FOUND" as const
+          : results.length === 1
+            ? "FOUND" as const
+            : "AMBIGUOUS" as const;
+      const matchedConfiguration =
+        status === "FOUND" && results[0].targetKind === "commercial_configuration"
+          ? configurationMatches.find(
+              (configuration) =>
+                configuration.configuration_id === results[0].targetId,
+            ) ?? null
+          : null;
+
+      return {
+        requestedCodes: [requestedCode],
+        normalizedCode: normalizedCodes[index],
+        status,
+        results,
+        resolvedCode: status === "FOUND" ? results[0].displayCode : null,
+        equivalentCodes: matchedConfiguration?.aliases ?? [],
+        ...(matchedConfiguration
+          ? {
+              commercialDetails: {
+                mountedQuantity: matchedConfiguration.assembled_quantity,
+                servoCode: matchedConfiguration.servo.code,
+                servoDescription: matchedConfiguration.servo.description,
+                servoLooseQuantity: matchedConfiguration.servo.loose_quantity,
+                installationKitCode: matchedConfiguration.installation_kit.code,
+                installationKitDescription:
+                  matchedConfiguration.installation_kit.description,
+                installationKitLooseQuantity:
+                  matchedConfiguration.installation_kit.loose_quantity,
+                maximumAssemblable: matchedConfiguration.maximum_assemblable,
+              },
+            }
+          : {}),
+      };
+    },
+  );
+
+  const entries: AssistantInventoryMultiItemEntry[] = [];
+  const entryByLogicalTarget = new Map<string, AssistantInventoryMultiItemEntry>();
+  rawEntries.forEach((entry) => {
+    const key =
+      entry.status === "FOUND"
+        ? `${entry.results[0].targetKind}:${entry.results[0].targetId}`
+        : `${entry.status}:${normalizeSearch(entry.normalizedCode)}`;
+    const existing = entryByLogicalTarget.get(key);
+    if (existing) {
+      existing.requestedCodes.push(...entry.requestedCodes);
+      return;
+    }
+    entryByLogicalTarget.set(key, entry);
+    entries.push(entry);
+  });
+
+  const fallbackText = [
+    "Estoque consultado.",
+    ...entries.map((entry) => {
+      const requested = entry.requestedCodes.join(" / ");
+      if (entry.status === "NOT_FOUND") return `${requested}: não encontrado.`;
+      if (entry.status === "AMBIGUOUS") {
+        return `${requested}: ambíguo (${entry.results.map((result) => result.displayCode).join(", ")}).`;
+      }
+      if (entry.commercialDetails) {
+        const details = entry.commercialDetails;
+        return `${requested}: ${details.mountedQuantity} montados; Servo ${details.servoCode} sem kit: ${details.servoLooseQuantity}; Kit ${details.installationKitCode} avulso: ${details.installationKitLooseQuantity}; pode montar: ${details.maximumAssemblable}.`;
+      }
+      return `${requested}: ${entry.results[0].currentStock} ${entry.results[0].stockUnitLabel}.`;
+    }),
+  ].join("\n");
+
+  return {
+    kind: "inventory_multi_item_summary",
+    metric,
+    entries,
+    requestedCount: requestedCodes.length,
+    inventoryHref: "/estoque",
+    fallbackText,
   };
 }
 

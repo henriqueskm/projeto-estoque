@@ -5,6 +5,7 @@ import {
   AssistantDataError,
   consultAssistantCatalogMedia,
   consultAssistantInventoryItemSummary,
+  consultAssistantInventoryMultiItemSummary,
   consultAssistantItem,
   consultAssistantLowStock,
   consultAssistantServoModelInventory,
@@ -35,6 +36,7 @@ import {
   routeServoModelInventoryView,
   routeAssistantClarification,
   routeInventoryItemSummaryQuestion,
+  routeInventoryMultiItemSummaryQuestion,
 } from "@/lib/ai/assistant-routing";
 import { routeSupplierOrderQuestion } from "@/lib/ai/supplier-order-routing";
 import { routeSupplierOrderPickupAction } from "@/lib/ai/supplier-order-pickup-routing";
@@ -110,6 +112,7 @@ import type {
   AssistantCommercialConfigurationResult,
   AssistantInventoryItemSummaryBlock,
   AssistantInventoryItemSummaryTarget,
+  AssistantInventoryMultiItemSummaryBlock,
   AssistantItemLookupResult,
   AssistantPhysicalItemResult,
   AssistantServoModelInventoryAction,
@@ -127,6 +130,7 @@ export type AssistantQuestionDependencies = Partial<{
   semanticRouter: typeof routeAssistantMessageSemantically;
   itemLookupReader: typeof consultAssistantItem;
   inventorySummaryReader: typeof consultAssistantInventoryItemSummary;
+  inventoryMultiSummaryReader: typeof consultAssistantInventoryMultiItemSummary;
   servoModelInventoryReader: typeof consultAssistantServoModelInventory;
   purchaseRecommendationReader: typeof consultAssistantPurchaseRecommendations;
   supplierOrderReader: typeof consultAssistantSupplierOrders;
@@ -1590,6 +1594,35 @@ export async function answerAssistantQuestion(
       configurationDisassemblySelection,
       { userId, profileName },
     );
+  }
+
+  const multiItemRoute = routeInventoryMultiItemSummaryQuestion(message);
+  if (multiItemRoute?.kind === "LIMIT_EXCEEDED") {
+    return {
+      message: `Posso consultar no máximo ${multiItemRoute.maximumTargets} códigos por pergunta. Você enviou ${multiItemRoute.requestedCount}; reduza a lista e tente novamente. Nenhum código foi consultado.`,
+      contextItemQuery: null,
+      contextItemReferenceKind: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
+  }
+  if (multiItemRoute?.kind === "QUERY") {
+    const block: AssistantInventoryMultiItemSummaryBlock =
+      await executeStockQuery(() =>
+        (dependencies.inventoryMultiSummaryReader ??
+          consultAssistantInventoryMultiItemSummary)(
+          multiItemRoute.queryCodes,
+          multiItemRoute.metric,
+        ),
+      );
+    return {
+      message: block.fallbackText,
+      structuredBlock: block,
+      contextItemQuery: null,
+      contextItemReferenceKind: null,
+      contextSupplierOrderId: null,
+      contextSupplierOrderCatalogCode: null,
+    };
   }
 
   const bypassSemanticRouter =

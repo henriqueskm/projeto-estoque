@@ -315,6 +315,7 @@ function topicForBlock(block: AssistantStructuredBlock | undefined) {
   if (block.kind.startsWith("supplier_order")) return "SUPPLIER_ORDER" as const;
   if (
     block.kind === "inventory_item_summary" ||
+    block.kind === "inventory_multi_item_summary" ||
     block.kind === "servo_model_inventory_breakdown" ||
     block.kind === "catalog_media"
   ) {
@@ -455,6 +456,14 @@ export function addAssistantConversationalCopy(
         block.metric === "COMPOSITION"
           ? null
           : "Se quiser, posso mostrar a composição ou o estoque mínimo dele.",
+    };
+  }
+
+  if (block.kind === "inventory_multi_item_summary") {
+    return {
+      ...answer,
+      leadText: "Aqui está o estoque atual dos códigos consultados.",
+      followUpText: null,
     };
   }
 

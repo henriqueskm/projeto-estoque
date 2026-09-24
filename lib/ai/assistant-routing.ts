@@ -18,6 +18,20 @@ export type AssistantInventoryItemRoute = {
   metric: AssistantInventoryItemSummaryMetric;
 };
 
+export const assistantMultiItemMaximumTargets = 20;
+
+export type AssistantInventoryMultiItemRoute =
+  | {
+      kind: "QUERY";
+      queryCodes: string[];
+      metric: AssistantInventoryItemSummaryMetric;
+    }
+  | {
+      kind: "LIMIT_EXCEEDED";
+      requestedCount: number;
+      maximumTargets: number;
+    };
+
 export type AssistantClarificationRoute =
   | { kind: "CATALOG_CODE"; code: string }
   | { kind: "SUPPLIER_ORDERS"; contextual: boolean }
@@ -406,6 +420,14 @@ export function extractExplicitItemQuery(message: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/([A-Z0-9])\s*-\s*([A-Z0-9])/gi, "$1-$2");
+  const quantityQuestionCode = searchableMessage.match(
+    /\b(?:tenho|temos|tem|possuo|possui)\s+\d+\s+(?:do|da|de)\s+((?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[/-][A-Z0-9]+)*)\b/i,
+  )?.[1];
+
+  if (quantityQuestionCode) {
+    return cleanQueryCandidate(quantityQuestionCode);
+  }
+
   const numericCode = searchableMessage.match(
     /\b(?:codigo|cod\.?|itens?|servos?|kits?|reparos?|pecas?|caixas?|suportes?|do|da|de)\s+(\d+)(?![A-Z0-9/-])/i,
   )?.[1];
@@ -517,6 +539,84 @@ function isExactCatalogCode(value: string) {
   return /^(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[/-][A-Z0-9]+)*$/i.test(value);
 }
 
+export function routeInventoryMultiItemSummaryQuestion(
+  message: string,
+): AssistantInventoryMultiItemRoute | null {
+  const normalizedMessage = normalizeAssistantText(message);
+
+  if (
+    /\b(foto|fotos|imagem|imagens|pedido|pedidos|fornecedor)\b/.test(
+      normalizedMessage,
+    ) ||
+    /\b(entrada|saida|baixa|retirar|adicionar|ajustar|montar|desmontar)\b/.test(
+      normalizedMessage,
+    )
+  ) {
+    return null;
+  }
+
+  const metric =
+    extractInventoryItemSummaryMetric(message) ??
+    (/\b(consulte|consultar|verifique|verificar)\b/.test(normalizedMessage)
+      ? "STOCK"
+      : null);
+  if (metric !== "STOCK") return null;
+
+  const searchableMessage = message
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/([A-Z0-9])\s*-\s*([A-Z0-9])/gi, "$1-$2");
+  const matches = Array.from(
+    searchableMessage.matchAll(
+      /\b(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[/-][A-Z0-9]+)*\b/gi,
+    ),
+  );
+
+  if (matches.length < 2) return null;
+
+  const firstIndex = matches[0].index ?? 0;
+  const lastMatch = matches.at(-1)!;
+  const lastIndex = (lastMatch.index ?? 0) + lastMatch[0].length;
+  const prefix = searchableMessage.slice(0, firstIndex);
+  const suffix = searchableMessage.slice(lastIndex);
+  const gaps = matches.slice(0, -1).map((match, index) => {
+    const start = (match.index ?? 0) + match[0].length;
+    const end = matches[index + 1].index ?? start;
+    return searchableMessage.slice(start, end);
+  });
+  const hasExplicitSeparator = gaps.some((gap) => /[,;\n\r]|\be\b/i.test(gap));
+  const isSpaceList = matches.length >= 3 && gaps.every((gap) => /^\s+$/.test(gap));
+  const hasOnlyListSeparators = gaps.every((gap) =>
+    /^\s*(?:(?:,|;)?\s*(?:e\s+)?)?$/i.test(gap),
+  );
+  const hasListCue =
+    /\b(estoque|saldo|codigos?|itens?|consulte|consultar|quantos?|quanto|temos|tenho)\b/i.test(
+      prefix,
+    );
+
+  if (
+    !hasListCue ||
+    (!hasExplicitSeparator && !isSpaceList) ||
+    !hasOnlyListSeparators ||
+    !/^[\s?!.,;:]*$/.test(suffix)
+  ) {
+    return null;
+  }
+
+  const queryCodes = matches.map((match) => match[0].trim());
+  if (queryCodes.some((code) => !isExactCatalogCode(code))) return null;
+
+  if (queryCodes.length > assistantMultiItemMaximumTargets) {
+    return {
+      kind: "LIMIT_EXCEEDED",
+      requestedCount: queryCodes.length,
+      maximumTargets: assistantMultiItemMaximumTargets,
+    };
+  }
+
+  return { kind: "QUERY", queryCodes, metric };
+}
+
 export function isItemToSupplierOrdersFollowUp(message: string) {
   return /^(?:e\s+)?(?:nos?|em)\s+pedidos?\s*[?!.]*$/i.test(
     normalizeAssistantText(message),
@@ -625,7 +725,11 @@ export function routeInventoryItemSummaryQuestion(
     return null;
   }
 
-  const metric = extractInventoryItemSummaryMetric(message);
+  const metric =
+    extractInventoryItemSummaryMetric(message) ??
+    (/\b(consulte|consultar|verifique|verificar)\b/.test(normalizedMessage)
+      ? "STOCK"
+      : null);
   return metric ? { queryCode, metric } : null;
 }
 
