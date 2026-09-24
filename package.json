@@ -37,6 +37,7 @@
     "test:assistant-semantic-routing": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/assistant-semantic-routing.test.mjs",
     "test:assistant-multi-item": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/assistant-multi-item-inventory.test.mjs",
     "test:assistant-attention": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/assistant-attention.test.mjs",
+    "test:purchase-recommendations": "node --experimental-strip-types --test tests/purchase-recommendations-navigation.test.mjs",
     "test:assistant-live-evals": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/assistant-live-evals.test.mjs",
     "eval:assistant:quick": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs evals/assistant/cli.ts",
     "eval:assistant": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs evals/assistant/cli.ts --write",

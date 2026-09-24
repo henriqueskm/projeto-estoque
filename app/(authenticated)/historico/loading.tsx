@@ -1,7 +1,7 @@
 export default function HistoryLoading() {
   return (
     <main
-      className="mx-auto w-full max-w-6xl animate-pulse px-4 py-7 sm:px-6 sm:py-10 lg:px-8"
+      className="mx-auto w-full max-w-6xl px-4 py-7 motion-safe:animate-pulse sm:px-6 sm:py-10 lg:px-8"
       aria-busy="true"
       aria-label="Carregando histórico"
     >

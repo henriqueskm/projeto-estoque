@@ -624,3 +624,19 @@ test("Home substitui sugestões genéricas e ALL_CLEAR mantém o composer", () =
   assert.match(home, /sendAssistantMessage/);
   assert.match(home, /Digite uma mensagem/);
 });
+
+test("Home streams Attention without blocking the Assistant shell", () => {
+  const page = read("app/(authenticated)/page.tsx");
+  const home = read("components/assistant-home.tsx");
+
+  assert.match(page, /const attentionPromise = loadAssistantAttention\(\)/);
+  assert.doesNotMatch(page, /await loadAssistantAttention\(\)/);
+  assert.match(page, /attentionPromise=\{attentionPromise\}/);
+  assert.match(
+    home,
+    /<Suspense\s+fallback=\{<AssistantAttentionFallback/,
+  );
+  assert.match(home, /use\(attentionPromise\)/);
+  assert.match(home, /Digite uma mensagem/);
+  assert.match(home, /router\.refresh\(\)/);
+});

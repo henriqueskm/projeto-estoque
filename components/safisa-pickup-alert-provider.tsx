@@ -31,7 +31,7 @@ export function SafisaPickupAlertProvider({
   initialResult,
 }: {
   children: ReactNode;
-  initialResult: SafisaPickupAlertsResult;
+  initialResult?: SafisaPickupAlertsResult;
 }) {
   const [state, setState] = useState(() =>
     initializeSafisaPickupAlertReadState(initialResult),
@@ -77,6 +77,11 @@ export function SafisaPickupAlertProvider({
   }, []);
 
   useEffect(() => {
+    const initialRefreshTimer = window.setTimeout(
+      () => void refreshAlerts(),
+      0,
+    );
+
     function refreshWhenVisible() {
       if (document.visibilityState === "visible") {
         void refreshAlerts();
@@ -90,6 +95,7 @@ export function SafisaPickupAlertProvider({
     return () => {
       window.removeEventListener("focus", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.clearTimeout(initialRefreshTimer);
       window.clearInterval(interval);
     };
   }, [refreshAlerts]);

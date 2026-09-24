@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   useEffect,
   useMemo,
@@ -12,6 +11,7 @@ import {
 import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { ChevronDownIcon, SearchIcon } from "@/components/icons";
 import { InventoryRowActions } from "@/components/inventory-row-actions";
+import { PurchaseRecommendationLauncher } from "@/components/purchase-recommendation-launcher";
 import { getServoFamilyLabel } from "@/lib/inventory-family";
 import type {
   InventoryCommercialConfiguration,
@@ -28,6 +28,7 @@ type InventoryWorkspaceProps = {
   inventory: InventoryData;
   initialStatusFilter?: InventoryStatusFilter;
   initialTarget?: InventoryDeepLinkTarget;
+  isPurchaseRecommendationsInitiallyOpen?: boolean;
 };
 
 export type InventoryDeepLinkTarget =
@@ -602,6 +603,7 @@ export function InventoryWorkspace({
   inventory,
   initialStatusFilter = "all",
   initialTarget,
+  isPurchaseRecommendationsInitiallyOpen = false,
 }: InventoryWorkspaceProps) {
   const targetedPhysicalItem =
     initialTarget?.kind === "item"
@@ -847,12 +849,9 @@ export function InventoryWorkspace({
           </h1>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Link
-            href="/estoque?view=purchase-recommendations"
-            className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-brand-gold-dark bg-white px-3 text-sm font-black text-brand-gold-ink transition hover:bg-brand-gold-soft"
-          >
-            Lista recomendada
-          </Link>
+          <PurchaseRecommendationLauncher
+            initiallyOpen={isPurchaseRecommendationsInitiallyOpen}
+          />
           <p className="text-right text-xs font-semibold text-text-muted sm:text-sm">
             {quantityFormatter.format(
               inventory.physicalCatalogCount +

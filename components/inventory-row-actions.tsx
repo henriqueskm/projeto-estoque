@@ -9,6 +9,7 @@ import {
   MinimumStockDialog,
 } from "@/components/inventory-action-dialogs";
 import type { InventoryActionTarget } from "@/lib/inventory-action-types";
+import { notifyInventoryDataChanged } from "@/lib/inventory-ui-events";
 
 type InventoryRowActionsProps = {
   target: InventoryActionTarget;
@@ -47,6 +48,7 @@ export function InventoryRowActions({
   }, []);
 
   const finishAction = useCallback((message: string) => {
+    notifyInventoryDataChanged();
     setFeedback({ message, tone: "SUCCESS" });
     setActiveDialog(null);
     window.requestAnimationFrame(() => triggerRef.current?.focus());

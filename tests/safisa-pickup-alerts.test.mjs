@@ -195,6 +195,23 @@ test("preserves an initial alert read error instead of treating it as confirmed 
   assert.equal(state.data.alertCount, 0);
 });
 
+test("starts Safisa alerts as unknown until the first client refresh", () => {
+  const state = initializeSafisaPickupAlertReadState();
+  const layout = read("app/(authenticated)/layout.tsx");
+  const provider = read("components/safisa-pickup-alert-provider.tsx");
+  const alertsUi = read("components/safisa-pickup-alerts.tsx");
+
+  assert.equal(state.hasConfirmedData, false);
+  assert.equal(state.data.alertCount, 0);
+  assert.equal(state.data.isComplete, false);
+  assert.equal(state.error, null);
+  assert.doesNotMatch(layout, /loadCurrentSafisaPickupAlerts/);
+  assert.match(layout, /<SafisaPickupAlertProvider>/);
+  assert.match(provider, /void refreshAlerts\(\)/);
+  assert.match(alertsUi, /!hasConfirmedData/);
+  assert.match(alertsUi, /Conferindo retiradas Safisa/);
+});
+
 test("clears the error only after a valid refresh response", () => {
   const initial = initializeSafisaPickupAlertReadState({
     data: { alerts: [], alertCount: 0, isComplete: true },

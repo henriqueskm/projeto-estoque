@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
+  Suspense,
+  use,
   useEffect,
   useId,
   useRef,
@@ -77,9 +79,58 @@ import type {
 } from "@/lib/assistant-attention";
 
 type AssistantHomeProps = {
-  attention: AssistantAttentionSummary | null;
-  attentionError: string | null;
+  attentionPromise: Promise<{
+    data: AssistantAttentionSummary | null;
+    error: string | null;
+  }>;
 };
+
+function AssistantAttentionFallback({
+  firstName,
+}: {
+  firstName: string | null;
+}) {
+  return (
+    <div
+      role="status"
+      className="mx-auto w-full max-w-3xl text-center"
+    >
+      <p className="text-xl font-black tracking-tight text-text-primary sm:text-2xl">
+        Olá{firstName ? `, ${firstName}` : ""}.
+      </p>
+      <p className="mt-1 text-sm font-semibold text-text-muted sm:text-base">
+        Conferindo o que precisa da sua atenção...
+      </p>
+      <div
+        aria-hidden="true"
+        className="mx-auto mt-5 grid max-w-2xl gap-2.5 motion-safe:animate-pulse"
+      >
+        <div className="h-24 rounded-xl border border-border-neutral bg-surface" />
+        <div className="h-24 rounded-xl border border-border-neutral bg-surface" />
+      </div>
+    </div>
+  );
+}
+
+function AssistantAttentionStream({
+  attentionPromise,
+  firstName,
+  onAttentionSelect,
+}: AssistantHomeProps & {
+  firstName: string | null;
+  onAttentionSelect: (item: AssistantAttentionItem) => void;
+}) {
+  const attentionResult = use(attentionPromise);
+
+  return (
+    <AssistantAttentionSummaryView
+      attention={attentionResult.data}
+      attentionError={attentionResult.error}
+      firstName={firstName}
+      onAttentionSelect={onAttentionSelect}
+    />
+  );
+}
 
 type LocalAttachment = {
   file: File;
@@ -107,8 +158,7 @@ function isStructuredAssistantMessage(content: string) {
 }
 
 export function AssistantHome({
-  attention,
-  attentionError,
+  attentionPromise,
 }: AssistantHomeProps) {
   const router = useRouter();
   const profile = useAuthenticatedProfile();
@@ -1322,12 +1372,15 @@ export function AssistantHome({
               Restaurando sua conversa...
             </p>
           ) : messages.length === 0 ? (
-            <AssistantAttentionSummaryView
-              attention={attention}
-              attentionError={attentionError}
-              firstName={firstName}
-              onAttentionSelect={handleAttentionSelect}
-            />
+            <Suspense
+              fallback={<AssistantAttentionFallback firstName={firstName} />}
+            >
+              <AssistantAttentionStream
+                attentionPromise={attentionPromise}
+                firstName={firstName}
+                onAttentionSelect={handleAttentionSelect}
+              />
+            </Suspense>
           ) : (
             <div
               role="log"

@@ -18,9 +18,23 @@ export type SafisaPickupAlertReadState = SafisaPickupAlertLoadResult & {
 export const safisaPickupAlertUnavailableMessage =
   "Não foi possível atualizar as retiradas Safisa agora.";
 
+const unknownSafisaPickupAlertsData: SafisaPickupAlertsData = {
+  alerts: [],
+  alertCount: 0,
+  isComplete: false,
+};
+
 export function initializeSafisaPickupAlertReadState(
-  result: SafisaPickupAlertLoadResult,
+  result?: SafisaPickupAlertLoadResult,
 ): SafisaPickupAlertReadState {
+  if (!result) {
+    return {
+      data: unknownSafisaPickupAlertsData,
+      error: null,
+      hasConfirmedData: false,
+    };
+  }
+
   return {
     ...result,
     hasConfirmedData: result.error === null,
