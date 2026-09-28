@@ -59,7 +59,7 @@ Todos os tempos são ms observados, arredondados pelo instrumento. O painel mede
 
 | Loader / fase | Amostras ou intervalo observado | Evidência estrutural |
 | --- | --- | --- |
-| Catálogo nas páginas críticas: gate | 218–393 | Autorização/sessão antes do cache; não somar novamente ao total |
+| Catálogo nas páginas críticas: gate | 183–393 | Autorização/sessão antes do cache; não somar novamente ao total |
 | Catálogo nas páginas: lookup | 2–6 | `catalogReadFromSource: false` nas chamadas observadas |
 | Saldos frescos | 138–368 | Dois streams operacionais; sem cache de saldo |
 | Mínimos frescos | 260–383 | Dois streams; somente Estoque/recomendações precisam deles |
