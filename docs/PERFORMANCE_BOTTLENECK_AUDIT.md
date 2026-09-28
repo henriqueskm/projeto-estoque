@@ -1,6 +1,6 @@
 # NK-PR-67 — auditoria de desempenho
 
-Estado: **baseline Preview coletado — Optimization 1 implementada, medição after pendente**. As seções de baseline abaixo preservam os dados e as conclusões daquela coleta. A seção final descreve a implementação posterior. Não há ainda comparação after de Preview nem benchmark de produção; remoção de trabalho inicial e melhora end-to-end devem ser avaliadas separadamente.
+Estado: **Optimization 1 implementada — três rodadas after de Preview coletadas; revisão final pendente**. As seções de baseline preservam os dados e as conclusões daquela coleta. A seção final documenta implementação, before/after e limites. Não há benchmark de produção; remoção de trabalho inicial e melhora end-to-end são avaliadas separadamente.
 
 ## Caminho crítico antes da instrumentação
 
@@ -187,7 +187,7 @@ Endpoints existentes de mídia não são substitutos diretos: Assistente resolve
 
 Não atribuímos callback true da API automaticamente a `dynamic = "force-dynamic"`. No código instalado de Next 16.2.11, o handler define `workStore.forceDynamic`, enquanto `unstable_cache` verifica `workStore.fetchCache === 'force-no-store'` para bypass. O IncrementalCache em dev também retorna miss com request `cache-control: no-cache`; a chave usa texto do callback + keyParts, e revalidação pode executar callback. Headers técnicos, estado real do cache e diferenças de bundle não foram observados nessa coleta. São hipóteses de investigação, não causas confirmadas. O no-store autenticado e o warm single-flight da #65 permanecem intactos.
 
-## Limites e continuação
+## Limites da coleta baseline e continuação
 
 As melhorias de core/mídia sob demanda de Pedidos (#53), navegação/recommendations (#65) e catálogo (#66) já estavam na base. A #67 adicionou diagnóstico, não essas otimizações. O anexo histórico da #53 foi avaliado no contexto atual, sem ressuscitar sua PR mergeada.
 
@@ -222,11 +222,78 @@ Modal abre imediatamente, informa carregamento até o evento `load`, oferece err
 
 Baseline Preview principal: Estoque assinatura 290–830 ms e loader 749–1273 ms; Entrada assinatura 199/309 ms e loader 772/754 ms; Saída assinatura 167/520 ms e loader 733/945 ms. São amostras da coleta acima, não promessa de ganho equivalente.
 
-Trabalho removido comprovadamente no código/testes: os três loaders não chamam Storage, mantêm presença de foto e identidades/compatibilidades, e renovam saldos/mínimos como antes. A assinatura acontece por uma configuração/path no endpoint quando solicitada. Catálogo compartilhado #66, gates e instrumentação anterior preservados.
+Trabalho removido comprovadamente no código/testes **e nos logs after**: os três loaders não chamam Storage, mantêm presença de foto e identidades/compatibilidades, e renovam saldos/mínimos como antes. A assinatura acontece por uma configuração/path no endpoint quando solicitada. Os doze loaders críticos observados after não apresentam assinatura inicial: 76 paths → zero por carregamento. Catálogo compartilhado #66, gates e instrumentação anterior preservados.
 
-**Melhora end-to-end observada: pendente.** Ainda não é possível responder que o caminho inicial melhorou de forma mensurável no Preview após esta alteração. São obrigatórias três rodadas no Preview SUCCESS do HEAD otimizado, mesma sessão/navegador/641 × 738/sequência. Não chamar de cold/warm; correlacionar spans e navegação, separar ausência de assinatura inicial de variabilidade auth/Supabase/Vercel. A coleta after deve preencher esta seção com amostras reais antes de concluir a tarefa.
+### Fonte e três rodadas after — 28/09 05:38–05:41 UTC
+
+Fonte: Lead, navegador interno Codex autenticado, viewport configurado 641 × 738, painel habilitado e runtime logs do deployment SUCCESS `dpl_Gvcryrk4TpXDHdpH9JYDBr1yHHmx`, associado pela Vercel ao HEAD funcional `f6acb8d5bc3475578ee755858fa9565ab3bc6eff`. Preview imutável: [deployment medido](https://projeto-estoque-sp4o-abfp6du5a-henrqueskms-projects.vercel.app). A coleta usou o [alias da mesma versão](https://projeto-estoque-sp4o-git-codex-nk-p-73324e-henrqueskms-projects.vercel.app). Commits posteriores apenas de documentação não mudam o código medido.
+
+Três **SAME-ENVIRONMENT OBSERVED RUNS**, mesma sessão durante as três rodadas after. Browser/viewport/usuário foram mantidos tanto quanto possível em relação ao baseline; houve nova autenticação no domínio do alias, pois o baseline usava outro hostname. Portanto não declarar uma sessão intacta entre baseline e after. Cache/instância/rede não foram controlados; não são cold/warm comprovados. Todos os cliques observaram intenção prefetch, sem medir sua conclusão. Painel mede clique→commit + próximo frame, não TTI.
+
+| Navegação, ms | Baseline R1 | Baseline R2 | After R1 | After R2 | After R3 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Assistente → Estoque | 1624 | 1419 | 1142 | 688 | 1004 |
+| Estoque → Entrada | 1373 | 1322 | 922 | 840 | 759 |
+| Entrada → Saída | 1264 | 1494 | 852 | 523 | 972 |
+| Saída → Pedidos | 1025 | 613 | 735 | 735 | 852 |
+| Pedidos → Estoque | 1329 | 1832 | 1087 | 1015 | 997 |
+
+Reload inicial Home after: 2742 ms, registrado separadamente e excluído desta comparação. Home não foi alterada por esta otimização; houve novo deployment/domínio/cache, então não atribuir a diferença frente aos 1246 ms baseline às fotos. O GET de 05:37:56 teve claims 485, perfil 240, gate 740, leitura estrutural 413, lookup 531/callback true e Attention 1298 ms, ainda fora do shell bloqueante. Retorno à Home entre rodadas também foi excluído.
+
+| Rodada / UTC / rota | Gate catálogo | Lookup (callback false) | Saldos | Mínimos | Transform | Assinatura inicial | Total loader |
+| --- | ---: | ---: | ---: | ---: | ---: | --- | ---: |
+| R1 05:38:10 Estoque | 200 | 15 | 424 | 204 | 19 | Ausente | 445 |
+| R1 05:38:31 Entrada | 205 | 13 | 236 | — | 9 | Ausente | 246 |
+| R1 05:38:41 Saída | 200 | 22 | 202 | — | 8 | Ausente | 233 |
+| R1 05:39:01 Estoque retorno | 413 | 23 | 267 | 487 | 28 | Ausente | 526 |
+| R2 05:39:28 Estoque | 220 | 13 | 222 | 224 | 14 | Ausente | 250 |
+| R2 05:39:38 Entrada | 169 | 11 | 387 | — | 12 | Ausente | 400 |
+| R2 05:39:49 Saída | 171 | 12 | 174 | — | 11 | Ausente | 196 |
+| R2 05:40:06 Estoque retorno | 178 | 10 | 177 | 447 | 12 | Ausente | 461 |
+| R3 05:40:33 Estoque | 181 | 12 | 184 | 456 | 11 | Ausente | 469 |
+| R3 05:40:44 Entrada | 174 | 13 | 206 | — | 10 | Ausente | 218 |
+| R3 05:40:53 Saída | 424 | 11 | 168 | — | 11 | Ausente | 447 |
+| R3 05:41:12 Estoque retorno | 181 | 11 | 419 | 415 | 12 | Ausente | 433 |
+
+Não somar colunas: gate, saldos e mínimos concorrem. Pedidos, sem mudança funcional nesta etapa, teve página 196 / 409 / 399 ms às 05:38:52 / 05:39:58 / 05:41:03. Sua navegação também variou e ficou menor na mediana, reforçando o limite de atribuir toda diferença end-to-end à assinatura.
+
+| Distribuição observada, ms | Baseline | After |
+| --- | --- | --- |
+| Estoque total, incluindo retornos | n=4; 749–1273; mediana 878,5 | n=6; 250–526; mediana 453 |
+| Entrada total | n=2; 754–772; mediana 763 | n=3; 218–400; mediana 246 |
+| Saída total | n=2; 733–945; mediana 839 | n=3; 196–447; mediana 233 |
+| Assistente → Estoque | n=2; mediana 1521,5 | n=3; mediana 1004 |
+| Estoque → Entrada | n=2; mediana 1347,5 | n=3; mediana 840 |
+| Entrada → Saída | n=2; mediana 1379 | n=3; mediana 852 |
+| Saída → Pedidos | n=2; mediana 819 | n=3; mediana 735 |
+| Pedidos → Estoque | n=2; mediana 1580,5 | n=3; mediana 1015 |
+
+Payload JSON do loader, sem medir bytes RSC/rede: Estoque 149927 → 93328 bytes (183 rows after); Entrada 79112 → 49697 (186); Saída 88077 → 58662 (186). Esses shapes preservam metadados sem URLs antecipadas. DOM inicial after: 399 nós, zero `img`, frente a 393/zero no baseline. Viewport configurado 641 pixels; largura client observada no Estoque foi 626, por scrollbar. Nenhuma contagem isolada prova custo de render.
+
+**A remoção melhorou de forma mensurável o caminho inicial? Sim, nesta coleta os loaders e marcadores de navegação das três telas ficaram menores nas distribuições observadas.** A evidência causal específica é a eliminação da cauda serial de assinatura de 76 paths. As diferenças completas de medianas não são ganho causal isolado: amostras pequenas (duas rodadas antes/três depois), autenticação renovada e variação de auth/Supabase/Vercel/instância/cache permanecem. Não há garantia de latência ou benchmark controlado de produção.
+
+### Catálogo compartilhado #66 depois
+
+Nos doze loaders críticos after, lookup 10–23 ms e `catalogReadFromSource: false`: nenhum callback local iniciou as quatro leituras estruturais nessas chamadas. Isto sustenta reutilização nas páginas observadas, sem afirmar cache quente controlado ou reutilização universal em todos os contextos. Home inicial teve callback true; primeira recommendations API às 05:38:11 teve leitura 407/lookup 422 ms e callback true, seguidas por callbacks false/lookup 9–19 ms. A arquitetura #66 foi preservada, assim como auth e leituras frescas.
 
 O custo de auth + resolução seletiva + assinatura + download passa para o clique. Logs novos `configuration_image/sign_on_demand` registram duração e `imagePathCount: 1`, sem IDs, códigos, paths ou tokens. No painel já existente e habilitado de development/Preview, as fotos registram clique→resposta e clique→evento `load`, rota e reutilização; não registram URL/identidade. Evento load não é pintura/TTI nem download/decode separados. Storage restrito/desligado não interfere no fluxo da foto.
+
+### Fotos sob demanda — 28/09 05:42–05:45 UTC
+
+| Ação | Clique → resposta, ms | Clique → evento load, ms | Storage assinatura, ms | Paths assinados |
+| --- | ---: | ---: | ---: | ---: |
+| Foto Estoque, 05:42:09 | 1302 | 2212 | 195 | 1 |
+| Opção escolhida no seletor de kit, 05:43:12 | 1610 | 2457 | 419 | 1 |
+| Foto Entrada, 05:43:57 | 1220 | 1621 | 151 | 1 |
+| Foto Saída, 05:44:51 | 1373 | 1546 | 262 | 1 |
+
+Reaberturas com URL local reutilizada (`reused: true`): Estoque 4/23 ms, Entrada 12/31 ms e Saída 14/40 ms (resposta local/evento load). Logs dessa janela mostraram exatamente quatro requests de resolver, todos 200, cada um com `imagePathCount: 1`. Abrir o seletor do kit não resolveu foto; havia duas opções estruturais e zero `img` até selecionar uma. As três reaberturas não geraram nova assinatura.
+
+Loading apareceu nas quatro resoluções e todas as imagens carregaram com dimensões naturais positivas. Códigos/aliases compartilhados apontaram para a foto da configuração correspondente. Estoque: Escape fechou/restaurou foco, reabertura e botão Fechar funcionaram. Kit: primeiro Escape fechou somente a foto; segundo fechou o seletor, com retorno de foco esperado. Entrada: backdrop fechou/restaurou foco; reabertura e botão funcionaram. Saída: botão e Escape na reabertura funcionaram. Nenhuma mutação operacional foi executada.
+
+O custo observado foi transferido para o pedido da foto: cerca de 1,2–1,6 s até resposta e 1,5–2,5 s até evento load nessas quatro amostras. Estes totais incluem autorização/resolução/rede; não atribuir tudo aos 151–419 ms de Storage. Retry e expiração não falharam naturalmente no browser nesta janela; sua validação foi automatizada, sem afirmar exercício manual que não ocorreu. Download/decode separados, pintura, rede lenta controlada e TTI permanecem não medidos.
+
+Verificações adicionais, **fora das três rodadas e das quatro amostras de foto acima**: desktop 1280 × 800 com sidebar presente, Estoque/Saída sem overflow horizontal e foto da Saída carregada corretamente/fechada por Escape; largura client observada 1265 por scrollbar. Viewport restaurado para 641 × 738. Lista recomendada #65 no Preview otimizado: abrir/Fechar X/reabrir/Escape/reabrir/Back fecha/Forward abre, todos confirmados, sem operação de estoque. Cobertura automatizada completa de Back nativo e warm+click continua como MINOR de backlog; teste manual não transforma essa cobertura em concluída.
 
 ### Validação e riscos residuais
 
@@ -234,4 +301,4 @@ Testes executam endpoint e TSX reais com clientes/hooks controlados: auth/perfil
 
 Validação local desta implementação: imagens 15/15; catálogo compartilhado 8/8; paginação (helper e consumidores) verde; multi-item 15/15; recommendations 6/6; instrumentação 3/3; Pedidos performance 13/13; layout 13/13; entrada 36/36; saída 41/41; montagem 10/10; desmontagem 8/8; Safisa portal 19/19 e idempotência 17/17; proposta comercial 4/4. TypeScript, build e diff-check passaram. Lint: zero erros, 763 warnings preexistentes (incluem diretórios de skills locais não rastreados); arquivos novos/alterados de mídia passaram sem warnings na checagem direcionada. Nenhuma dependência adicionada. Estes são testes de comportamento/regressão locais, não medições de desempenho after.
 
-Riscos residuais: a foto pode ter sido removida ou a configuração ter mudado desde a renderização; nesses casos o endpoint fresco retorna erro/ausência e o usuário pode tentar novamente. Uma URL já entregue segue a validade normal de Storage; não altera políticas de revogação. Uma requisição em andamento pode terminar após fechar, embora não atualize o modal fechado e seu resultado possa ser reutilizado localmente. Nenhum dado operacional é alterado. Medição de rede lenta real, dispositivos adicionais e distribuição after permanece pendente.
+Riscos residuais: a foto pode ter sido removida ou a configuração ter mudado desde a renderização; nesses casos o endpoint fresco retorna erro/ausência e o usuário pode tentar novamente. Uma URL já entregue segue a validade normal de Storage; não altera políticas de revogação. Uma requisição em andamento pode terminar após fechar, embora não atualize o modal fechado e seu resultado possa ser reutilizado localmente. Nenhum dado operacional é alterado. Rede lenta controlada e distribuição em produção permanecem não medidas. Auth e leituras frescas continuam com centenas de ms e são candidatos de investigação futura; não foram alterados nesta etapa.
