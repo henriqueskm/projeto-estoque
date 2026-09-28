@@ -1,6 +1,6 @@
 # NK-PR-67 — auditoria de desempenho
 
-Estado: **Optimization 1 implementada — primeira coorte de três rodadas after coletada; correção de foco aplicada, nova coorte/revisão final pendentes**. As seções de baseline preservam os dados e as conclusões daquela coleta. A seção final documenta implementação, before/after e limites. Não há benchmark de produção; remoção de trabalho inicial e melhora end-to-end são avaliadas separadamente.
+Estado: **Optimization 1 implementada — três rodadas e quatro fotos do HEAD com correção de foco coletadas; revisão final pendente**. A primeira coorte after permanece separada e identificada. As seções de baseline preservam os dados e as conclusões daquela coleta. A seção final documenta implementação, before/after e limites. Não há benchmark de produção; remoção de trabalho inicial e melhora end-to-end são avaliadas separadamente.
 
 ## Caminho crítico antes da instrumentação
 
@@ -295,9 +295,71 @@ O custo observado foi transferido para o pedido da foto: cerca de 1,2–1,6 s at
 
 Verificações adicionais, **fora das três rodadas e das quatro amostras de foto acima**: desktop 1280 × 800 com sidebar presente, Estoque/Saída sem overflow horizontal e foto da Saída carregada corretamente/fechada por Escape; largura client observada 1265 por scrollbar. Viewport restaurado para 641 × 738. Lista recomendada #65 no Preview otimizado: abrir/Fechar X/reabrir/Escape/reabrir/Back fecha/Forward abre, todos confirmados, sem operação de estoque. Cobertura automatizada completa de Back nativo e warm+click continua como MINOR de backlog; teste manual não transforma essa cobertura em concluída.
 
+### Coorte final after — HEAD com correção de foco, 28/09 05:56–05:57 UTC
+
+Fonte: Lead, mesmo navegador interno Codex, mesmo alias/sessão autenticada da primeira coorte after, sem nova autenticação entre `f6acb8d` e `ebf5e89f30e10f35cb851a30f44eaf9330782d7d`; viewport configurado 641 × 738 e modo diagnóstico mantidos. Vercel confirmou este HEAD no deployment SUCCESS `dpl_A2PPNdpoLYxY7vQ9tz8SZbDurDvB`, região `iad1`, [Preview imutável final funcional](https://projeto-estoque-sp4o-jkbxqb1ps-henrqueskms-projects.vercel.app). A sessão entre baseline e after continua sendo a sessão renovada já descrita; não generalizar essa continuidade às duas coortes anteriores ao hostname novo.
+
+Três rodadas observadas separadas da coorte `f6acb8d`. A sequência foi executada com snapshots de prontidão após cada clique, em cadência automática curta de aproximadamente 2–3 s, frente às chamadas individuais de aproximadamente 10 s da primeira coorte. O dwell não foi controlado; isto é outra limitação ao comparar coortes. Intenção prefetch foi observada em todos os cliques, sem conclusão medida; não é TTI nem cold/warm controlado. A correção de uma linha de foco no retry não é uma segunda otimização de desempenho, e diferenças frente à primeira coorte não devem ser atribuídas a ela.
+
+| Navegação final, ms | R1 | R2 | R3 | Mediana |
+| --- | ---: | ---: | ---: | ---: |
+| Assistente → Estoque | 1175 | 735 | 955 | 955 |
+| Estoque → Entrada | 850 | 1026 | 594 | 850 |
+| Entrada → Saída | 891 | 609 | 693 | 693 |
+| Saída → Pedidos | 484 | 575 | 478 | 484 |
+| Pedidos → Estoque | 764 | 644 | 590 | 644 |
+
+Home inicial 2262 ms e retornos 349/459 ms excluídos da comparação. GET Home 05:56:04: gate 514, lookup 119/callback false, claims 356, perfil 155, layout 523, mínimos 634 e Attention 821 ms, mantendo o ramo fora do shell bloqueante. OPTIONS foi excluído.
+
+| Rodada / UTC / rota | Gate catálogo | Lookup (callback false) | Saldos | Mínimos | Transform | Assinatura inicial | Total loader |
+| --- | ---: | ---: | ---: | ---: | ---: | --- | ---: |
+| R1 05:56:23 Estoque | 252 | 12 | 509 | 248 | 13 | Ausente | 526 |
+| R1 05:56:26 Entrada | 162 | 8 | 150 | — | 11 | Ausente | 192 |
+| R1 05:56:29 Saída | 154 | 7 | 380 | — | 11 | Ausente | 393 |
+| R1 05:56:33 Estoque retorno | 396 | 11 | 149 | 168 | 11 | Ausente | 421 |
+| R2 05:56:50 Estoque | 154 | 7 | 377 | 159 | 11 | Ausente | 391 |
+| R2 05:56:52 Entrada | 152 | 7 | 376 | — | 11 | Ausente | 388 |
+| R2 05:56:55 Saída | 158 | 7 | 154 | — | 12 | Ausente | 179 |
+| R2 05:56:59 Estoque retorno | 174 | 12 | 151 | 163 | 10 | Ausente | 198 |
+| R3 05:57:13 Estoque | 159 | 7 | 151 | 407 | 12 | Ausente | 422 |
+| R3 05:57:16 Entrada | 151 | 6 | 147 | — | 11 | Ausente | 169 |
+| R3 05:57:18 Saída | 150 | 8 | 158 | — | 11 | Ausente | 170 |
+| R3 05:57:22 Estoque retorno | 156 | 9 | 149 | 163 | 11 | Ausente | 178 |
+
+Todos os doze lookups críticos finais tiveram callback false, 6–12 ms; nenhum loader crítico final assinou imagens. Payloads/rows permaneceram iguais à primeira coorte: Estoque 93328 bytes/183, Entrada 49697/186, Saída 58662/186, JSON do loader e não bytes RSC. Pedidos, sem alteração funcional, teve página 156/159/173 ms às 05:56:31/05:56:57/05:57:20; seu marcador também ficou menor. Isto reforça a presença de variabilidade de fundo/serviços/cadência, não ganho causado pela mudança de foco.
+
+| Loader, ms | Baseline principal | Coorte final, sem misturar `f6acb8d` |
+| --- | --- | --- |
+| Estoque, incluindo retornos | n=4; mediana 878,5; 749–1273 | n=6; mediana 406; 178–526 |
+| Entrada | n=2; mediana 763; 754–772 | n=3; mediana 192; 169–388 |
+| Saída | n=2; mediana 839; 733–945 | n=3; mediana 179; 170–393 |
+
+Marcadores finais versus baseline: Assistente→Estoque mediana 955 versus 1521,5 ms; Entrada 850 versus 1347,5; Saída 693 versus 1379; retorno Estoque 644 versus 1580,5. Mantêm-se amostras pequenas e condições não controladas. Os seis marcadores de Estoque combinados nesta coorte têm mediana 749,5 ms, mas a tabela separa primeira ida e retorno para preservar a sequência.
+
+**Conclusão no HEAD final funcional:** a melhora de loader/navegação permanece observada nas três telas; a evidência causal específica continua sendo o trabalho inicial 76→0 paths, comprovado em código/testes e nas duas coortes. Não converter a diferença completa de medianas em economia atribuível à otimização nem atribuir melhora entre coortes à correção de foco.
+
+### Fotos no HEAD final funcional — 28/09 05:58–06:01 UTC
+
+Quatro fotos observadas no mesmo Preview de `ebf5e89`, separadas das fotos da primeira coorte e das três rodadas de navegação.
+
+| Ação / UTC | Clique → resposta, ms | Clique → evento load, ms | Storage assinatura, ms | Paths assinados |
+| --- | ---: | ---: | ---: | ---: |
+| Foto Estoque, 05:58:58 | 1637 | 2234 | 208 | 1 |
+| Opção escolhida do kit, 05:59:54 | 1318 | 1933 | 158 | 1 |
+| Foto Entrada, 06:00:28 | 1382 | 2429 | 207 | 1 |
+| Foto Saída, 06:00:57 | 1530 | 1706 | 163 | 1 |
+
+Reabertura Estoque: resposta local 4 ms/evento load 22 ms, `reused: true`, sem novo request do resolver. A janela teve exatamente quatro requests novos, todos 200, cada um com `imagePathCount: 1`; nenhuma outra foto foi assinada. Kit: duas opções estruturais, zero `img` e nenhuma resolução ao abrir o seletor; assinatura somente após escolher a opção.
+
+Loading observado nas quatro aberturas; as quatro fotos corretas carregaram conforme visualização/snapshot de acessibilidade e evento load do componente. Entrada/Saída conservaram a foto da mesma configuração compartilhada pelos aliases. Estoque fechou por Escape com retorno de foco e por botão após reabrir; kit fechou primeiro somente a foto por Escape e depois o seletor; Entrada fechou por Escape e Saída por botão. Nenhuma mutação operacional.
+
+Uma inspeção automatizada das dimensões naturais da foto do Estoque excedeu seu timeout de 3 s após a imagem aparecer carregada; snapshot de acessibilidade atualizado e métrica load 2234 ms confirmaram o carregamento. É limite da inspeção da ferramenta, sem request de foto falho demonstrado; não afirmar dimensões naturais na coorte final com base na medição da primeira coorte. Navegações adicionais usadas para fotos (Entrada 1446/Saída 568 ms) foram excluídas das três rodadas.
+
+Custo transferido final observado: aproximadamente 1,3–1,64 s até resposta e 1,7–2,44 s até evento load. Não mede pintura/TTI, download/decode separados ou rede lenta controlada. Retry por falha e expiração, incluindo o foco ao retry, continuaram com cobertura automatizada; nenhum erro natural de foto permitiu exercitar esse fluxo ao vivo nesta janela.
+
 ### Validação e riscos residuais
 
-Correção MINOR posterior à primeira coorte: ao ativar Tentar novamente pelo teclado, o foco passa para Fechar antes de o botão de retry ser removido. O teste do TSX real reproduziu a falha antes da correção e passou após ela, tanto em erro do resolver como em erro da imagem. A suíte de imagens passou 16/16; TypeScript, build, lint direcionado e diff-check passaram; lint geral zero erros/763 warnings preexistentes. Esta é a segunda e última rodada automática do pipeline (a primeira já havia sido consumida); não altera assinatura, auth ou regras operacionais. A primeira coorte continua vinculada a `f6acb8d`; novas medições do HEAD com a correção serão registradas separadamente.
+Correção MINOR posterior à primeira coorte: ao ativar Tentar novamente pelo teclado, o foco passa para Fechar antes de o botão de retry ser removido. O teste do TSX real reproduziu a falha antes da correção e passou após ela, tanto em erro do resolver como em erro da imagem. A suíte de imagens passou 16/16; TypeScript, build, lint direcionado e diff-check passaram; lint geral zero erros/763 warnings preexistentes. Esta é a segunda e última rodada automática do pipeline (a primeira já havia sido consumida); não altera assinatura, auth ou regras operacionais. A primeira coorte continua vinculada a `f6acb8d`; as medições do HEAD corrigido `ebf5e89` estão registradas separadamente acima.
 
 Testes executam endpoint e TSX reais com clientes/hooks controlados: auth/perfil, RLS sem alvo, UUID-only/path server, assinatura única, ausência/falha, inativa com saldo, regras com saldo zero e tipos, alias ativo após 1500 linhas, cache local conservador, request pendente/retry, fechamento/Escape/backdrop/foco, troca de identidade, erro de imagem/expiração, seletor e URL pronta. A suíte #66 executa os três loaders e exige zero assinatura, payload sem path e leituras operacionais renovadas. Suítes de paginação >1000 continuam necessárias; `limit(1)` do endpoint é somente existência de alias com filtros aplicados no servidor.
 
