@@ -1,4 +1,3 @@
-import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 import type {
   OutboundCatalog,
   OutboundCommercialCode,
@@ -39,10 +38,6 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
       configurationBalancesResult.data ?? [],
     );
     logPerformanceAudit({ loader: "outbound", phase: "base_transform", durationMs: Math.round(performance.now() - buildStartedAt), rowCount: base.physicalItems.length + base.commercialCodes.length });
-    const imageUrlByPath = await createCommercialImageUrlMap(
-      supabase,
-      base.commercialCodes.map((configuration) => configuration.imagePath),
-    );
     const physicalItems: OutboundPhysicalItem[] = base.physicalItems.map(
       (item) => ({
         kind: "ITEM",
@@ -61,9 +56,7 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
         code: commercialCode.code,
         configurationId: commercialCode.configurationId,
         description: commercialCode.description,
-        imageUrl: commercialCode.imagePath
-          ? (imageUrlByPath.get(commercialCode.imagePath) ?? null)
-          : null,
+        hasImage: Boolean(commercialCode.imagePath),
         assembledBalance: commercialCode.assembledBalance,
         aliases: commercialCode.aliases,
         servo: {

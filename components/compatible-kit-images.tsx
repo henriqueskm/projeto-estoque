@@ -68,6 +68,8 @@ export function CompatibleKitImages({
         return;
       }
 
+      if (document.querySelector('[data-commercial-image-dialog="true"]')) return;
+
       const focusableElements = Array.from(
         dialogRef.current.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
@@ -112,7 +114,9 @@ export function CompatibleKitImages({
     return (
       <CommercialConfigurationImage
         commercialCodes={option.commercialCodes}
-        imageUrl={option.imageUrl}
+        {...(option.imageUrl !== undefined
+          ? { imageUrl: option.imageUrl }
+          : { configurationId: option.configurationId, hasImage: option.hasImage })}
         openOnMount={openOnMount}
         triggerLabel={actionLabel}
         triggerText={
@@ -223,7 +227,9 @@ export function CompatibleKitImages({
                         <div className="mt-3 sm:mt-0">
                           <CommercialConfigurationImage
                             commercialCodes={option.commercialCodes}
-                            imageUrl={option.imageUrl}
+                            {...(option.imageUrl !== undefined
+                              ? { imageUrl: option.imageUrl }
+                              : { configurationId: option.configurationId, hasImage: option.hasImage })}
                             triggerLabel={`Ver foto de ${commercialLabel}`}
                             triggerVariant="selector-action"
                           />

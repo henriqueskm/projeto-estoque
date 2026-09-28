@@ -1,6 +1,6 @@
 # NK-PR-67 — auditoria de desempenho
 
-Estado: **baseline Preview coletado — otimização pendente**. Há medições autenticadas locais e de Preview, descritas abaixo. Nenhuma otimização de comportamento foi feita nesta PR; não há comparação antes/depois nem benchmark de produção. Assinatura sob demanda é o candidato medido, não implementado nesta rodada de testes. O pedido original autoriza otimizações medidas de baixo/médio risco; a próxima etapa é avaliar o contrato loading/erro/retry, implementar um gargalo moderado e medir antes/depois.
+Estado: **baseline Preview coletado — Optimization 1 implementada, medição after pendente**. As seções de baseline abaixo preservam os dados e as conclusões daquela coleta. A seção final descreve a implementação posterior. Não há ainda comparação after de Preview nem benchmark de produção; remoção de trabalho inicial e melhora end-to-end devem ser avaliadas separadamente.
 
 ## Caminho crítico antes da instrumentação
 
@@ -193,4 +193,45 @@ As melhorias de core/mídia sob demanda de Pedidos (#53), navegação/recommenda
 
 Produção, payload RSC, rede/browser download/decode, CPU/render, shell/TTI e cold/warm controlados continuam **não medidos**. Preview autenticado foi medido, em duas rodadas, sem antes/depois funcional. Contagem DOM foi pontual, não profiling. Verificação desktop adicional 1280 × 800: Entrada → Saída → Pedidos → Home com sidebar presente; Estoque sem overflow horizontal. Não misturar essas navegações às duas rodadas de 641 × 738. Viewport restaurado e Desligar confirmou remoção do painel no Preview; Home autenticada permaneceu aberta. Rede lenta, retry, expiração de URL e usuários/perfis diferentes não foram exercitados no browser nesta coleta; testes automatizados anteriores cobrem auth/gating. Não é correto marcar APPROVED FOR HUMAN TEST como se implementação/validação da otimização estivesse concluída.
 
-Próxima etapa: avaliar contrato de resolução de fotos sob demanda com loading/erro/retry, preservando media atual, implementar um único gargalo moderado e medir antes/depois no mesmo Preview/sessão/viewport com logs e, quando disponível, Network/Performance. Nesta rodada o pedido atual foi testar; nenhuma alteração funcional foi executada. Não copiar cookies, IDs de negócio ou URLs assinadas. Se o gargalo exigir migration/index/RPC/schema/RLS/mudança de política auth/infra/dependência, parar para decisão humana em vez de contornar com cache operacional, conforme limites do pedido original.
+Ao concluir a coleta baseline, a próxima etapa era implementar a resolução de fotos sob demanda e medir antes/depois. A implementação posterior está descrita abaixo. Não copiar cookies, IDs de negócio ou URLs assinadas. Se o gargalo exigir migration/index/RPC/schema/RLS/mudança de política auth/infra/dependência, parar para decisão humana em vez de contornar com cache operacional, conforme limites do pedido original.
+
+## Optimization 1 — On-demand image signing
+
+### Auditoria e arquitetura
+
+Auditoria antes das alterações, HEAD `6526355bfa031c905609aa71b191e80c37b0dcce`: os três loaders esperavam `createCommercialImageUrlMap` depois dos dados/transform. As 76 assinaturas eram usadas somente depois de abrir o visualizador. Estoque inicial observado tinha 393 nós e zero `img`.
+
+| Consumidor | Identidade já disponível | Necessidade inicial | Contrato após a alteração |
+| --- | --- | --- | --- |
+| Estoque / ações da configuração | `configuration.id` | Existência da foto; menu | `hasImage` + UUID no clique |
+| Estoque / fotos compatíveis do kit | `configurationId` | Opções, aliases, servo/modelo | Metadados + existência; assina somente a opção escolhida |
+| Entrada e Saída | `configurationId` por código comercial | Link Ver foto | `hasImage` + UUID no clique |
+| Assistente e Pedidos | Identidades e URLs já resolvidas pelos readers atuais | Alguns consumidores exibem thumbnail | Contrato de URL pronta preservado |
+
+Antes: dados → transform → assinatura de aproximadamente 76 paths → loader pronto. Depois: dados → transform/metadados → loader pronto. Clique: modal com loading → `GET /api/catalog/configuration-image?configurationId=<uuid>` → uma assinatura → imagem. Os três payloads não incluem paths privados ou URLs antecipadas. O helper de assinatura em lote permanece para Assistente/Pedidos; o contrato compartilhado distingue explicitamente URL pronta e identidade resolvível.
+
+### Segurança, visibilidade e ciclo da foto
+
+O endpoint é somente leitura, dinâmico e retorna `Cache-Control: private, no-store` também nos erros. Valida claims e perfil ativo a cada request; consulta configuração, componentes, existência de alias ativo e saldo da configuração usando o cliente de sessão/RLS. Aceita exclusivamente um UUID, rejeitando parâmetros adicionais/duplicados. O bucket é fixo e o path vem somente da configuração lida no servidor. Não usa service role, RPC, migration, política nova ou cache de saldo/mínimo.
+
+A regra de visibilidade é a mesma função usada no Estoque: tipos físicos corretos sempre são exigidos; saldo montado não zero mantém uma configuração inspecionável mesmo inativa; saldo zero exige configuração, componentes e algum alias ativos. Kits compatíveis conservam seus filtros ativos, aliases ordenados, servo/modelo e deduplicação por configuração física. Um alias nunca escolhe outra foto.
+
+Modal abre imediatamente, informa carregamento até o evento `load`, oferece erro curto/Tentar novamente, conserva Fechar/Escape/backdrop, scroll lock e retorno de foco. O seletor de kit deixa a captura de Tab para o visualizador quando a foto está aberta. Respostas posteriores ao fechamento/troca de identidade não atualizam o modal anterior. Cada controle mantém uma URL local por até dez minutos menos margem de sessenta segundos, contando desde o início do request (inclui espera de rede), sem cache global/persistente. Reabrir dentro dessa validade reutiliza a URL; expiração, erro da imagem e retry permitem nova resolução.
+
+### Evidência before/after e custo transferido
+
+Baseline Preview principal: Estoque assinatura 290–830 ms e loader 749–1273 ms; Entrada assinatura 199/309 ms e loader 772/754 ms; Saída assinatura 167/520 ms e loader 733/945 ms. São amostras da coleta acima, não promessa de ganho equivalente.
+
+Trabalho removido comprovadamente no código/testes: os três loaders não chamam Storage, mantêm presença de foto e identidades/compatibilidades, e renovam saldos/mínimos como antes. A assinatura acontece por uma configuração/path no endpoint quando solicitada. Catálogo compartilhado #66, gates e instrumentação anterior preservados.
+
+**Melhora end-to-end observada: pendente.** Ainda não é possível responder que o caminho inicial melhorou de forma mensurável no Preview após esta alteração. São obrigatórias três rodadas no Preview SUCCESS do HEAD otimizado, mesma sessão/navegador/641 × 738/sequência. Não chamar de cold/warm; correlacionar spans e navegação, separar ausência de assinatura inicial de variabilidade auth/Supabase/Vercel. A coleta after deve preencher esta seção com amostras reais antes de concluir a tarefa.
+
+O custo de auth + resolução seletiva + assinatura + download passa para o clique. Logs novos `configuration_image/sign_on_demand` registram duração e `imagePathCount: 1`, sem IDs, códigos, paths ou tokens. No painel já existente e habilitado de development/Preview, as fotos registram clique→resposta e clique→evento `load`, rota e reutilização; não registram URL/identidade. Evento load não é pintura/TTI nem download/decode separados. Storage restrito/desligado não interfere no fluxo da foto.
+
+### Validação e riscos residuais
+
+Testes executam endpoint e TSX reais com clientes/hooks controlados: auth/perfil, RLS sem alvo, UUID-only/path server, assinatura única, ausência/falha, inativa com saldo, regras com saldo zero e tipos, alias ativo após 1500 linhas, cache local conservador, request pendente/retry, fechamento/Escape/backdrop/foco, troca de identidade, erro de imagem/expiração, seletor e URL pronta. A suíte #66 executa os três loaders e exige zero assinatura, payload sem path e leituras operacionais renovadas. Suítes de paginação >1000 continuam necessárias; `limit(1)` do endpoint é somente existência de alias com filtros aplicados no servidor.
+
+Validação local desta implementação: imagens 15/15; catálogo compartilhado 8/8; paginação (helper e consumidores) verde; multi-item 15/15; recommendations 6/6; instrumentação 3/3; Pedidos performance 13/13; layout 13/13; entrada 36/36; saída 41/41; montagem 10/10; desmontagem 8/8; Safisa portal 19/19 e idempotência 17/17; proposta comercial 4/4. TypeScript, build e diff-check passaram. Lint: zero erros, 763 warnings preexistentes (incluem diretórios de skills locais não rastreados); arquivos novos/alterados de mídia passaram sem warnings na checagem direcionada. Nenhuma dependência adicionada. Estes são testes de comportamento/regressão locais, não medições de desempenho after.
+
+Riscos residuais: a foto pode ter sido removida ou a configuração ter mudado desde a renderização; nesses casos o endpoint fresco retorna erro/ausência e o usuário pode tentar novamente. Uma URL já entregue segue a validade normal de Storage; não altera políticas de revogação. Uma requisição em andamento pode terminar após fechar, embora não atualize o modal fechado e seu resultado possa ser reutilizado localmente. Nenhum dado operacional é alterado. Medição de rede lenta real, dispositivos adicionais e distribuição after permanece pendente.

@@ -23,7 +23,7 @@ export type OutboundCommercialCode = {
   code: string;
   configurationId: string;
   description: string;
-  imageUrl: string | null;
+  hasImage: boolean;
   assembledBalance: number;
   aliases: string[];
   servo: OutboundConfigurationComponent & {

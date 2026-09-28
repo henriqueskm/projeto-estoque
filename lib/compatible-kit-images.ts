@@ -1,4 +1,4 @@
-export type CompatibleKitImageOption = {
+type CompatibleKitImageMetadata = {
   configurationId: string;
   commercialCodes: string[];
   servoCode: string;
@@ -6,8 +6,12 @@ export type CompatibleKitImageOption = {
   servoModel: string | null;
   installationKitCode: string;
   description: string;
-  imageUrl: string;
 };
+
+export type CompatibleKitImageOption = CompatibleKitImageMetadata & (
+  | { imageUrl: string; hasImage?: never }
+  | { imageUrl?: never; hasImage: true }
+);
 
 export type CompatibleKitImageDraft = CompatibleKitImageOption & {
   installationKitId: string;

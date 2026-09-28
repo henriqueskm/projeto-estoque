@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { photoPerformanceEvent, type PhotoPerformanceSample } from "@/lib/photo-performance-audit";
 
 type NavigationSample = {
   route: string;
@@ -19,6 +20,17 @@ export function PerformanceAuditPanel() {
   const pathname = usePathname();
   const [enabled, setEnabled] = useState(false);
   const [samples, setSamples] = useState<NavigationSample[]>([]);
+  const [photoSamples, setPhotoSamples] = useState<PhotoPerformanceSample[]>([]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    function onPhoto(event: Event) {
+      const sample = (event as CustomEvent<PhotoPerformanceSample>).detail;
+      setPhotoSamples((current) => [...current, sample].slice(-12));
+    }
+    window.addEventListener(photoPerformanceEvent, onPhoto);
+    return () => window.removeEventListener(photoPerformanceEvent, onPhoto);
+  }, [enabled]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -93,7 +105,9 @@ export function PerformanceAuditPanel() {
       <div className="flex items-center justify-between gap-2"><strong>NK perf · Preview</strong><button type="button" className="underline" onClick={() => { sessionStorage.removeItem(modeKey); setEnabled(false); }}>Desligar</button></div>
       <p className="mt-1">Clique → commit + próximo frame. Não mede interação.</p>
       <ul className="mt-2 space-y-1">{samples.map((sample, index) => <li key={index}>{sample.kind} {sample.route}: {sample.durationMs} ms · intenção prefetch {sample.prefetchIntentObserved === null ? "n/a" : sample.prefetchIntentObserved ? "sim" : "não"}</li>)}</ul>
+      {photoSamples.length ? <><p className="mt-2">Foto: clique → resposta / evento load. Não mede pintura ou decode separado.</p><ul className="mt-1 space-y-1">{photoSamples.map((sample, index) => <li key={index}>{sample.route} {sample.phase}: {sample.durationMs} ms · URL reutilizada {sample.reused ? "sim" : "não"}</li>)}</ul></> : null}
       <button type="button" className="mt-2 underline" onClick={() => void navigator.clipboard.writeText(JSON.stringify(samples))}>Copiar JSON</button>
+      {photoSamples.length ? <button type="button" className="mt-2 ml-3 underline" onClick={() => void navigator.clipboard.writeText(JSON.stringify(photoSamples))}>Copiar fotos</button> : null}
     </aside>
   );
 }

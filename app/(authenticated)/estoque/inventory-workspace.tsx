@@ -572,7 +572,7 @@ function ConfigurationTable({
                         configuration.installationKit.looseQuantity,
                     },
                   }}
-                  imageUrl={configuration.imageUrl}
+                  hasImage={configuration.hasImage}
                 />
               </td>
             </tr>

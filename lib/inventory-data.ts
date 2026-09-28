@@ -10,7 +10,7 @@ import {
   getConfigurationStockState,
   type PhysicalStockItemType,
 } from "@/lib/stock-calculations";
-import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
+import { isInventoryConfigurationVisible } from "@/lib/configuration-image-visibility";
 import { createCompatibleKitImageMap } from "@/lib/compatible-kit-images";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import { loadSharedCatalogSnapshot } from "@/lib/shared-catalog";
@@ -65,7 +65,7 @@ type ConfigurationBalanceRow = {
 
 type InventoryCommercialConfigurationDraft = Omit<
   InventoryCommercialConfiguration,
-  "imageUrl"
+  "hasImage"
 > & {
   imagePath: string | null;
 };
@@ -279,15 +279,10 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
         const assembledQuantity =
           assembledByConfigurationId.get(configuration.id) ?? 0;
 
-        if (
-          servo?.item_type !== "SERVO" ||
-          installationKit?.item_type !== "INSTALLATION_KIT" ||
-          (assembledQuantity === 0 &&
-            (!configuration.is_active ||
-              !servo.is_active ||
-              !installationKit.is_active ||
-              activeAliases.length === 0))
-        ) {
+        if (!servo || !installationKit || !isInventoryConfigurationVisible(
+          configuration.is_active, servo, installationKit,
+          activeAliases.length > 0, assembledQuantity,
+        )) {
           return [];
         }
 
@@ -343,31 +338,19 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
         ),
     );
     logPerformanceAudit({ loader: "inventory", phase: "transform_before_images", durationMs: Math.round(performance.now() - transformStartedAt) });
-    const imageUrlByPath = await createCommercialImageUrlMap(
-      supabase,
-      sortedConfigurationDrafts.map(
-        (configuration) => configuration.imagePath,
-      ),
-    );
     const catalogConfigurations: InventoryCommercialConfiguration[] =
       sortedConfigurationDrafts.map(({ imagePath, ...configuration }) => ({
         ...configuration,
-        imageUrl: imagePath
-          ? (imageUrlByPath.get(imagePath) ?? null)
-          : null,
+        hasImage: Boolean(imagePath),
       }));
     const compatibleKitImagesByItemId = createCompatibleKitImageMap(
       sortedConfigurationDrafts.flatMap((configuration) => {
-        const imageUrl = configuration.imagePath
-          ? (imageUrlByPath.get(configuration.imagePath) ?? null)
-          : null;
         const activeCodes = configuration.aliases
           .filter((alias) => alias.isActive)
           .map((alias) => alias.code);
 
         if (
           !configuration.imagePath ||
-          !imageUrl ||
           !configuration.isActive ||
           !configuration.servo.isActive ||
           !configuration.installationKit.isActive ||
@@ -386,7 +369,7 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
             servoModel: configuration.servo.model,
             installationKitCode: configuration.installationKit.code,
             description: configuration.description,
-            imageUrl,
+            hasImage: true as const,
           },
         ];
       }),
