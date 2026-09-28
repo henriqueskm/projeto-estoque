@@ -1,0 +1,497 @@
+{
+  "auditRecordedAtUtc": "2026-09-28 12:33:34 UTC",
+  "status": "DRY_RUN_PASS_REMOTE_EXECUTE_NOT_AUTHORIZED",
+  "scope": "Catalog identities explicitly approved by user; aggregates only. No operational names/order codes/PII/Auth rows/tokens/secrets exported.",
+  "migrations": {
+    "count": 38,
+    "latest": "20260917120000",
+    "publicPrivateTables": 33,
+    "publicViews": 4,
+    "newTablesSincePreviousContract": [
+      "public.vehicle_application_brands",
+      "public.vehicle_applications"
+    ],
+    "newTablesClassification": "PRESERVE_FULL_ROWS",
+    "localFilesMatchingRemoteFingerprint": [
+      "20260715205337_create_catalog_tables.sql",
+      "20260715215015_create_stock_and_movement_tables.sql",
+      "20260715220359_create_stock_transaction_functions.sql",
+      "20260715221923_create_auth_profiles_and_rls.sql",
+      "20260715230815_seed_initial_catalog_data.sql",
+      "20260716000925_split_commercial_configuration_codes.sql",
+      "20260716002426_load_master_catalog_data.sql",
+      "20260716012318_create_batch_stock_inbound_function.sql",
+      "20260718080857_add_batch_stock_inbound_idempotency.sql",
+      "20260718090410_create_batch_stock_outbound_function.sql",
+      "20260718134339_add_mixed_batch_stock_inbound.sql",
+      "20260718175621_correct_commercial_catalog_variants.sql",
+      "20260718191812_add_commercial_catalog_images.sql",
+      "20260720013744_add_loose_part_creation_to_mixed_inbound.sql",
+      "20260720182358_add_inventory_adjustment_actions.sql",
+      "20260720190931_add_configuration_minimum_stock.sql",
+      "20260720201947_add_idempotent_configuration_operations.sql",
+      "20260724165512_create_supplier_orders.sql",
+      "20260724222651_add_supplier_order_finalization.sql",
+      "20260725101936_add_supplier_order_stock_entries.sql",
+      "20260725104623_fix_supplier_order_stock_entry_link_trigger.sql",
+      "20260729001230_add_supplier_order_pickup_concurrency_checks.sql",
+      "20260804044500_safisa_portal_foundation.sql",
+      "20260807091653_safisa_legacy_order_transition.sql",
+      "20260807235900_automatic_safisa_order_lifecycle.sql",
+      "20260812023500_atomic_supplier_order_pickup_stock_entry.sql",
+      "20260812133046_enforce_supplier_order_negotiation_identity.sql",
+      "20260812223114_add_catalog_only_loose_part_creation.sql",
+      "20260825113000_safisa_fully_ready_push_notifications.sql",
+      "20260827140000_safisa_mark_all_order_ready.sql",
+      "20260828234000_safisa_mark_all_ready_automatic_lifecycle.sql",
+      "20260912104748_make_disable_push_subscription_idempotent.sql",
+      "20260913002900_prepare_7_inv_test_item_removal.sql",
+      "20260913003000_enforce_catalog_inv_writer_policy.sql",
+      "20260914003000_protect_supplier_order_mutations_from_stale_views.sql",
+      "20260915003000_protect_absolute_stock_adjustments_from_stale_views.sql",
+      "20260916090000_create_vehicle_applications.sql",
+      "20260917120000_add_stock_outbound_auto_assembly_policy.sql"
+    ]
+  },
+  "transport": {
+    "cliVersion": "2.112.0",
+    "linkedRefConfirmed": true,
+    "realProjectMetadataConfirmed": true,
+    "sqlTransaction": "REPEATABLE READ READ ONLY",
+    "subsequentTransport": "Management API query through audited existing CLI, scoped noncredential sentinel; no role initialization"
+  },
+  "infrastructureIncident": "Initial linked CLI read-only SQL audit calls initialized a temporary login role (createLoginRole read_only:false); no remote Execute, app DML or migration was run. No remote role cleanup was attempted. Do not claim zero remote infrastructure writes.",
+  "backup": {
+    "apiMethod": "GET",
+    "pitrEnabled": false,
+    "walgEnabled": true,
+    "backupList": null,
+    "physicalBackupData": {},
+    "recoverableWindow": "NOT_DECLARED_IN_RESPONSE",
+    "recoverabilityProven": false,
+    "mandatoryBackupValidated": false,
+    "dumpExportChecksumsRestoreValidation": "NOT_PERFORMED"
+  },
+  "verification": {
+    "localDatabaseBehavioralChecks": 25,
+    "unitAndMockTransportTests": 11,
+    "relatedRegressionTests": 52,
+    "typeScript": "PASS",
+    "lint": "PASS_WITH_3_PREEXISTING_WARNINGS",
+    "build": "PASS_STANDARD_NPM_RUN_BUILD",
+    "remoteExecute": false,
+    "remoteCachePurge": false
+  },
+  "dryRun": {
+    "reset": {
+      "tables": {
+        "stock_balances": 15,
+        "stock_movements": 54,
+        "supplier_orders": 13,
+        "movement_batches": 59,
+        "assembly_operations": 13,
+        "inbound_batch_lines": 38,
+        "outbound_batch_lines": 17,
+        "safisa_portal_events": 17,
+        "supplier_order_items": 43,
+        "minimum_stock_changes": 1,
+        "supplier_order_events": 41,
+        "push_notification_events": 6,
+        "stock_adjustment_requests": 1,
+        "safisa_order_authorizations": 1,
+        "configuration_stock_balances": 12,
+        "supplier_order_stock_entries": 12,
+        "configuration_stock_movements": 40,
+        "configuration_operation_requests": 7,
+        "supplier_order_stock_entry_lines": 20,
+        "configuration_minimum_stock_changes": 1
+      },
+      "balances": {
+        "item_rows": 15,
+        "item_total": 76,
+        "configuration_rows": 12,
+        "configuration_total": 42
+      },
+      "movementTypes": {
+        "INBOUND": 30,
+        "ASSEMBLY": 10,
+        "OUTBOUND": 16,
+        "DISASSEMBLY": 3
+      },
+      "operationalRows": 411,
+      "safisaEventTypes": {
+        "ORDER_PUBLISHED": 1,
+        "MEMBER_STATUS_CHANGED": 1,
+        "READY_QUANTITY_INCREMENTED": 11,
+        "READY_QUANTITIES_ALL_MARKED": 4
+      }
+    },
+    "guards": {
+      "allPassed": true,
+      "schema_matches": true,
+      "catalog_matches": true,
+      "storage_matches": true,
+      "database_matches": true,
+      "identities_match": true,
+      "migrations_match": true,
+      "foreign_keys_match": true,
+      "catalog_counts_match": true,
+      "safisa_trigger_active": true,
+      "transaction_read_only": true,
+      "exact_loose_parts_match": true,
+      "required_relations_present": true,
+      "expected_catalog_delta_matches": true,
+      "no_protected_loose_part_references": true
+    },
+    "project": {
+      "ref": "isdjboconmwaqipjrjvp",
+      "name": "EstoqueNK",
+      "database": "postgres"
+    },
+    "contract": {
+      "sourceMainSha": "50af5996ff0fb7e36c2c3ae08d20ca3232df6cdc",
+      "procedureVersion": 2
+    },
+    "preserve": {
+      "catalog": {
+        "items": 101,
+        "loose_parts": 0,
+        "repair_kits": 5,
+        "servo_models": 22,
+        "configurations": 80,
+        "vehicle_brands": 8,
+        "compatibilities": 22,
+        "commercial_codes": 80,
+        "installation_kits": 74,
+        "vehicle_applications": 295
+      },
+      "profiles": 3,
+      "authUsers": 3,
+      "storageObjects": 76,
+      "referencedImages": 76,
+      "safisaMemberships": 1
+    },
+    "reportType": "RESET_OPERACIONAL_DRY_RUN",
+    "fingerprints": {
+      "schema": "d6e53d1634ccc741d4133401c33cd619",
+      "catalog": "d5b8046a183d9dedcaa64e3e59c67b7a",
+      "migrations": "a56bf1f408eb61dd71ec618347d498e4",
+      "foreignKeys": "0ec15964e334e2eb882e65971fb389fc"
+    },
+    "reinitialize": {
+      "itemsWithMinimum": 7,
+      "configurationsWithMinimum": 4,
+      "preservedItemsWithMinimum": 6,
+      "approvedDeletedItemsWithMinimum": 1
+    },
+    "expectedPostItems": 101,
+    "mutationsExecuted": false,
+    "pushSubscriptions": {
+      "total": 3,
+      "enabled": 2,
+      "decision": "PRESERVE"
+    },
+    "catalogBeforeReset": {
+      "items": 106,
+      "loose_parts": 5,
+      "repair_kits": 5,
+      "servo_models": 22,
+      "configurations": 80,
+      "vehicle_brands": 8,
+      "compatibilities": 22,
+      "commercial_codes": 80,
+      "installation_kits": 74,
+      "vehicle_applications": 295
+    },
+    "expectedPostLooseParts": 0,
+    "deleteApprovedLooseParts": [
+      {
+        "id": "313a920b-5b6c-4132-b342-3fdd69fc4aa1",
+        "code": "067",
+        "notes": null,
+        "quantity": 0,
+        "is_active": true,
+        "item_type": "LOOSE_PART",
+        "description": "MANCAL DO MOTOR DE PARTIDA",
+        "minimum_stock": 0,
+        "balanceRowPresent": false,
+        "structuralReferences": {
+          "repair_kits": 0,
+          "servo_models": 0,
+          "installation_kits": 0,
+          "vehicle_applications": 0,
+          "commercial_configurations": 0,
+          "servo_repair_compatibility": 0
+        },
+        "operationalReferences": {
+          "stock_balances": 0,
+          "stock_movements": 0,
+          "inbound_batch_lines": 0,
+          "outbound_batch_lines": 0,
+          "supplier_order_items": 1,
+          "minimum_stock_changes": 0,
+          "stock_adjustment_requests": 0,
+          "configuration_operation_requests": 0,
+          "supplier_order_stock_entry_lines": 0
+        }
+      },
+      {
+        "id": "523fe146-cde0-4db8-a609-33002c15a3aa",
+        "code": "091",
+        "notes": null,
+        "quantity": 0,
+        "is_active": true,
+        "item_type": "LOOSE_PART",
+        "description": "TAMPA INTERMEDIARIA 025 - 028",
+        "minimum_stock": 0,
+        "balanceRowPresent": false,
+        "structuralReferences": {
+          "repair_kits": 0,
+          "servo_models": 0,
+          "installation_kits": 0,
+          "vehicle_applications": 0,
+          "commercial_configurations": 0,
+          "servo_repair_compatibility": 0
+        },
+        "operationalReferences": {
+          "stock_balances": 0,
+          "stock_movements": 0,
+          "inbound_batch_lines": 0,
+          "outbound_batch_lines": 0,
+          "supplier_order_items": 1,
+          "minimum_stock_changes": 0,
+          "stock_adjustment_requests": 0,
+          "configuration_operation_requests": 0,
+          "supplier_order_stock_entry_lines": 0
+        }
+      },
+      {
+        "id": "815db224-67b7-41a5-9fbb-f3fb38514972",
+        "code": "091/VF",
+        "notes": null,
+        "quantity": 0,
+        "is_active": true,
+        "item_type": "LOOSE_PART",
+        "description": "TAMPA INTERMEDIARIA VF - 024,5",
+        "minimum_stock": 0,
+        "balanceRowPresent": false,
+        "structuralReferences": {
+          "repair_kits": 0,
+          "servo_models": 0,
+          "installation_kits": 0,
+          "vehicle_applications": 0,
+          "commercial_configurations": 0,
+          "servo_repair_compatibility": 0
+        },
+        "operationalReferences": {
+          "stock_balances": 0,
+          "stock_movements": 0,
+          "inbound_batch_lines": 0,
+          "outbound_batch_lines": 0,
+          "supplier_order_items": 1,
+          "minimum_stock_changes": 0,
+          "stock_adjustment_requests": 0,
+          "configuration_operation_requests": 0,
+          "supplier_order_stock_entry_lines": 0
+        }
+      },
+      {
+        "id": "4a6d41ee-752a-43fc-b52e-abccbd9cdf7d",
+        "code": "110",
+        "notes": null,
+        "quantity": 7,
+        "is_active": true,
+        "item_type": "LOOSE_PART",
+        "description": "Suporte",
+        "minimum_stock": 7,
+        "balanceRowPresent": true,
+        "structuralReferences": {
+          "repair_kits": 0,
+          "servo_models": 0,
+          "installation_kits": 0,
+          "vehicle_applications": 0,
+          "commercial_configurations": 0,
+          "servo_repair_compatibility": 0
+        },
+        "operationalReferences": {
+          "stock_balances": 1,
+          "stock_movements": 3,
+          "inbound_batch_lines": 2,
+          "outbound_batch_lines": 1,
+          "supplier_order_items": 0,
+          "minimum_stock_changes": 0,
+          "stock_adjustment_requests": 1,
+          "configuration_operation_requests": 0,
+          "supplier_order_stock_entry_lines": 0
+        }
+      },
+      {
+        "id": "e0c7fc9e-56bb-45cd-a60a-fc424b8c6127",
+        "code": "SUB071",
+        "notes": null,
+        "quantity": 0,
+        "is_active": true,
+        "item_type": "LOOSE_PART",
+        "description": "EMPURRADOR C/ ADAPTADOR",
+        "minimum_stock": 0,
+        "balanceRowPresent": false,
+        "structuralReferences": {
+          "repair_kits": 0,
+          "servo_models": 0,
+          "installation_kits": 0,
+          "vehicle_applications": 0,
+          "commercial_configurations": 0,
+          "servo_repair_compatibility": 0
+        },
+        "operationalReferences": {
+          "stock_balances": 0,
+          "stock_movements": 0,
+          "inbound_batch_lines": 0,
+          "outbound_batch_lines": 0,
+          "supplier_order_items": 1,
+          "minimum_stock_changes": 0,
+          "stock_adjustment_requests": 0,
+          "configuration_operation_requests": 0,
+          "supplier_order_stock_entry_lines": 0
+        }
+      }
+    ],
+    "incomingCatalogForeignKeys": [
+      {
+        "source": "private.configuration_operation_requests",
+        "target": "public.items",
+        "constraint": "configuration_operation_requests_installation_kit_id_fkey",
+        "definition": "FOREIGN KEY (installation_kit_id) REFERENCES items(id) ON DELETE RESTRICT"
+      },
+      {
+        "source": "private.configuration_operation_requests",
+        "target": "public.items",
+        "constraint": "configuration_operation_requests_servo_id_fkey",
+        "definition": "FOREIGN KEY (servo_id) REFERENCES items(id) ON DELETE RESTRICT"
+      },
+      {
+        "source": "private.stock_adjustment_requests",
+        "target": "public.items",
+        "constraint": "stock_adjustment_requests_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT"
+      },
+      {
+        "source": "public.inbound_batch_lines",
+        "target": "public.items",
+        "constraint": "inbound_batch_lines_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT"
+      },
+      {
+        "source": "public.installation_kits",
+        "target": "public.items",
+        "constraint": "installation_kits_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE"
+      },
+      {
+        "source": "public.loose_parts",
+        "target": "public.items",
+        "constraint": "loose_parts_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE"
+      },
+      {
+        "source": "public.minimum_stock_changes",
+        "target": "public.items",
+        "constraint": "minimum_stock_changes_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT"
+      },
+      {
+        "source": "public.outbound_batch_lines",
+        "target": "public.items",
+        "constraint": "outbound_batch_lines_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT"
+      },
+      {
+        "source": "public.repair_kits",
+        "target": "public.items",
+        "constraint": "repair_kits_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE"
+      },
+      {
+        "source": "public.servo_models",
+        "target": "public.items",
+        "constraint": "servo_models_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE"
+      },
+      {
+        "source": "public.stock_balances",
+        "target": "public.items",
+        "constraint": "stock_balances_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT"
+      },
+      {
+        "source": "public.stock_movements",
+        "target": "public.items",
+        "constraint": "stock_movements_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT"
+      },
+      {
+        "source": "public.supplier_order_items",
+        "target": "public.items",
+        "constraint": "supplier_order_items_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT"
+      },
+      {
+        "source": "public.supplier_order_stock_entry_lines",
+        "target": "public.items",
+        "constraint": "supplier_order_stock_entry_lines_item_id_fkey",
+        "definition": "FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT"
+      }
+    ],
+    "expectedPostCatalogFingerprint": "ce7fe67b9de648140fd49e2ae42e1130"
+  },
+  "classification": {
+    "operationalTables": [
+      "public.stock_balances",
+      "public.stock_movements",
+      "public.supplier_orders",
+      "public.movement_batches",
+      "public.assembly_operations",
+      "public.inbound_batch_lines",
+      "public.outbound_batch_lines",
+      "public.safisa_portal_events",
+      "public.supplier_order_items",
+      "public.minimum_stock_changes",
+      "public.supplier_order_events",
+      "public.push_notification_events",
+      "private.stock_adjustment_requests",
+      "public.safisa_order_authorizations",
+      "public.configuration_stock_balances",
+      "public.supplier_order_stock_entries",
+      "public.configuration_stock_movements",
+      "private.configuration_operation_requests",
+      "public.supplier_order_stock_entry_lines",
+      "public.configuration_minimum_stock_changes"
+    ],
+    "preservedTables": [
+      "public.servo_models",
+      "public.installation_kits",
+      "public.repair_kits",
+      "public.commercial_configuration_codes",
+      "public.servo_repair_compatibility",
+      "public.vehicle_application_brands",
+      "public.vehicle_applications",
+      "public.profiles",
+      "public.safisa_portal_members"
+    ],
+    "exceptionalTables": {
+      "public.items": "DELETE EXACT APPROVED 5 ONLY; preserve all other full rows except minimum_stock=0",
+      "public.loose_parts": "DELETE EXACT APPROVED 5 ONLY",
+      "public.commercial_configurations": "PRESERVE FULL ROWS except minimum_stock=0",
+      "public.push_subscriptions": "PRESERVE full rows by default; separate human policy decision"
+    },
+    "additionalPreservation": [
+      "auth.users",
+      "storage.buckets",
+      "storage.objects",
+      "supabase_migrations.schema_migrations",
+      "schema/RLS/policies/functions/RPCs/triggers/indexes/views"
+    ],
+    "unknownTables": [],
+    "incomingLoosePartsForeignKeys": 0
+  }
+}

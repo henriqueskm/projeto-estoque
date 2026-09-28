@@ -255,4 +255,18 @@ insert into public.push_subscriptions (
   ('47000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '47000000-0000-0000-0000-000000000011', 'fixture-installation-internal', true),
   ('47000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000003', '47000000-0000-0000-0000-000000000012', 'fixture-installation-observer', true);
 
+-- Audited loose-part identities are present before reset and include real FK
+-- shapes: four order references and the 110 balance/movement/line/request path.
+update public.items set minimum_stock = 7 where code = '110';
+insert into public.stock_balances(item_id,quantity) values ('4a6d41ee-752a-43fc-b52e-abccbd9cdf7d',7);
+insert into public.stock_movements(id,batch_id,item_id,quantity_change,quantity_before,quantity_after)
+ values ('31000000-0000-0000-0000-000000000007','30000000-0000-0000-0000-000000000001','4a6d41ee-752a-43fc-b52e-abccbd9cdf7d',7,0,7);
+insert into public.inbound_batch_lines(id,batch_id,item_id,quantity)
+ values ('33000000-0000-0000-0000-000000000003','30000000-0000-0000-0000-000000000001','4a6d41ee-752a-43fc-b52e-abccbd9cdf7d',7);
+insert into public.outbound_batch_lines(id,batch_id,item_id,quantity,assembled_quantity_used,auto_assembled_quantity)
+ values ('34000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','4a6d41ee-752a-43fc-b52e-abccbd9cdf7d',1,0,0);
+insert into public.supplier_order_items(supplier_order_id,item_id,code_snapshot,description_snapshot,item_type_snapshot,ordered_quantity,position)
+ select '40000000-0000-0000-0000-000000000001',id,code,description,item_type,1,
+ row_number() over(order by code)::integer from public.items where item_type='LOOSE_PART' and code<>'110';
+
 commit;

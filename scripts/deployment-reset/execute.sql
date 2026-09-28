@@ -1,6 +1,7 @@
 \set ON_ERROR_STOP on
 
 begin;
+set local standard_conforming_strings = on;
 set local lock_timeout = '5s';
 set local statement_timeout = '10min';
 
@@ -28,7 +29,11 @@ select set_config('nk_reset.expected_memberships', :'expected_memberships', fals
 select set_config('nk_reset.expected_bucket_id', :'expected_bucket_id', false);
 select set_config('nk_reset.expected_referenced_images', :'expected_referenced_images', false);
 select set_config('nk_reset.expected_storage_objects', :'expected_storage_objects', false);
-select set_config('nk_reset.expected_dynamic_item_ids', :'expected_dynamic_item_ids', false);
+select set_config('nk_reset.approved_loose_parts', :'approved_loose_parts', true);
+select set_config('nk_reset.expected_post_catalog_fingerprint', :'expected_post_catalog_fingerprint', true);
+select set_config('nk_reset.expected_foreign_key_fingerprint', :'expected_foreign_key_fingerprint', true);
+select set_config('nk_reset.expected_vehicle_brands', :'expected_vehicle_brands', true);
+select set_config('nk_reset.expected_vehicle_applications', :'expected_vehicle_applications', true);
 select set_config('nk_reset.required_relations', :'required_relations', false);
 select set_config('nk_reset.push_subscription_action', :'push_subscription_action', false);
 select set_config('nk_reset.force_validation_failure', :'force_validation_failure', false);
@@ -82,38 +87,142 @@ as $$
   select md5(string_agg(value, E'\n' order by value)) from schema_parts;
 $$;
 
-create function pg_temp.deployment_reset_catalog_fingerprint()
+create function pg_temp.deployment_reset_catalog_fingerprint(p_excluded uuid[] default '{}'::uuid[])
 returns text
 language sql
 stable
 as $$
   with catalog_rows as (
-    select 'items' as kind, id::text as row_key,
-      md5(id::text) || md5(code) || md5(description) || md5(item_type) || md5(is_active::text) as row_hash
-    from public.items
-    union all
-    select 'servo_models', item_id::text, md5(item_id::text) || md5(coalesce(model, '<NULL>')) || md5(coalesce(notes, '<NULL>')) from public.servo_models
-    union all
-    select 'installation_kits', item_id::text, md5(item_id::text) || md5(coalesce(name, '<NULL>')) || md5(coalesce(notes, '<NULL>')) from public.installation_kits
-    union all
-    select 'repair_kits', item_id::text, md5(item_id::text) || md5(coalesce(name, '<NULL>')) || md5(coalesce(notes, '<NULL>')) from public.repair_kits
-    union all
-    select 'loose_parts', item_id::text, md5(item_id::text) || md5(coalesce(notes, '<NULL>')) from public.loose_parts
-    union all
-    select 'commercial_configurations', id::text,
-      md5(id::text) || md5(coalesce(description, '<NULL>')) || md5(servo_id::text) || md5(installation_kit_id::text) || md5(is_active::text) || md5(coalesce(image_path, '<NULL>'))
-    from public.commercial_configurations
-    union all
-    select 'commercial_configuration_codes', id::text,
-      md5(id::text) || md5(configuration_id::text) || md5(code) || md5(is_active::text)
-    from public.commercial_configuration_codes
-    union all
-    select 'servo_repair_compatibility', servo_id::text || ':' || repair_kit_id::text,
-      md5(servo_id::text) || md5(repair_kit_id::text)
-    from public.servo_repair_compatibility
+    select 'items' kind, id::text row_key, md5((to_jsonb(t) - 'minimum_stock')::text) row_hash from public.items t
+    union all select 'servo_models', item_id::text, md5(to_jsonb(t)::text) from public.servo_models t
+    union all select 'installation_kits', item_id::text, md5(to_jsonb(t)::text) from public.installation_kits t
+    union all select 'repair_kits', item_id::text, md5(to_jsonb(t)::text) from public.repair_kits t
+    union all select 'loose_parts', item_id::text, md5(to_jsonb(t)::text) from public.loose_parts t
+    union all select 'commercial_configurations', id::text, md5((to_jsonb(t) - 'minimum_stock')::text) from public.commercial_configurations t
+    union all select 'commercial_configuration_codes', id::text, md5(to_jsonb(t)::text) from public.commercial_configuration_codes t
+    union all select 'servo_repair_compatibility', servo_id::text || ':' || repair_kit_id::text, md5(to_jsonb(t)::text) from public.servo_repair_compatibility t
+    union all select 'vehicle_application_brands', id::text, md5(to_jsonb(t)::text) from public.vehicle_application_brands t
+    union all select 'vehicle_applications', id::text, md5(to_jsonb(t)::text) from public.vehicle_applications t
   )
-  select md5(string_agg(kind || '|' || row_key || '|' || row_hash, E'\n' order by kind, row_key)) from catalog_rows;
+  select md5(string_agg(kind || '|' || row_key || '|' || row_hash, E'\n' order by kind, row_key)) from catalog_rows
+  where not (kind in ('items', 'loose_parts') and row_key = any(p_excluded::text[]));
 $$;
+
+-- Block concurrent writes before any snapshot, and keep the FK order explicit.
+lock table public.push_notification_events,
+  public.safisa_portal_events,
+  public.safisa_order_authorizations,
+  public.supplier_order_stock_entry_lines,
+  public.supplier_order_stock_entries,
+  public.supplier_order_events,
+  public.supplier_order_items,
+  public.supplier_orders,
+  private.configuration_operation_requests,
+  private.stock_adjustment_requests,
+  public.assembly_operations,
+  public.inbound_batch_lines,
+  public.outbound_batch_lines,
+  public.stock_movements,
+  public.configuration_stock_movements,
+  public.movement_batches,
+  public.stock_balances,
+  public.configuration_stock_balances,
+  public.minimum_stock_changes,
+  public.configuration_minimum_stock_changes,
+  public.items,
+  public.loose_parts,
+  public.servo_models,
+  public.installation_kits,
+  public.repair_kits,
+  public.commercial_configurations,
+  public.commercial_configuration_codes,
+  public.servo_repair_compatibility,
+  public.vehicle_application_brands,
+  public.vehicle_applications,
+  public.profiles,
+  public.safisa_portal_members,
+  public.push_subscriptions,
+  auth.users,
+  storage.buckets,
+  storage.objects,
+  supabase_migrations.schema_migrations in share row exclusive mode;
+
+create temporary table deployment_reset_approved_parts on commit drop as
+select (value ->> 'id')::uuid as id, value as identity
+from jsonb_array_elements(:'approved_loose_parts'::jsonb);
+
+create temporary table deployment_reset_expected_counts (
+  relation_name text primary key, expected bigint not null, affected bigint
+) on commit drop;
+insert into deployment_reset_expected_counts
+select 'public.push_notification_events', count(*) from public.push_notification_events
+union all
+select 'public.safisa_portal_events', count(*) from public.safisa_portal_events
+union all
+select 'public.safisa_order_authorizations', count(*) from public.safisa_order_authorizations
+union all
+select 'public.supplier_order_stock_entry_lines', count(*) from public.supplier_order_stock_entry_lines
+union all
+select 'public.supplier_order_stock_entries', count(*) from public.supplier_order_stock_entries
+union all
+select 'public.supplier_order_events', count(*) from public.supplier_order_events
+union all
+select 'public.supplier_order_items', count(*) from public.supplier_order_items
+union all
+select 'public.supplier_orders', count(*) from public.supplier_orders
+union all
+select 'private.configuration_operation_requests', count(*) from private.configuration_operation_requests
+union all
+select 'private.stock_adjustment_requests', count(*) from private.stock_adjustment_requests
+union all
+select 'public.assembly_operations', count(*) from public.assembly_operations
+union all
+select 'public.inbound_batch_lines', count(*) from public.inbound_batch_lines
+union all
+select 'public.outbound_batch_lines', count(*) from public.outbound_batch_lines
+union all
+select 'public.stock_movements', count(*) from public.stock_movements
+union all
+select 'public.configuration_stock_movements', count(*) from public.configuration_stock_movements
+union all
+select 'public.movement_batches', count(*) from public.movement_batches
+union all
+select 'public.stock_balances', count(*) from public.stock_balances
+union all
+select 'public.configuration_stock_balances', count(*) from public.configuration_stock_balances
+union all
+select 'public.minimum_stock_changes', count(*) from public.minimum_stock_changes
+union all
+select 'public.configuration_minimum_stock_changes', count(*) from public.configuration_minimum_stock_changes;
+insert into deployment_reset_expected_counts values
+ ('public.loose_parts', (select count(*) from deployment_reset_approved_parts), null),
+ ('public.items', (select count(*) from deployment_reset_approved_parts), null),
+ ('items.minimum_stock', (select count(*) from public.items where minimum_stock <> 0), null),
+ ('configurations.minimum_stock', (select count(*) from public.commercial_configurations where minimum_stock <> 0), null),
+ ('supplier_order_items.readiness', (select count(*) from public.supplier_order_items), null);
+
+create function pg_temp.deployment_reset_assert_affected(p_relation text, p_affected bigint)
+returns void language plpgsql as $assert$
+declare expected_count bigint;
+begin
+ select expected into strict expected_count from deployment_reset_expected_counts where relation_name = p_relation;
+ if p_affected <> expected_count then
+  raise exception 'Exact ROW_COUNT validation failed for %.', p_relation;
+ end if;
+ update deployment_reset_expected_counts set affected = p_affected where relation_name = p_relation;
+end;
+$assert$;
+
+create function pg_temp.deployment_reset_fk_fingerprint()
+returns text language sql stable as $fk$
+ select md5(string_agg(ns.nspname || '.' || cs.relname || '|' || co.conname || '|' ||
+   nt.nspname || '.' || ct.relname || '|' || pg_get_constraintdef(co.oid, true),
+   E'\n' order by ns.nspname, cs.relname, co.conname))
+ from pg_constraint co
+ join pg_class cs on cs.oid = co.conrelid join pg_class ct on ct.oid = co.confrelid
+ join pg_namespace ns on ns.oid = cs.relnamespace join pg_namespace nt on nt.oid = ct.relnamespace
+ where co.contype = 'f' and (ns.nspname in ('public', 'private') or nt.nspname in ('public', 'private'));
+$fk$;
 
 create temporary table deployment_reset_snapshot (
   schema_fingerprint text not null,
@@ -131,6 +240,7 @@ create temporary table deployment_reset_snapshot (
   storage_count bigint not null,
   bucket_fingerprint text,
   push_core_fingerprint text,
+  push_fingerprint text,
   push_count bigint not null
 ) on commit drop;
 
@@ -151,6 +261,7 @@ select
   (select count(*) from storage.objects where bucket_id = :'expected_bucket_id'),
   (select md5(string_agg(to_jsonb(bucket)::text, E'\n' order by bucket.id)) from storage.buckets as bucket where bucket.id = :'expected_bucket_id'),
   (select md5(string_agg(md5(user_id::text) || md5(device_id::text) || md5(firebase_installation_id), E'\n' order by id)) from public.push_subscriptions),
+  (select md5(string_agg(to_jsonb(t)::text, E'\n' order by id)) from public.push_subscriptions t),
   (select count(*) from public.push_subscriptions);
 
 do $guard$
@@ -196,9 +307,31 @@ begin
     raise exception 'Catalog count guard failed.';
   end if;
 
-  if (select count(*) from public.items where id::text = any(string_to_array(current_setting('nk_reset.expected_dynamic_item_ids'), ',')))
-      <> cardinality(string_to_array(current_setting('nk_reset.expected_dynamic_item_ids'), ',')) then
-    raise exception 'Dynamic catalog item preservation guard failed.';
+  if (select coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'code', i.code,
+      'description', i.description, 'item_type', i.item_type,
+      'is_active', i.is_active, 'notes', l.notes) order by i.id), '[]'::jsonb)
+      from public.loose_parts l join public.items i on i.id = l.item_id)
+      is distinct from (select coalesce(jsonb_agg(identity order by id), '[]'::jsonb) from deployment_reset_approved_parts)
+    or (select count(distinct id) from deployment_reset_approved_parts) <>
+      (select count(*) from deployment_reset_approved_parts) then
+    raise exception 'Exact approved loose-part identity guard failed.';
+  end if;
+
+  if pg_temp.deployment_reset_catalog_fingerprint((select array_agg(id) from deployment_reset_approved_parts))
+      is distinct from current_setting('nk_reset.expected_post_catalog_fingerprint')
+    or pg_temp.deployment_reset_fk_fingerprint() is distinct from current_setting('nk_reset.expected_foreign_key_fingerprint')
+    or (select count(*) from public.vehicle_application_brands) <> current_setting('nk_reset.expected_vehicle_brands')::integer
+    or (select count(*) from public.vehicle_applications) <> current_setting('nk_reset.expected_vehicle_applications')::integer then
+    raise exception 'Expected catalog delta/application/FK guard failed.';
+  end if;
+
+  if exists (select 1 from public.servo_models where item_id in (select id from deployment_reset_approved_parts))
+    or exists (select 1 from public.installation_kits where item_id in (select id from deployment_reset_approved_parts))
+    or exists (select 1 from public.repair_kits where item_id in (select id from deployment_reset_approved_parts))
+    or exists (select 1 from public.commercial_configurations where servo_id in (select id from deployment_reset_approved_parts) or installation_kit_id in (select id from deployment_reset_approved_parts))
+    or exists (select 1 from public.servo_repair_compatibility where servo_id in (select id from deployment_reset_approved_parts) or repair_kit_id in (select id from deployment_reset_approved_parts))
+    or exists (select 1 from public.vehicle_applications a join public.items i on i.code = a.source_kit_code or i.code = a.source_servo_label where i.id in (select id from deployment_reset_approved_parts)) then
+    raise exception 'Approved loose parts have protected structural references; human decision required.';
   end if;
 
   if snapshot.auth_count <> current_setting('nk_reset.expected_auth_users')::integer
@@ -234,62 +367,92 @@ begin
 end;
 $guard$;
 
-delete from public.push_notification_events;
+do $delete_push$ declare affected bigint; begin
+  delete from public.push_notification_events;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.push_notification_events', affected);
+end; $delete_push$;
 
-alter table public.safisa_portal_events
-  disable trigger safisa_portal_events_reject_mutation;
+alter table public.safisa_portal_events disable trigger safisa_portal_events_reject_mutation;
+do $delete_safisa$ declare affected bigint; begin
+  -- Only the explicitly audited event types; a new type makes ROW_COUNT fail.
+  delete from public.safisa_portal_events where event_type in ('MEMBER_STATUS_CHANGED', 'ORDER_PUBLISHED', 'ORDER_REVOKED', 'READY_QUANTITY_INCREMENTED', 'READY_QUANTITIES_ALL_MARKED');
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.safisa_portal_events', affected);
+end; $delete_safisa$;
+alter table public.safisa_portal_events enable trigger safisa_portal_events_reject_mutation;
 
-delete from public.safisa_portal_events
-where event_type in (
-  'MEMBER_STATUS_CHANGED',
-  'ORDER_PUBLISHED',
-  'ORDER_REVOKED',
-  'READY_QUANTITY_INCREMENTED',
-  'READY_QUANTITY_CORRECTED',
-  'READY_QUANTITIES_ALL_MARKED'
-);
-
-alter table public.safisa_portal_events
-  enable trigger safisa_portal_events_reject_mutation;
-
-delete from public.safisa_order_authorizations;
-delete from public.supplier_order_stock_entry_lines;
-delete from public.supplier_order_stock_entries;
-delete from public.supplier_order_events;
-
-update public.supplier_order_items
-set ready_quantity = 0,
-    picked_quantity = 0,
-    stocked_quantity = 0,
-    cancelled_quantity = 0
-where ready_quantity <> 0
-   or picked_quantity <> 0
-   or stocked_quantity <> 0
-   or cancelled_quantity <> 0;
-
-delete from public.supplier_order_items;
-delete from public.supplier_orders;
-
-delete from private.configuration_operation_requests;
-delete from private.stock_adjustment_requests;
-delete from public.assembly_operations;
-delete from public.inbound_batch_lines;
-delete from public.outbound_batch_lines;
-delete from public.stock_movements;
-delete from public.configuration_stock_movements;
-delete from public.movement_batches;
-delete from public.stock_balances;
-delete from public.configuration_stock_balances;
-
-update public.items set minimum_stock = 0 where minimum_stock <> 0;
-update public.commercial_configurations set minimum_stock = 0 where minimum_stock <> 0;
-delete from public.minimum_stock_changes;
-delete from public.configuration_minimum_stock_changes;
-
-\if :{?push_subscription_action}
-\else
-  \set push_subscription_action PRESERVE
-\endif
+do $delete_operational$ declare affected bigint; begin
+  delete from public.safisa_order_authorizations;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.safisa_order_authorizations', affected);
+  delete from public.supplier_order_stock_entry_lines;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.supplier_order_stock_entry_lines', affected);
+  delete from public.supplier_order_stock_entries;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.supplier_order_stock_entries', affected);
+  delete from public.supplier_order_events;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.supplier_order_events', affected);
+  update public.supplier_order_items set ready_quantity = 0, picked_quantity = 0, stocked_quantity = 0, cancelled_quantity = 0;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('supplier_order_items.readiness', affected);
+  delete from public.supplier_order_items;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.supplier_order_items', affected);
+  delete from public.supplier_orders;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.supplier_orders', affected);
+  delete from private.configuration_operation_requests;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('private.configuration_operation_requests', affected);
+  delete from private.stock_adjustment_requests;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('private.stock_adjustment_requests', affected);
+  delete from public.assembly_operations;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.assembly_operations', affected);
+  delete from public.inbound_batch_lines;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.inbound_batch_lines', affected);
+  delete from public.outbound_batch_lines;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.outbound_batch_lines', affected);
+  delete from public.stock_movements;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.stock_movements', affected);
+  delete from public.configuration_stock_movements;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.configuration_stock_movements', affected);
+  delete from public.movement_batches;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.movement_batches', affected);
+  delete from public.stock_balances;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.stock_balances', affected);
+  delete from public.configuration_stock_balances;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.configuration_stock_balances', affected);
+  delete from public.minimum_stock_changes;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.minimum_stock_changes', affected);
+  delete from public.configuration_minimum_stock_changes;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.configuration_minimum_stock_changes', affected);
+  update public.items set minimum_stock = 0 where minimum_stock <> 0;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('items.minimum_stock', affected);
+  update public.commercial_configurations set minimum_stock = 0 where minimum_stock <> 0;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('configurations.minimum_stock', affected);
+  delete from public.loose_parts where item_id in (select id from deployment_reset_approved_parts);
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.loose_parts', affected);
+  delete from public.items where id in (select id from deployment_reset_approved_parts);
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.items', affected);
+end; $delete_operational$;
 
 do $push$
 begin
@@ -341,15 +504,17 @@ begin
     raise exception 'Post-reset operational validation failed.';
   end if;
 
-  if pg_temp.deployment_reset_catalog_fingerprint() <> snapshot.catalog_fingerprint
+  if pg_temp.deployment_reset_catalog_fingerprint() is distinct from current_setting('nk_reset.expected_post_catalog_fingerprint')
     or pg_temp.deployment_reset_schema_fingerprint() <> snapshot.schema_fingerprint
     or (select md5(string_agg(version || '|' || coalesce(name, ''), E'\n' order by version)) from supabase_migrations.schema_migrations) <> snapshot.migration_fingerprint then
     raise exception 'Catalog/schema/migration preservation validation failed.';
   end if;
 
-  if (select count(*) from public.items where id::text = any(string_to_array(current_setting('nk_reset.expected_dynamic_item_ids'), ',')))
-      <> cardinality(string_to_array(current_setting('nk_reset.expected_dynamic_item_ids'), ',')) then
-    raise exception 'Dynamic catalog items were not preserved.';
+  if exists (select 1 from public.items where id in (select id from deployment_reset_approved_parts))
+    or exists (select 1 from public.loose_parts)
+    or (select count(*) from public.items) <> current_setting('nk_reset.expected_items')::integer - (select count(*) from deployment_reset_approved_parts)
+    or exists (select 1 from deployment_reset_expected_counts where affected is null or affected <> expected) then
+    raise exception 'Exact authorized catalog deletion/ROW_COUNT validation failed.';
   end if;
 
   if (select count(*) from auth.users) <> snapshot.auth_count
@@ -370,6 +535,7 @@ begin
 
   if current_setting('nk_reset.push_subscription_action') = 'PRESERVE' and (
       (select count(*) from public.push_subscriptions) <> snapshot.push_count
+      or (select md5(string_agg(to_jsonb(t)::text, E'\n' order by id)) from public.push_subscriptions t) is distinct from snapshot.push_fingerprint
       or (select md5(string_agg(md5(user_id::text) || md5(device_id::text) || md5(firebase_installation_id), E'\n' order by id)) from public.push_subscriptions) is distinct from snapshot.push_core_fingerprint
     ) then
     raise exception 'Push subscription preserve validation failed.';
