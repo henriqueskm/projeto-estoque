@@ -307,7 +307,7 @@ function toOutboundCatalogOption(
     code: target.displayCode,
     configurationId: target.configurationId,
     description: target.description,
-    imageUrl: null,
+    hasImage: false,
     assembledBalance: target.currentStock,
     aliases: target.aliases,
     servo: {

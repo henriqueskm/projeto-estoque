@@ -13,7 +13,7 @@ import { notifyInventoryDataChanged } from "@/lib/inventory-ui-events";
 
 type InventoryRowActionsProps = {
   target: InventoryActionTarget;
-  imageUrl?: string | null;
+  hasImage?: boolean;
 };
 
 type ActiveDialog =
@@ -25,7 +25,7 @@ type ActiveDialog =
 
 export function InventoryRowActions({
   target,
-  imageUrl = null,
+  hasImage = false,
 }: InventoryRowActionsProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -215,7 +215,7 @@ export function InventoryRowActions({
               Alterar estoque mínimo
             </button>
 
-            {target.kind === "CONFIGURATION" && imageUrl ? (
+            {target.kind === "CONFIGURATION" && hasImage ? (
               <>
                 <div
                   role="separator"
@@ -226,7 +226,8 @@ export function InventoryRowActions({
                 </p>
                 <CommercialConfigurationImage
                   commercialCodes={target.commercialCodes}
-                  imageUrl={imageUrl}
+                  configurationId={target.configurationId}
+                  hasImage={hasImage}
                   triggerVariant="menu-item"
                 />
               </>

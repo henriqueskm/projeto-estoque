@@ -7,7 +7,7 @@ export default async function InboundPage() {
   const catalog = await getInboundCatalog();
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-7 lg:px-8">
+    <main data-nk-perf-ready="/entrada" className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-7 lg:px-8">
       <Link
         href="/"
         className="nk-focus mb-3 inline-flex min-h-10 items-center gap-2 rounded-xl px-2 text-sm font-black text-text-primary transition hover:bg-brand-gold-soft sm:mb-4"

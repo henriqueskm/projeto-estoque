@@ -6,16 +6,21 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { EyeIcon } from "@/components/icons";
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
+import {
+  createConfigurationImageResource,
+  type ConfigurationImageSource,
+} from "@/lib/configuration-image-resource";
+import { recordPhotoPerformance } from "@/lib/photo-performance-audit";
 
-type CommercialConfigurationImageProps = {
+type CommercialConfigurationImageProps = ConfigurationImageSource & {
   commercialCodes: string[];
-  imageUrl: string | null;
   compact?: boolean;
   openOnMount?: boolean;
   triggerLabel?: string;
@@ -37,6 +42,8 @@ const zoomStep = 0.5;
 export function CommercialConfigurationImage({
   commercialCodes,
   imageUrl,
+  configurationId,
+  hasImage,
   compact = false,
   openOnMount = false,
   triggerLabel,
@@ -44,8 +51,33 @@ export function CommercialConfigurationImage({
   triggerVariant = "thumbnail",
 }: CommercialConfigurationImageProps) {
   const [isOpen, setIsOpen] = useState(
-    openOnMount && Boolean(imageUrl),
+    openOnMount && Boolean(imageUrl || hasImage),
   );
+  const resource = useMemo(
+    () => configurationId ? createConfigurationImageResource(configurationId) : null,
+    [configurationId],
+  );
+  const [photo, setPhoto] = useState<{ resource: typeof resource; imageUrl: string; reused: boolean } | null>(null);
+  const [photoError, setPhotoError] = useState<{ resource: typeof resource } | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const clickStartedAt = useRef<number | null>(null);
+  const resolvedUrl = imageUrl ?? (photo?.resource === resource ? photo?.imageUrl : null);
+
+  useEffect(() => {
+    if (!isOpen || !resource) return;
+    let active = true;
+    resource.resolve()
+      .then((result) => {
+        if (!active) return;
+        setPhoto({ resource, ...result });
+        if (clickStartedAt.current !== null) {
+          recordPhotoPerformance("resolver_response", clickStartedAt.current, result.reused);
+        }
+      })
+      .catch(() => { if (active) setPhotoError({ resource }); });
+    return () => { active = false; };
+  }, [isOpen, resource, retryCount]);
   const [zoom, setZoom] = useState(minimumZoom);
   const dialogTitleId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -107,7 +139,7 @@ export function CommercialConfigurationImage({
     };
   }, [closeModal, isOpen]);
 
-  if (!imageUrl) {
+  if (!imageUrl && !hasImage) {
     return (
       <p
         className={
@@ -138,6 +170,10 @@ export function CommercialConfigurationImage({
         onClick={(event) => {
           event.stopPropagation();
           setZoom(minimumZoom);
+          setPhoto(null);
+          setPhotoError(null);
+          setLoadedUrl(null);
+          clickStartedAt.current = performance.now();
           setIsOpen(true);
         }}
         role={isMenuItem ? "menuitem" : undefined}
@@ -191,7 +227,7 @@ export function CommercialConfigurationImage({
               }`}
             >
               <img
-                src={imageUrl}
+                src={imageUrl ?? undefined}
                 alt={altText}
                 loading="lazy"
                 className="max-h-full max-w-full object-contain transition duration-200 group-hover:scale-[1.02]"
@@ -295,11 +331,52 @@ export function CommercialConfigurationImage({
                       width: `${zoom * 100}%`,
                     }}
                   >
-                    <img
-                      src={imageUrl}
-                      alt={altText}
-                      className="max-h-full max-w-full object-contain"
-                    />
+                    {photoError?.resource === resource ? (
+                      <div className="space-y-4 text-center text-white">
+                        <p role="alert">Não foi possível carregar a foto.</p>
+                        <button
+                          type="button"
+                          className="nk-focus min-h-11 rounded-xl bg-white px-4 font-bold text-brand-charcoal"
+                          onClick={() => {
+                            closeButtonRef.current?.focus();
+                            resource?.invalidate();
+                            setPhoto(null);
+                            setPhotoError(null);
+                            setLoadedUrl(null);
+                            clickStartedAt.current = performance.now();
+                            setRetryCount((count) => count + 1);
+                          }}
+                        >
+                          Tentar novamente
+                        </button>
+                      </div>
+                    ) : !resolvedUrl ? (
+                      <p role="status" aria-live="polite" className="text-center font-semibold text-white">Carregando foto…</p>
+                    ) : (
+                      <>
+                        {resource && loadedUrl !== resolvedUrl ? (
+                          <p role="status" aria-live="polite" className="text-center font-semibold text-white">Carregando foto…</p>
+                        ) : null}
+                        <img
+                          key={retryCount}
+                          src={resolvedUrl}
+                          alt={altText}
+                          onLoad={() => {
+                            setLoadedUrl(resolvedUrl);
+                            if (clickStartedAt.current !== null && resource) {
+                              recordPhotoPerformance("image_load", clickStartedAt.current, photo?.reused ?? false);
+                              clickStartedAt.current = null;
+                            }
+                          }}
+                          onError={() => {
+                            resource?.invalidate();
+                            setPhoto(null);
+                            setPhotoError({ resource });
+                          }}
+                          className={`max-h-full max-w-full object-contain ${resource && loadedUrl !== resolvedUrl ? "hidden" : ""}`}
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

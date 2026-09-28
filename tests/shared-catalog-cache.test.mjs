@@ -334,7 +334,7 @@ test("snapshot guarda apenas path estável; saldos e mínimos são relidos e alt
   assert.equal(nextMinimumMaps.itemMinimumById.get("servo-A"), 6);
 });
 
-test("Entrada, Saída e Estoque compartilham metadados, mas renovam estado e signed URL por render", async () => {
+test("Entrada, Saída e Estoque compartilham metadados, renovam estado e não assinam imagens no loader", async () => {
   const catalogTables = catalogFixture("A");
   const catalogClient = fakeCatalogClient(catalogTables);
   const operationalTables = {
@@ -378,10 +378,9 @@ test("Entrada, Saída e Estoque compartilham metadados, mas renovam estado e sig
 
   const inbound = await getInboundCatalog();
   assert.equal(inbound.error, null);
-  assert.equal(
-    inbound.data.commercialCodes[0].imageUrl,
-    "https://media.invalid/catalog/A.png?generation=1",
-  );
+  assert.equal(inbound.data.commercialCodes[0].hasImage, true);
+  assert.equal("imageUrl" in inbound.data.commercialCodes[0], false);
+  assert.equal("imagePath" in inbound.data.commercialCodes[0], false);
   assert.equal(
     inbound.data.physicalItems.find((item) => item.id === "servo-A").balance,
     8,
@@ -391,10 +390,9 @@ test("Entrada, Saída e Estoque compartilham metadados, mas renovam estado e sig
   operationalTables.configuration_stock_balances[0].quantity = 1;
   const outbound = await getOutboundCatalog();
   assert.equal(outbound.error, null);
-  assert.equal(
-    outbound.data.commercialCodes[0].imageUrl,
-    "https://media.invalid/catalog/A.png?generation=2",
-  );
+  assert.equal(outbound.data.commercialCodes[0].hasImage, true);
+  assert.equal("imageUrl" in outbound.data.commercialCodes[0], false);
+  assert.equal("imagePath" in outbound.data.commercialCodes[0], false);
   assert.equal(outbound.data.commercialCodes[0].servo.balance, 7);
   assert.equal(outbound.data.commercialCodes[0].assembledBalance, 1);
 
@@ -406,10 +404,10 @@ test("Entrada, Saída e Estoque compartilham metadados, mas renovam estado e sig
     8,
   );
   assert.equal(inventory.data.configurations[0].minimumStock, 1);
-  assert.equal(
-    inventory.data.configurations[0].imageUrl,
-    "https://media.invalid/catalog/A.png?generation=3",
-  );
+  assert.equal(inventory.data.configurations[0].hasImage, true);
+  assert.equal("imageUrl" in inventory.data.configurations[0], false);
+  assert.equal(JSON.stringify(inventory.data).includes("catalog/A.png"), false);
+  assert.equal(signedUrlGeneration, 0);
   assert.equal(catalogClient.calls.length, 4, "structural metadata is shared");
   assert.equal(
     requestClient.calls.filter((table) => table === "stock_balances").length,

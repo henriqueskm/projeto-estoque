@@ -365,7 +365,8 @@ function CommercialCatalogTable({
                   </p>
                   <CommercialConfigurationImage
                     commercialCodes={[option.code, ...option.aliases]}
-                    imageUrl={option.imageUrl}
+                    configurationId={option.configurationId}
+                    hasImage={option.hasImage}
                     compact
                     triggerVariant="text-link"
                   />

@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { measurePerformanceAudit } from "@/lib/performance-audit";
 
 export type ActiveProfile = {
   id: string;
@@ -15,7 +16,7 @@ export type ActiveProfile = {
 async function loadActiveProfile(): Promise<ActiveProfile> {
   const supabase = await createClient();
   const { data: claimsData, error: claimsError } =
-    await supabase.auth.getClaims();
+    await measurePerformanceAudit("auth", "claims", () => supabase.auth.getClaims());
   const userId = claimsData?.claims?.sub;
   const emailClaim = claimsData?.claims?.email;
 
@@ -23,12 +24,15 @@ async function loadActiveProfile(): Promise<ActiveProfile> {
     redirect("/login");
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, name")
-    .eq("id", userId)
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: profile, error: profileError } = await measurePerformanceAudit(
+    "auth", "profile", () => supabase
+      .from("profiles")
+      .select("id, name")
+      .eq("id", userId)
+      .eq("is_active", true)
+      .maybeSingle(),
+    () => ({ queryCount: 1, waveCount: 1 }),
+  );
 
   if (profileError || !profile) {
     redirect("/login?error=inactive");
@@ -41,7 +45,7 @@ async function loadActiveProfile(): Promise<ActiveProfile> {
 
   if (!authenticatedEmail) {
     const { data: userData, error: userError } =
-      await supabase.auth.getUser();
+      await measurePerformanceAudit("auth", "user_fallback", () => supabase.auth.getUser());
 
     if (userError || userData.user?.id !== userId) {
       redirect("/login");

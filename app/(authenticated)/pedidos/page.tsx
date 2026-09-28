@@ -5,6 +5,7 @@ import {
   loadSupplierOrderSummaries,
 } from "@/lib/supplier-orders-data";
 import type { SupplierOrderView } from "@/lib/supplier-orders-types";
+import { measurePerformanceAudit } from "@/lib/performance-audit";
 
 type SupplierOrdersPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -18,14 +19,14 @@ export default async function SupplierOrdersPage({
   const requestedOrder = params.order;
   const view: SupplierOrderView =
     requestedView === "history" ? "history" : "active";
-  const result = await loadSupplierOrderSummaries(view);
+  const result = await measurePerformanceAudit("orders", "page_data", () => loadSupplierOrderSummaries(view));
   const orderCandidate =
     typeof requestedOrder === "string" && isSupplierOrderId(requestedOrder)
       ? requestedOrder
       : null;
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <main data-nk-perf-ready="/pedidos" className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
       {result.data ? (
         <SupplierOrdersWorkspace
           data={result.data}

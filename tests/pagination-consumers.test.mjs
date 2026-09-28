@@ -14,7 +14,10 @@ import { loadConfigurationDisassemblyTargetsByServoId } from "../lib/assistant-c
 import { loadHistoryList } from "../lib/history-data.ts";
 import { loadPurchaseRecommendations } from "../lib/purchase-recommendations.ts";
 import { loadSupplierOrderPhotoCatalog } from "../lib/assistant-supplier-order-photo-catalog.ts";
+import { readSharedCatalogSnapshot } from "../lib/shared-catalog.ts";
+import { loadFreshStockBalances, loadFreshMinimumStocks } from "../lib/stock-operational-data.ts";
 import {
+  loadSupplierOrderCatalogWithClient,
   loadSupplierOrderSummariesWithClient,
   searchSupplierOrderIdsWithClient,
 } from "../lib/supplier-orders-data.ts";
@@ -267,6 +270,51 @@ test("lista e busca de Pedidos encontram resultados após 1000 e chunkam summari
   assert.ok(search.data.orderIds.includes(uuid(1_000)));
   assert.ok(client.calls.get("supplier_order_item_details").some(([from]) => from === 1_000));
   assert.ok(client.calls.get("supplier_order_summaries").length > 10);
+});
+
+test("spans de streams paginados não afirmam uma única wave ou query", async () => {
+  const items = Array.from({ length: size }, (_, index) => ({
+    id: `item-${index}`,
+    code: `P-${index}`,
+    description: `Peça ${index}`,
+    item_type: "LOOSE_PART",
+    is_active: true,
+    minimum_stock: 0,
+  }));
+  const client = fakeClient({
+    items,
+    servo_models: [],
+    commercial_configurations: [],
+    commercial_configuration_codes: [],
+    stock_balances: items.map((item) => ({ item_id: item.id, quantity: 1 })),
+    configuration_stock_balances: [],
+    supplier_order_summaries: Array.from({ length: size }, (_, index) => summaryRow(index)),
+    supplier_order_item_details: Array.from({ length: size }, (_, index) => orderItemRow(index)),
+  });
+  const logs = [];
+  const previousInfo = console.info;
+  try {
+    console.info = (line) => logs.push(JSON.parse(line));
+    await readSharedCatalogSnapshot(client);
+    await loadFreshStockBalances(client);
+    await loadFreshMinimumStocks(client);
+    await loadSupplierOrderSummariesWithClient("active", client);
+    await loadSupplierOrderCatalogWithClient(client);
+    await searchSupplierOrderIdsWithClient("active", "Peça", client);
+  } finally {
+    console.info = previousInfo;
+  }
+
+  assert.ok(client.calls.get("items").some(([from]) => from === 1_000));
+  assert.ok(client.calls.get("stock_balances").some(([from]) => from === 1_000));
+  assert.ok(client.calls.get("supplier_order_summaries").some(([from]) => from === 1_000));
+  for (const metric of logs.filter((entry) =>
+    (entry.event === "nk_performance_audit" && ["structural_read", "fresh_balances", "fresh_minimums"].includes(entry.phase)) ||
+    (entry.event === "supplier_orders_performance" && ["summaries", "catalog", "search"].includes(entry.loader))
+  )) {
+    assert.equal(Object.hasOwn(metric, "waveCount"), false, `${metric.loader}/${metric.phase} não mede ondas reais`);
+    assert.equal(Object.hasOwn(metric, "queryCount"), false, `${metric.loader}/${metric.phase} não mede queries físicas reais`);
+  }
 });
 
 test("Histórico soma 1001 relações dos mesmos 25 batches", async () => {

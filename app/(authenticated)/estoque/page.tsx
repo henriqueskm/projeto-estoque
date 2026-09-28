@@ -71,7 +71,7 @@ export default async function InventoryPage({
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <main data-nk-perf-ready="/estoque" className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
       {!inventoryResult.data ? (
         <>
           <header>

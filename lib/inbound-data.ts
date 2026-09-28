@@ -1,4 +1,3 @@
-import { createCommercialImageUrlMap } from "@/lib/commercial-configuration-images";
 import {
   type InboundCatalog,
   type InboundCommercialCode,
@@ -8,12 +7,14 @@ import { loadSharedCatalogSnapshot } from "@/lib/shared-catalog";
 import { buildStockCatalogBase } from "@/lib/stock-catalog-base";
 import { loadFreshStockBalances } from "@/lib/stock-operational-data";
 import { createClient } from "@/lib/supabase/server";
+import { logPerformanceAudit, performancePayloadBytes } from "@/lib/performance-audit";
 
 export type InboundCatalogResult =
   | { data: InboundCatalog; error: null }
   | { data: null; error: string };
 
 export async function getInboundCatalog(): Promise<InboundCatalogResult> {
+  const startedAt = performance.now();
   try {
     const supabase = await createClient();
     const [snapshot, operationalState] = await Promise.all([
@@ -30,15 +31,13 @@ export async function getInboundCatalog(): Promise<InboundCatalogResult> {
       };
     }
 
+    const buildStartedAt = performance.now();
     const base = buildStockCatalogBase(
       snapshot,
       stockBalancesResult.data ?? [],
       configurationBalancesResult.data ?? [],
     );
-    const imageUrlByPath = await createCommercialImageUrlMap(
-      supabase,
-      base.commercialCodes.map((configuration) => configuration.imagePath),
-    );
+    logPerformanceAudit({ loader: "inbound", phase: "base_transform", durationMs: Math.round(performance.now() - buildStartedAt), rowCount: base.physicalItems.length + base.commercialCodes.length });
     const physicalItems: InboundPhysicalItem[] = base.physicalItems.map(
       (item) => ({
         kind: "ITEM",
@@ -57,9 +56,7 @@ export async function getInboundCatalog(): Promise<InboundCatalogResult> {
         configurationId: commercialCode.configurationId,
         code: commercialCode.code,
         description: commercialCode.description,
-        imageUrl: commercialCode.imagePath
-          ? (imageUrlByPath.get(commercialCode.imagePath) ?? null)
-          : null,
+        hasImage: Boolean(commercialCode.imagePath),
         assembledBalance: commercialCode.assembledBalance,
         aliases: commercialCode.aliases,
         servo: {
@@ -74,7 +71,9 @@ export async function getInboundCatalog(): Promise<InboundCatalogResult> {
       }),
     );
 
-    return { data: { physicalItems, commercialCodes }, error: null };
+    const data = { physicalItems, commercialCodes };
+    logPerformanceAudit({ loader: "inbound", phase: "total", durationMs: Math.round(performance.now() - startedAt), rowCount: physicalItems.length + commercialCodes.length, payloadBytes: performancePayloadBytes(data) });
+    return { data, error: null };
   } catch {
     return {
       data: null,

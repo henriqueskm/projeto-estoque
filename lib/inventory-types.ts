@@ -34,7 +34,7 @@ export type InventoryCommercialConfiguration = {
   codes: string[];
   aliases: InventoryCommercialAlias[];
   description: string;
-  imageUrl: string | null;
+  hasImage: boolean;
   isActive: boolean;
   servo: {
     id: string;

@@ -35,7 +35,7 @@ export type InboundCommercialCode = {
   configurationId: string;
   code: string;
   description: string;
-  imageUrl: string | null;
+  hasImage: boolean;
   assembledBalance: number;
   aliases: string[];
   servo: InboundConfigurationComponent & {
