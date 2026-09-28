@@ -338,6 +338,7 @@ export function CommercialConfigurationImage({
                           type="button"
                           className="nk-focus min-h-11 rounded-xl bg-white px-4 font-bold text-brand-charcoal"
                           onClick={() => {
+                            closeButtonRef.current?.focus();
                             resource?.invalidate();
                             setPhoto(null);
                             setPhotoError(null);

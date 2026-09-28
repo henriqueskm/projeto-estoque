@@ -79,6 +79,8 @@ function harness(file, props, imports = {}) {
     calls, props,
     get tree() { return tree; }, get focus() { return focus; },
     render,
+    focusElement(node) { focus = node; document.activeElement = node; },
+    activateFocused() { focus.props.onClick(); render(); },
     click() { find(tree, (node) => node.type === "button" && node.props["aria-haspopup"] === "dialog").props.onClick({ stopPropagation() {} }); render(); },
     close() { find(tree, (node) => node.type === "button" && node.props["aria-label"] === "Fechar foto ampliada").props.onClick(); render(); },
     key(key, shiftKey = false) { let prevented = 0; for (const listener of [...(listeners.get("keydown") ?? [])]) listener({ key, shiftKey, preventDefault() { prevented++; } }); render(); return prevented; },
@@ -141,6 +143,33 @@ test("mudança de identidade ignora resposta anterior e não exibe foto de outra
     h.calls[1].resolve(success("correct-new")); await h.settle();
     assert.equal(find(h.tree, (node) => node.type === "img").props.src, "correct-new");
   } finally { h.dispose(); }
+});
+test("retry ativado pelo teclado mantém foco no botão Fechar enquanto recarrega", async () => {
+  for (const failure of ["resolver", "image"]) {
+    const h = harness("components/commercial-configuration-image.tsx", photoProps());
+    try {
+      h.render(); h.click();
+      h.calls[0].resolve(failure === "resolver"
+        ? { ok: false, json: async () => ({}) }
+        : success("first-url"));
+      await h.settle();
+      if (failure === "image") {
+        find(h.tree, (node) => node.type === "img").props.onError();
+        h.render();
+      }
+      const retry = find(h.tree, (node) => node.type === "button" && node.props.children === "Tentar novamente");
+      h.focusElement(retry);
+      // Native keyboard activation of a focused button invokes its onClick.
+      h.activateFocused();
+      assert.equal(h.focus.props["aria-label"], "Fechar foto ampliada", failure);
+      assert.equal(find(h.tree, (node) => node.type === "button" && node.props.children === "Tentar novamente"), undefined);
+      assert.ok(find(h.tree, (node) => node.props?.role === "status"));
+      assert.equal(h.calls.length, 2);
+      h.key("Escape");
+      assert.equal(h.focus.props["aria-haspopup"], "dialog");
+      assert.equal(find(h.tree, (node) => node.props?.role === "dialog"), undefined);
+    } finally { h.dispose(); }
+  }
 });
 test("thumbnail URL-ready continua renderizando imediatamente sem resolver", () => {
   const h = harness("components/commercial-configuration-image.tsx", { commercialCodes: ["1B"], imageUrl: "ready-thumbnail" });
