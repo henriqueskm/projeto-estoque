@@ -1,6 +1,6 @@
 # NK-PR-67 — auditoria de desempenho
 
-Estado: **MEASUREMENT READY FOR HUMAN RUN — confirmação no Preview pendente**. Há medições autenticadas locais de desenvolvimento, descritas abaixo. Nenhuma otimização de comportamento foi feita nesta PR; não há comparação antes/depois nem benchmark de produção.
+Estado: **baseline Preview coletado — pendente decisão de escopo/próxima fase**. Há medições autenticadas locais e de Preview, descritas abaixo. Nenhuma otimização de comportamento foi feita nesta PR; não há comparação antes/depois nem benchmark de produção. Assinatura sob demanda é o candidato medido, não uma alteração autorizada: loading/erro/retry do visualizador precisa definição na próxima fase.
 
 ## Caminho crítico antes da instrumentação
 
@@ -100,20 +100,76 @@ A abertura inicial após iniciar o processo dev teve callback estrutural 3729 ms
 
 No DOM inicial do Estoque com accordions fechados não havia `img`. O visualizador de imagem foi aberto/fechado e a imagem estava completa, com dimensão natural 813 × 727. Download e decode **não foram medidos**: a superfície automatizada não expôs Performance/Network. Nenhum erro de console foi capturado; houve warnings de `getSession` preexistentes. Isso é uma verificação pontual, não prova ausência de erros em todos os fluxos.
 
+## Baseline autenticado de Preview — 28/09 01:58–02:08 UTC
+
+Fonte: Lead, painel no navegador interno do Codex autenticado (viewport 641 × 738) e runtime logs Vercel filtrados por `nk_performance_audit` / `supplier_orders_performance` no deployment `dpl_5mnuhed8H2GfsodU23zSG1mxspaE`, região confirmada `iad1`, estado READY. App: `projeto-estoque-sp4o-b2rlvujce-henrqueskms-projects.vercel.app`; SHA medido `b0a718217c331e376dcd941cdbba623120614638`. No horário de Brasília, noite de 27/09. Região de banco/RTT não medidos; não inferir topologia ou causa de latência da região da função.
+
+Rodadas na mesma sessão, sem controle do cache da instância: **observadas/repetidas, não cold/warm comprovados**. Todos os cliques abaixo observaram intenção prefetch, não sua conclusão. Logs correlacionados por deployment, janela UTC e ordem das rotas, sem IDs de negócio. O header RSC cache MISS da Vercel não equivale a miss do catálogo compartilhado.
+
+| Navegação (commit + próximo frame, ms; não TTI) | Rodada 1 | Rodada 2 |
+| --- | ---: | ---: |
+| Assistente → Estoque | 1624 | 1419 |
+| Estoque → Entrada | 1373 | 1322 |
+| Entrada → Saída | 1264 | 1494 |
+| Saída → Pedidos | 1025 | 613 |
+| Pedidos → Estoque | 1329 | 1832 |
+
+Retorno à Home entre rodadas: 485 ms. Primeiro reload com diagnóstico: marcador inicial 1246 ms, **não TTI nem cold**. GET Home 01:58:54 UTC: claims 49, perfil 353, layout 405, gate catálogo 404, lookup 120/callback false, saldos 494, mínimos 513; Attention pendentes 493, recommendations 554, Safisa 669, total 670. Attention continua separado do shell. OPTIONS 01:58:56 foi excluído por não representar navegação normal.
+
+### Spans por rota no Preview
+
+Valores em ms, arredondados. Auth/profile integram o gate; catálogo, saldos e mínimos concorrem. Não somar colunas nem chamar painel − total de render client. JSON é resultado do loader, não payload RSC.
+
+| UTC / rota | Claims | Perfil | Gate catálogo | Lookup (callback false) | Saldos | Mínimos | Transform | Assinatura (76 paths) | Total loader |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 01:59:40 Estoque | 269 | 173 | 453 | 16 | 518 | 526 | 29 | 341 | 906 |
+| 02:00:48 Entrada | 40 | 503 | 546 | 12 | 526 | — | 12 | 199 | 772 |
+| 02:01:02 Saída | 7 | 530 | 541 | 10 | 434 | — | 11 | 167 | 733 |
+| 02:01:31 Estoque | 14 | 472 | 488 | 15 | 509 | 510 | 14 | 322 | 851 |
+| 02:02:33 Estoque | 9 | 417 | 428 | 15 | 257 | 446 | 11 | 290 | 749 |
+| 02:02:46 Entrada | 6 | 401 | 408 | 14 | 401 | — | 20 | 309 | 754 |
+| 02:02:57 Saída | 9 | 160 | 171 | 14 | 412 | — | 11 | 520 | 945 |
+| 02:03:14 Estoque | 7 | 406 | 416 | 13 | 182 | 205 | 11 | 830 | 1273 |
+
+Primeira amostra Estoque: 183 rows, JSON 149927 bytes; Entrada JSON 79112; Saída JSON 88077. Esses tamanhos não medem bytes RSC/rede. Não quantificamos a parcela das URLs nesses resultados.
+
+| UTC / operação Pedidos | Duração observada | Contagem / payload medidos |
+| --- | --- | --- |
+| 02:01:15 lista | summaries 463, página 464 | 11 rows, JSON 8144 bytes |
+| 02:03:07 lista repetida | summaries 177, página 178 | Stream paginado; sem waves físicas presumidas |
+| 02:03:48 detalhe core | 227 | 3 queries / 1 wave, 6 rows, JSON 4088 bytes |
+| 02:03:49 mídia posterior | 1135; enriquecimento 555; assinatura 167 | 7 operações / 4 waves, 4 rows, JSON 733 bytes, 1 path assinado |
+| 02:04:57 segundo detalhe core | 422 | 3 queries / 1 wave, 5 rows, JSON 3446 bytes |
+| Mídia posterior desse detalhe | 1129; enriquecimento 550; assinatura 169 | 7 operações / 4 waves, 3 rows, JSON 1016 bytes, 2 paths |
+| 02:06:12 terceiro detalhe core | 443 | 3 queries / 1 wave, 3 rows, JSON 1930 bytes |
+| Mídia posterior desse detalhe | 1307; enriquecimento 779; assinatura 150 | 7 operações / 4 waves, 1 row, JSON 472 bytes, 1 path |
+
+Rotas secundárias, primeiras navegações observadas no Preview: Aplicações marcador 1062 ms / loader 448 às 02:06:46 (1 query/1 wave, 8 rows); Estatísticas 941 / loader 421 às 02:06:56; Histórico 1042 / loader 630 às 02:07:07. Não interpretar diferença entre marcador e loader como render.
+
+Amostra adicional de Estoque, **fora das duas rodadas principais**, 02:07:18: gate 204, lookup 13/callback false, saldos 196, mínimos 448, transform 12, assinatura 207, total 670 ms. Não a misturar como terceira rodada pareada.
+
+Recommendations API 01:59:42: leitura estrutural 402 ms, lookup 417, callback true. Chamadas 02:01:33 / 02:02:35 / 02:03:16: lookup 13 / 14 / 12, callback false. Assim, **no Preview não há falha universal de reutilização do catálogo na API**. A causa da chamada com callback true não foi isolada.
+
+DOM inicial Estoque: 393 nós, zero `img`. Visualizador abriu/fechou; imagem carregada, dimensão natural 813 × 727. Download/decode, RTT, CPU client, TTI e bytes RSC não medidos: a superfície de automação retornou `performance` indisponível, sem trace Network/Performance. Contagem DOM isolada não quantifica render pesado.
+
+Regressão manual #65 no Preview: Lista recomendada abriu/reabriu; fechamento por X, Escape e backdrop, múltiplos ciclos e Back/Forward (oculta/reabre) confirmados. Lista de warnings/errors do browser vazia na observação; consulta scoped de 5xx no deployment entre 01:58 e 02:08:30 retornou vazia. Não prova ausência global de erros. Nenhuma mutação de estoque foi necessária para essa coleta read-only.
+
 ## Diagnóstico e dez respostas
 
-| Pergunta | Resposta sustentada pela coleta local | Limite / próximo passo |
+| Pergunta | Resposta sustentada pelas coletas | Limite / próximo passo |
 | --- | --- | --- |
-| 1. Maior custo na abertura inicial? | No reload observado, Attention teve 1285 ms; Safisa 1239 e recommendations 1284 concorrem. Layout 535 também é relevante. | Attention está fora do caminho bloqueante do shell desde #65. Shell e TTI não foram medidos; não concluir que Attention atrasou a primeira interface. |
-| 2. Maior custo ao navegar para Estoque? | O grupo de gates auth e leituras frescas tem centenas de ms; assinatura 91–202 ms é cauda secundária, transform 18–26 é menor. | Spans concorrem; trace/Network no Preview precisa identificar o caminho crítico de cada clique. |
-| 3. Maior custo em Entrada? | Gate catálogo/auth e saldos frescos dominam os spans observados; assinatura é custo serial relevante depois do builder. | Sem benchmark de produção ou correção antes/depois. |
-| 4. Maior custo em Saída? | Mesmo padrão medido de Entrada; saldos atuais e gate permanecem, assinatura adiciona cauda. | Não fundir regras de negócio nem cachear saldos. |
-| 5. #66 reutiliza catálogo? | Nas páginas observadas, lookup 2–6 ms e callback false mostram que essas chamadas não iniciaram leitura de origem antes do retorno. | Não prova hit global/instância Vercel; APIs recommendations tiveram callback true e precisam investigação separada. |
-| 6. Supabase é dominante? | Auth/perfil, leituras operacionais e Storage são os maiores grupos server medidos nessas amostras; transformações são menores. | Spans incluem espera remota e overhead, não tempo SQL puro. Não medimos RTT, EXPLAIN, transporte RSC ou produção; não afirmar dominância end-to-end. |
-| 7. Signed URLs/imagens importam? | Assinatura de 76 paths por tela custou 91–202 ms mesmo sem `img` no Estoque inicial. | É custo server comprovado. Download/decode/render de imagens não medidos; abrir foto funcionou pontualmente. |
-| 8. Render browser importa? | Ainda não há evidência que quantifique esse custo. Accordions fechados evitam montar as tabelas/imagens. | Painel − server não é render. Trace de main thread/paint e contagem DOM necessários antes de virtualização. |
-| 9. Auth/profile importa? | Sim nos spans locais: gate centenas de ms; reload Home perfil 285, claims 99 e layout 535. | Gates incluem dependências e overlap. React.cache deduplica no render; não inferir número duplicado de consultas de uma duração. Não enfraquecer autorização. |
-| 10. Próxima otimização? | Primeiro confirmar Preview e capturar waterfall/trace. Candidato limitado: reduzir a cauda de assinatura por sobreposição ou resolução sob demanda. | Nenhuma opção foi aplicada: exige prova antes/depois e preservação do conjunto de imagens, RLS e expiração. Não criar índice sem evidência/decisão humana. |
+| 1. Maior custo na abertura inicial? | Preview reload: Attention 670 ms (Safisa 669), layout 405, perfil 353; saldos/mínimos 494/513 dentro do ramo recommendations. Local: Attention 1285, layout 535. | Attention está fora do caminho bloqueante do shell desde #65. Shell e TTI não medidos; não afirmar que esse ramo atrasou a primeira interface. |
+| 2. Maior custo ao navegar para Estoque? | Preview: grupo auth/fresh reads com centenas de ms; assinatura 290–830 é cauda serial, chegando a ser o maior span da última amostra. Transform 11–29 é menor. | Custos variam por amostra; não eleger um componente único universal. Trace/Network faltam para decomposição end-to-end. |
+| 3. Maior custo em Entrada? | Preview: gate 408/546, saldos 401/526 concorrem; assinatura 199/309 é cauda posterior. | Sem produção ou comparação antes/depois. Não somar gate e saldos. |
+| 4. Maior custo em Saída? | Preview: gate 171/541 e saldos 412/434; assinatura 167/520, maior span na segunda amostra. | Não fundir regras nem cachear saldos; Storage e consultas atuais têm variação relevante. |
+| 5. #66 reutiliza catálogo? | Páginas Preview: lookup 10–16/callback false; APIs repetidas 12–14/false. Local páginas: 2–6/false. Evidência de ausência de leitura local iniciada nessas chamadas. | Callback true apareceu em uma API Preview e em APIs locais; não prova cold nem falha universal. RSC MISS é outra camada. |
+| 6. Supabase é dominante? | Auth/perfil, leituras operacionais e Storage são os maiores grupos server observados; transformações são menores. | Spans medem espera/overhead, não SQL puro. RTT, EXPLAIN, RSC e CPU browser não medidos; não afirmar causa infra/índice nem dominância end-to-end. |
+| 7. Signed URLs/imagens importam? | Preview: 76 paths por tela, 167–830 ms; local 91–202. Zero img no Estoque inicial. Assinatura é trabalho inicial comprovado usado só quando visualizador abre. | Download/decode/render não medidos; foto funcionou pontualmente. Resolução sob demanda muda loading/error/retry, exigindo decisão. |
+| 8. Render browser importa? | Ainda não há evidência que quantifique esse custo. Accordions fechados evitam montar as tabelas/imagens; DOM inicial Preview com 393 nós/zero img. | Painel − server não é render. Trace de main thread/paint necessário antes de virtualização; contagem isolada não mede custo. |
+| 9. Auth/profile importa? | Sim: Preview perfil 160–530, gate 171–546; reload Home perfil 353/layout 405. | Gates incluem dependências/overlap. React.cache deduplica no render; não inferir consultas duplicadas de duração. Não enfraquecer autorização. |
+| 10. Próxima otimização? | Candidato 1: tirar assinatura antecipada do caminho inicial, resolvendo mídia somente ao abrir visualizador. Aguardar decisão humana de UX e contrato; depois medir antes/depois no mesmo Preview. | Preservar alvos/aliases/kits/configurações inativas montadas, RLS e expiração. Sem justificativa para índice, auth change ou virtualização. |
+
+Ordenação sustentada pelas amostras server: (1) grupo auth + leituras frescas e assinatura de imagens têm os maiores custos; sua ordem relativa varia por request; (2) lookup estrutural reutilizado e transforms são menores nas navegações observadas. Assinatura é o candidato corrigível de escopo moderado porque sua necessidade é posterior à tela inicial, não porque seja sempre maior que auth/saldos. Attention tem custo medido alto, mas está fora do shell bloqueante. Mídia Pedidos também é posterior ao core, não gargalo comprovado da lista.
 
 ### Avaliação das correções, sem implementação
 
@@ -121,7 +177,11 @@ Sobrepor assinatura à leitura operacional é possível em Entrada/Saída porque
 
 Como catálogo e estado operacional já concorrem, antecipar assinatura não elimina automaticamente seus 91–202 ms. Nas amostras pareadas, o espaço estimado de sobreposição + transform é da ordem de 20–59 ms no Estoque, 49 ms na Entrada e 26 ms na Saída; esses números são **análise de dependências**, não ganho medido, nem promessa. A correção foi adiada pelo Lead para evitar mudar comportamento com teto limitado sem antes/depois.
 
-Assinatura sob demanda poderia remover trabalho inicial sem imagens visíveis, mas precisaria contrato autenticado por alvo validado, estados de carregamento/erro, compatibilidades e teste de expiração. É mudança moderada, não apenas deslocar um await. Não foi implementada. Não há justificativa medida para virtualização, memoização adicional, mudança de auth ou reabrir a otimização do core de Pedidos.
+Assinatura sob demanda poderia remover trabalho inicial sem imagens visíveis, mas precisaria contrato autenticado por alvo validado, estados de carregamento/erro/retry, compatibilidades e teste de expiração. É mudança moderada, não apenas deslocar um await. Não foi implementada. Não há justificativa medida para virtualização, memoização adicional, mudança de auth ou reabrir a otimização do core de Pedidos.
+
+Auditoria dos consumidores: Estoque usa foto em menu de ações/configuração e botão/seletor de kit; Entrada/Saída usam text-link. Nesses casos o `img` só aparece no modal, embora todas as URLs sejam assinadas no loader. O componente compartilhado também atende thumbnails em outros fluxos: não alterar indiscriminadamente todos os consumidores. A lista/compatibilidades deve continuar incluindo exatamente os alvos atuais; mínimo e saldo não podem virar cache.
+
+Endpoints existentes de mídia não são substitutos diretos: Assistente resolve código ativo/enriquece catálogo e não mantém configuração inativa montada; Pedidos exige order/view. Resolução por identidade de configuração precisaria endpoint somente leitura, active auth e RLS existentes, path obtido no servidor (não path livre do client), resposta no-store e refresh por expiração. UX muda: hoje falha de assinatura pode ocultar foto antes do clique; sob demanda seria loading/erro/retry depois. Isso é proposta para **decisão de escopo/próxima fase**, não stop técnico obrigatório por mudança de auth/infra demonstrada. Nenhuma nova política auth nem weakening é proposta.
 
 ### Recommendations e diferença de contexto de cache
 
@@ -131,6 +191,6 @@ Não atribuímos callback true da API automaticamente a `dynamic = "force-dynami
 
 As melhorias de core/mídia sob demanda de Pedidos (#53), navegação/recommendations (#65) e catálogo (#66) já estavam na base. A #67 adicionou diagnóstico, não essas otimizações. O anexo histórico da #53 foi avaliado no contexto atual, sem ressuscitar sua PR mergeada.
 
-Preview/produção, payload RSC, rede/browser download/decode, custo DOM/render, shell/TTI e cold/warm controlados continuam **não medidos**. O navegador autenticado local tornou a coleta possível após a implementação inicial; não substitui confirmação autenticada no Preview. O botão Desligar foi verificado e removeu o painel ao final da rodada. Não é correto marcar APPROVED FOR HUMAN TEST como se o diagnóstico de produção estivesse concluído.
+Produção, payload RSC, rede/browser download/decode, CPU/render, shell/TTI e cold/warm controlados continuam **não medidos**. Preview autenticado foi medido, em duas rodadas, sem antes/depois funcional. Contagem DOM foi pontual, não profiling. Verificação desktop adicional 1280 × 800: Entrada → Saída → Pedidos → Home com sidebar presente; Estoque sem overflow horizontal. Não misturar essas navegações às duas rodadas de 641 × 738. Viewport restaurado e Desligar confirmou remoção do painel no Preview; Home autenticada permaneceu aberta. Rede lenta, retry, expiração de URL e usuários/perfis diferentes não foram exercitados no browser nesta coleta; testes automatizados anteriores cobrem auth/gating. Não é correto marcar APPROVED FOR HUMAN TEST como se implementação/validação da otimização estivesse concluída.
 
-Próxima rodada: abrir Preview do HEAD final autenticado; repetir a sequência com viewport/rede registrados, copiar painel + logs na mesma janela e capturar Network/Performance. Conferir callback das páginas e de duas requests consecutivas de recommendations, sem copiar cookies, IDs ou URLs assinadas. Separar compilação dev, prefetch, request RSC, espera server e main thread. Depois escolher no máximo 1–2 correções comprovadas e medir antes/depois no mesmo ambiente. Se o gargalo exigir migration/index/RPC/schema/RLS/auth/infra/dependência, parar para decisão humana.
+Próximo passo é decisão humana: autorizar ou não resolução de fotos sob demanda com loading/erro/retry. Se autorizada, definir contrato preservando media atual e implementar um único gargalo; medir antes/depois no mesmo Preview/sessão/viewport com logs e, quando disponível, Network/Performance. Não copiar cookies, IDs de negócio ou URLs assinadas. Se o gargalo exigir migration/index/RPC/schema/RLS/auth/infra/dependência, parar para decisão humana em vez de contornar com cache operacional. Nenhuma dessas mudanças foi autorizada ou executada nesta rodada.
