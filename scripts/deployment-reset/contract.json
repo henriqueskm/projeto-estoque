@@ -1,23 +1,28 @@
 {
-  "procedureVersion": 1,
+  "procedureVersion": 2,
   "projectName": "EstoqueNK",
   "projectRef": "isdjboconmwaqipjrjvp",
   "databaseName": "postgres",
-  "sourceMainSha": "12e6e5838bb905332232cbf724df46f6aa9bc810",
-  "migrationCount": 31,
-  "latestMigration": "20260828234000",
-  "migrationFingerprint": "5843cb4219454f0e066bf219ec588843",
-  "schemaFingerprint": "2837e6e57d7431cb0bf00782a371bb07",
-  "catalogFingerprint": "1dcebe6122e26da78d48eaaa1f544466",
+  "sourceMainSha": "50af5996ff0fb7e36c2c3ae08d20ca3232df6cdc",
+  "migrationCount": 38,
+  "latestMigration": "20260917120000",
+  "migrationFingerprint": "a56bf1f408eb61dd71ec618347d498e4",
+  "schemaFingerprint": "d6e53d1634ccc741d4133401c33cd619",
+  "catalogFingerprint": "d5b8046a183d9dedcaa64e3e59c67b7a",
+  "expectedPostCatalogFingerprint": "ce7fe67b9de648140fd49e2ae42e1130",
+  "foreignKeyFingerprint": "0ec15964e334e2eb882e65971fb389fc",
+  "readOnlyCliVersion": "2.112.0",
   "catalogCounts": {
-    "items": 107,
+    "items": 106,
     "servoModels": 22,
     "installationKits": 74,
     "repairKits": 5,
-    "looseParts": 6,
+    "looseParts": 5,
     "configurations": 80,
     "commercialCodes": 80,
-    "compatibilities": 22
+    "compatibilities": 22,
+    "vehicleBrands": 8,
+    "vehicleApplications": 295
   },
   "authUsers": 3,
   "profiles": 3,
@@ -25,11 +30,11 @@
   "bucketId": "commercial-catalog-images",
   "referencedImages": 76,
   "storageObjects": 76,
-  "dynamicItems": [
-    { "id": "313a920b-5b6c-4132-b342-3fdd69fc4aa1", "code": "067" },
-    { "id": "523fe146-cde0-4db8-a609-33002c15a3aa", "code": "091" },
-    { "id": "815db224-67b7-41a5-9fbb-f3fb38514972", "code": "091/VF" },
-    { "id": "efce5819-0fe5-4766-8856-29924fdc3fcd", "code": "7 INV" },
-    { "id": "e0c7fc9e-56bb-45cd-a60a-fc424b8c6127", "code": "SUB071" }
+  "approvedLooseParts": [
+    { "id": "313a920b-5b6c-4132-b342-3fdd69fc4aa1", "code": "067", "description": "MANCAL DO MOTOR DE PARTIDA", "item_type": "LOOSE_PART", "is_active": true, "notes": null },
+    { "id": "523fe146-cde0-4db8-a609-33002c15a3aa", "code": "091", "description": "TAMPA INTERMEDIARIA 025 - 028", "item_type": "LOOSE_PART", "is_active": true, "notes": null },
+    { "id": "815db224-67b7-41a5-9fbb-f3fb38514972", "code": "091/VF", "description": "TAMPA INTERMEDIARIA VF - 024,5", "item_type": "LOOSE_PART", "is_active": true, "notes": null },
+    { "id": "4a6d41ee-752a-43fc-b52e-abccbd9cdf7d", "code": "110", "description": "Suporte", "item_type": "LOOSE_PART", "is_active": true, "notes": null },
+    { "id": "e0c7fc9e-56bb-45cd-a60a-fc424b8c6127", "code": "SUB071", "description": "EMPURRADOR C/ ADAPTADOR", "item_type": "LOOSE_PART", "is_active": true, "notes": null }
   ]
 }

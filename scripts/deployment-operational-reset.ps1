@@ -12,6 +12,12 @@ param(
   [Parameter(Mandatory = $true, ParameterSetName = "DatabaseUrl")]
   [string]$DatabaseUrlEnvironmentVariable,
 
+  [Parameter(Mandatory = $true, ParameterSetName = "LinkedReadOnly")]
+  [string]$SupabaseCliPath,
+
+  [Parameter(Mandatory = $true, ParameterSetName = "LinkedReadOnly")]
+  [string]$LinkedWorkspacePath,
+
   [ValidateSet("PRESERVE", "DISABLE", "DELETE")]
   [string]$PushSubscriptions = "PRESERVE",
 
@@ -25,6 +31,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
 $confirmationPhrase = "CONFIRMAR RESET DE IMPLANTACAO ESTOQUENK"
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $defaultContractPath = Join-Path $PSScriptRoot "deployment-reset\contract.json"
@@ -62,6 +69,8 @@ $requiredRelations = @(
   "public.supplier_order_stock_entries",
   "public.supplier_order_stock_entry_lines",
   "public.supplier_orders"
+  "public.vehicle_application_brands"
+  "public.vehicle_applications"
 )
 
 function Get-Md5 {
@@ -88,16 +97,6 @@ function Invoke-CheckedGit {
   return (($result | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine).Trim()
 }
 
-function Add-PsqlVariable {
-  param(
-    [Parameter(Mandatory = $true)][System.Collections.Generic.List[string]]$Arguments,
-    [Parameter(Mandatory = $true)][string]$Name,
-    [AllowEmptyString()][string]$Value
-  )
-  $Arguments.Add("-v")
-  $Arguments.Add("$Name=$Value")
-}
-
 if (-not $ContractPath) {
   $ContractPath = $defaultContractPath
 }
@@ -106,16 +105,36 @@ $resolvedDefaultContractPath = [System.IO.Path]::GetFullPath($defaultContractPat
 if (-not (Test-Path -LiteralPath $resolvedContractPath)) {
   throw "Reset contract not found."
 }
-$contract = Get-Content -LiteralPath $resolvedContractPath -Raw | ConvertFrom-Json
+$contract = Get-Content -Encoding UTF8 -LiteralPath $resolvedContractPath -Raw | ConvertFrom-Json
+
+if ($PSCmdlet.ParameterSetName -eq "LinkedReadOnly" -and $Mode -ne "DryRun") {
+  throw "The Supabase Management API transport only accepts DryRun."
+}
 
 if (
   $contract.projectRef -notmatch '^[a-z0-9]{20}$' -or
   $contract.sourceMainSha -notmatch '^[0-9a-f]{40}$' -or
   $contract.schemaFingerprint -notmatch '^[0-9a-f]{32}$' -or
   $contract.catalogFingerprint -notmatch '^[0-9a-f]{32}$' -or
-  $contract.migrationFingerprint -notmatch '^[0-9a-f]{32}$'
+  $contract.migrationFingerprint -notmatch '^[0-9a-f]{32}$' -or
+  $contract.expectedPostCatalogFingerprint -notmatch '^[0-9a-f]{32}$' -or
+  $contract.foreignKeyFingerprint -notmatch '^[0-9a-f]{32}$' -or
+  [int]$contract.procedureVersion -ne 2 -or
+  @($contract.approvedLooseParts).Count -ne [int]$contract.catalogCounts.looseParts
 ) {
   throw "Reset contract is incomplete or malformed."
+}
+
+$approvedIds = @($contract.approvedLooseParts | ForEach-Object {
+  if ($_.id -notmatch '^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$' -or
+      [string]::IsNullOrWhiteSpace($_.code) -or
+      $_.item_type -ne "LOOSE_PART") {
+    throw "Approved loose-part identities are malformed."
+  }
+  $_.id
+})
+if (@($approvedIds | Select-Object -Unique).Count -ne $approvedIds.Count) {
+  throw "Duplicate approved loose-part identity."
 }
 
 $null = Invoke-CheckedGit -Arguments @("cat-file", "-e", "$($contract.sourceMainSha)^{commit}")
@@ -138,9 +157,48 @@ if (
 }
 
 $identifiedProjectRef = $null
-$targetIsRemote = $PSCmdlet.ParameterSetName -eq "DatabaseUrl"
+$linkedReadOnly = $PSCmdlet.ParameterSetName -eq "LinkedReadOnly"
+$targetIsRemote = $PSCmdlet.ParameterSetName -in @("DatabaseUrl", "LinkedReadOnly")
+if ($targetIsRemote -and $LocalTest) {
+  throw "LocalTest is never accepted for a remote target."
+}
 $databaseUri = $null
-if ($targetIsRemote) {
+if ($linkedReadOnly) {
+  if ($AllowRemoteExecution -or $LocalTest -or $ForceValidationFailure) {
+    throw "Execution/test flags are invalid for the read-only API transport."
+  }
+  if (-not (Test-Path -LiteralPath $SupabaseCliPath -PathType Leaf)) {
+    throw "An existing Supabase CLI executable is required; never install implicitly."
+  }
+  $cliVersion = (& $SupabaseCliPath --version 2>$null | Select-Object -Last 1).Trim()
+  if ($LASTEXITCODE -ne 0 -or $cliVersion -ne "2.112.0" -or
+      $contract.readOnlyCliVersion -ne "2.112.0") {
+    throw "Read-only API transport requires the audited Supabase CLI version 2.112.0."
+  }
+  $refPath = Join-Path $LinkedWorkspacePath "supabase\.temp\project-ref"
+  if (-not (Test-Path -LiteralPath $refPath)) {
+    throw "Linked project metadata is required."
+  }
+  $identifiedProjectRef = (Get-Content -Encoding UTF8 -LiteralPath $refPath -Raw).Trim()
+  if ($identifiedProjectRef -ne $contract.projectRef -or
+      ($env:SUPABASE_PROJECT_REF -and $env:SUPABASE_PROJECT_REF -ne $identifiedProjectRef)) {
+    throw "Linked project ref does not match the contracted actual target."
+  }
+  $projectsOutput = & $SupabaseCliPath projects list --workdir $LinkedWorkspacePath --output json 2>&1
+  if ($LASTEXITCODE -ne 0) { throw "Could not verify linked project via the authenticated CLI." }
+  $projectsText = ($projectsOutput | ForEach-Object { $_.ToString() }) -join "`n"
+  $projectsMatch = [Regex]::Match($projectsText, '(?s)\[\s*\{.*\}\s*\]')
+  try {
+    if (-not $projectsMatch.Success) { throw "Invalid project metadata" }
+    $projects = $projectsMatch.Value | ConvertFrom-Json
+    $actualProject = @($projects | Where-Object { $_.id -eq $identifiedProjectRef })
+    if ($actualProject.Count -ne 1 -or $actualProject[0].name -ne $contract.projectName) {
+      throw "Project metadata mismatch"
+    }
+  }
+  catch { throw "Actual linked project metadata guard failed." }
+}
+elseif ($targetIsRemote) {
   if ([string]::IsNullOrWhiteSpace($DatabaseUrlEnvironmentVariable)) {
     throw "A database URL environment-variable name is required."
   }
@@ -214,13 +272,12 @@ if ($Mode -eq "Execute") {
 }
 
 $sqlPath = if ($Mode -eq "DryRun") { $dryRunSqlPath } else { $executeSqlPath }
-$sql = Get-Content -LiteralPath $sqlPath -Raw
+$sql = Get-Content -Encoding UTF8 -LiteralPath $sqlPath -Raw
 $psqlArguments = [System.Collections.Generic.List[string]]::new()
 foreach ($argument in @("-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-f", "-")) {
   $psqlArguments.Add($argument)
 }
 
-$dynamicIds = ($contract.dynamicItems | ForEach-Object { $_.id }) -join ","
 $variables = [ordered]@{
   execution_mode = $Mode.ToUpperInvariant()
   confirm_phrase = $(if ($Mode -eq "Execute") { $Confirmation } else { "" })
@@ -237,6 +294,9 @@ $variables = [ordered]@{
   expected_migration_fingerprint = [string]$contract.migrationFingerprint
   expected_schema_fingerprint = [string]$contract.schemaFingerprint
   expected_catalog_fingerprint = [string]$contract.catalogFingerprint
+  expected_post_catalog_fingerprint = [string]$contract.expectedPostCatalogFingerprint
+  expected_foreign_key_fingerprint = [string]$contract.foreignKeyFingerprint
+  approved_loose_parts = ConvertTo-Json -InputObject @($contract.approvedLooseParts) -Depth 10 -Compress
   expected_items = [string]$contract.catalogCounts.items
   expected_servo_models = [string]$contract.catalogCounts.servoModels
   expected_installation_kits = [string]$contract.catalogCounts.installationKits
@@ -245,47 +305,82 @@ $variables = [ordered]@{
   expected_configurations = [string]$contract.catalogCounts.configurations
   expected_commercial_codes = [string]$contract.catalogCounts.commercialCodes
   expected_compatibilities = [string]$contract.catalogCounts.compatibilities
+  expected_vehicle_brands = [string]$contract.catalogCounts.vehicleBrands
+  expected_vehicle_applications = [string]$contract.catalogCounts.vehicleApplications
   expected_auth_users = [string]$contract.authUsers
   expected_profiles = [string]$contract.profiles
   expected_memberships = [string]$contract.safisaMemberships
   expected_bucket_id = [string]$contract.bucketId
   expected_referenced_images = [string]$contract.referencedImages
   expected_storage_objects = [string]$contract.storageObjects
-  expected_dynamic_item_ids = $dynamicIds
   required_relations = $requiredRelations -join ","
   push_subscription_action = $PushSubscriptions
 }
-foreach ($entry in $variables.GetEnumerator()) {
-  Add-PsqlVariable -Arguments $psqlArguments -Name $entry.Key -Value $entry.Value
-}
+# Bind SQL literals in stdin, rather than sending JSON through Windows native
+# argv, which removes its double quotes under Windows PowerShell 5.1.
+$sql = [Regex]::Replace($sql, ":'([a-z_]+)'", {
+  param($match)
+  $key = $match.Groups[1].Value
+  if (-not $variables.Contains($key)) { throw "Unbound SQL variable." }
+  return "'" + ([string]$variables[$key]).Replace("'", "''") + "'"
+})
 
-if ($targetIsRemote) {
-  $oldPgValues = @{}
-  foreach ($name in @("PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE", "PGSSLMODE")) {
-    $oldPgValues[$name] = [Environment]::GetEnvironmentVariable($name)
-  }
+if ($linkedReadOnly) {
+  # 2.112.0 resolves a DB connection before using the Management API. A nonempty
+  # local sentinel returns that unused config without minting a login role.
+  # This is not a credential and is never used to authenticate to PostgreSQL.
+  $oldCliPassword = [Environment]::GetEnvironmentVariable("SUPABASE_DB_PASSWORD")
   try {
-    $userInfo = $databaseUri.UserInfo -split ':', 2
-    $env:PGHOST = $databaseUri.Host
-    $env:PGPORT = if ($databaseUri.Port -gt 0) { [string]$databaseUri.Port } else { "5432" }
-    $env:PGUSER = [System.Uri]::UnescapeDataString($userInfo[0])
-    $env:PGPASSWORD = if ($userInfo.Count -gt 1) { [System.Uri]::UnescapeDataString($userInfo[1]) } else { "" }
-    $env:PGDATABASE = $databaseUri.AbsolutePath.TrimStart('/')
-    $env:PGSSLMODE = "require"
-    $dockerArguments = @("run", "--rm", "-i", "-e", "PGHOST", "-e", "PGPORT", "-e", "PGUSER", "-e", "PGPASSWORD", "-e", "PGDATABASE", "-e", "PGSSLMODE", "postgres:17-alpine", "psql") + $psqlArguments
-    $output = $sql | & docker @dockerArguments 2>&1
+    $env:SUPABASE_DB_PASSWORD = "NK_MANAGEMENT_API_ONLY_NO_DB_CONNECT"
+    $apiSql = [Regex]::Replace($sql, '(?m)^\\set ON_ERROR_STOP on\r?\n', '')
+    if ($apiSql -notmatch '(?i)^\s*begin transaction isolation level repeatable read read only;') {
+      throw "Management API SQL must start in a read-only transaction."
+    }
+    # stdin avoids Windows command-line quoting of SQL/JSON and keeps credentials
+    # in the CLI's existing credential provider. Never use --debug.
+    $previousNativePreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "Continue"
+      $output = $apiSql | & $SupabaseCliPath db query --linked --workdir $LinkedWorkspacePath --output json 2>&1
+      $psqlExitCode = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $previousNativePreference }
+    if (($output -join "`n") -match 'Initialising login role') {
+      throw "Unexpected login-role initialization; read-only transport aborted."
+    }
+    if ($psqlExitCode -ne 0) { throw "Read-only API query failed; raw output suppressed." }
+    try {
+      $apiText = ($output | ForEach-Object { $_.ToString() }) -join "`n"
+      $apiResult = $apiText | ConvertFrom-Json
+      if (@($apiResult.rows).Count -ne 1) { throw "Invalid result" }
+      $output = @($apiResult.rows[0].PSObject.Properties.Value)
+    }
+    catch { throw "Read-only API report could not be parsed safely." }
+  }
+  finally { [Environment]::SetEnvironmentVariable("SUPABASE_DB_PASSWORD", $oldCliPassword) }
+}
+elseif ($targetIsRemote) {
+  # Keep SQL binding and every procedure guard above unchanged. Only the remote
+  # transport changes: validated local Docker pipe, existing PG17.6 image and
+  # protected stdin, never credentials in Docker Env/argv or an implicit pull.
+  $transportPath = Join-Path $PSScriptRoot "deployment-reset\postgres-transport.mjs"
+  $previousNativePreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $output = $sql | & node $transportPath $Mode $DatabaseUrlEnvironmentVariable 2>&1
     $psqlExitCode = $LASTEXITCODE
   }
-  finally {
-    foreach ($name in $oldPgValues.Keys) {
-      [Environment]::SetEnvironmentVariable($name, $oldPgValues[$name])
-    }
-  }
+  finally { $ErrorActionPreference = $previousNativePreference }
 }
 else {
   $dockerArguments = @("exec", "-i", $ContainerName, "psql", "-U", "postgres", "-d", $contract.databaseName) + $psqlArguments
-  $output = $sql | & docker @dockerArguments 2>&1
-  $psqlExitCode = $LASTEXITCODE
+  $previousNativePreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $output = $sql | & docker @dockerArguments 2>&1
+    $psqlExitCode = $LASTEXITCODE
+  }
+  finally { $ErrorActionPreference = $previousNativePreference }
 }
 
 if ($psqlExitCode -ne 0) {
@@ -339,7 +434,7 @@ if ($Mode -eq "DryRun") {
   Write-Host "Configuracoes com minimo > 0: $($report.reinitialize.configurationsWithMinimum)"
   Write-Host "Push subscriptions: $PushSubscriptions"
   Write-Host ""
-  Write-Host "NENHUMA ALTERACAO FOI EXECUTADA."
+  Write-Host "NENHUMA ALTERACAO SQL DE DADOS FOI EXECUTADA NESTE DRY RUN."
   if (-not $report.guards.allPassed) {
     throw "Dry-run completed without mutations, but one or more execution guards failed."
   }

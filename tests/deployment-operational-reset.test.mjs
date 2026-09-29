@@ -1,135 +1,126 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve, join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const runner = readFileSync("scripts/deployment-operational-reset.ps1", "utf8");
 const dryRun = readFileSync("scripts/deployment-reset/dry-run.sql", "utf8");
 const execute = readFileSync("scripts/deployment-reset/execute.sql", "utf8");
-const fixture = readFileSync("tests/fixtures/deployment-operational-reset.sql", "utf8");
 const contract = JSON.parse(readFileSync("scripts/deployment-reset/contract.json", "utf8"));
+const localTest = readFileSync("tests/deployment-operational-reset.cli.local.ps1", "utf8");
 
-test("versioned reset contract pins the audited production identity", () => {
-  assert.equal(contract.projectName, "EstoqueNK");
-  assert.equal(contract.projectRef, "isdjboconmwaqipjrjvp");
-  assert.equal(contract.databaseName, "postgres");
-  assert.equal(contract.sourceMainSha, "12e6e5838bb905332232cbf724df46f6aa9bc810");
-  assert.equal(contract.migrationCount, 31);
-  assert.equal(contract.latestMigration, "20260828234000");
-  for (const key of ["migrationFingerprint", "schemaFingerprint", "catalogFingerprint"]) {
-    assert.match(contract[key], /^[0-9a-f]{32}$/);
-  }
-  assert.equal(contract.catalogCounts.items, 107);
-  assert.equal(contract.catalogCounts.configurations, 80);
-  assert.equal(contract.catalogCounts.commercialCodes, 80);
-  assert.equal(contract.catalogCounts.compatibilities, 22);
-  assert.equal(contract.dynamicItems.length, 5);
+test("audited PRE and independently expected POST contract retain exact identities", () => {
+  assert.equal(contract.sourceMainSha, "50af5996ff0fb7e36c2c3ae08d20ca3232df6cdc");
+  assert.equal(contract.migrationCount, 38);
+  assert.equal(contract.latestMigration, "20260917120000");
+  assert.equal(contract.catalogCounts.items, 106);
+  assert.equal(contract.catalogCounts.looseParts, 5);
+  assert.equal(contract.catalogCounts.vehicleApplications, 295);
+  assert.equal(contract.catalogCounts.vehicleBrands, 8);
+  assert.equal(contract.catalogCounts.items - contract.approvedLooseParts.length, 101);
+  assert.equal(new Set(contract.approvedLooseParts.map(p => p.id)).size, 5);
+  assert.deepEqual(contract.approvedLooseParts.map(p => p.code), ["067", "091", "091/VF", "110", "SUB071"]);
+  assert.notEqual(contract.catalogFingerprint, contract.expectedPostCatalogFingerprint);
+  for (const key of ["schemaFingerprint", "catalogFingerprint", "migrationFingerprint", "expectedPostCatalogFingerprint", "foreignKeyFingerprint"]) assert.match(contract[key], /^[a-f0-9]{32}$/);
 });
 
-test("dry-run SQL is a single read-only report", () => {
-  const withoutComments = dryRun.replace(/--.*$/gm, "");
-  assert.match(withoutComments, /^\s*\\set ON_ERROR_STOP on\s+with\b/i);
-  assert.doesNotMatch(
-    withoutComments,
-    /\b(insert|update|delete|truncate|alter|drop|create|grant|revoke|call|do)\b/i,
-  );
-  assert.match(dryRun, /'mutationsExecuted', false/);
-  assert.match(dryRun, /RESET_OPERACIONAL_DRY_RUN/);
-  assert.match(dryRun, /required_relations_present/);
-  assert.match(dryRun, /dynamicItems/);
-  assert.match(dryRun, /push_subscription_action/);
+test("DryRun is an explicit repeatable read read-only transaction without DDL/DML", () => {
+  const sql = dryRun.replace(/--.*$/gm, "");
+  assert.match(sql, /begin transaction isolation level repeatable read read only;/i);
+  assert.match(sql, /set local standard_conforming_strings = on;/i);
+  assert.doesNotMatch(sql, /\b(insert|update|delete|truncate|alter|drop|create|grant|revoke|call|do)\b/i);
+  assert.match(sql, /commit;\s*$/);
+  assert.match(sql, /no_protected_loose_part_references/);
+  assert.match(sql, /safisa_trigger_active/);
 });
 
-test("execute path requires explicit independent acknowledgements", () => {
+test("Execute retains human guards and proves exact authorized delta and ROW_COUNT", () => {
   assert.match(runner, /CONFIRMAR RESET DE IMPLANTACAO ESTOQUENK/);
   assert.match(runner, /BackupValidated/);
   assert.match(runner, /OperationsPaused/);
   assert.match(runner, /AllowRemoteExecution/);
-  assert.match(runner, /Remote execution is blocked/);
-  assert.match(runner, /versioned default contract/);
-  assert.match(runner, /tracked worktree/);
-  assert.match(runner, /derive a Supabase project ref from the actual database target/);
-  assert.match(runner, /Local execution requires a disposable Supabase database container/);
+  assert.match(runner, /LocalTest is never accepted for a remote target/);
+  assert.match(execute, /get diagnostics affected = row_count/g);
+  assert.match(execute, /Exact ROW_COUNT validation failed/);
+  assert.match(execute, /expected_post_catalog_fingerprint/);
+  assert.match(execute, /deployment_reset_fk_fingerprint/);
+  assert.match(execute, /protected structural references/);
+  assert.doesNotMatch(execute, /session_replication_role|disable\s+trigger\s+all|truncate|cascade/i);
+  assert.equal((execute.match(/disable trigger safisa_portal_events_reject_mutation/g) ?? []).length, 1);
+  assert.equal((execute.match(/enable trigger safisa_portal_events_reject_mutation/g) ?? []).length, 1);
+  assert.match(execute, /lock table[\s\S]*in share row exclusive mode/);
 });
 
-test("execute SQL uses one transaction and the FK-safe order", () => {
-  assert.match(execute, /^\\set ON_ERROR_STOP on\s+begin;/i);
-  assert.match(execute, /commit;\s*$/i);
-  assert.doesNotMatch(execute, /session_replication_role/i);
-  assert.doesNotMatch(execute, /disable\s+trigger\s+all/i);
-
-  const deleteEntryLines = execute.indexOf("delete from public.supplier_order_stock_entry_lines");
-  const resetReadiness = execute.indexOf("update public.supplier_order_items");
-  const deleteOrderItems = execute.indexOf("delete from public.supplier_order_items");
-  const deleteOrders = execute.indexOf("delete from public.supplier_orders");
-  const deleteMovements = execute.indexOf("delete from public.stock_movements");
-  const deleteBatches = execute.indexOf("delete from public.movement_batches");
-
-  assert.ok(deleteEntryLines < resetReadiness);
-  assert.ok(resetReadiness < deleteOrderItems);
-  assert.ok(deleteOrderItems < deleteOrders);
-  assert.ok(deleteMovements < deleteBatches);
-});
-
-test("only the exact immutable Safisa trigger is temporarily bypassed", () => {
-  const disable = "disable trigger safisa_portal_events_reject_mutation";
-  const enable = "enable trigger safisa_portal_events_reject_mutation";
-  assert.equal(execute.toLowerCase().split(disable).length - 1, 1);
-  assert.equal(execute.toLowerCase().split(enable).length - 1, 1);
-  assert.ok(execute.toLowerCase().indexOf(disable) < execute.toLowerCase().indexOf(enable));
-  assert.match(execute, /Safisa immutable-event trigger was not restored/);
-  assert.match(execute, /READY_QUANTITIES_ALL_MARKED/);
-});
-
-test("post-reset validation covers operational zero and preservation", () => {
-  for (const relation of [
-    "movement_batches",
-    "stock_movements",
-    "configuration_stock_movements",
-    "assembly_operations",
-    "inbound_batch_lines",
-    "outbound_batch_lines",
-    "supplier_orders",
-    "supplier_order_items",
-    "supplier_order_events",
-    "supplier_order_stock_entries",
-    "supplier_order_stock_entry_lines",
-    "safisa_order_authorizations",
-    "safisa_portal_events",
-    "push_notification_events",
-    "stock_adjustment_requests",
-    "configuration_operation_requests",
-    "stock_balances",
-    "configuration_stock_balances",
-    "minimum_stock_changes",
-    "configuration_minimum_stock_changes",
-  ]) {
-    assert.match(execute, new RegExp(`count\\(\\*\\) from (?:public|private)\\.${relation}`));
+test("full catalog/application rows are fingerprinted with minimums checked separately", () => {
+  for (const sql of [dryRun, execute]) {
+    assert.match(sql, /to_jsonb\(t\) - 'minimum_stock'/);
+    assert.match(sql, /md5\(to_jsonb\(t\)::text\) from public\.vehicle_applications/);
+    assert.match(sql, /md5\(to_jsonb\(t\)::text\) from public\.vehicle_application_brands/);
   }
-  assert.match(execute, /Catalog\/schema\/migration preservation validation failed/);
+  assert.match(execute, /push_fingerprint/);
   assert.match(execute, /Identity\/membership preservation validation failed/);
   assert.match(execute, /Storage preservation validation failed/);
-  assert.match(execute, /Intentional local rollback validation failure/);
 });
 
-test("push subscriptions default to preserve and offer explicit disable/delete policies", () => {
-  assert.match(runner, /\[string\]\$PushSubscriptions = "PRESERVE"/);
-  assert.match(runner, /\[ValidateSet\("PRESERVE", "DISABLE", "DELETE"\)\]/);
-  assert.match(execute, /when 'PRESERVE' then null/);
-  assert.match(execute, /when 'DISABLE' then[\s\S]*set enabled = false/);
-  assert.match(execute, /when 'DELETE' then[\s\S]*delete from public\.push_subscriptions/);
-  assert.match(execute, /Push subscription preserve validation failed/);
-  assert.match(execute, /Push subscription disable validation failed/);
-  assert.match(execute, /Push subscription delete validation failed/);
+test("automated Execute tests are exclusive, behavioral and cover late sabotage rollback", () => {
+  assert.match(localTest, /nk\.disposable/);
+  assert.match(localTest, /deployment-reset-pr-68/);
+  assert.match(localTest, /reset_test_skip_delete/);
+  assert.match(localTest, /reset_test_corrupt_catalog/);
+  assert.match(localTest, /Get-StateSignature|Signature/);
+  assert.match(localTest, /jsonb_populate_recordset/);
+  assert.match(localTest, /accentedDescription/);
+  assert.match(runner, /Get-Content -Encoding UTF8/);
+  assert.equal((runner.match(/\[Regex\]::Replace\(\$sql, ":/g) ?? []).length, 1);
+  assert.doesNotMatch(runner, /Add-PsqlVariable/);
 });
 
-test("disposable fixture exercises restrictive operational relationships", () => {
-  assert.match(fixture, /Fixture supplier entry/);
-  assert.match(fixture, /supplier_order_stock_entry_lines/);
-  assert.match(fixture, /READY_QUANTITY_INCREMENTED/);
-  assert.match(fixture, /push_notification_events/);
-  assert.match(fixture, /private\.stock_adjustment_requests/);
-  assert.match(fixture, /private\.configuration_operation_requests/);
-  assert.match(fixture, /'ASSEMBLY'/);
-  assert.match(fixture, /'DISASSEMBLY'/);
-  assert.match(fixture, /'REVERSAL'/);
+function probe(env = {}, mode = "DryRun", ref = contract.projectRef) {
+  const dir = mkdtempSync(join(tmpdir(), "nk-reset-cli-probe-"));
+  mkdirSync(join(dir, "supabase", ".temp"), { recursive: true });
+  writeFileSync(join(dir, "supabase", ".temp", "project-ref"), ref, "utf8");
+  const result = spawnSync("powershell.exe", [
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+    resolve("tests/fixtures/deployment-reset-api-probe.ps1"),
+    "-Runner", resolve("scripts/deployment-operational-reset.ps1"),
+    "-MockCli", resolve("tests/fixtures/deployment-reset-readonly-cli.mock.ps1"),
+    "-LinkedWorkspace", dir, "-Mode", mode
+  ], { encoding: "utf8", env: { ...process.env, ...env }, windowsHide: true });
+  assert.equal(result.error, undefined);
+  const output = result.stdout + result.stderr;
+  assert.ok(!output.includes("local-test-decoy-credential"));
+  return { ...result, output };
+}
+
+test("read-only Management API wrapper restores local sentinel setting after success", () => {
+  const result = probe();
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /PASS API wrapper/);
+});
+test("Management API rejects Execute before invoking any transport", () => {
+  const result = probe({}, "Execute");
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /only accepts DryRun/);
+});
+test("unaudited CLI version is rejected", () => {
+  const result = probe({ NK_RESET_MOCK_VERSION: "2.113.0" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /version 2.112.0/);
+});
+test("actual authenticated project metadata must match the linked ref", () => {
+  const result = probe({ NK_RESET_MOCK_WRONG_PROJECT: "1" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /metadata guard failed/);
+});
+test("wrong linked ref is rejected before query", () => {
+  const result = probe({}, "DryRun", "differentprojectref00");
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /actual target/);
+});
+test("parse failure is safe and restores previous local setting", () => {
+  const result = probe({ NK_RESET_MOCK_PARSE_ERROR: "1" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /could not be parsed safely/);
 });

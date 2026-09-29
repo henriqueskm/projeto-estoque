@@ -1,5 +1,8 @@
 \set ON_ERROR_STOP on
 
+begin transaction isolation level repeatable read read only;
+set local standard_conforming_strings = on;
+
 with
 schema_parts as (
   select 'column|' || table_schema || '.' || table_name || '|' || ordinal_position || '|' || column_name || '|' || data_type || '|' || is_nullable || '|' || coalesce(column_default, '') as value
@@ -47,41 +50,44 @@ schema_state as (
   from schema_parts
 ),
 catalog_rows as (
-  select 'items' as kind, id::text as row_key,
-    md5(id::text) || md5(code) || md5(description) || md5(item_type) || md5(is_active::text) as row_hash
-  from public.items
-  union all
-  select 'servo_models', item_id::text,
-    md5(item_id::text) || md5(coalesce(model, '<NULL>')) || md5(coalesce(notes, '<NULL>'))
-  from public.servo_models
-  union all
-  select 'installation_kits', item_id::text,
-    md5(item_id::text) || md5(coalesce(name, '<NULL>')) || md5(coalesce(notes, '<NULL>'))
-  from public.installation_kits
-  union all
-  select 'repair_kits', item_id::text,
-    md5(item_id::text) || md5(coalesce(name, '<NULL>')) || md5(coalesce(notes, '<NULL>'))
-  from public.repair_kits
-  union all
-  select 'loose_parts', item_id::text,
-    md5(item_id::text) || md5(coalesce(notes, '<NULL>'))
-  from public.loose_parts
-  union all
-  select 'commercial_configurations', id::text,
-    md5(id::text) || md5(coalesce(description, '<NULL>')) || md5(servo_id::text) || md5(installation_kit_id::text) || md5(is_active::text) || md5(coalesce(image_path, '<NULL>'))
-  from public.commercial_configurations
-  union all
-  select 'commercial_configuration_codes', id::text,
-    md5(id::text) || md5(configuration_id::text) || md5(code) || md5(is_active::text)
-  from public.commercial_configuration_codes
-  union all
-  select 'servo_repair_compatibility', servo_id::text || ':' || repair_kit_id::text,
-    md5(servo_id::text) || md5(repair_kit_id::text)
-  from public.servo_repair_compatibility
-),
+    select 'items' kind, id::text row_key, md5((to_jsonb(t) - 'minimum_stock')::text) row_hash from public.items t
+    union all select 'servo_models', item_id::text, md5(to_jsonb(t)::text) from public.servo_models t
+    union all select 'installation_kits', item_id::text, md5(to_jsonb(t)::text) from public.installation_kits t
+    union all select 'repair_kits', item_id::text, md5(to_jsonb(t)::text) from public.repair_kits t
+    union all select 'loose_parts', item_id::text, md5(to_jsonb(t)::text) from public.loose_parts t
+    union all select 'commercial_configurations', id::text, md5((to_jsonb(t) - 'minimum_stock')::text) from public.commercial_configurations t
+    union all select 'commercial_configuration_codes', id::text, md5(to_jsonb(t)::text) from public.commercial_configuration_codes t
+    union all select 'servo_repair_compatibility', servo_id::text || ':' || repair_kit_id::text, md5(to_jsonb(t)::text) from public.servo_repair_compatibility t
+    union all select 'vehicle_application_brands', id::text, md5(to_jsonb(t)::text) from public.vehicle_application_brands t
+    union all select 'vehicle_applications', id::text, md5(to_jsonb(t)::text) from public.vehicle_applications t
+  ),
 catalog_state as (
   select md5(string_agg(kind || '|' || row_key || '|' || row_hash, E'\n' order by kind, row_key)) as fingerprint
   from catalog_rows
+),
+approved_parts as (
+  select value as identity, (value ->> 'id')::uuid as id
+  from jsonb_array_elements(:'approved_loose_parts'::jsonb)
+),
+actual_parts as (
+  select i.id, jsonb_build_object('id', i.id, 'code', i.code,
+    'description', i.description, 'item_type', i.item_type,
+    'is_active', i.is_active, 'notes', l.notes) as identity
+  from public.loose_parts l join public.items i on i.id = l.item_id
+),
+catalog_post as (
+  select md5(string_agg(kind || '|' || row_key || '|' || row_hash, E'\n' order by kind, row_key)) as fingerprint
+  from catalog_rows
+  where not (kind in ('items', 'loose_parts') and row_key in (select id::text from approved_parts))
+),
+foreign_key_state as (
+  select md5(string_agg(ns.nspname || '.' || cs.relname || '|' || co.conname || '|' ||
+    nt.nspname || '.' || ct.relname || '|' || pg_get_constraintdef(co.oid, true),
+    E'\n' order by ns.nspname, cs.relname, co.conname)) as fingerprint
+  from pg_constraint co
+  join pg_class cs on cs.oid = co.conrelid join pg_class ct on ct.oid = co.confrelid
+  join pg_namespace ns on ns.oid = cs.relnamespace join pg_namespace nt on nt.oid = ct.relnamespace
+  where co.contype = 'f' and (ns.nspname in ('public', 'private') or nt.nspname in ('public', 'private'))
 ),
 migration_state as (
   select count(*)::integer as migration_count,
@@ -98,7 +104,9 @@ catalog_counts as (
     (select count(*) from public.loose_parts) as loose_parts,
     (select count(*) from public.commercial_configurations) as configurations,
     (select count(*) from public.commercial_configuration_codes) as commercial_codes,
-    (select count(*) from public.servo_repair_compatibility) as compatibilities
+    (select count(*) from public.servo_repair_compatibility) as compatibilities,
+    (select count(*) from public.vehicle_application_brands) as vehicle_brands,
+    (select count(*) from public.vehicle_applications) as vehicle_applications
 ),
 preserved_state as (
   select
@@ -141,6 +149,8 @@ operational_counts as (
     union all select 'supplier_order_stock_entries', count(*) from public.supplier_order_stock_entries
     union all select 'supplier_order_stock_entry_lines', count(*) from public.supplier_order_stock_entry_lines
     union all select 'supplier_orders', count(*) from public.supplier_orders
+    union all select 'stock_balances', count(*) from public.stock_balances
+    union all select 'configuration_stock_balances', count(*) from public.configuration_stock_balances
   ) as operational
 ),
 movement_type_counts as (
@@ -165,9 +175,28 @@ minimum_state as (
     (select count(*) from public.commercial_configurations where minimum_stock <> 0) as configurations_nonzero
 ),
 dynamic_items as (
-  select coalesce(jsonb_agg(jsonb_build_object('id', id, 'code', code, 'description', description) order by code), '[]'::jsonb) as rows
-  from public.items
-  where id::text = any(string_to_array(:'expected_dynamic_item_ids', ','))
+  select coalesce(jsonb_agg(actual_parts.identity || jsonb_build_object(
+    'minimum_stock', i.minimum_stock, 'balanceRowPresent', b.item_id is not null,
+    'quantity', coalesce(b.quantity, 0),
+    'operationalReferences', jsonb_build_object(
+      'stock_balances', (select count(*) from public.stock_balances where item_id=i.id),
+      'stock_movements', (select count(*) from public.stock_movements where item_id=i.id),
+      'inbound_batch_lines', (select count(*) from public.inbound_batch_lines where item_id=i.id),
+      'outbound_batch_lines', (select count(*) from public.outbound_batch_lines where item_id=i.id),
+      'minimum_stock_changes', (select count(*) from public.minimum_stock_changes where item_id=i.id),
+      'stock_adjustment_requests', (select count(*) from private.stock_adjustment_requests where item_id=i.id),
+      'configuration_operation_requests', (select count(*) from private.configuration_operation_requests where servo_id=i.id or installation_kit_id=i.id),
+      'supplier_order_items', (select count(*) from public.supplier_order_items where item_id=i.id),
+      'supplier_order_stock_entry_lines', (select count(*) from public.supplier_order_stock_entry_lines where item_id=i.id)),
+    'structuralReferences', jsonb_build_object(
+      'servo_models', (select count(*) from public.servo_models where item_id=i.id),
+      'installation_kits', (select count(*) from public.installation_kits where item_id=i.id),
+      'repair_kits', (select count(*) from public.repair_kits where item_id=i.id),
+      'commercial_configurations', (select count(*) from public.commercial_configurations where servo_id=i.id or installation_kit_id=i.id),
+      'servo_repair_compatibility', (select count(*) from public.servo_repair_compatibility where servo_id=i.id or repair_kit_id=i.id),
+      'vehicle_applications', (select count(*) from public.vehicle_applications where source_kit_code=i.code or source_servo_label=i.code))) order by i.code), '[]'::jsonb) as rows
+  from actual_parts join public.items i using (id)
+  left join public.stock_balances b on b.item_id = i.id
 ),
 required_relations as (
   select bool_and(to_regclass(relation_name) is not null) as all_present
@@ -181,6 +210,19 @@ guard_state as (
       and migration_state.fingerprint = :'expected_migration_fingerprint' as migrations_match,
     schema_state.fingerprint = :'expected_schema_fingerprint' as schema_matches,
     catalog_state.fingerprint = :'expected_catalog_fingerprint' as catalog_matches,
+    catalog_post.fingerprint = :'expected_post_catalog_fingerprint' as expected_catalog_delta_matches,
+    foreign_key_state.fingerprint = :'expected_foreign_key_fingerprint' as foreign_keys_match,
+    (select coalesce(jsonb_agg(identity order by id), '[]'::jsonb) from actual_parts) =
+      (select coalesce(jsonb_agg(identity order by id), '[]'::jsonb) from approved_parts) as exact_loose_parts_match,
+    current_setting('transaction_read_only') = 'on' as transaction_read_only,
+    not exists (select 1 from public.servo_models where item_id in (select id from approved_parts))
+      and not exists (select 1 from public.installation_kits where item_id in (select id from approved_parts))
+      and not exists (select 1 from public.repair_kits where item_id in (select id from approved_parts))
+      and not exists (select 1 from public.commercial_configurations where servo_id in (select id from approved_parts) or installation_kit_id in (select id from approved_parts))
+      and not exists (select 1 from public.servo_repair_compatibility where servo_id in (select id from approved_parts) or repair_kit_id in (select id from approved_parts))
+      and not exists (select 1 from public.vehicle_applications a join public.items i on i.code = a.source_kit_code or i.code = a.source_servo_label where i.id in (select id from approved_parts)) as no_protected_loose_part_references,
+    exists (select 1 from pg_trigger where tgrelid = 'public.safisa_portal_events'::regclass
+      and tgname = 'safisa_portal_events_reject_mutation' and tgenabled = 'O') as safisa_trigger_active,
     catalog_counts.items = :'expected_items'::integer
       and catalog_counts.servo_models = :'expected_servo_models'::integer
       and catalog_counts.installation_kits = :'expected_installation_kits'::integer
@@ -188,7 +230,9 @@ guard_state as (
       and catalog_counts.loose_parts = :'expected_loose_parts'::integer
       and catalog_counts.configurations = :'expected_configurations'::integer
       and catalog_counts.commercial_codes = :'expected_commercial_codes'::integer
-      and catalog_counts.compatibilities = :'expected_compatibilities'::integer as catalog_counts_match,
+      and catalog_counts.compatibilities = :'expected_compatibilities'::integer
+      and catalog_counts.vehicle_brands = :'expected_vehicle_brands'::integer
+      and catalog_counts.vehicle_applications = :'expected_vehicle_applications'::integer as catalog_counts_match,
     preserved_state.auth_users = :'expected_auth_users'::integer
       and preserved_state.profiles = :'expected_profiles'::integer
       and preserved_state.memberships = :'expected_memberships'::integer as identities_match,
@@ -197,18 +241,30 @@ guard_state as (
       and preserved_state.referenced_objects = :'expected_referenced_images'::integer
       and preserved_state.storage_objects = :'expected_storage_objects'::integer as storage_matches,
     required_relations.all_present as required_relations_present
-  from schema_state, catalog_state, migration_state, catalog_counts, preserved_state, required_relations
+  from schema_state, catalog_state, catalog_post, foreign_key_state, migration_state, catalog_counts, preserved_state, required_relations
 )
 select jsonb_build_object(
   'reportType', 'RESET_OPERACIONAL_DRY_RUN',
   'project', jsonb_build_object('name', :'expected_project_name', 'ref', :'identified_project_ref', 'database', current_database()),
   'contract', jsonb_build_object('sourceMainSha', :'expected_source_main_sha', 'procedureVersion', :'procedure_version'::integer),
-  'guards', to_jsonb(guard_state) || jsonb_build_object('allPassed', guard_state.database_matches and guard_state.migrations_match and guard_state.schema_matches and guard_state.catalog_matches and guard_state.catalog_counts_match and guard_state.identities_match and guard_state.storage_matches and guard_state.required_relations_present),
-  'fingerprints', jsonb_build_object('migrations', migration_state.fingerprint, 'schema', schema_state.fingerprint, 'catalog', catalog_state.fingerprint),
-  'preserve', jsonb_build_object('catalog', to_jsonb(catalog_counts), 'authUsers', preserved_state.auth_users, 'profiles', preserved_state.profiles, 'safisaMemberships', preserved_state.memberships, 'referencedImages', preserved_state.referenced_images, 'storageObjects', preserved_state.storage_objects, 'dynamicItems', dynamic_items.rows),
+  'guards', to_jsonb(guard_state) || jsonb_build_object('allPassed',
+    (select bool_and(value::boolean) from jsonb_each_text(to_jsonb(guard_state)))),
+  'fingerprints', jsonb_build_object('migrations', migration_state.fingerprint, 'schema', schema_state.fingerprint, 'catalog', catalog_state.fingerprint, 'foreignKeys', (select fingerprint from foreign_key_state)),
+  'incomingCatalogForeignKeys', (select jsonb_agg(jsonb_build_object('source',ns.nspname||'.'||cs.relname,'constraint',co.conname,'target',nt.nspname||'.'||ct.relname,'definition',pg_get_constraintdef(co.oid,true)) order by ns.nspname,cs.relname,co.conname)
+    from pg_constraint co join pg_class cs on cs.oid=co.conrelid join pg_class ct on ct.oid=co.confrelid
+    join pg_namespace ns on ns.oid=cs.relnamespace join pg_namespace nt on nt.oid=ct.relnamespace
+    where co.contype='f' and co.confrelid in ('public.items'::regclass,'public.loose_parts'::regclass)),
+  'catalogBeforeReset', to_jsonb(catalog_counts),
+  'preserve', jsonb_build_object('catalog', to_jsonb(catalog_counts) || jsonb_build_object('items', catalog_counts.items - (select count(*) from approved_parts), 'loose_parts', 0), 'authUsers', preserved_state.auth_users, 'profiles', preserved_state.profiles, 'safisaMemberships', preserved_state.memberships, 'referencedImages', preserved_state.referenced_images, 'storageObjects', preserved_state.storage_objects),
   'reset', jsonb_build_object('tables', operational_counts.counts, 'operationalRows', operational_counts.total_rows, 'balances', to_jsonb(balance_state), 'movementTypes', movement_type_counts.counts, 'safisaEventTypes', safisa_event_type_counts.counts),
-  'reinitialize', jsonb_build_object('itemsWithMinimum', minimum_state.items_nonzero, 'configurationsWithMinimum', minimum_state.configurations_nonzero),
+  'reinitialize', jsonb_build_object('itemsWithMinimum', minimum_state.items_nonzero, 'approvedDeletedItemsWithMinimum', (select count(*) from public.items where minimum_stock<>0 and id in (select id from approved_parts)), 'preservedItemsWithMinimum', (select count(*) from public.items where minimum_stock<>0 and id not in (select id from approved_parts)), 'configurationsWithMinimum', minimum_state.configurations_nonzero),
+  'deleteApprovedLooseParts', dynamic_items.rows,
+  'expectedPostCatalogFingerprint', (select fingerprint from catalog_post),
+  'expectedPostItems', catalog_counts.items - (select count(*) from approved_parts),
+  'expectedPostLooseParts', 0,
   'pushSubscriptions', jsonb_build_object('decision', :'push_subscription_action', 'total', preserved_state.push_subscriptions, 'enabled', preserved_state.enabled_push_subscriptions),
   'mutationsExecuted', false
 )::text
 from schema_state, catalog_state, migration_state, catalog_counts, preserved_state, balance_state, operational_counts, movement_type_counts, safisa_event_type_counts, minimum_state, dynamic_items, guard_state;
+
+commit;
