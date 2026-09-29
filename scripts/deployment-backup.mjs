@@ -16,8 +16,30 @@ const backupError=message=>new BackupError(message);
 export const safeErrorMessage=error=>error instanceof BackupError?error.message:'Backup stage failed; unclassified details suppressed.';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const credentialNames = ['NK_BACKUP_DATABASE_URL', 'NK_BACKUP_SUPABASE_URL', 'NK_BACKUP_SUPABASE_SECRET_KEY'];
-export function sanitizedChildEnv(env=process.env) {const clean={...env}; for(const name of credentialNames)delete clean[name]; return clean;}
+export function sanitizedChildEnv(env=process.env) {const blocked=new Set([...credentialNames,'DOCKER_HOST','DOCKER_CONTEXT']); return Object.fromEntries(Object.entries(env).filter(([name])=>!blocked.has(name.toUpperCase())));}
 const childEnv = sanitizedChildEnv();
+let dockerTransport;
+const localDockerEndpoints=new Set(['npipe:////./pipe/dockerDesktopLinuxEngine','npipe:////./pipe/docker_engine']);
+export function pinnedDockerArgs(endpoint,args) {
+  if(!localDockerEndpoints.has(endpoint)||args.some(arg=>arg==='-H'||arg==='--host'||arg==='--context'||arg.startsWith('--host=')||arg.startsWith('--context=')))throw backupError('Local Docker endpoint guard failed');
+  return ['--host',endpoint,...args];
+}
+export async function createLocalDockerTransport({env=process.env,platform=process.platform,execute=runTool,startProcess=spawn}={}) {
+  if(platform!=='win32'||Object.keys(env).some(name=>['DOCKER_HOST','DOCKER_CONTEXT'].includes(name.toUpperCase())))throw backupError('Local Docker overrides/platform refused');
+  // This sole unpinned command reads local context metadata only; no daemon,
+  // container, stdin credentials or backup bytes are used before validation.
+  const context=await execute(['context','inspect','--format','{{(index .Endpoints "docker").Host}}'],null,'docker');
+  const endpoint=context.bytes.toString('utf8').trim();
+  const args=commandArgs=>pinnedDockerArgs(endpoint,commandArgs);
+  const server=await execute(args(['info','--format','{{.OSType}}']),null,'docker');
+  if(server.bytes.toString('utf8').trim()!=='linux')throw backupError('Local Docker Linux engine guard failed');
+  const envForDocker=Object.freeze(sanitizedChildEnv(env));
+  // Pin the validated pipe, not the mutable selected context, on EVERY path.
+  return Object.freeze({
+    run:(commandArgs,input=null)=>execute(args(commandArgs),input,'docker'),
+    start:commandArgs=>startProcess('docker',args(commandArgs),{env:envForDocker,windowsHide:true,stdio:['pipe','pipe','pipe']})
+  });
+}
 export function validateTargets(db, api) {
   const u = new URL(db), a = new URL(api);
   if (!['postgres:', 'postgresql:'].includes(u.protocol) || u.hash || u.pathname !== '/postgres' ||
@@ -42,7 +64,7 @@ export function category(stderr) {
   for (const [label, re] of [['AUTHENTICATION', /authentication|password/i], ['PERMISSION', /permission denied|must be.*owner|must be.*superuser/i], ['CONNECTIVITY', /connect|network|timeout/i], ['OBJECT_EXISTS', /already exists/i], ['OBJECT_MISSING', /does not exist/i],['CLI_ARGUMENT',/one of.*must be specified|option.*required/i],['NOT_A_REPOSITORY',/not a git repository/i]]) if (re.test(stderr)) return label;
   return 'SUPPRESSED_ERROR';
 }
-async function run(args, input = null, command = 'docker') {
+async function runTool(args, input = null, command = 'docker') {
   const env={...childEnv}; if(command==='powershell.exe') delete env.PSModulePath;
   const p = spawn(command, args, { env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   const out = [], err = [];
@@ -55,10 +77,16 @@ async function run(args, input = null, command = 'docker') {
   if (code !== 0) throw backupError(`Tool ${command}:${args[0]}:${args.find(a=>['psql','pg_dump','pg_dumpall','pg_restore'].includes(a))||'local'} stage failed: exit ${code}; ${category(stderr)}. Raw output suppressed.`);
   return { bytes: Buffer.concat(out), stderr };
 }
+async function run(args,input=null,command='docker') {
+  if(command!=='docker')return runTool(args,input,command);
+  if(!dockerTransport)throw backupError('Local Docker preflight required');
+  return dockerTransport.run(args,input);
+}
 const sourceShell = 'IFS= read -r PGHOST; IFS= read -r PGPORT; IFS= read -r PGUSER; IFS= read -r PGPASSWORD; IFS= read -r PGDATABASE; IFS= read -r PGSSLMODE; IFS= read -r PGCONNECT_TIMEOUT; export PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSSLMODE PGCONNECT_TIMEOUT; export PGCLIENTENCODING=UTF8 PGOPTIONS="-c default_transaction_read_only=on"; exec "$@"';
 export function remoteArgs(tool, args = []) { return ['run', '--pull=never', '--rm', '-i', '--entrypoint', 'sh', image, '-c', sourceShell, 'nk-backup-client', tool, ...args]; }
-export async function client(input) {
-  const p = spawn('docker', remoteArgs('psql', ['-X', '-qAt', '-v', 'ON_ERROR_STOP=1']), { env: childEnv, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+export async function client(input,transport=dockerTransport) {
+  if(!transport)throw backupError('Local Docker preflight required');
+  const p = transport.start(remoteArgs('psql', ['-X', '-qAt', '-v', 'ON_ERROR_STOP=1']));
   const waiting = [], queued = [], errors = [];
   const lines = createInterface({ input: p.stdout });
   lines.on('line', line => waiting.length ? waiting.shift().yes(line) : queued.push(line));
@@ -144,6 +172,7 @@ export function namespaceSupplement(acls) {
 async function main() {
   const startedAtUtc=new Date().toISOString();
   for(const name of credentialNames) if(!process.env[name]) throw backupError(`${name}: UNAVAILABLE`);
+  dockerTransport=await createLocalDockerTransport();
   const sourceInput = validateTargets(process.env.NK_BACKUP_DATABASE_URL,process.env.NK_BACKUP_SUPABASE_URL);
   await run(['image','inspect','--format','{{.Id}}',image]);
   const version = (await run(['run','--pull=never','--rm','--network','none','--entrypoint','pg_dump',image,'--version'])).bytes.toString().trim();

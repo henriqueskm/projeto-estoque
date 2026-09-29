@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { validateTargets, safePath, sha, canonical, sanitizedChildEnv, remoteArgs, ref, category, deriveRestorationSql, namespaceSupplement, safeErrorMessage } from '../scripts/deployment-backup.mjs';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import { validateTargets, safePath, sha, canonical, sanitizedChildEnv, remoteArgs, ref, category, deriveRestorationSql, namespaceSupplement, safeErrorMessage, createLocalDockerTransport, pinnedDockerArgs, client } from '../scripts/deployment-backup.mjs';
 
 const api=`https://${ref}.supabase.co`;
 const db=`postgresql://postgres.${ref}:fixture-password@fixture.pooler.supabase.com:5432/postgres`;
@@ -31,7 +33,7 @@ test('credential line injection is rejected before transport',()=>{
   assert.throws(()=>validateTargets(db.replace('fixture-password','fixture%00password'),api));
 });
 test('child environment excludes all admin credentials without changing parent',()=>{
-  const env={NK_BACKUP_DATABASE_URL:db,NK_BACKUP_SUPABASE_URL:api,NK_BACKUP_SUPABASE_SECRET_KEY:'fixture-key',PATH:'fixture-path'};
+  const env={NK_BACKUP_DATABASE_URL:db,NK_BACKUP_SUPABASE_URL:api,NK_BACKUP_SUPABASE_SECRET_KEY:'fixture-key',docker_host:'fixture-override',Docker_Context:'fixture-context',nk_backup_supabase_secret_key:'fixture-alias',PATH:'fixture-path'};
   assert.deepEqual(sanitizedChildEnv(env),{PATH:'fixture-path'});
   assert.equal(env.NK_BACKUP_SUPABASE_SECRET_KEY,'fixture-key');
 });
@@ -82,4 +84,58 @@ test('ACL supplement rejects non-schema privileges instead of interpolating arbi
 test('unexpected parse/filesystem/runtime errors cannot print source-specific secrets',()=>{
   assert.equal(safeErrorMessage(new Error('fixture-secret response')), 'Backup stage failed; unclassified details suppressed.');
   try{validateTargets(db,'https://other.supabase.co');}catch(error){assert.equal(safeErrorMessage(error),'Target identity guard failed');}
+});
+const localPipe='npipe:////./pipe/dockerDesktopLinuxEngine';
+function mockDocker(endpoint=localPipe,osType='linux') {
+  const calls=[],starts=[];
+  return {calls,starts,
+    execute:async(args,input)=>{calls.push({args,input});return{bytes:Buffer.from(args[0]==='context'?endpoint:osType),stderr:''};},
+    startProcess:(command,args,options)=>{
+      const process=new EventEmitter();process.stdin=new PassThrough();process.stdout=new PassThrough();process.stderr=new PassThrough();
+      starts.push({command,args,options,process});return process;
+    }
+  };
+}
+test('Docker environment overrides abort before any metadata/container/credential transport',async()=>{
+  for(const key of ['DOCKER_HOST','DOCKER_CONTEXT','docker_host','Docker_Context'])for(const value of ['fixture-override','']){
+    const mock=mockDocker();
+    await assert.rejects(createLocalDockerTransport({...mock,env:{[key]:value},platform:'win32'}));
+    assert.equal(mock.calls.length,0);assert.equal(mock.starts.length,0);
+  }
+});
+test('SSH/TCP/nonlocal named-pipe contexts abort after metadata only, with no values in errors',async()=>{
+  for(const endpoint of ['ssh://fixture-remote','tcp://127.0.0.1:2375','npipe:////fixture-server/pipe/docker_engine','unix:///fixture/docker.sock']){
+    const mock=mockDocker(endpoint);
+    await assert.rejects(createLocalDockerTransport({...mock,env:{},platform:'win32'}),error=>safeErrorMessage(error)==='Local Docker endpoint guard failed');
+    assert.equal(mock.calls.length,1);assert.equal(mock.calls[0].args[0],'context');assert.equal(mock.calls[0].input,null);assert.equal(mock.starts.length,0);
+  }
+});
+test('non-Windows platform and non-Linux engine abort before containers',async()=>{
+  const platform=mockDocker();await assert.rejects(createLocalDockerTransport({...platform,env:{},platform:'linux'}));assert.equal(platform.calls.length,0);
+  const engine=mockDocker(localPipe,'windows');await assert.rejects(createLocalDockerTransport({...engine,env:{},platform:'win32'}));assert.equal(engine.calls.length,2);assert.equal(engine.starts.length,0);
+  assert.ok(engine.calls[1].args[0]==='--host'&&engine.calls[1].args[1]===localPipe);
+});
+test('validated pipe is pinned for versions, dump, roles, restore and direct client despite context change',async()=>{
+  const mock=mockDocker();const env={NK_BACKUP_DATABASE_URL:db,NK_BACKUP_SUPABASE_URL:api,NK_BACKUP_SUPABASE_SECRET_KEY:'fixture-secret'};
+  const transport=await createLocalDockerTransport({...mock,env,platform:'win32'});
+  // A later context/ENV change cannot retarget this already-created transport.
+  env.DOCKER_CONTEXT='fixture-remote';env.DOCKER_HOST='fixture-remote';
+  for(const args of [
+    ['run','--network','none','--entrypoint','pg_dump','fixture-image','--version'],
+    remoteArgs('pg_dump',['--format=custom']),remoteArgs('pg_dumpall',['--roles-only']),
+    ['inspect','fixture-container'],['exec','-i','fixture-container','pg_restore','--file=-'],
+    ['exec','-i','fixture-container','psql','-d','postgres']
+  ])await transport.run(args,'fixture-private-stdin');
+  const connection=await client('fixture-credentials\n',transport);connection.close();
+  for(const call of mock.calls.slice(1))assert.ok(call.args[0]==='--host'&&call.args[1]===localPipe);
+  assert.equal(mock.calls.filter(call=>call.args[0]==='context').length,1);
+  const started=mock.starts[0];assert.ok(started.args[0]==='--host'&&started.args[1]===localPipe);
+  for(const key of ['DOCKER_HOST','DOCKER_CONTEXT','NK_BACKUP_DATABASE_URL','NK_BACKUP_SUPABASE_URL','NK_BACKUP_SUPABASE_SECRET_KEY'])assert.equal(Object.hasOwn(started.options.env,key),false);
+  started.process.stdout.end();started.process.stderr.end();started.process.emit('close',0);
+});
+test('caller cannot inject a second Docker host/context into pinned commands',()=>{
+  for(const args of [['--host','fixture-remote'],['-H','fixture-remote'],['--context','fixture-remote'],['--host=fixture-remote'],['--context=fixture-remote']])assert.throws(()=>pinnedDockerArgs(localPipe,args));
+});
+test('direct source client without proven transport aborts before stdin',async()=>{
+  await assert.rejects(client('fixture-credentials\n'),error=>safeErrorMessage(error)==='Local Docker preflight required');
 });
