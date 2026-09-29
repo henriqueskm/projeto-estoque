@@ -360,32 +360,17 @@ if ($linkedReadOnly) {
   finally { [Environment]::SetEnvironmentVariable("SUPABASE_DB_PASSWORD", $oldCliPassword) }
 }
 elseif ($targetIsRemote) {
-  $oldPgValues = @{}
-  foreach ($name in @("PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE", "PGSSLMODE")) {
-    $oldPgValues[$name] = [Environment]::GetEnvironmentVariable($name)
-  }
+  # Keep SQL binding and every procedure guard above unchanged. Only the remote
+  # transport changes: validated local Docker pipe, existing PG17.6 image and
+  # protected stdin, never credentials in Docker Env/argv or an implicit pull.
+  $transportPath = Join-Path $PSScriptRoot "deployment-reset\postgres-transport.mjs"
+  $previousNativePreference = $ErrorActionPreference
   try {
-    $userInfo = $databaseUri.UserInfo -split ':', 2
-    $env:PGHOST = $databaseUri.Host
-    $env:PGPORT = if ($databaseUri.Port -gt 0) { [string]$databaseUri.Port } else { "5432" }
-    $env:PGUSER = [System.Uri]::UnescapeDataString($userInfo[0])
-    $env:PGPASSWORD = if ($userInfo.Count -gt 1) { [System.Uri]::UnescapeDataString($userInfo[1]) } else { "" }
-    $env:PGDATABASE = $databaseUri.AbsolutePath.TrimStart('/')
-    $env:PGSSLMODE = "require"
-    $dockerArguments = @("run", "--rm", "-i", "-e", "PGHOST", "-e", "PGPORT", "-e", "PGUSER", "-e", "PGPASSWORD", "-e", "PGDATABASE", "-e", "PGSSLMODE", "postgres:17-alpine", "psql") + $psqlArguments
-    $previousNativePreference = $ErrorActionPreference
-    try {
-      $ErrorActionPreference = "Continue"
-      $output = $sql | & docker @dockerArguments 2>&1
-      $psqlExitCode = $LASTEXITCODE
-    }
-    finally { $ErrorActionPreference = $previousNativePreference }
+    $ErrorActionPreference = "Continue"
+    $output = $sql | & node $transportPath $Mode $DatabaseUrlEnvironmentVariable 2>&1
+    $psqlExitCode = $LASTEXITCODE
   }
-  finally {
-    foreach ($name in $oldPgValues.Keys) {
-      [Environment]::SetEnvironmentVariable($name, $oldPgValues[$name])
-    }
-  }
+  finally { $ErrorActionPreference = $previousNativePreference }
 }
 else {
   $dockerArguments = @("exec", "-i", $ContainerName, "psql", "-U", "postgres", "-d", $contract.databaseName) + $psqlArguments

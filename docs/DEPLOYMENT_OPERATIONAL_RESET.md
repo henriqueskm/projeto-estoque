@@ -72,6 +72,8 @@ PITR habilitado não é requisito de arquitetura: um dump/snapshot validado e re
 
 ## Manutenção e cache — nenhuma ação remota agora
 
+A preparação atual usa **OFF humano da Data API**, não alteração de authenticator/NOLOGIN ou Pause Project. Instrumentação read-only, evidências de escritores/timeouts, exceção Auth estrita, comandos após OFF e limites do drain estão em [DEPLOYMENT_DATA_API_MAINTENANCE.md](DEPLOYMENT_DATA_API_MAINTENANCE.md). Os28s conhecidos não provam horizonte HTTP completo; Retry-After desconhecido é STOP. O transporte DatabaseUrl agora fixa Docker local e cliente17.6 existente, remove credenciais de Env/argv e envia somente por stdin, mantendo SQL/bind/contract/guards.
+
 1. Aprovação humana explícita do relatório fresco, cinco identidades e policy push; backup/restauração comprovados.
 2. Bloquear novas requests operacionais de **todos** os consumidores do DB: produção, Previews, localhost e workers. Drenar requests em voo antes do SQL/purge para impedir refill tardio de catálogo velho.
 3. Repetir DryRun imediatamente antes; divergência exige parar/reavaliar. Executar somente no futuro autorizado, mantendo manutenção até validação independente.
