@@ -62,11 +62,11 @@ Somente safisa_portal_events_reject_mutation é nominalmente desabilitado pelo m
 
 Antes do COMMIT: vinte tabelas vazias, mínimos zero, catálogo exatamente EXPECTED POST (só cinco subtipos/parents ausentes e 101 items), ledger completo; schema/FKs/migrations idênticos; hashes completos de Auth/profiles/membership/bucket/objects idênticos; Safisa trigger ativo e policy push exata. Qualquer diferença, inclusive mutação por trigger durante DELETE, causa rollback integral.
 
-## Backup — gate obrigatório não validado
+## Backup — cópia lógica restaurada; reset continua proibido
 
-GET atual: PITR false, WAL-G true, backups nulo/vazio, physical_backup_data={} sem janela declarada. Não comprova ausência definitiva de mecanismo físico; **recuperabilidade não comprovada**. Nenhum dump/export/checksum/ensaio de restore obrigatório foi feito/validado. Registrar também o incidente da role CLI na evidência antes de autorização.
+O GET anterior retornou PITR false, WAL-G true, backups nulo/vazio e physical_backup_data={} sem janela declarada. Isso não comprovou ausência definitiva de mecanismo físico nem recuperabilidade. Na etapa posterior explicitamente autorizada, foi produzido um backup lógico independente REAL e restaurado integralmente em outro container descartável. Evidência, janela, hashes, suplementos obrigatórios e limitações: [DEPLOYMENT_BACKUP_VALIDATION.md](DEPLOYMENT_BACKUP_VALIDATION.md). O incidente histórico da role CLI continua registrado acima; o backup novo usou DSN direta read-only, sem CLI linked/mint de role ou alteração remota.
 
-Antes de Execute: comprovar mecanismo/janela; dump completo por tooling autorizado sem mutações incidentais de infraestrutura; checksum; export Storage separado com manifesto/tamanhos/checksums; migrations/commit; restore de dump/arquivos em clone descartável; relatório independente de catálogo/Auth/profiles/memberships/imagens. Não usar dump CLI que cria role/senha sem autorização específica. BackupValidated é acknowledgement, não evidência.
+Antes de qualquer Execute FUTURO: nova autorização separada; conferir disponibilidade/integridade do conjunto completo (dump + roles sem senhas + ACLs/owners suplementares + bytes Storage/manifesto), freshness/deltas desde a janela do backup e DryRun fresco; manter os demais gates de manutenção/drain/cache. Não usar dump CLI que cria role/senha sem autorização específica. BackupValidated é acknowledgement, não evidência e não é autorizado automaticamente por este ensaio.
 
 PITR habilitado não é requisito de arquitetura: um dump/snapshot validado e restaurável pode cumprir o gate, com seu ponto de recuperação/janela registrado. Não ativar PITR automaticamente nem presumir que WAL-G sozinho prova recuperação.
 
