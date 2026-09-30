@@ -70,6 +70,8 @@
     "test:deployment-reset:local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/deployment-operational-reset.cli.local.ps1",
     "test:vehicle-applications": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/vehicle-applications.test.mjs",
     "test:vehicle-applications:local": "node tests/vehicle-applications-migration.local.mjs",
+    "test:bundle-recipe-foundation": "node --test tests/bundle-recipe-foundation.test.mjs",
+    "test:bundle-recipe-foundation:local": "node tests/bundle-recipe-foundation.local.mjs",
     "verify:vehicle-applications-source": "python scripts/verify_vehicle_applications_source.py"
   },
   "dependencies": {
