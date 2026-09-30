@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const container = process.env.BUNDLE_RECIPE_TEST_DB_CONTAINER
   ?? "supabase_db_nk_current_state_baseline";
 const database = process.env.BUNDLE_RECIPE_TEST_DB_NAME;
+const existingCatalogDatabase =
+  process.env.BUNDLE_RECIPE_EXISTING_TEST_DB_NAME;
 const databaseUser = process.env.BUNDLE_RECIPE_TEST_DB_USER ?? "postgres";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const migration = readFileSync(
@@ -25,6 +27,7 @@ const docker = existsSync(windowsDocker) ? windowsDocker : "docker";
 
 const firstUser = "70000000-0000-4000-8000-000000000001";
 const inactiveUser = "70000000-0000-4000-8000-000000000002";
+const existingAuthor = "70000000-0000-4000-8000-000000000003";
 const itemId = (value) => `70000000-0000-4000-8001-${String(value).padStart(12, "0")}`;
 const key = (value) => `70000000-0000-4000-8002-${String(value).padStart(12, "0")}`;
 
@@ -34,12 +37,26 @@ if (!database || database === "postgres" || !database.startsWith("nk70_")) {
   );
 }
 
-function psql(sql, { allowFailure = false } = {}) {
+if (
+  !existingCatalogDatabase
+  || existingCatalogDatabase === "postgres"
+  || !existingCatalogDatabase.startsWith("nk70_")
+  || existingCatalogDatabase === database
+) {
+  throw new Error(
+    "BUNDLE_RECIPE_EXISTING_TEST_DB_NAME must name a second nk70_ disposable database.",
+  );
+}
+
+function psql(
+  sql,
+  { allowFailure = false, databaseName = database } = {},
+) {
   try {
     return execFileSync(
       docker,
       [
-        "exec", container, "psql", "-U", databaseUser, "-d", database,
+        "exec", container, "psql", "-U", databaseUser, "-d", databaseName,
         "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-c", sql,
       ],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
@@ -51,11 +68,11 @@ function psql(sql, { allowFailure = false } = {}) {
   }
 }
 
-function applyMigration() {
+function applyMigration(databaseName = database) {
   execFileSync(
     docker,
     [
-      "exec", "-i", container, "psql", "-U", databaseUser, "-d", database,
+      "exec", "-i", container, "psql", "-U", databaseUser, "-d", databaseName,
       "-X", "-q", "-v", "ON_ERROR_STOP=1",
     ],
     {
@@ -78,6 +95,13 @@ function jsonFrom(output) {
   const line = output.split(/\r?\n/).findLast((value) => value.startsWith("{"));
   assert.ok(line, `Expected JSON result: ${output}`);
   return JSON.parse(line);
+}
+
+function psqlExisting(sql, options = {}) {
+  return psql(sql, {
+    ...options,
+    databaseName: existingCatalogDatabase,
+  });
 }
 
 function authSql(userId, statement) {
@@ -139,12 +163,112 @@ function bundleState(bundleId, configurationId, loosePartIds) {
 
 console.log("ALVO CONFIRMADO: POSTGRESQL LOCAL/DESCARTAVEL NK70");
 
+assert.equal(
+  Number(psqlExisting("select count(*) from public.commercial_configurations")),
+  80,
+);
+assert.equal(
+  Number(psqlExisting("select count(*) from public.items where code = any (array['CIL', 'COT', 'EMP', 'RES'])")),
+  0,
+);
+
+psqlExisting(`
+  insert into auth.users (id, aud, role, created_at, updated_at)
+  values ('${existingAuthor}', 'authenticated', 'authenticated', now(), now());
+  insert into public.profiles (id, name, is_active)
+  values ('${existingAuthor}', 'NK70 Existing Author', true);
+  insert into public.items (
+    id,
+    code,
+    description,
+    item_type,
+    is_active,
+    created_by,
+    created_by_name_snapshot
+  ) values
+    ('${itemId(101)}', 'CIL', 'Descrição existente CIL', 'LOOSE_PART', true, '${existingAuthor}', 'NK70 Existing Author'),
+    ('${itemId(102)}', 'COT', 'Descrição existente COT', 'LOOSE_PART', true, '${existingAuthor}', 'NK70 Existing Author'),
+    ('${itemId(103)}', 'EMP', 'Descrição existente EMP', 'LOOSE_PART', true, '${existingAuthor}', 'NK70 Existing Author'),
+    ('${itemId(104)}', 'RES', 'Descrição existente RES', 'LOOSE_PART', true, '${existingAuthor}', 'NK70 Existing Author');
+  insert into public.loose_parts (item_id) values
+    ('${itemId(101)}'),
+    ('${itemId(102)}'),
+    ('${itemId(103)}'),
+    ('${itemId(104)}');
+`);
+
+const existingItemsBefore = psqlExisting(`
+  select jsonb_agg(to_jsonb(item) order by item.code)::text
+  from public.items as item
+  where item.code = any (array['CIL', 'COT', 'EMP', 'RES'])
+`);
+const existingSubtypesBefore = psqlExisting(`
+  select jsonb_agg(to_jsonb(loose_part) order by loose_part.item_id)::text
+  from public.loose_parts as loose_part
+  where loose_part.item_id = any (array[
+    '${itemId(101)}'::uuid,
+    '${itemId(102)}'::uuid,
+    '${itemId(103)}'::uuid,
+    '${itemId(104)}'::uuid
+  ])
+`);
+
+applyMigration(existingCatalogDatabase);
+
+assert.equal(
+  psqlExisting(`
+    select jsonb_agg(to_jsonb(item) order by item.code)::text
+    from public.items as item
+    where item.code = any (array['CIL', 'COT', 'EMP', 'RES'])
+  `),
+  existingItemsBefore,
+);
+assert.equal(
+  psqlExisting(`
+    select jsonb_agg(to_jsonb(loose_part) order by loose_part.item_id)::text
+    from public.loose_parts as loose_part
+    where loose_part.item_id = any (array[
+      '${itemId(101)}'::uuid,
+      '${itemId(102)}'::uuid,
+      '${itemId(103)}'::uuid,
+      '${itemId(104)}'::uuid
+    ])
+  `),
+  existingSubtypesBefore,
+);
+assert.equal(
+  Number(psqlExisting(`
+    select count(*)
+    from public.stock_balances as balance
+    where balance.item_id = any (array[
+      '${itemId(101)}'::uuid,
+      '${itemId(102)}'::uuid,
+      '${itemId(103)}'::uuid,
+      '${itemId(104)}'::uuid
+    ])
+  `)),
+  0,
+);
+assert.equal(
+  Number(psqlExisting("select count(*) from public.commercial_bundle_codes where code = '1HC'")),
+  1,
+);
+psqlExisting("select private.ensure_1hc_loose_parts()");
+assert.equal(
+  psqlExisting(`
+    select jsonb_agg(to_jsonb(item) order by item.code)::text
+    from public.items as item
+    where item.code = any (array['CIL', 'COT', 'EMP', 'RES'])
+  `),
+  existingItemsBefore,
+);
+
 const configurationsBefore = number("select count(*) from public.commercial_configurations");
 assert.equal(configurationsBefore, 80);
-assert.equal(number("select count(*) from public.loose_parts"), 0);
+assert.equal(number("select count(*) from public.items where code = any (array['CIL', 'COT', 'EMP', 'RES'])"), 0);
 applyMigration();
 assert.equal(number("select count(*) from public.commercial_configurations"), 80);
-assert.equal(number("select count(*) from public.commercial_bundles"), 0);
+assert.equal(number("select count(*) from public.commercial_bundles"), 1);
 assert.equal(
   scalar("select to_regprocedure('private.register_1hc_bundle()') is not null"),
   "t",
@@ -183,10 +307,73 @@ for (const signature of [
   assert.equal(scalar(`select has_function_privilege('anon', '${signature}', 'execute')`), "f");
 }
 
-assert.match(
-  psql("select private.register_1hc_bundle()", { allowFailure: true }),
-  /requires active LOOSE_PART items CIL, EMP, RES, and COT/i,
+assert.deepEqual(
+  JSON.parse(psql(`
+    select jsonb_agg(
+      jsonb_build_object(
+        'code', item.code,
+        'description', item.description,
+        'item_type', item.item_type,
+        'is_active', item.is_active,
+        'created_by', item.created_by,
+        'created_by_name_snapshot', item.created_by_name_snapshot,
+        'has_subtype', loose_part.item_id is not null
+      )
+      order by item.code
+    )
+    from public.items as item
+    left join public.loose_parts as loose_part on loose_part.item_id = item.id
+    where item.code = any (array['CIL', 'COT', 'EMP', 'RES'])
+  `)),
+  [
+    {
+      code: "CIL",
+      description: "Cilindro Primário",
+      item_type: "LOOSE_PART",
+      is_active: true,
+      created_by: null,
+      created_by_name_snapshot: null,
+      has_subtype: true,
+    },
+    {
+      code: "COT",
+      description: "Cotovelo Plástico MBB",
+      item_type: "LOOSE_PART",
+      is_active: true,
+      created_by: null,
+      created_by_name_snapshot: null,
+      has_subtype: true,
+    },
+    {
+      code: "EMP",
+      description: "Empurrador MBB",
+      item_type: "LOOSE_PART",
+      is_active: true,
+      created_by: null,
+      created_by_name_snapshot: null,
+      has_subtype: true,
+    },
+    {
+      code: "RES",
+      description: "Reservatório de Óleo",
+      item_type: "LOOSE_PART",
+      is_active: true,
+      created_by: null,
+      created_by_name_snapshot: null,
+      has_subtype: true,
+    },
+  ],
 );
+assert.equal(
+  number(`
+    select count(*)
+    from public.stock_balances as balance
+    join public.items as item on item.id = balance.item_id
+    where item.code = any (array['CIL', 'COT', 'EMP', 'RES'])
+  `),
+  0,
+);
+assert.equal(number("select count(*) from public.bundle_stock_balances"), 0);
 
 psql(`
   insert into auth.users (id, aud, role, created_at, updated_at) values
@@ -195,24 +382,24 @@ psql(`
   insert into public.profiles (id, name, is_active) values
     ('${firstUser}', 'NK70 Active', true),
     ('${inactiveUser}', 'NK70 Inactive', false);
-  insert into public.items (id, code, description, item_type, is_active) values
-    ('${itemId(1)}', 'CIL', 'CIL NK70', 'LOOSE_PART', true),
-    ('${itemId(2)}', 'EMP', 'EMP NK70', 'LOOSE_PART', true),
-    ('${itemId(3)}', 'RES', 'RES NK70', 'LOOSE_PART', true),
-    ('${itemId(4)}', 'COT', 'COT NK70', 'LOOSE_PART', true);
-  insert into public.loose_parts (item_id) values
-    ('${itemId(1)}'), ('${itemId(2)}'), ('${itemId(3)}'), ('${itemId(4)}');
 `);
 
 const bundleId = scalar("select private.register_1hc_bundle()");
 assert.match(bundleId, /^[0-9a-f-]{36}$/i);
 assert.equal(scalar("select private.register_1hc_bundle()"), bundleId);
+psql("select private.ensure_1hc_loose_parts()");
+assert.equal(number("select count(*) from public.items where code = any (array['CIL', 'COT', 'EMP', 'RES'])"), 4);
 const configurationId = scalar(`
   select configuration_id
   from public.commercial_configuration_codes
   where code = '1H'
 `);
-const loosePartIds = [itemId(1), itemId(2), itemId(3), itemId(4)];
+const loosePartIds = psql(`
+  select id
+  from public.items
+  where code = any (array['CIL', 'COT', 'EMP', 'RES'])
+  order by code
+`).split(/\r?\n/);
 assert.equal(number(`select count(*) from public.commercial_bundle_components where bundle_id = '${bundleId}'`), 5);
 assert.equal(number("select count(*) from public.commercial_bundle_codes where code = '1HC'"), 1);
 
@@ -337,6 +524,27 @@ assert.match(
 );
 assert.equal(number(`select count(*) from public.bundle_assembly_operations where batch_id = '${adjusted.movement_batch_id}'`), 0);
 
+const noOpAdjustment = jsonFrom(asUser(
+  firstUser,
+  `select public.adjust_commercial_bundle_stock_checked('${bundleId}', 1, 1, 'Contagem sem alteração NK70', '${key(73)}')`,
+));
+assert.equal(noOpAdjustment.adjustment_applied, false);
+assert.equal(noOpAdjustment.movement_batch_id, null);
+assert.equal(number(`select count(*) from public.movement_batches where user_id = '${firstUser}' and idempotency_key = '${key(73)}'`), 0);
+jsonFrom(asUser(
+  firstUser,
+  `select public.stock_inbound_items('[{"item_id":"${loosePartIds[0]}","quantity":1}]'::jsonb, '${key(73)}', 'Entrada concorrente NK70')`,
+));
+assert.equal(number(`select count(*) from public.movement_batches where user_id = '${firstUser}' and idempotency_key = '${key(73)}'`), 1);
+assert.match(
+  asUser(
+    firstUser,
+    `select public.adjust_commercial_bundle_stock_checked('${bundleId}', 1, 1, 'Contagem sem alteração NK70', '${key(73)}')`,
+    { allowFailure: true },
+  ),
+  /already been used by another stock operation/i,
+);
+
 setFreeBalances(2147483647, [2147483647, 2147483647, 2147483647, 2147483647], 1);
 const overflowBefore = bundleState(bundleId, configurationId, loosePartIds);
 assert.match(
@@ -398,6 +606,54 @@ assert.match(
 assert.match(
   psql(`insert into public.bundle_stock_movements (batch_id, bundle_id, quantity_change, quantity_before, quantity_after) values ((select id from public.movement_batches limit 1), '${bundleId}', 1, 0, 2)`, { allowFailure: true }),
   /bundle_stock_movements_quantity_consistency_check/i,
+);
+
+setFreeBalances(4, [4, 4, 4, 4], 0);
+jsonFrom(asUser(firstUser, assemble(1, key(90))));
+psql(`
+  update public.commercial_bundle_codes
+  set is_active = false
+  where bundle_id = '${bundleId}' and code = '1HC';
+  update public.commercial_bundles
+  set is_active = false
+  where id = '${bundleId}';
+  update public.commercial_configuration_codes
+  set is_active = false
+  where configuration_id = '${configurationId}' and code = '1H';
+  update public.commercial_configurations
+  set is_active = false
+  where id = '${configurationId}';
+  update public.items
+  set is_active = false
+  where id = any (array[${loosePartIds.map((id) => `'${id}'::uuid`).join(", ")}]);
+`);
+assert.match(
+  asUser(firstUser, assemble(1, key(91)), { allowFailure: true }),
+  /does not exist or is inactive/i,
+);
+
+const inactiveDisassembly = jsonFrom(
+  asUser(firstUser, disassemble(1, key(92))),
+);
+const returnedComponents = inactiveDisassembly.component_movements
+  .map((movement) => {
+    if (movement.kind === "COMMERCIAL_CONFIGURATION") return "1H";
+    return scalar(`select code from public.items where id = '${movement.component_id}'`);
+  })
+  .sort();
+assert.deepEqual(returnedComponents, ["1H", "CIL", "COT", "EMP", "RES"]);
+assert.equal(bundleState(bundleId, configurationId, loosePartIds).bundle, 0);
+assert.equal(bundleState(bundleId, configurationId, loosePartIds).configuration, 4);
+assert.deepEqual(bundleState(bundleId, configurationId, loosePartIds).items, [4, 4, 4, 4]);
+assert.deepEqual(
+  JSON.parse(scalar(`
+    select recipe_snapshot::text
+    from public.bundle_assembly_operations
+    where batch_id = '${inactiveDisassembly.movement_batch_id}'
+  `)).map((component) => component.kind === "ITEM"
+    ? component.code
+    : component.commercial_codes.includes("1H") ? "1H" : null).sort(),
+  ["1H", "CIL", "COT", "EMP", "RES"],
 );
 
 console.log("BUNDLE RECIPE FOUNDATION LOCAL TESTS PASSED");

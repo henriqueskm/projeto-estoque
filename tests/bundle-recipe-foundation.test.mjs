@@ -54,11 +54,34 @@ test("extends the locked INV-aware catalog namespace to bundle codes", () => {
   assert.match(migration, /private\.catalog_codes_conflict\(bundle_code\.code, new\.code\)/i);
 });
 
-test("registers 1HC by strict business-code guards without catalog UUID literals", () => {
+test("seeds the required loose parts and always registers 1HC without catalog UUID literals", () => {
+  const seed = migration.match(
+    /create function private\.ensure_1hc_loose_parts\(\)[\s\S]*?revoke all on function private\.ensure_1hc_loose_parts\(\)/i,
+  )?.[0];
   const registration = migration.match(
     /create function private\.register_1hc_bundle\(\)[\s\S]*?revoke all on function private\.register_1hc_bundle\(\)/i,
   )?.[0];
+  assert.ok(seed);
   assert.ok(registration);
+  for (const [code, description] of [
+    ["CIL", "Cilindro Primário"],
+    ["EMP", "Empurrador MBB"],
+    ["RES", "Reservatório de Óleo"],
+    ["COT", "Cotovelo Plástico MBB"],
+  ]) {
+    assert.match(seed, new RegExp(`'${code}'`));
+    assert.match(seed, new RegExp(description));
+  }
+  assert.match(seed, /private\.catalog_code_write_policy\(required\.code\)[\s\S]*?order by policy\.lock_identity, required\.code/i);
+  assert.match(seed, /pg_advisory_xact_lock[\s\S]*?v_required\.lock_identity/i);
+  assert.match(seed, /private\.catalog_codes_conflict\(item\.code, v_required\.code\)/i);
+  assert.match(seed, /private\.catalog_codes_conflict\([\s\S]*?commercial_code\.code,[\s\S]*?v_required\.code/i);
+  assert.match(seed, /private\.catalog_codes_conflict\(bundle_code\.code, v_required\.code\)/i);
+  assert.match(seed, /insert into public\.items[\s\S]*?insert into public\.loose_parts/i);
+  assert.match(seed, /v_item_type <> 'LOOSE_PART'/i);
+  assert.match(seed, /not v_item_is_active/i);
+  assert.match(seed, /not registered as a loose-part subtype/i);
+  assert.doesNotMatch(seed, /created_by/i);
   assert.match(registration, /commercial_code\.code = '1H'/i);
   for (const code of ["CIL", "EMP", "RES", "COT"]) {
     assert.match(registration, new RegExp(`'${code}'`));
@@ -66,9 +89,9 @@ test("registers 1HC by strict business-code guards without catalog UUID literals
   assert.match(registration, /item\.item_type = 'LOOSE_PART'/i);
   assert.match(registration, /commercial_code\.is_active[\s\S]*?configuration\.is_active/i);
   assert.match(registration, /private\.catalog_codes_conflict\(item\.code, '1HC'\)/i);
-  assert.doesNotMatch(registration, /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
-  assert.match(migration, /v_target_code_count = 0 and v_loose_part_count = 0/i);
-  assert.match(migration, /perform private\.register_1hc_bundle\(\)/i);
+  assert.doesNotMatch(`${seed}\n${registration}`, /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+  assert.match(migration, /perform private\.ensure_1hc_loose_parts\(\);[\s\S]*?perform private\.register_1hc_bundle\(\);/i);
+  assert.doesNotMatch(migration, /registration deferred/i);
 });
 
 test("assembly and disassembly use free balances, deterministic locks, and a full atomic ledger", () => {
@@ -91,6 +114,9 @@ test("assembly and disassembly use free balances, deterministic locks, and a ful
   assert.match(worker, /insert into public\.bundle_stock_movements/i);
   assert.match(worker, /insert into public\.bundle_assembly_operations/i);
   assert.match(worker, /Commercial bundle disassembly would overflow a component balance/i);
+  assert.match(worker, /p_operation_type = 'DISASSEMBLY'[\s\S]*?or \(bundle_code\.is_active and bundle\.is_active\)/i);
+  assert.match(worker, /if p_operation_type = 'ASSEMBLY' then[\s\S]*?v_active_component_count/i);
+  assert.match(migration, /commercial_codes'[\s\S]*?where code\.configuration_id = component\.configuration_id\s*\)/i);
 });
 
 test("idempotent receipts reject changed payloads and become immutable", () => {
@@ -100,6 +126,7 @@ test("idempotent receipts reject changed payloads and become immutable", () => {
   assert.match(migration, /bundle_adjustment_requests_immutable_receipt/i);
   assert.match(migration, /old\.completed_at is not null[\s\S]*?Bundle idempotency receipts are immutable/i);
   assert.match(migration, /old\.completed_at is not null[\s\S]*?Bundle adjustment receipts are immutable/i);
+  assert.match(migration, /v_existing\.movement_batch_id is null and found[\s\S]*?already been used by another stock operation/i);
 });
 
 test("absolute bundle adjustment is stale-protected and does not create assembly audit", () => {
@@ -133,8 +160,9 @@ test("RLS, grants, and function execution expose reads and authenticated RPCs on
   assert.match(migration, /grant execute on function public\.assemble_commercial_bundle[\s\S]*?to authenticated/i);
 });
 
-test("documentation distinguishes configuration, bundle, and deferred real count", () => {
+test("documentation distinguishes configuration, seeded bundle, and unentered real count", () => {
   assert.match(documentation, /not an alias of `1H`/i);
+  assert.match(documentation, /clean migration\s+chain creates/i);
   assert.match(documentation, /free plus embedded/i);
   assert.match(documentation, /maximum assemblable.*only free balances/i);
   assert.match(documentation, /has \*\*not\*\* been entered/i);

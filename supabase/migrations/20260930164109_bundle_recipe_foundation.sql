@@ -655,6 +655,179 @@ grant select on table
   public.bundle_assembly_operations
 to authenticated;
 
+create function private.ensure_1hc_loose_parts()
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_required record;
+  v_item_id uuid;
+  v_item_type text;
+  v_item_is_active boolean;
+  v_conflict_code text;
+begin
+  for v_required in
+    select
+      required.code,
+      required.description,
+      policy.lock_identity
+    from (
+      values
+        ('CIL'::text, 'Cilindro Primário'::text),
+        ('COT'::text, 'Cotovelo Plástico MBB'::text),
+        ('EMP'::text, 'Empurrador MBB'::text),
+        ('RES'::text, 'Reservatório de Óleo'::text)
+    ) as required(code, description)
+    cross join lateral private.catalog_code_write_policy(required.code) as policy
+    order by policy.lock_identity, required.code
+  loop
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(v_required.lock_identity, 0)
+    );
+  end loop;
+
+  for v_required in
+    select required.code, required.description
+    from (
+      values
+        ('CIL'::text, 'Cilindro Primário'::text),
+        ('COT'::text, 'Cotovelo Plástico MBB'::text),
+        ('EMP'::text, 'Empurrador MBB'::text),
+        ('RES'::text, 'Reservatório de Óleo'::text)
+    ) as required(code, description)
+    order by required.code
+  loop
+    v_item_id := null;
+    v_item_type := null;
+    v_item_is_active := null;
+
+    select item.id, item.item_type, item.is_active
+    into v_item_id, v_item_type, v_item_is_active
+    from public.items as item
+    where item.code = v_required.code
+    for update;
+
+    select item.code
+    into v_conflict_code
+    from public.items as item
+    where item.id is distinct from v_item_id
+      and private.catalog_codes_conflict(item.code, v_required.code)
+    order by item.code
+    limit 1
+    for share;
+
+    if found then
+      raise exception using
+        errcode = '23514',
+        message = format(
+          'Required 1HC loose-part code %s conflicts with physical catalog code %s.',
+          v_required.code,
+          v_conflict_code
+        );
+    end if;
+
+    select commercial_code.code
+    into v_conflict_code
+    from public.commercial_configuration_codes as commercial_code
+    where private.catalog_codes_conflict(
+      commercial_code.code,
+      v_required.code
+    )
+    order by commercial_code.code
+    limit 1
+    for share;
+
+    if found then
+      raise exception using
+        errcode = '23514',
+        message = format(
+          'Required 1HC loose-part code %s conflicts with commercial configuration code %s.',
+          v_required.code,
+          v_conflict_code
+        );
+    end if;
+
+    select bundle_code.code
+    into v_conflict_code
+    from public.commercial_bundle_codes as bundle_code
+    where private.catalog_codes_conflict(bundle_code.code, v_required.code)
+    order by bundle_code.code
+    limit 1
+    for share;
+
+    if found then
+      raise exception using
+        errcode = '23514',
+        message = format(
+          'Required 1HC loose-part code %s conflicts with commercial bundle code %s.',
+          v_required.code,
+          v_conflict_code
+        );
+    end if;
+
+    if v_item_id is null then
+      insert into public.items (
+        code,
+        description,
+        item_type,
+        minimum_stock,
+        is_active
+      )
+      values (
+        v_required.code,
+        v_required.description,
+        'LOOSE_PART',
+        0,
+        true
+      )
+      returning id into v_item_id;
+
+      insert into public.loose_parts (item_id)
+      values (v_item_id);
+    else
+      if v_item_type <> 'LOOSE_PART' then
+        raise exception using
+          errcode = '23514',
+          message = format(
+            'Required 1HC code %s already belongs to item type %s.',
+            v_required.code,
+            v_item_type
+          );
+      end if;
+
+      if not v_item_is_active then
+        raise exception using
+          errcode = '23514',
+          message = format(
+            'Required 1HC loose-part code %s is inactive.',
+            v_required.code
+          );
+      end if;
+
+      if not exists (
+        select 1
+        from public.loose_parts as loose_part
+        where loose_part.item_id = v_item_id
+      ) then
+        raise exception using
+          errcode = '23514',
+          message = format(
+            'Required 1HC code %s is not registered as a loose-part subtype.',
+            v_required.code
+          );
+      end if;
+    end if;
+  end loop;
+
+  return;
+end;
+$$;
+
+revoke all on function private.ensure_1hc_loose_parts()
+from public, anon, authenticated, service_role;
+
 create function private.register_1hc_bundle()
 returns uuid
 language plpgsql
@@ -881,47 +1054,9 @@ revoke all on function private.register_1hc_bundle()
 from public, anon, authenticated, service_role;
 
 do $$
-declare
-  v_target_code_count integer;
-  v_loose_part_count integer;
-  v_conflict_code text;
 begin
-  select catalog.code
-  into v_conflict_code
-  from (
-    select item.code from public.items as item
-    union all
-    select code.code from public.commercial_configuration_codes as code
-    union all
-    select code.code from public.commercial_bundle_codes as code
-  ) as catalog
-  where private.catalog_codes_conflict(catalog.code, '1HC')
-  order by catalog.code
-  limit 1;
-
-  if found then
-    raise exception using
-      errcode = '23514',
-      message = format(
-        '1HC registration cannot be deferred because catalog code %s already conflicts with 1HC.',
-        v_conflict_code
-      );
-  end if;
-
-  select count(*)
-  into v_target_code_count
-  from public.items as item
-  where item.code = any (array['CIL', 'EMP', 'RES', 'COT']);
-
-  select count(*)
-  into v_loose_part_count
-  from public.loose_parts;
-
-  if v_target_code_count = 0 and v_loose_part_count = 0 then
-    raise notice '1HC registration deferred: the clean versioned catalog has no loose parts. The strict private.register_1hc_bundle() guard remains available for a catalog-complete deployment.';
-  else
-    perform private.register_1hc_bundle();
-  end if;
+  perform private.ensure_1hc_loose_parts();
+  perform private.register_1hc_bundle();
 end;
 $$;
 
@@ -953,7 +1088,6 @@ as $$
             )
             from public.commercial_configuration_codes as code
             where code.configuration_id = component.configuration_id
-              and code.is_active
           )
         end,
         'quantity_per_bundle', component.quantity_per_bundle
@@ -1196,17 +1330,28 @@ begin
   from public.commercial_bundle_codes as bundle_code
   join public.commercial_bundles as bundle on bundle.id = bundle_code.bundle_id
   where bundle_code.code = v_normalized_code
-    and bundle_code.is_active
-    and bundle.is_active
+    and (
+      p_operation_type = 'DISASSEMBLY'
+      or (bundle_code.is_active and bundle.is_active)
+    )
   for share of bundle_code, bundle;
 
   if not found then
-    raise exception using
-      errcode = '22023',
-      message = format(
-        'Commercial bundle code %s does not exist or is inactive.',
-        v_normalized_code
-      );
+    if p_operation_type = 'ASSEMBLY' then
+      raise exception using
+        errcode = '22023',
+        message = format(
+          'Commercial bundle code %s does not exist or is inactive.',
+          v_normalized_code
+        );
+    else
+      raise exception using
+        errcode = '22023',
+        message = format(
+          'Commercial bundle code %s does not resolve to a unique stored recipe.',
+          v_normalized_code
+        );
+    end if;
   end if;
 
   insert into private.bundle_operation_requests (
@@ -1266,25 +1411,27 @@ begin
   order by item.id
   for share of item;
 
-  select count(*)
-  into v_active_component_count
-  from public.commercial_bundle_components as component
-  left join public.items as item on item.id = component.item_id
-  left join public.commercial_configurations as configuration
-    on configuration.id = component.configuration_id
-  where component.bundle_id = v_bundle_id
-    and (
-      (component.item_id is not null and item.is_active)
-      or (component.configuration_id is not null and configuration.is_active)
-    );
-
-  if v_active_component_count <> v_component_count then
-    raise exception using
-      errcode = '23514',
-      message = format(
-        'Commercial bundle %s contains an inactive or missing component.',
-        v_bundle_id
+  if p_operation_type = 'ASSEMBLY' then
+    select count(*)
+    into v_active_component_count
+    from public.commercial_bundle_components as component
+    left join public.items as item on item.id = component.item_id
+    left join public.commercial_configurations as configuration
+      on configuration.id = component.configuration_id
+    where component.bundle_id = v_bundle_id
+      and (
+        (component.item_id is not null and item.is_active)
+        or (component.configuration_id is not null and configuration.is_active)
       );
+
+    if v_active_component_count <> v_component_count then
+      raise exception using
+        errcode = '23514',
+        message = format(
+          'Commercial bundle %s contains an inactive or missing component.',
+          v_bundle_id
+        );
+    end if;
   end if;
 
   v_recipe_snapshot := private.commercial_bundle_recipe_snapshot(v_bundle_id);
@@ -1832,18 +1979,26 @@ begin
         message = 'p_idempotency_key has already been used with a different commercial bundle adjustment.';
     end if;
 
-    if v_existing.movement_batch_id is not null then
-      select batch.id
-      into v_other_batch_id
-      from public.movement_batches as batch
-      where batch.user_id = p_user_id
-        and batch.idempotency_key = p_idempotency_key;
+    select batch.id
+    into v_other_batch_id
+    from public.movement_batches as batch
+    where batch.user_id = p_user_id
+      and batch.idempotency_key = p_idempotency_key;
 
-      if not found or v_other_batch_id is distinct from v_existing.movement_batch_id then
-        raise exception using
-          errcode = '23514',
-          message = 'The movement batch for the existing commercial bundle adjustment could not be resolved.';
-      end if;
+    if v_existing.movement_batch_id is null and found then
+      raise exception using
+        errcode = '22023',
+        message = 'p_idempotency_key has already been used by another stock operation.';
+    end if;
+
+    if v_existing.movement_batch_id is not null
+      and (
+        not found
+        or v_other_batch_id is distinct from v_existing.movement_batch_id
+      ) then
+      raise exception using
+        errcode = '23514',
+        message = 'The movement batch for the existing commercial bundle adjustment could not be resolved.';
     end if;
 
     return v_existing.result;

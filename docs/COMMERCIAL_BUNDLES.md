@@ -20,10 +20,13 @@ servo-plus-kit configuration. Its recipe is:
 - 1 × active loose part `COT`.
 
 The forward migration resolves these business codes and fails closed on a
-missing, inactive, ambiguous, mistyped, or colliding entry. A clean local
-migration chain does not contain the post-reset loose parts, so registration is
-deferred only when the loose-part catalog is wholly empty. The strict private
-registration guard remains the single path used once that catalog exists.
+missing, inactive, ambiguous, mistyped, or colliding entry. The clean migration
+chain creates the active loose parts `CIL` (Cilindro Primário), `EMP`
+(Empurrador MBB), `RES` (Reservatório de Óleo), and `COT` (Cotovelo
+Plástico MBB), including their subtype rows, before registering `1HC`.
+Pre-existing exact rows are validated and retained without changing their IDs,
+descriptions, or authorship. The system seed has null authorship and does not
+create a stock balance or physical count.
 
 No environment-specific catalog UUID is embedded in the migration.
 
@@ -48,6 +51,11 @@ Assembly and disassembly write one movement batch, every component movement,
 the bundle movement, and a recipe snapshot. Completed idempotency receipts are
 immutable. A recipe can be edited before first use, but becomes immutable after
 the first bundle movement or first positive bundle balance.
+
+Assembly requires the bundle, selected code, and every component to be active.
+Disassembly may use the uniquely stored code and immutable recipe after those
+catalog records are deactivated, so already assembled physical stock can always
+be returned to its exact components.
 
 The protected absolute-adjustment RPC records a counted bundle balance without
 consuming or returning components and rejects stale displayed quantities. It is
