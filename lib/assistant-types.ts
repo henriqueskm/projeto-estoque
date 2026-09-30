@@ -694,9 +694,17 @@ export type AssistantInventoryItemSummaryTarget = {
   composition?: {
     servoCode: string;
     servoDescription: string;
+    servoSeparateStock?: number;
     installationKitCode: string;
     installationKitDescription: string;
+    installationKitSeparateStock?: number;
   };
+  usedIn?: Array<{
+    configurationId: string;
+    codes: string[];
+    description: string;
+    href: string;
+  }>;
 };
 
 export type AssistantInventoryItemSummaryBlock = {
@@ -1652,6 +1660,7 @@ function parseInventoryItemSummaryTarget(
       ? null
       : value.shortfall;
   const composition = value.composition;
+  const usedIn = value.usedIn;
   const itemType = String(
     value.itemType,
   ) as AssistantInventoryItemSummaryTarget["itemType"];
@@ -1747,11 +1756,39 @@ function parseInventoryItemSummaryTarget(
         !composition.servoCode.trim() ||
         typeof composition.servoDescription !== "string" ||
         !composition.servoDescription.trim() ||
+        (composition.servoSeparateStock !== undefined &&
+          !isNonnegativeInteger(composition.servoSeparateStock)) ||
         typeof composition.installationKitCode !== "string" ||
         !composition.installationKitCode.trim() ||
         typeof composition.installationKitDescription !== "string" ||
-        !composition.installationKitDescription.trim())) ||
-    (value.targetKind === "item" && composition !== undefined)
+        !composition.installationKitDescription.trim() ||
+        (composition.installationKitSeparateStock !== undefined &&
+          !isNonnegativeInteger(composition.installationKitSeparateStock)))) ||
+    (value.targetKind === "item" && composition !== undefined) ||
+    (usedIn !== undefined &&
+      (value.targetKind !== "item" ||
+        (itemType !== "SERVO" && itemType !== "INSTALLATION_KIT") ||
+        !Array.isArray(usedIn) ||
+        usedIn.some(
+          (usage) =>
+            !isRecord(usage) ||
+            typeof usage.configurationId !== "string" ||
+            !uuidPattern.test(usage.configurationId) ||
+            !Array.isArray(usage.codes) ||
+            usage.codes.length === 0 ||
+            usage.codes.some(
+              (code) => typeof code !== "string" || !code.trim(),
+            ) ||
+            typeof usage.description !== "string" ||
+            !usage.description.trim() ||
+            typeof usage.href !== "string" ||
+            !isExpectedTargetHref(
+              usage.href,
+              "commercial_configuration",
+              usage.configurationId,
+              null,
+            ),
+        )))
   ) {
     return null;
   }
@@ -1777,6 +1814,11 @@ function parseInventoryItemSummaryTarget(
       ? {
           composition:
             composition as AssistantInventoryItemSummaryTarget["composition"],
+        }
+      : {}),
+    ...(Array.isArray(usedIn)
+      ? {
+          usedIn: usedIn as AssistantInventoryItemSummaryTarget["usedIn"],
         }
       : {}),
   };

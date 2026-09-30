@@ -406,7 +406,7 @@ test("a catalog-code context is not reinterpreted as a servo-model kit state", a
   assert.match(assistant, /Esse contexto é de um código específico/);
 });
 
-test("wraps read cards with short copy and at most one suggestion", () => {
+test("wraps inventory cards without repeating details already visible", () => {
   const answer = addAssistantConversationalCopy({
     message: "fallback seguro",
     structuredBlock: {
@@ -416,9 +416,7 @@ test("wraps read cards with short copy and at most one suggestion", () => {
   });
 
   assert.equal(typeof answer.leadText, "string");
-  assert.equal(typeof answer.followUpText, "string");
-  assert.equal((answer.followUpText.match(/Se quiser/g) ?? []).length, 1);
-  assert.doesNotMatch(answer.followUpText, /Posso ajudar em mais alguma coisa/i);
+  assert.equal(answer.followUpText, null);
 });
 
 function supplierOrderCard(waitingPickupQuantity, waitingStockQuantity) {
