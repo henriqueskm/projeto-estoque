@@ -453,7 +453,6 @@ export function OutboundEntryFlow({
     }
 
     setOpenSection((current) => (current === section ? null : section));
-    setSearch("");
   }
 
   function addOption(option: OutboundCatalogOption) {
@@ -629,29 +628,8 @@ export function OutboundEntryFlow({
   function renderCatalogResults() {
     return (
       <>
-        <label
-          htmlFor="outbound-search"
-          className="block text-sm font-black text-text-primary"
-        >
-          Pesquisar nesta categoria
-        </label>
-        <div className="relative mt-2">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-text-muted" />
-          <input
-            id="outbound-search"
-            type="search"
-            value={search}
-            maxLength={maximumSearchLength}
-            onChange={(event) =>
-              setSearch(event.target.value.slice(0, maximumSearchLength))
-            }
-            placeholder="Código, descrição, modelo, servo ou kit"
-            className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
-          />
-        </div>
-
         <p
-          className="mt-3 text-xs font-bold text-text-muted"
+          className="text-xs font-bold text-text-muted"
           aria-live="polite"
         >
           {!search.trim()
@@ -1183,7 +1161,33 @@ export function OutboundEntryFlow({
             </h2>
           </div>
 
-          <div className="mt-4 space-y-3 sm:mt-5">
+          <div className="mt-4 sm:mt-5">
+            <label
+              htmlFor="outbound-search"
+              className="block text-sm font-black text-text-primary"
+            >
+              Pesquisar itens
+            </label>
+            <div className="relative mt-2">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-text-muted" />
+              <input
+                id="outbound-search"
+                type="search"
+                value={search}
+                maxLength={maximumSearchLength}
+                onChange={(event) =>
+                  setSearch(event.target.value.slice(0, maximumSearchLength))
+                }
+                placeholder="Código, descrição, modelo, servo ou kit"
+                className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
+              />
+            </div>
+            <p className="mt-2 text-xs font-semibold text-text-muted">
+              A pesquisa permanece ao trocar de categoria.
+            </p>
+          </div>
+
+          <div className="mt-4 space-y-3">
             <StockFlowSection
               id="outbound-separate-section"
               title="Item separado"

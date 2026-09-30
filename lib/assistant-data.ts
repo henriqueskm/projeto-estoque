@@ -454,6 +454,13 @@ async function buildAssistantMediaMaps(
       );
     },
   );
+  if (relevantConfigurations.length === 0) {
+    return {
+      configurationImageById: new Map(),
+      compatibleKitImagesByItemId: new Map(),
+    };
+  }
+
   const supabase = await createClient();
   const imageUrlByPath = await createCommercialImageUrlMap(
     supabase,
@@ -1322,10 +1329,13 @@ function getInventorySummaryFallback(
   const minimum =
     target.minimumStock === null ? "não definido" : target.minimumStock;
   const composition = target.composition
-    ? ` Servo ${target.composition.servoCode}, ${target.composition.servoDescription}; Kit de instalação ${target.composition.installationKitCode}, ${target.composition.installationKitDescription}.`
+    ? ` Servo ${target.composition.servoCode}, ${target.composition.servoDescription}, separado disponível: ${target.composition.servoSeparateStock ?? "não informado"}; Kit de instalação ${target.composition.installationKitCode}, ${target.composition.installationKitDescription}, separado disponível: ${target.composition.installationKitSeparateStock ?? "não informado"}.`
+    : "";
+  const usedIn = target.usedIn?.length
+    ? ` Usado em: ${target.usedIn.map((usage) => usage.codes.join("/")).join(", ")}.`
     : "";
 
-  return `Código ${target.displayCode}, ${target.typeLabel}, ${target.description}. Estoque atual: ${target.currentStock} ${target.stockUnitLabel}. Mínimo: ${minimum}. Situação: ${target.statusLabel}.${composition}`;
+  return `Código ${target.displayCode}, ${target.typeLabel}, ${target.description}. Estoque atual: ${target.currentStock} ${target.stockUnitLabel}. Mínimo: ${minimum}. Situação: ${target.statusLabel}.${composition}${usedIn}`;
 }
 
 const maximumServoModelConfigurations = 6;
@@ -1454,9 +1464,12 @@ export async function consultAssistantServoModelInventory(
         composition: {
           servoCode: configuration.servo.code,
           servoDescription: configuration.servo.description,
+          servoSeparateStock: configuration.servo.loose_quantity,
           installationKitCode: configuration.installation_kit.code,
           installationKitDescription:
             configuration.installation_kit.description,
+          installationKitSeparateStock:
+            configuration.installation_kit.loose_quantity,
         },
       };
 
@@ -1521,6 +1534,9 @@ export async function consultAssistantServoModelInventory(
 export async function consultAssistantInventoryItemSummary(
   rawCode: string,
   metric: AssistantInventoryItemSummaryMetric,
+  snapshotReader: (
+    queryCode: string,
+  ) => Promise<AssistantStockSnapshot> = loadAssistantExactItemSnapshot,
 ): Promise<AssistantInventoryItemSummaryBlock> {
   const queryCode = rawCode.trim().toLocaleUpperCase("pt-BR");
 
@@ -1529,8 +1545,14 @@ export async function consultAssistantInventoryItemSummary(
   }
 
   const normalizedCode = normalizeSearch(queryCode);
-  const snapshot = await loadAssistantExactItemSnapshot(queryCode);
+  const snapshot = await snapshotReader(queryCode);
   const { physicalItems, configurations } = buildLookupCatalog(snapshot);
+  const configurationRowById = new Map(
+    snapshot.configurations.map((configuration) => [
+      configuration.id,
+      configuration,
+    ]),
+  );
   const physicalMatches = physicalItems.filter(
     (item) => normalizeSearch(item.code) === normalizedCode,
   );
@@ -1573,6 +1595,28 @@ export async function consultAssistantInventoryItemSummary(
           ? (mediaMaps.compatibleKitImagesByItemId.get(item.item_id) ?? [])
           : [];
 
+      const usedIn =
+        item.kind === "SERVO" || item.kind === "INSTALLATION_KIT"
+          ? configurations
+              .filter((configuration) => {
+                const row = configurationRowById.get(
+                  configuration.configuration_id,
+                );
+                return item.kind === "SERVO"
+                  ? row?.servo_id === item.item_id
+                  : row?.installation_kit_id === item.item_id;
+              })
+              .map((configuration) => ({
+                configurationId: configuration.configuration_id,
+                codes: configuration.aliases,
+                description: configuration.description,
+                href: buildInventoryTargetHref(
+                  "commercial_configuration",
+                  configuration.configuration_id,
+                ),
+              }))
+          : undefined;
+
       return {
         targetKind: "item",
         targetId: item.item_id,
@@ -1593,6 +1637,7 @@ export async function consultAssistantInventoryItemSummary(
                 options: compatibleImages,
               }
             : null,
+        ...(usedIn && usedIn.length > 0 ? { usedIn } : {}),
       };
     });
   const configurationTargets: AssistantInventoryItemSummaryTarget[] =
@@ -1628,9 +1673,12 @@ export async function consultAssistantInventoryItemSummary(
         composition: {
           servoCode: configuration.servo.code,
           servoDescription: configuration.servo.description,
+          servoSeparateStock: configuration.servo.loose_quantity,
           installationKitCode: configuration.installation_kit.code,
           installationKitDescription:
             configuration.installation_kit.description,
+          installationKitSeparateStock:
+            configuration.installation_kit.loose_quantity,
         },
       };
     });
@@ -1796,8 +1844,11 @@ export async function consultAssistantInventoryMultiItemSummary(
           composition: {
             servoCode: configuration.servo.code,
             servoDescription: configuration.servo.description,
+            servoSeparateStock: configuration.servo.loose_quantity,
             installationKitCode: configuration.installation_kit.code,
             installationKitDescription: configuration.installation_kit.description,
+            installationKitSeparateStock:
+              configuration.installation_kit.loose_quantity,
           },
         } satisfies AssistantInventoryItemSummaryTarget;
       });

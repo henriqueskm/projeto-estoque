@@ -452,10 +452,7 @@ export function addAssistantConversationalCopy(
     return {
       ...answer,
       leadText: "Aqui está a situação atual desse item.",
-      followUpText:
-        block.metric === "COMPOSITION"
-          ? null
-          : "Se quiser, posso mostrar a composição ou o estoque mínimo dele.",
+      followUpText: null,
     };
   }
 

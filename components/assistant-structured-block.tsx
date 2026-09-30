@@ -826,107 +826,11 @@ const inventoryStatusClasses = {
   NO_MINIMUM: "bg-slate-100 text-slate-700",
 } as const;
 
-function InventoryItemPrimaryMetric({
-  block,
-  target,
-}: {
-  block: AssistantInventoryItemSummaryBlock;
-  target: AssistantInventoryItemSummaryTarget;
-}) {
-  if (block.metric === "MINIMUM") {
-    return (
-      <>
-        <span className="text-[0.65rem] font-black tracking-[0.1em] text-text-muted uppercase">
-          Estoque mínimo
-        </span>
-        <strong className="mt-0.5 block text-2xl font-black tabular-nums text-text-primary">
-          {target.minimumStock === null
-            ? "Não definido"
-            : quantityFormatter.format(target.minimumStock)}
-        </strong>
-      </>
-    );
-  }
-
-  if (block.metric === "STATUS") {
-    return (
-      <>
-        <span className="text-[0.65rem] font-black tracking-[0.1em] text-text-muted uppercase">
-          Situação
-        </span>
-        <strong className="mt-1 block text-xl font-black text-text-primary">
-          {target.statusLabel}
-        </strong>
-      </>
-    );
-  }
-
-  if (block.metric === "SHORTFALL") {
-    return (
-      <>
-        <span className="text-[0.65rem] font-black tracking-[0.1em] text-text-muted uppercase">
-          Falta para o mínimo
-        </span>
-        <strong className="mt-0.5 block text-2xl font-black tabular-nums text-text-primary">
-          {target.shortfall === null
-            ? "Não definido"
-            : quantityFormatter.format(target.shortfall)}
-        </strong>
-        {target.shortfall !== null ? (
-          <span className="text-xs font-bold text-text-muted">
-            {target.shortfall === 1 ? "unidade" : "unidades"}
-          </span>
-        ) : null}
-      </>
-    );
-  }
-
-  if (
-    block.metric === "DESCRIPTION" ||
-    block.metric === "COMPOSITION"
-  ) {
-    return (
-      <>
-        <span className="text-[0.65rem] font-black tracking-[0.1em] text-text-muted uppercase">
-          Estoque atual
-        </span>
-        <strong className="mt-0.5 block text-xl font-black tabular-nums text-text-primary">
-          {quantityFormatter.format(target.currentStock)}{" "}
-          <span className="text-sm">{target.stockUnitLabel}</span>
-        </strong>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <span className="text-[0.65rem] font-black tracking-[0.1em] text-text-muted uppercase">
-        Estoque atual
-      </span>
-      <strong className="mt-0.5 block text-2xl font-black tabular-nums text-text-primary">
-        {quantityFormatter.format(target.currentStock)}
-      </strong>
-      <span className="text-xs font-bold text-text-muted">
-        {target.stockUnitLabel}
-      </span>
-    </>
-  );
-}
-
 function InventoryItemSummaryCard({
-  block,
   target,
 }: {
-  block: AssistantInventoryItemSummaryBlock;
   target: AssistantInventoryItemSummaryTarget;
 }) {
-  const badgeShowsStatus = block.metric === "MINIMUM";
-  const badgeLabel = badgeShowsStatus
-    ? target.statusLabel
-    : target.minimumStock === null
-      ? "Mínimo não definido"
-      : `Mínimo: ${quantityFormatter.format(target.minimumStock)}`;
-
   return (
     <article className="min-w-0 rounded-xl border border-border-neutral bg-surface p-3 shadow-sm sm:p-4">
       <header className="flex flex-wrap items-center justify-between gap-2">
@@ -942,24 +846,52 @@ function InventoryItemSummaryCard({
         {target.description}
       </h4>
 
-      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-y border-border-neutral py-3">
-        <div className="min-w-0">
-          <InventoryItemPrimaryMetric block={block} target={target} />
+      <dl className="mt-3 grid grid-cols-2 gap-2 border-y border-border-neutral py-3 sm:grid-cols-3">
+        <div className="min-w-0 rounded-lg bg-app-background p-2.5">
+          <dt className="text-[0.65rem] font-black tracking-[0.1em] text-text-muted uppercase">
+            Estoque atual
+          </dt>
+          <dd className="mt-0.5 text-xl font-black tabular-nums text-text-primary">
+            {quantityFormatter.format(target.currentStock)}
+          </dd>
+          <dd className="text-xs font-bold text-text-muted">
+            {target.stockUnitLabel}
+          </dd>
         </div>
-        <span
-          className={`rounded-full px-2.5 py-1 text-[0.68rem] font-black ${
-            badgeShowsStatus
-              ? inventoryStatusClasses[target.status]
-              : "bg-slate-100 text-slate-700"
-          }`}
-        >
-          {badgeLabel}
-        </span>
-      </div>
+        <div className="min-w-0 rounded-lg bg-app-background p-2.5">
+          <dt className="text-[0.65rem] font-black tracking-[0.1em] text-text-muted uppercase">
+            Estoque mínimo
+          </dt>
+          <dd className="mt-0.5 text-xl font-black tabular-nums text-text-primary">
+            {target.minimumStock === null
+              ? "—"
+              : quantityFormatter.format(target.minimumStock)}
+          </dd>
+          <dd className="text-xs font-bold text-text-muted">
+            {target.minimumStock === null ? "Não definido" : "unidades"}
+          </dd>
+        </div>
+        <div className="col-span-2 min-w-0 rounded-lg bg-app-background p-2.5 sm:col-span-1">
+          <dt className="text-[0.65rem] font-black tracking-[0.1em] text-text-muted uppercase">
+            Situação
+          </dt>
+          <dd className="mt-2">
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-[0.68rem] font-black ${inventoryStatusClasses[target.status]}`}
+            >
+              {target.statusLabel}
+            </span>
+          </dd>
+        </div>
+      </dl>
 
       {target.composition ? (
-        <dl className="mt-3 grid gap-2 border-t border-border-neutral pt-3 text-xs sm:grid-cols-2">
-          <div className="min-w-0">
+        <section className="mt-3 border-t border-border-neutral pt-3">
+          <h5 className="text-xs font-black tracking-[0.08em] text-text-muted uppercase">
+            Composição
+          </h5>
+          <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+          <div className="min-w-0 rounded-lg bg-app-background p-3">
             <dt className="font-black text-text-muted">
               Servoembreagem
             </dt>
@@ -967,8 +899,13 @@ function InventoryItemSummaryCard({
               Cód. {target.composition.servoCode} ·{" "}
               {target.composition.servoDescription}
             </dd>
+            {target.composition.servoSeparateStock !== undefined ? (
+              <dd className="mt-2 font-black text-text-primary">
+                Separado disponível: {quantityFormatter.format(target.composition.servoSeparateStock)}
+              </dd>
+            ) : null}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 rounded-lg bg-app-background p-3">
             <dt className="font-black text-text-muted">
               Kit de instalação
             </dt>
@@ -976,8 +913,39 @@ function InventoryItemSummaryCard({
               Cód. {target.composition.installationKitCode} ·{" "}
               {target.composition.installationKitDescription}
             </dd>
+            {target.composition.installationKitSeparateStock !== undefined ? (
+              <dd className="mt-2 font-black text-text-primary">
+                Separado disponível: {quantityFormatter.format(target.composition.installationKitSeparateStock)}
+              </dd>
+            ) : null}
           </div>
-        </dl>
+          </dl>
+        </section>
+      ) : null}
+
+      {target.usedIn && target.usedIn.length > 0 ? (
+        <section className="mt-3 border-t border-border-neutral pt-3">
+          <h5 className="text-xs font-black tracking-[0.08em] text-text-muted uppercase">
+            Usado em
+          </h5>
+          <ul className="mt-2 space-y-2">
+            {target.usedIn.map((usage) => (
+              <li key={usage.configurationId}>
+                <Link
+                  href={usage.href}
+                  className="nk-focus block rounded-lg bg-app-background p-3 transition hover:bg-brand-gold-soft/60"
+                >
+                  <span className="font-mono text-xs font-black text-brand-gold-ink">
+                    {usage.codes.map((code) => `Cód. ${code}`).join(" · ")}
+                  </span>
+                  <span className="mt-1 block text-xs font-bold text-text-primary">
+                    {usage.description}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       <footer className="mt-3 flex flex-wrap items-center gap-2">
@@ -1034,7 +1002,6 @@ function InventoryItemSummaryBlock({
         {block.results.map((target) => (
           <InventoryItemSummaryCard
             key={`${target.targetKind}-${target.targetId}`}
-            block={block}
             target={target}
           />
         ))}
