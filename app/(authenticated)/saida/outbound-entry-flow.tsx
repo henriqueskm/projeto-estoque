@@ -6,13 +6,13 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import {
   CheckIcon,
   OutboundIcon,
-  PlusIcon,
   SearchIcon,
   TrashIcon,
 } from "@/components/icons";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { StockFlowSection } from "@/components/stock-flow-section";
 import { StockFlowBundleTable, StockFlowBundleReview } from "@/components/stock-flow-bundles";
+import { StockFlowAddButton } from "@/components/stock-flow-add-button";
 import { buildStockFlowSearch } from "@/lib/stock-flow-search";
 import { physicalItemTypeLabels, type StockFlowBundleCode } from "@/lib/inbound-types";
 import {
@@ -146,26 +146,7 @@ function CatalogAddButton({
     variant === "physical" ? "Adicionar item" : "Adicionar Servo com kit";
 
   return (
-    <button
-      type="button"
-      onClick={onAdd}
-      disabled={isSelected}
-      aria-label={isSelected ? `${code} já está na saída` : `${addLabel} ${code}`}
-      className={`nk-focus inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-xs font-black text-white transition sm:w-full sm:px-3 ${
-        variant === "commercial"
-          ? "bg-violet-900 hover:bg-violet-950 disabled:bg-violet-200 disabled:text-violet-950"
-          : "bg-red-800 hover:bg-red-900 disabled:bg-red-100 disabled:text-red-900"
-      } disabled:cursor-default`}
-    >
-      {isSelected ? (
-        <CheckIcon className="size-5 shrink-0" />
-      ) : (
-        <PlusIcon className="size-5 shrink-0" />
-      )}
-      <span className="hidden sm:inline">
-        {isSelected ? "Adicionado" : "Adicionar"}
-      </span>
-    </button>
+    <StockFlowAddButton isSelected={isSelected} onAdd={onAdd} label={`${addLabel} ${code}`} />
   );
 }
 

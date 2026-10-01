@@ -13,6 +13,7 @@ import {
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { StockFlowSection } from "@/components/stock-flow-section";
 import { StockFlowBundleTable, StockFlowBundleReview } from "@/components/stock-flow-bundles";
+import { StockFlowAddButton } from "@/components/stock-flow-add-button";
 import { buildStockFlowSearch } from "@/lib/stock-flow-search";
 import { assessNewLoosePartCode } from "@/lib/catalog-code-policy";
 import {
@@ -181,31 +182,11 @@ function CatalogAddButton({
   onAdd: () => void;
   variant: "physical" | "commercial";
 }) {
-  const selectedLabel = variant === "physical" ? "Adicionado" : "Adicionada";
   const addLabel =
     variant === "physical" ? "Adicionar item" : "Adicionar Servo com kit";
 
   return (
-    <button
-      type="button"
-      onClick={onAdd}
-      disabled={isSelected}
-      aria-label={isSelected ? `${code} já está na entrada` : `${addLabel} ${code}`}
-      className={`nk-focus inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-xs font-black text-white transition sm:w-full sm:px-3 ${
-        variant === "physical"
-          ? "bg-emerald-800 hover:bg-emerald-900 disabled:bg-emerald-100 disabled:text-emerald-950"
-          : "bg-violet-900 hover:bg-violet-950 disabled:bg-violet-200 disabled:text-violet-950"
-      } disabled:cursor-default`}
-    >
-      {isSelected ? (
-        <CheckIcon className="size-5 shrink-0" />
-      ) : (
-        <PlusIcon className="size-5 shrink-0" />
-      )}
-      <span className="hidden sm:inline">
-        {isSelected ? selectedLabel : "Adicionar"}
-      </span>
-    </button>
+    <StockFlowAddButton isSelected={isSelected} onAdd={onAdd} label={`${addLabel} ${code}`} />
   );
 }
 

@@ -1,4 +1,4 @@
-import type { AssistantConversationContext } from "@/lib/assistant-types";
+import type { AssistantConversationContext, AssistantInventoryItemSummaryMetric } from "@/lib/assistant-types";
 import type { AssistantSemanticQuery } from "@/lib/ai/assistant-semantic-router";
 import {
   routeInventoryItemSummaryQuestion,
@@ -18,7 +18,7 @@ export type AssistantSemanticQueryPlan =
   | {
       kind: "INVENTORY_ITEM";
       queryCode: string;
-      metric: Extract<AssistantSemanticQuery, { kind: "INVENTORY_ITEM" }>["metric"];
+      metric: AssistantInventoryItemSummaryMetric;
       source: "DETERMINISTIC" | "SEMANTIC";
     }
   | {

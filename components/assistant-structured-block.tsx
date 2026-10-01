@@ -885,6 +885,21 @@ function InventoryItemSummaryCard({
         </div>
       </dl>
 
+      {target.bundleRecipe ? (
+        <section className="mt-3 rounded-lg bg-app-background p-3 text-sm">
+          <h5 className="font-bold">Composição do conjunto</h5>
+          <ul className="mt-2 space-y-1">
+            {target.bundleRecipe.map((component) => (
+              <li key={`${component.kind}:${component.id}`} className="break-words">
+                {component.quantity_per_bundle} × Cód. {component.code} · {component.description}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 font-bold">Capacidade com componentes livres: {target.maximumAssemblable}</p>
+          <p className="text-text-muted">Capacidade não é saldo pronto.</p>
+        </section>
+      ) : null}
+
       {target.composition ? (
         <section className="mt-3 border-t border-border-neutral pt-3">
           <h5 className="text-xs font-black tracking-[0.08em] text-text-muted uppercase">

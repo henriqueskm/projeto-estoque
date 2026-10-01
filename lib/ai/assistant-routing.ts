@@ -738,7 +738,7 @@ export function extractInventoryItemSummaryMetric(
 ): AssistantInventoryItemSummaryMetric | null {
   const normalizedMessage = normalizeAssistantText(message);
   const asksComposition =
-    /\b(composicao|forma(?:m|do|da|dos|das)|qual\s+servo|qual\s+kit|servo\s+e\s+kit)\b/.test(
+    /\b(composicao|compoe|forma(?:m|do|da|dos|das)|qual\s+servo|qual\s+kit|servo\s+e\s+kit)\b/.test(
       normalizedMessage,
     ) || /\bconfiguracoes\b/.test(normalizedMessage);
   const asksDescription =
@@ -761,6 +761,7 @@ export function extractInventoryItemSummaryMetric(
     ) || /^(?:e\s+)?(?:o|a)\s+(?:c[oó]d(?:igo)?\s+)?(?=[a-z0-9/-]*\d)[a-z0-9]+(?:[/-][a-z0-9]+)*\b/.test(normalizedMessage);
 
   if (asksComposition) return "COMPOSITION";
+  if (/\b(montar|montagem|capacidade)\b/.test(normalizedMessage) && /\b(quantas?|quantos?|quanto|consigo|posso|capacidade)\b/.test(normalizedMessage)) return "CAPACITY";
   if (asksDescription) return "DESCRIPTION";
   if (asksShortfall) return "SHORTFALL";
   if (asksMinimum) return "MINIMUM";

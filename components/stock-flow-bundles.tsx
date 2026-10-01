@@ -1,5 +1,6 @@
 import type { StockFlowBundleCode } from "@/lib/inbound-types";
 import type { BundleStockFlowPreview } from "@/lib/stock-flow-bundle-preview";
+import { StockFlowAddButton } from "@/components/stock-flow-add-button";
 
 export function StockFlowBundleTable({
   options,
@@ -37,15 +38,7 @@ export function StockFlowBundleTable({
                 <td className="p-3">{option.description}</td>
                 <td className="p-3 font-bold">{option.readyBalance}</td>
                 <td className="p-3">
-                  <button
-                    type="button"
-                    disabled={selected}
-                    onClick={() => onAdd(option)}
-                    aria-label={`Adicionar conjunto ${option.code}`}
-                    className="nk-focus min-h-11 rounded-xl bg-brand-charcoal px-3 font-bold text-white disabled:opacity-50"
-                  >
-                    {selected ? "Adicionado" : "Adicionar"}
-                  </button>
+                  <StockFlowAddButton isSelected={selected} onAdd={() => onAdd(option)} label={`Adicionar conjunto ${option.code}`} />
                 </td>
               </tr>
             );

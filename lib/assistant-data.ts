@@ -1,4 +1,5 @@
 import "server-only";
+import { loadAssistantBundles } from "@/lib/assistant-bundles";
 
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
 import {
@@ -12,6 +13,7 @@ import {
   type AssistantCatalogMediaBlock,
   type AssistantCatalogMediaTarget,
   type AssistantCommercialConfigurationResult,
+  type AssistantCommercialBundleResult,
   type AssistantInventoryAlertCard,
   type AssistantInventoryAlertsBlock,
   type AssistantInventoryItemSummaryBlock,
@@ -90,6 +92,7 @@ type RepairCompatibilityRow = {
 };
 
 type AssistantStockSnapshot = {
+  bundles?: AssistantCommercialBundleResult[];
   items: ItemRow[];
   servoModels: ServoModelRow[];
   stockBalances: StockBalanceRow[];
@@ -118,7 +121,7 @@ function compareCodes(first: string, second: string) {
 }
 
 function getLookupResultCode(
-  result: AssistantPhysicalItemResult | AssistantCommercialConfigurationResult,
+  result: AssistantItemLookupResult["results"][number],
 ) {
   return result.kind === "COMMERCIAL_CONFIGURATION"
     ? result.matched_commercial_code
@@ -180,7 +183,7 @@ async function loadAssistantStockSnapshot(): Promise<AssistantStockSnapshot> {
     throw new AssistantDataError();
   }
 
-  return {
+  const snapshot: AssistantStockSnapshot = {
     items: (itemsResult.data ?? []) as ItemRow[],
     servoModels: (servoModelsResult.data ?? []) as ServoModelRow[],
     stockBalances: (stockBalancesResult.data ?? []) as StockBalanceRow[],
@@ -193,6 +196,25 @@ async function loadAssistantStockSnapshot(): Promise<AssistantStockSnapshot> {
     repairCompatibilities: (repairCompatibilitiesResult.data ??
       []) as RepairCompatibilityRow[],
   };
+  try {
+    snapshot.bundles = await loadAssistantBundles(supabase, undefined, {
+      catalog: {
+        items: snapshot.items,
+        servoModels: snapshot.servoModels,
+        configurations: snapshot.configurations,
+        commercialCodes: snapshot.configurationCodes,
+      },
+      itemBalances: new Map(
+        snapshot.stockBalances.map((row) => [row.item_id, row.quantity]),
+      ),
+      configurationBalances: new Map(
+        snapshot.configurationBalances.map((row) => [row.configuration_id, row.quantity]),
+      ),
+    });
+  } catch {
+    throw new AssistantDataError();
+  }
+  return snapshot;
 }
 
 function buildLookupCatalog(snapshot: AssistantStockSnapshot) {
@@ -370,6 +392,7 @@ function buildLookupCatalog(snapshot: AssistantStockSnapshot) {
     activeItems,
     physicalItems,
     configurations,
+    bundles: snapshot.bundles ?? [],
     modelByItemId,
     physicalStockByItemId,
     activeAliasesByConfigurationId,
@@ -577,7 +600,7 @@ export async function consultAssistantItem(
 
   const normalizedQuery = normalizeSearch(query);
   const snapshot = await loadAssistantStockSnapshot();
-  const { physicalItems, configurations } = buildLookupCatalog(snapshot);
+  const { physicalItems, configurations, bundles } = buildLookupCatalog(snapshot);
   const exactPhysicalItems = physicalItems.filter(
     (item) => normalizeSearch(item.code) === normalizedQuery,
   );
@@ -594,7 +617,13 @@ export async function consultAssistantItem(
           (alias) => normalizeSearch(alias) === normalizedQuery,
         ) ?? configuration.aliases[0],
     }));
-  const exactResults = [...exactPhysicalItems, ...exactConfigurations];
+  const exactBundles = bundles
+    .filter((bundle) => bundle.aliases.some((code) => normalizeSearch(code) === normalizedQuery))
+    .map((bundle) => ({
+      ...bundle,
+      code: bundle.aliases.find((code) => normalizeSearch(code) === normalizedQuery) ?? bundle.code,
+    }));
+  const exactResults = [...exactPhysicalItems, ...exactConfigurations, ...exactBundles];
 
   if (exactResults.length > 0) {
     return {
@@ -646,7 +675,7 @@ export async function consultAssistantItem(
   return {
     query,
     exact_code_match: false,
-    results: [...matchingPhysicalItems, ...matchingConfigurations]
+    results: [...matchingPhysicalItems, ...matchingConfigurations, ...bundles.filter((bundle) => !hasExactServoModelMatch && matchesCatalogDescription(query, bundle.description))]
       .sort((first, second) =>
         compareCodes(getLookupResultCode(first), getLookupResultCode(second)),
       )
@@ -803,7 +832,7 @@ async function loadAssistantExactItemSnapshot(
   queryCode: string,
 ): Promise<AssistantStockSnapshot> {
   const supabase = await createClient();
-  const [itemsResult, exactCodesResult] = await Promise.all([
+  const [itemsResult, exactCodesResult, bundles] = await Promise.all([
     supabase
       .from("items")
       .select("id, code, description, item_type, minimum_stock, is_active")
@@ -816,6 +845,9 @@ async function loadAssistantExactItemSnapshot(
       .eq("code", queryCode)
       .eq("is_active", true)
       .limit(2),
+    loadAssistantBundles(supabase, [queryCode]).catch(() => {
+      throw new AssistantDataError();
+    }),
   ]);
 
   if (itemsResult.error || exactCodesResult.error) {
@@ -973,6 +1005,7 @@ async function loadAssistantExactItemSnapshot(
 
   return {
     items: Array.from(itemById.values()),
+    bundles,
     servoModels: (servoModelsResult.data ?? []) as ServoModelRow[],
     stockBalances: (stockBalancesResult.data ?? []) as StockBalanceRow[],
     configurations,
@@ -989,7 +1022,7 @@ async function loadAssistantExactItemsSnapshot(
 ): Promise<AssistantStockSnapshot> {
   const supabase = await createClient();
   const uniqueCodes = Array.from(new Set(queryCodes));
-  const [itemsResult, exactCodesResult, allServoModelsResult] = await Promise.all([
+  const [itemsResult, exactCodesResult, allServoModelsResult, bundles] = await Promise.all([
     fetchAllSupabaseRows<ItemRow>(
       (from, to) => supabase.from("items").select("id, code, description, item_type, minimum_stock, is_active").in("code", uniqueCodes).eq("is_active", true).order("id").range(from, to),
       (row) => row.id,
@@ -1002,6 +1035,9 @@ async function loadAssistantExactItemsSnapshot(
       (from, to) => supabase.from("servo_models").select("item_id, model").order("item_id").range(from, to),
       (row) => row.item_id,
     ),
+    loadAssistantBundles(supabase, uniqueCodes).catch(() => {
+      throw new AssistantDataError();
+    }),
   ]);
 
   if (itemsResult.error || exactCodesResult.error || allServoModelsResult.error) {
@@ -1093,6 +1129,7 @@ async function loadAssistantExactItemsSnapshot(
   [...exactItems, ...((componentItems.data ?? []) as ItemRow[])].forEach((item) => itemById.set(item.id, item));
   return {
     items: Array.from(itemById.values()),
+    bundles,
     servoModels: allServoModels.filter((row) => relevantServoIds.includes(row.item_id)),
     stockBalances: (balances.data ?? []) as StockBalanceRow[],
     configurations,
@@ -1262,6 +1299,8 @@ function getSummaryStockUnitLabel(
   quantity: number,
 ) {
   switch (type) {
+    case "COMMERCIAL_BUNDLE":
+      return quantity === 1 ? "conjunto pronto" : "conjuntos prontos";
     case "COMPLETE_BOX":
       return quantity === 1
         ? "Servo com kit montado"
@@ -1288,6 +1327,10 @@ function getInventorySummaryPrimaryText(
   const code = target.displayCode;
 
   switch (metric) {
+    case "CAPACITY":
+      return target.maximumAssemblable === undefined
+        ? `Informe o código comercial para consultar a capacidade de montagem de ${code}.`
+        : `Com os componentes livres, você consegue montar ${target.maximumAssemblable} ${target.itemType === "COMMERCIAL_BUNDLE" ? "conjuntos" : "Servos com kit"} ${code}. Isso não é saldo pronto.`;
     case "MINIMUM":
       return target.minimumStock === null
         ? `O código ${code} não possui estoque mínimo definido.`
@@ -1305,10 +1348,16 @@ function getInventorySummaryPrimaryText(
     case "DESCRIPTION":
       return `O código ${code} é ${target.description}, classificado como ${target.typeLabel}.`;
     case "COMPOSITION":
+      if (target.bundleRecipe) {
+        return `O conjunto ${code} é formado por ${target.bundleRecipe.map((component) => `${component.quantity_per_bundle} × ${component.code}`).join(", ")}.`;
+      }
       return target.composition
         ? `O Servo com kit ${code} é formado pelo Servo ${target.composition.servoCode} e pelo Kit de instalação ${target.composition.installationKitCode}.`
         : `O código ${code} é um item sem kit e não representa um Servo com kit.`;
     case "STOCK":
+      if (target.itemType === "COMMERCIAL_BUNDLE") {
+        return `Você possui ${target.currentStock} ${target.currentStock === 1 ? "conjunto" : "conjuntos"} ${code} ${target.currentStock === 1 ? "pronto" : "prontos"}.`;
+      }
       if (target.itemType === "COMPLETE_BOX") {
         return target.currentStock === 1
           ? `Você possui 1 Servo com kit ${code} montado.`
@@ -1335,7 +1384,33 @@ function getInventorySummaryFallback(
     ? ` Usado em: ${target.usedIn.map((usage) => usage.codes.join("/")).join(", ")}.`
     : "";
 
-  return `Código ${target.displayCode}, ${target.typeLabel}, ${target.description}. Estoque atual: ${target.currentStock} ${target.stockUnitLabel}. Mínimo: ${minimum}. Situação: ${target.statusLabel}.${composition}${usedIn}`;
+  const recipe = target.bundleRecipe ? ` Receita: ${target.bundleRecipe.map((component) => `${component.quantity_per_bundle} × ${component.code}`).join(", ")}. Capacidade com componentes livres: ${target.maximumAssemblable}.` : "";
+  return `Código ${target.displayCode}, ${target.typeLabel}, ${target.description}. Estoque atual: ${target.currentStock} ${target.stockUnitLabel}. Mínimo: ${minimum}. Situação: ${target.statusLabel}.${composition}${usedIn}${recipe}`;
+}
+
+function bundleSummaryTarget(
+  bundle: AssistantCommercialBundleResult,
+  normalizedCode: string,
+): AssistantInventoryItemSummaryTarget {
+  const minimumStock = bundle.minimum_stock;
+  return {
+    targetKind: "commercial_bundle",
+    targetId: bundle.bundle_id,
+    displayCode: bundle.aliases.find((code) => normalizeSearch(code) === normalizedCode) ?? bundle.code,
+    itemType: "COMMERCIAL_BUNDLE",
+    typeLabel: "Conjunto",
+    description: bundle.description,
+    currentStock: bundle.ready_quantity,
+    minimumStock,
+    stockUnitLabel: getSummaryStockUnitLabel("COMMERCIAL_BUNDLE", bundle.ready_quantity),
+    ...getInventorySummaryStatus(bundle.ready_quantity, minimumStock),
+    // The current Inventory route has no bundle target parameter. Never pretend
+    // that a bundle UUID identifies a configuration: link to the real Inventory.
+    href: "/estoque",
+    mediaDescriptor: null,
+    bundleRecipe: bundle.recipe,
+    maximumAssemblable: bundle.maximum_assemblable,
+  };
 }
 
 const maximumServoModelConfigurations = 6;
@@ -1546,7 +1621,7 @@ export async function consultAssistantInventoryItemSummary(
 
   const normalizedCode = normalizeSearch(queryCode);
   const snapshot = await snapshotReader(queryCode);
-  const { physicalItems, configurations } = buildLookupCatalog(snapshot);
+  const { physicalItems, configurations, bundles } = buildLookupCatalog(snapshot);
   const configurationRowById = new Map(
     snapshot.configurations.map((configuration) => [
       configuration.id,
@@ -1653,6 +1728,7 @@ export async function consultAssistantInventoryItemSummary(
         targetId: configuration.configuration_id,
         displayCode: configuration.matched_commercial_code,
         itemType: "COMPLETE_BOX",
+        maximumAssemblable: configuration.maximum_assemblable,
         typeLabel: customerFacingInventoryLabels.completeServoKit,
         description: configuration.description,
         currentStock,
@@ -1682,7 +1758,8 @@ export async function consultAssistantInventoryItemSummary(
         },
       };
     });
-  const results = [...physicalTargets, ...configurationTargets].sort(
+  const bundleTargets = bundles.filter((bundle) => bundle.aliases.some((code) => normalizeSearch(code) === normalizedCode)).map((bundle) => bundleSummaryTarget(bundle, normalizedCode));
+  const results = [...physicalTargets, ...configurationTargets, ...bundleTargets].sort(
     (first, second) =>
       compareCodes(first.displayCode, second.displayCode) ||
       first.targetKind.localeCompare(second.targetKind) ||
@@ -1740,7 +1817,9 @@ export async function consultAssistantInventoryItemSummary(
     results,
     inventoryHref,
     primaryText: getInventorySummaryPrimaryText(metric, target),
-    fallbackText: getInventorySummaryFallback(target),
+    fallbackText: target.targetKind === "commercial_bundle" || metric === "CAPACITY"
+      ? `${getInventorySummaryPrimaryText(metric, target)}\n${getInventorySummaryFallback(target)}`
+      : getInventorySummaryFallback(target),
   };
 }
 
@@ -1765,7 +1844,7 @@ export async function consultAssistantInventoryMultiItemSummary(
   }
 
   const snapshot = await snapshotReader(normalizedCodes);
-  const { physicalItems, configurations } = buildLookupCatalog(snapshot);
+  const { physicalItems, configurations, bundles } = buildLookupCatalog(snapshot);
   const rawEntries: AssistantInventoryMultiItemEntry[] = requestedCodes.map(
     (requestedCode, index) => {
       const normalizedCode = normalizeSearch(normalizedCodes[index]);
@@ -1777,7 +1856,8 @@ export async function consultAssistantInventoryMultiItemSummary(
           (alias) => normalizeSearch(alias) === normalizedCode,
         ),
       );
-      const hasExactMatch =
+      const bundleMatches = bundles.filter((bundle) => bundle.aliases.some((code) => normalizeSearch(code) === normalizedCode));
+      const hasExactMatch = bundleMatches.length > 0 ||
         exactPhysicalMatches.length > 0 ||
         exactConfigurationMatches.length > 0;
       const physicalMatches = hasExactMatch
@@ -1852,7 +1932,7 @@ export async function consultAssistantInventoryMultiItemSummary(
           },
         } satisfies AssistantInventoryItemSummaryTarget;
       });
-      const results = [...physicalTargets, ...configurationTargets].sort(
+      const results = [...physicalTargets, ...configurationTargets, ...bundleMatches.map((bundle) => bundleSummaryTarget(bundle, normalizedCode))].sort(
         (first, second) =>
           compareCodes(first.displayCode, second.displayCode) ||
           first.targetKind.localeCompare(second.targetKind) ||
@@ -1878,7 +1958,7 @@ export async function consultAssistantInventoryMultiItemSummary(
         status,
         results,
         resolvedCode: status === "FOUND" ? results[0].displayCode : null,
-        equivalentCodes: matchedConfiguration?.aliases ?? [],
+        equivalentCodes: matchedConfiguration?.aliases ?? (status === "FOUND" && results[0].targetKind === "commercial_bundle" ? bundleMatches[0].aliases : []),
         ...(matchedConfiguration
           ? {
               commercialDetails: {

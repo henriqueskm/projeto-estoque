@@ -26,6 +26,7 @@ import { buildOutboundPreview } from "../lib/outbound-preview.ts";
 import { submitStockInbound } from "../app/(authenticated)/entrada/actions.ts";
 import { submitStockOutbound } from "../app/(authenticated)/saida/actions.ts";
 import { executeCatalogWrite } from "../lib/catalog-writer.ts";
+import { StockFlowAddButton } from "../components/stock-flow-add-button.tsx";
 
 const id = (n) => `72000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const bundleId = id(20),
@@ -691,6 +692,10 @@ for (const [label, loader, Component, file] of [
     assert.match(bundleHtml, new RegExp(`id="${prefix}-commercial-section"[^>]*aria-expanded="false"`));
     assert.match(bundleHtml, /Saldo pronto/);
     assert.match(bundleHtml, /Adicionar conjunto 1HC/);
+    const bundleButton = bundleHtml.match(
+      /<button[^>]*aria-label="Adicionar conjunto 1HC"[^>]*class="([^"]+)"[^>]*>Adicionar<\/button>/,
+    )?.[1];
+    assert.ok(bundleButton);
     const source = readFileSync(
       new URL(`../app/(authenticated)/${file}`, import.meta.url),
       "utf8",
@@ -709,6 +714,16 @@ for (const [label, loader, Component, file] of [
         ),
       );
     }
+    const addButtons = [
+      ...allCategories.matchAll(
+        /<button[^>]*aria-label="Adicionar (?:item|Servo com kit) [^"]+"[^>]*class="([^"]+)"[^>]*>Adicionar<\/button>/g,
+      ),
+    ];
+    assert.ok(
+      addButtons.length >= 3,
+      "all physical/repair/commercial buttons show readable text on mobile too",
+    );
+    for (const button of addButtons) assert.equal(button[1], bundleButton);
     globalThis.__NK72_SEARCH__ = "";
     const cleared = renderToStaticMarkup(createElement(Component, { catalog }));
     assert.match(
@@ -717,3 +732,21 @@ for (const [label, loader, Component, file] of [
     );
   });
 }
+
+test("shared Add button stays readable without icons, nowrap and clean selected state", () => {
+  for (const isSelected of [false, true]) {
+    const html = renderToStaticMarkup(
+      createElement(StockFlowAddButton, {
+        isSelected,
+        onAdd() {},
+        label: "Adicionar item CIL",
+      }),
+    );
+    assert.match(html, /min-h-11/);
+    assert.match(html, /whitespace-nowrap/);
+    assert.match(html, /px-3 text-sm font-bold/);
+    assert.doesNotMatch(html, /<svg|font-black|hidden|sm:w-full/);
+    assert.ok(html.includes(isSelected ? "Adicionado" : "Adicionar"));
+    assert.equal(html.includes('disabled=""'), isSelected);
+  }
+});

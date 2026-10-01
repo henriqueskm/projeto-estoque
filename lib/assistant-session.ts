@@ -195,7 +195,7 @@ function sanitizeStructuredBlock(
         block: {
           ...block,
           results: block.results.map((target) => {
-            if (target.mediaDescriptor) {
+            if (target.mediaDescriptor && target.targetKind !== "commercial_bundle") {
               mediaReferences.push({
                 code: target.displayCode,
                 targetKind: target.targetKind,
