@@ -178,7 +178,7 @@ function matchesStatus(
 
 function Quantity({ value }: { value: number }) {
   return (
-    <span className="font-mono font-extrabold tabular-nums text-text-primary">
+    <span className="break-all font-mono text-base font-extrabold tabular-nums text-text-primary sm:text-lg">
       {quantityFormatter.format(value)}
     </span>
   );
@@ -232,7 +232,7 @@ function CommercialCodeBadges({ codes }: { codes: string[] }) {
       {codes.map((code) => (
         <span
           key={code}
-          className="rounded-md bg-violet-100 px-1.5 py-0.5 font-mono text-xs font-black text-violet-900 sm:text-sm"
+          className="max-w-full break-all rounded-md bg-app-background px-1.5 py-0.5 font-mono text-sm font-black text-text-primary sm:text-base"
         >
           {code}
         </span>
@@ -362,7 +362,7 @@ function PhysicalTable({
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[41%] sm:w-[48%]`}
+              className={`${stickyHeaderClassName} sm:w-[48%]`}
             >
               Descrição
             </th>
@@ -375,13 +375,13 @@ function PhysicalTable({
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[10%] text-right sm:w-[12%]`}
+              className={`${stickyHeaderClassName} w-[14%] text-right sm:w-[12%]`}
             >
               Mín.
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[12%] text-center sm:w-[10%]`}
+              className={`${stickyHeaderClassName} w-12 text-center sm:w-[10%]`}
             >
               <span className="sr-only sm:not-sr-only">Ações</span>
             </th>
@@ -404,7 +404,7 @@ function PhysicalTable({
                 className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
               >
                 <span className="flex flex-wrap items-center gap-1.5">
-                  <span className="break-all font-mono text-xs font-black text-text-primary sm:text-sm">
+                  <span className="break-all font-mono text-sm font-black text-text-primary sm:text-base">
                     {item.code}
                   </span>
                   {item.itemType === "INSTALLATION_KIT" ? (
@@ -486,7 +486,7 @@ function ConfigurationTable({
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[38%] sm:w-[46%]`}
+              className={`${stickyHeaderClassName} sm:w-[46%]`}
             >
               Configuração
             </th>
@@ -499,13 +499,13 @@ function ConfigurationTable({
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[12%] text-right sm:w-[12%]`}
+              className={`${stickyHeaderClassName} w-[14%] text-right sm:w-[12%]`}
             >
               Mín.
             </th>
             <th
               scope="col"
-              className={`${stickyHeaderClassName} w-[14%] text-center sm:w-[12%]`}
+              className={`${stickyHeaderClassName} w-12 text-center sm:w-[12%]`}
             >
               <span className="sr-only sm:not-sr-only">Ações</span>
             </th>

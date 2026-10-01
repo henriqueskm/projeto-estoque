@@ -35,15 +35,15 @@ export function InventoryBundleTable({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono font-black text-violet-900">
+                  <span className="max-w-full break-all font-mono text-base font-black text-text-primary sm:text-lg">
                     {bundle.codes.join(" / ")}
                   </span>
                   <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-900">
                     Conjunto
                   </span>
                 </p>
-                <p className="mt-1 text-sm font-bold">{bundle.description}</p>
-                <p className="mt-1 text-xs text-text-muted">
+                <p className="mt-1 break-words text-sm font-bold">{bundle.description}</p>
+                <p className="mt-1 break-words text-xs text-text-muted">
                   Receita:{" "}
                   {bundle.recipe
                     .map(
@@ -71,15 +71,15 @@ export function InventoryBundleTable({
             <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
               <div>
                 <dt className="text-xs text-text-muted">Saldo pronto</dt>
-                <dd className="font-mono font-black">{bundle.readyQuantity}</dd>
+                <dd className="break-all font-mono text-lg font-black tabular-nums sm:text-xl">{bundle.readyQuantity}</dd>
               </div>
               <div>
                 <dt className="text-xs text-text-muted">Mínimo</dt>
-                <dd className="font-mono font-black">{bundle.minimumStock}</dd>
+                <dd className="break-all font-mono text-lg font-black tabular-nums sm:text-xl">{bundle.minimumStock}</dd>
               </div>
               <div>
                 <dt className="text-xs text-text-muted">Pode montar</dt>
-                <dd className="font-mono font-black">
+                <dd className="break-all font-mono text-lg font-black tabular-nums sm:text-xl">
                   {bundle.maximumAssemblable}
                 </dd>
               </div>

@@ -367,8 +367,8 @@ function physicalRow(data, n, filter = "all") {
 
 function assertMainQuantity(row, quantity) {
   // First Quantity span is the operational balance; second is the minimum.
-  assert.match(row, new RegExp(`class="font-mono font-extrabold tabular-nums text-text-primary">${quantity}</span>`));
-  assert.equal(row.match(/class="font-mono font-extrabold tabular-nums text-text-primary">(\d+)<\/span>/)?.[1], String(quantity));
+  assert.match(row, new RegExp(`class="[^"]*font-extrabold tabular-nums text-text-primary[^"]*">${quantity}</span>`));
+  assert.equal(row.match(/class="[^"]*font-extrabold tabular-nums text-text-primary[^"]*">(\d+)<\/span>/)?.[1], String(quantity));
 }
 
 test("servo avulso 0 livre e 3 montados mostra 0 e é zerado, preservando total físico", async () => {
@@ -473,6 +473,23 @@ test("base livre do resumo é opt-in e preserva os consumidores físicos existen
   assert.equal(operational.lowStockItems, 1);
   assert.equal(operational.outOfStockItems, 1);
   assert.equal(physical.completeBoxesTotal, operational.completeBoxesTotal);
+});
+
+test("Estoque destaca códigos neutros e valores maiores sem modificar os dados", async () => {
+  const { data } = await loadInventoryData();
+  const before = JSON.stringify(data);
+  globalThis.__NK72_SEARCH__ = "1";
+  const html = renderToStaticMarkup(createElement(InventoryWorkspace, { inventory: data }));
+  assert.match(html, /class="break-all font-mono text-sm font-black text-text-primary sm:text-base">1<\/span>/);
+  assert.match(html, /class="max-w-full break-all rounded-md bg-app-background[^\"]*text-sm font-black text-text-primary sm:text-base">1H<\/span>/);
+  assert.match(html, /class="max-w-full break-all font-mono text-base font-black text-text-primary sm:text-lg">1HC<\/span>/);
+  assert.match(html, /class="break-all font-mono text-base font-extrabold tabular-nums text-text-primary sm:text-lg">3<\/span>/);
+  assert.equal((html.match(/<dd class="break-all font-mono text-lg font-black tabular-nums sm:text-xl">/g) ?? []).length, 3);
+  assert.match(html, /bg-violet-100[^\"]*text-violet-900">Conjunto<\/span>/);
+  assert.doesNotMatch(html, /class="[^\"]*text-violet-900[^\"]*">(?:1H|1HC)<\/span>/);
+  assert.equal((html.match(/w-12 text-center sm:w-\[/g) ?? []).length, 4);
+  assert.equal(JSON.stringify(data), before);
+  assert.equal(rpcCalls.length, 0);
 });
 
 test("minimum e balances de bundle são relidos; receita inválida falha fechada", async () => {
