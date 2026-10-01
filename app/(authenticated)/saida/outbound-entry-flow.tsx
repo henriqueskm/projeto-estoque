@@ -6,13 +6,15 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import {
   CheckIcon,
   OutboundIcon,
-  PlusIcon,
   SearchIcon,
   TrashIcon,
 } from "@/components/icons";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { StockFlowSection } from "@/components/stock-flow-section";
-import { physicalItemTypeLabels } from "@/lib/inbound-types";
+import { StockFlowBundleTable, StockFlowBundleReview } from "@/components/stock-flow-bundles";
+import { StockFlowAddButton } from "@/components/stock-flow-add-button";
+import { buildStockFlowSearch } from "@/lib/stock-flow-search";
+import { physicalItemTypeLabels, type StockFlowBundleCode } from "@/lib/inbound-types";
 import {
   buildOutboundPreview,
   type OutboundPreviewInputLine,
@@ -38,15 +40,7 @@ type DraftLine = {
 };
 
 type FlowStep = "editing" | "review" | "success";
-type CatalogSection = "separate" | "repair" | "commercial";
-
-function normalizeSearch(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("pt-BR")
-    .trim();
-}
+type CatalogSection = "separate" | "repair" | "commercial" | "bundles";
 
 function parseQuantity(value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
@@ -67,12 +61,14 @@ function parseQuantity(value: string) {
 }
 
 function getOptionKey(option: OutboundCatalogOption) {
+  if (option.kind === "BUNDLE_CODE") return `BUNDLE_CODE:${option.bundleCodeId}`;
   return option.kind === "ITEM"
     ? `ITEM:${option.id}`
     : `COMMERCIAL_CODE:${option.commercialCodeId}`;
 }
 
 function getOptionSearchText(option: OutboundCatalogOption) {
+  if (option.kind === "BUNDLE_CODE") return [option.code, option.description, ...option.aliases, "Conjunto"].join(" ");
   if (option.kind === "ITEM") {
     return `${option.code} ${option.description} ${option.model ?? ""} ${physicalItemTypeLabels[option.itemType]}`;
   }
@@ -127,7 +123,7 @@ function OptionBadge({ option }: { option: OutboundCatalogOption }) {
     </span>
   ) : (
     <span className="inline-flex rounded-full bg-violet-100 px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-violet-900 uppercase">
-      Código comercial
+      {option.kind === "BUNDLE_CODE" ? "Conjunto" : "Código comercial"}
     </span>
   );
 }
@@ -150,26 +146,7 @@ function CatalogAddButton({
     variant === "physical" ? "Adicionar item" : "Adicionar Servo com kit";
 
   return (
-    <button
-      type="button"
-      onClick={onAdd}
-      disabled={isSelected}
-      aria-label={isSelected ? `${code} já está na saída` : `${addLabel} ${code}`}
-      className={`nk-focus inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-xs font-black text-white transition sm:w-full sm:px-3 ${
-        variant === "commercial"
-          ? "bg-violet-900 hover:bg-violet-950 disabled:bg-violet-200 disabled:text-violet-950"
-          : "bg-red-800 hover:bg-red-900 disabled:bg-red-100 disabled:text-red-900"
-      } disabled:cursor-default`}
-    >
-      {isSelected ? (
-        <CheckIcon className="size-5 shrink-0" />
-      ) : (
-        <PlusIcon className="size-5 shrink-0" />
-      )}
-      <span className="hidden sm:inline">
-        {isSelected ? "Adicionado" : "Adicionar"}
-      </span>
-    </button>
+    <StockFlowAddButton isSelected={isSelected} onAdd={onAdd} label={`${addLabel} ${code}`} />
   );
 }
 
@@ -391,32 +368,10 @@ export function OutboundEntryFlow({
     () => new Set(lines.map((line) => getOptionKey(line.option))),
     [lines],
   );
-  const activeOptions = useMemo<OutboundCatalogOption[]>(() => {
-    if (openSection === "separate") {
-      return separateItems;
-    }
-
-    if (openSection === "repair") {
-      return repairItems;
-    }
-
-    if (openSection === "commercial") {
-      return catalog.commercialCodes;
-    }
-
-    return [];
-  }, [catalog.commercialCodes, openSection, repairItems, separateItems]);
-  const filteredOptions = useMemo(() => {
-    const normalizedQuery = normalizeSearch(search);
-
-    if (!normalizedQuery) {
-      return activeOptions;
-    }
-
-    return activeOptions.filter((option) =>
-      normalizeSearch(getOptionSearchText(option)).includes(normalizedQuery),
-    );
-  }, [activeOptions, search]);
+  const catalogSections = useMemo(() => buildStockFlowSearch<OutboundCatalogOption>(
+    { separate: separateItems, repair: repairItems, commercial: catalog.commercialCodes, bundles: catalog.bundleCodes },
+    search, openSection, getOptionSearchText,
+  ), [catalog.commercialCodes, catalog.bundleCodes, openSection, repairItems, separateItems, search]);
   const parsedLines = useMemo<OutboundPreviewInputLine[]>(
     () =>
       lines.flatMap((line) => {
@@ -448,7 +403,7 @@ export function OutboundEntryFlow({
   }
 
   function toggleCatalogSection(section: CatalogSection) {
-    if (isPending) {
+    if (isPending || search.trim()) {
       return;
     }
 
@@ -543,6 +498,7 @@ export function OutboundEntryFlow({
   function buildRequestLines(): OutboundRequestLine[] {
     return lines.map((line) => {
       const quantity = parseQuantity(line.quantity) as number;
+      if (line.option.kind === "BUNDLE_CODE") return { kind: "BUNDLE_CODE", bundle_code_id: line.option.bundleCodeId, quantity };
 
       return line.option.kind === "ITEM"
         ? {
@@ -625,7 +581,8 @@ export function OutboundEntryFlow({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function renderCatalogResults() {
+  function renderCatalogResults(section: CatalogSection) {
+    const filteredOptions = catalogSections[section].results;
     return (
       <>
         <p
@@ -650,7 +607,9 @@ export function OutboundEntryFlow({
               kit.
             </p>
           </div>
-        ) : openSection === "commercial" ? (
+        ) : section === "bundles" ? (
+          <StockFlowBundleTable options={filteredOptions.filter((option): option is StockFlowBundleCode => option.kind === "BUNDLE_CODE")} selectedKeys={selectedKeys} onAdd={addOption} />
+        ) : section === "commercial" ? (
           <CommercialCatalogTable
             options={filteredOptions.filter(
               (option): option is OutboundCommercialCode =>
@@ -855,6 +814,7 @@ export function OutboundEntryFlow({
             </section>
           ) : null}
 
+          <StockFlowBundleReview lines={preview.bundleLines} direction="OUTBOUND" />
           {preview.commercialLines.length > 0 ? (
             <section className="mt-7" aria-labelledby="review-codes-title">
               <h3
@@ -1192,36 +1152,39 @@ export function OutboundEntryFlow({
               id="outbound-separate-section"
               title="Item separado"
               description="Servos, kits de instalação e peças avulsas"
-              count={separateItems.length}
-              isOpen={openSection === "separate"}
+              count={catalogSections.separate.count}
+              isOpen={catalogSections.separate.isOpen}
               onToggle={() => toggleCatalogSection("separate")}
               allowStickyContent
             >
-              {renderCatalogResults()}
+              {renderCatalogResults("separate")}
             </StockFlowSection>
 
             <StockFlowSection
               id="outbound-repair-section"
               title="Reparo"
               description="Jogos e kits de reparo"
-              count={repairItems.length}
-              isOpen={openSection === "repair"}
+              count={catalogSections.repair.count}
+              isOpen={catalogSections.repair.isOpen}
               onToggle={() => toggleCatalogSection("repair")}
               allowStickyContent
             >
-              {renderCatalogResults()}
+              {renderCatalogResults("repair")}
             </StockFlowSection>
 
             <StockFlowSection
               id="outbound-commercial-section"
               title="Servo com kit"
               description="Configurações identificadas por código comercial"
-              count={catalog.commercialCodes.length}
-              isOpen={openSection === "commercial"}
+              count={catalogSections.commercial.count}
+              isOpen={catalogSections.commercial.isOpen}
               onToggle={() => toggleCatalogSection("commercial")}
               allowStickyContent
             >
-              {renderCatalogResults()}
+              {renderCatalogResults("commercial")}
+            </StockFlowSection>
+            <StockFlowSection id="outbound-bundles-section" title="Conjuntos" description="Saída somente do saldo pronto, sem montagem automática" count={catalogSections.bundles.count} isOpen={catalogSections.bundles.isOpen} onToggle={() => toggleCatalogSection("bundles")} allowStickyContent>
+              {renderCatalogResults("bundles")}
             </StockFlowSection>
           </div>
         </div>

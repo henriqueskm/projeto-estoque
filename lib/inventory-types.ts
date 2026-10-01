@@ -19,6 +19,7 @@ export type InventoryPhysicalItem = {
   minimumStock: number;
   looseQuantity: number;
   mountedQuantity: number;
+  embeddedQuantity?: number;
   totalQuantity: number;
   state: StockState;
   compatibleKitImages: CompatibleKitImageOption[];
@@ -52,15 +53,43 @@ export type InventoryCommercialConfiguration = {
     looseQuantity: number;
   };
   assembledQuantity: number;
+  embeddedInBundlesQuantity?: number;
+  totalPhysicalQuantity?: number;
   minimumStock: number;
   state: ConfigurationStockState;
   hasAliases: boolean;
+};
+
+export type InventoryBundleComponent = {
+  kind: "ITEM" | "COMMERCIAL_CONFIGURATION";
+  id: string;
+  code: string;
+  description: string;
+  quantityPerBundle: number;
+  availableQuantity: number;
+  isActive: boolean;
+  family: string | null;
+};
+
+export type InventoryCommercialBundle = {
+  id: string;
+  codes: string[];
+  aliases: InventoryCommercialAlias[];
+  description: string;
+  isActive: boolean;
+  readyQuantity: number;
+  minimumStock: number;
+  state: ConfigurationStockState;
+  maximumAssemblable: number;
+  recipe: InventoryBundleComponent[];
+  family: string;
 };
 
 export type InventoryData = {
   summary: InventorySummary;
   physicalItems: InventoryPhysicalItem[];
   configurations: InventoryCommercialConfiguration[];
+  bundles: InventoryCommercialBundle[];
   physicalCatalogCount: number;
   configurationCatalogCount: number;
 };

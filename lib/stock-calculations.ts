@@ -132,6 +132,11 @@ export function calculatePhysicalStockSummary(
   looseBalances: LooseStockBalance[],
   configurations: StockSummaryConfiguration[],
   mountedBalances: MountedConfigurationBalance[],
+  embedded?: {
+    items: Map<string, number>;
+    configurations: Map<string, number>;
+  },
+  itemQuantityBasis: "physical" | "loose" = "physical",
 ): PhysicalStockSummary {
   const physicalStockByItem = calculatePhysicalStockByItem(
     items,
@@ -140,9 +145,12 @@ export function calculatePhysicalStockSummary(
     mountedBalances,
   );
   const physicalQuantity = (item: PhysicalStockSummaryItem) =>
-    physicalStockByItem.get(item.id)?.totalQuantity ?? 0;
+    (physicalStockByItem.get(item.id)?.totalQuantity ?? 0) +
+    (embedded?.items.get(item.id) ?? 0);
   const looseQuantity = (item: PhysicalStockSummaryItem) =>
     physicalStockByItem.get(item.id)?.looseQuantity ?? 0;
+  const itemQuantity = (item: PhysicalStockSummaryItem) =>
+    itemQuantityBasis === "loose" ? looseQuantity(item) : physicalQuantity(item);
   const mountedByConfiguration = new Map(
     mountedBalances.map((balance) => [
       balance.configurationId,
@@ -161,7 +169,10 @@ export function calculatePhysicalStockSummary(
   return {
     completeBoxesTotal: mountedBalances.reduce(
       (total, balance) => total + balance.quantity,
-      0,
+      Array.from(embedded?.configurations.values() ?? []).reduce(
+        (sum, quantity) => sum + quantity,
+        0,
+      ),
     ),
     looseServoTotal: items
       .filter((item) => item.itemType === "SERVO")
@@ -171,26 +182,24 @@ export function calculatePhysicalStockSummary(
       .reduce((total, item) => total + looseQuantity(item), 0),
     repairKitTotal: items
       .filter((item) => item.itemType === "REPAIR_KIT")
-      .reduce((total, item) => total + looseQuantity(item), 0),
+      .reduce((total, item) => total + itemQuantity(item), 0),
     loosePartTotal: items
       .filter((item) => item.itemType === "LOOSE_PART")
-      .reduce((total, item) => total + looseQuantity(item), 0),
+      .reduce((total, item) => total + itemQuantity(item), 0),
     lowStockItems:
       items.filter(
         (item) =>
           item.isActive &&
           item.minimumStock > 0 &&
-          physicalQuantity(item) > 0 &&
-          physicalQuantity(item) <= item.minimumStock,
-      ).length +
-      configurationStates.filter((state) => state === "LOW").length,
+          itemQuantity(item) > 0 &&
+          itemQuantity(item) <= item.minimumStock,
+      ).length + configurationStates.filter((state) => state === "LOW").length,
     outOfStockItems:
       items.filter(
         (item) =>
           item.isActive &&
           item.minimumStock > 0 &&
-          physicalQuantity(item) === 0,
-      ).length +
-      configurationStates.filter((state) => state === "ZERO").length,
+          itemQuantity(item) === 0,
+      ).length + configurationStates.filter((state) => state === "ZERO").length,
   };
 }

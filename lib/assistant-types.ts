@@ -1,4 +1,4 @@
-import type { PhysicalStockItemType } from "@/lib/stock-calculations";
+import type { PhysicalStockItemType, ConfigurationStockState } from "@/lib/stock-calculations";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
 import { customerFacingInventoryLabels } from "@/lib/customer-facing-inventory-labels";
@@ -572,11 +572,33 @@ export type AssistantCommercialConfigurationResult = {
   minimum_stock: number;
 };
 
+export type AssistantCommercialBundleResult = {
+  kind: "COMMERCIAL_BUNDLE";
+  bundle_id: string;
+  code: string;
+  aliases: string[];
+  description: string;
+  ready_quantity: number;
+  minimum_stock: number;
+  state: ConfigurationStockState;
+  maximum_assemblable: number;
+  recipe: Array<{
+    kind: "ITEM" | "COMMERCIAL_CONFIGURATION";
+    id: string;
+    code: string;
+    description: string;
+    quantity_per_bundle: number;
+    available_quantity: number;
+  }>;
+};
+
 export type AssistantItemLookupResult = {
   query: string;
   exact_code_match: boolean;
   results: Array<
-    AssistantPhysicalItemResult | AssistantCommercialConfigurationResult
+    AssistantPhysicalItemResult |
+    AssistantCommercialConfigurationResult |
+    AssistantCommercialBundleResult
   >;
 };
 
@@ -672,25 +694,29 @@ export type AssistantInventoryItemSummaryMetric =
   | "STATUS"
   | "SHORTFALL"
   | "DESCRIPTION"
+  | "CAPACITY"
   | "COMPOSITION";
 
 export type AssistantInventoryItemSummaryTarget = {
-  targetKind: "item" | "commercial_configuration";
+  targetKind: "item" | "commercial_configuration" | "commercial_bundle";
   targetId: string;
   displayCode: string;
   itemType:
     | PhysicalStockItemType
-    | "COMPLETE_BOX";
+    | "COMPLETE_BOX"
+    | "COMMERCIAL_BUNDLE";
   typeLabel: string;
   description: string;
   currentStock: number;
   minimumStock: number | null;
   stockUnitLabel: string;
-  status: "ZERO" | "LOW" | "OK" | "NO_MINIMUM";
+  status: "ZERO" | "LOW" | "OK" | "NO_MINIMUM" | "EMPTY";
   statusLabel: string;
   shortfall: number | null;
   href: string;
   mediaDescriptor: AssistantMediaDescriptor | null;
+  bundleRecipe?: AssistantCommercialBundleResult["recipe"];
+  maximumAssemblable?: number;
   composition?: {
     servoCode: string;
     servoDescription: string;
@@ -1670,15 +1696,19 @@ function parseInventoryItemSummaryTarget(
     REPAIR_KIT: "Jogo de reparo",
     LOOSE_PART: "Peça avulsa",
     COMPLETE_BOX: customerFacingInventoryLabels.completeServoKit,
+    COMMERCIAL_BUNDLE: "Conjunto",
   }[itemType];
   const expectedStatusLabel = {
     ZERO: "Zerado",
     LOW: "Baixo",
     OK: "Em estoque",
     NO_MINIMUM: "Mínimo não definido",
+    EMPTY: "Sem conjuntos prontos",
   }[String(value.status)];
   const expectedStockUnitLabel =
-    itemType === "COMPLETE_BOX"
+    itemType === "COMMERCIAL_BUNDLE"
+      ? value.currentStock === 1 ? "conjunto pronto" : "conjuntos prontos"
+      : itemType === "COMPLETE_BOX"
       ? value.currentStock === 1
         ? "Servo com kit montado"
         : "Servos com kit montados"
@@ -1702,7 +1732,8 @@ function parseInventoryItemSummaryTarget(
 
   if (
     (value.targetKind !== "item" &&
-      value.targetKind !== "commercial_configuration") ||
+      value.targetKind !== "commercial_configuration" &&
+      value.targetKind !== "commercial_bundle") ||
     typeof value.targetId !== "string" ||
     !uuidPattern.test(value.targetId) ||
     typeof value.displayCode !== "string" ||
@@ -1713,6 +1744,7 @@ function parseInventoryItemSummaryTarget(
       "REPAIR_KIT",
       "LOOSE_PART",
       "COMPLETE_BOX",
+      "COMMERCIAL_BUNDLE",
     ].includes(String(value.itemType)) ||
     typeof value.typeLabel !== "string" ||
     value.typeLabel !== expectedTypeLabel ||
@@ -1722,7 +1754,7 @@ function parseInventoryItemSummaryTarget(
     (minimumStock !== null && !isNonnegativeInteger(minimumStock)) ||
     typeof value.stockUnitLabel !== "string" ||
     value.stockUnitLabel !== expectedStockUnitLabel ||
-    !["ZERO", "LOW", "OK", "NO_MINIMUM"].includes(
+    !["ZERO", "LOW", "OK", "NO_MINIMUM", "EMPTY"].includes(
       String(value.status),
     ) ||
     typeof value.statusLabel !== "string" ||
@@ -1734,22 +1766,40 @@ function parseInventoryItemSummaryTarget(
         shortfall !==
           Math.max(minimumStock - value.currentStock, 0)) ||
     (minimumStock !== null &&
-      ((value.currentStock === 0 && value.status !== "ZERO") ||
+      ((value.currentStock === 0 &&
+          value.status !== (value.targetKind === "commercial_bundle" && minimumStock === 0 ? "EMPTY" : "ZERO")) ||
         (value.currentStock > 0 &&
           value.currentStock <= minimumStock &&
           value.status !== "LOW") ||
         (value.currentStock > minimumStock &&
           value.status !== "OK"))) ||
+    (value.status === "EMPTY" &&
+      (value.targetKind !== "commercial_bundle" || minimumStock !== 0 || value.currentStock !== 0)) ||
     !isSafeInventoryHref(value.href) ||
-    !isExpectedTargetHref(
-      value.href,
-      value.targetKind,
-      value.targetId,
-      null,
-    ) ||
+    !(value.targetKind === "commercial_bundle"
+      ? value.href === "/estoque"
+      : isExpectedTargetHref(value.href, value.targetKind, value.targetId, null)) ||
     mediaDescriptor === undefined ||
     (value.targetKind === "commercial_configuration") !==
       (itemType === "COMPLETE_BOX") ||
+    (value.targetKind === "commercial_bundle") !== (itemType === "COMMERCIAL_BUNDLE") ||
+    (value.maximumAssemblable !== undefined && !isNonnegativeInteger(value.maximumAssemblable)) ||
+    (value.targetKind === "commercial_bundle" &&
+      (mediaDescriptor !== null ||
+        composition !== undefined ||
+        !isNonnegativeInteger(value.maximumAssemblable) ||
+        !Array.isArray(value.bundleRecipe) ||
+        value.bundleRecipe.length === 0 ||
+        value.bundleRecipe.some((component) =>
+          !isRecord(component) ||
+          !["ITEM", "COMMERCIAL_CONFIGURATION"].includes(String(component.kind)) ||
+          typeof component.id !== "string" || !uuidPattern.test(component.id) ||
+          typeof component.code !== "string" || !component.code.trim() ||
+          typeof component.description !== "string" || !component.description.trim() ||
+          !isNonnegativeInteger(component.quantity_per_bundle) || component.quantity_per_bundle === 0 ||
+          !isNonnegativeInteger(component.available_quantity),
+        ))) ||
+    (value.targetKind !== "commercial_bundle" && value.bundleRecipe !== undefined) ||
     (value.targetKind === "commercial_configuration" &&
       (!isRecord(composition) ||
         typeof composition.servoCode !== "string" ||
@@ -1810,6 +1860,12 @@ function parseInventoryItemSummaryTarget(
     shortfall,
     href: value.href,
     mediaDescriptor,
+    ...(value.targetKind === "commercial_bundle"
+      ? { bundleRecipe: value.bundleRecipe as AssistantCommercialBundleResult["recipe"] }
+      : {}),
+    ...(value.maximumAssemblable !== undefined
+      ? { maximumAssemblable: value.maximumAssemblable as number }
+      : {}),
     ...(value.targetKind === "commercial_configuration"
       ? {
           composition:
@@ -3234,6 +3290,7 @@ export function parseAssistantStructuredBlock(
         "SHORTFALL",
         "DESCRIPTION",
         "COMPOSITION",
+        "CAPACITY",
       ].includes(String(value.metric)) ||
       !Array.isArray(value.results) ||
       results.some((result) => result === null) ||

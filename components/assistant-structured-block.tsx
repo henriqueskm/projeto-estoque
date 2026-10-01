@@ -820,6 +820,7 @@ function InventoryAlertsBlock({
 }
 
 const inventoryStatusClasses = {
+  EMPTY: "bg-slate-100 text-slate-700",
   ZERO: "bg-red-100 text-red-900",
   LOW: "bg-amber-100 text-amber-950",
   OK: "bg-emerald-100 text-emerald-900",
@@ -884,6 +885,21 @@ function InventoryItemSummaryCard({
           </dd>
         </div>
       </dl>
+
+      {target.bundleRecipe ? (
+        <section className="mt-3 rounded-lg bg-app-background p-3 text-sm">
+          <h5 className="font-bold">Composição do conjunto</h5>
+          <ul className="mt-2 space-y-1">
+            {target.bundleRecipe.map((component) => (
+              <li key={`${component.kind}:${component.id}`} className="break-words">
+                {component.quantity_per_bundle} × Cód. {component.code} · {component.description}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 font-bold">Capacidade com componentes livres: {target.maximumAssemblable}</p>
+          <p className="text-text-muted">Capacidade não é saldo pronto.</p>
+        </section>
+      ) : null}
 
       {target.composition ? (
         <section className="mt-3 border-t border-border-neutral pt-3">

@@ -1,4 +1,8 @@
 import type { PhysicalStockItemType } from "@/lib/stock-calculations";
+import type {
+  InventoryBundleComponent,
+  InventoryCommercialAlias,
+} from "@/lib/inventory-types";
 
 export type InventoryItemActionTarget = {
   kind: "ITEM";
@@ -39,9 +43,37 @@ export type InventoryConfigurationActionTarget = {
   };
 };
 
+export type InventoryBundleActionTarget = {
+  kind: "BUNDLE";
+  bundleId: string;
+  commercialCodes: string[];
+  commercialAliases: InventoryCommercialAlias[];
+  description: string;
+  isActive: boolean;
+  readyQuantity: number;
+  minimumStock: number;
+  maximumAssemblable: number;
+  recipe: InventoryBundleComponent[];
+};
+
+export type BundleOperationActionResult =
+  | {
+      ok: true;
+      receipt: {
+        movementBatchId: string;
+        bundleId: string;
+        bundleCode: string;
+        quantity: number;
+        quantityBefore: number;
+        quantityAfter: number;
+      };
+    }
+  | { ok: false; error: string };
+
 export type InventoryActionTarget =
   | InventoryItemActionTarget
-  | InventoryConfigurationActionTarget;
+  | InventoryConfigurationActionTarget
+  | InventoryBundleActionTarget;
 
 export type StockAdjustmentReceipt = {
   movementBatchId: string | null;

@@ -71,6 +71,7 @@
     "test:vehicle-applications": "node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/vehicle-applications.test.mjs",
     "test:vehicle-applications:local": "node tests/vehicle-applications-migration.local.mjs",
     "test:bundle-recipe-foundation": "node --test tests/bundle-recipe-foundation.test.mjs",
+    "test:bundle-inventory": "node --experimental-strip-types --experimental-loader ./tests/bundle-inventory-loader.mjs --test tests/bundle-inventory.test.mjs",
     "test:bundle-recipe-foundation:local": "node tests/bundle-recipe-foundation.local.mjs",
     "verify:vehicle-applications-source": "python scripts/verify_vehicle_applications_source.py"
   },

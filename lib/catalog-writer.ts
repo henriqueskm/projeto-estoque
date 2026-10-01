@@ -73,7 +73,7 @@ const catalogPageSize = 1_000;
 
 async function loadCatalogCodeTable(
   supabase: SupabaseClient,
-  table: "items" | "commercial_configuration_codes",
+  table: "items" | "commercial_configuration_codes" | "commercial_bundle_codes",
 ) {
   const catalog: Array<{ code: string }> = [];
   let offset = 0;
@@ -101,12 +101,13 @@ async function loadCatalogCodeTable(
 }
 
 async function loadCatalogCodes(supabase: SupabaseClient) {
-  const [items, commercialCodes] = await Promise.all([
+  const [items, commercialCodes, bundleCodes] = await Promise.all([
     loadCatalogCodeTable(supabase, "items"),
     loadCatalogCodeTable(supabase, "commercial_configuration_codes"),
+    loadCatalogCodeTable(supabase, "commercial_bundle_codes"),
   ]);
 
-  return [...items, ...commercialCodes];
+  return [...items, ...commercialCodes, ...bundleCodes];
 }
 
 function loosePartsFromWrite(write: CatalogWrite) {

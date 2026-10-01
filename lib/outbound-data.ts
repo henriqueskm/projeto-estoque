@@ -7,6 +7,7 @@ import { loadSharedCatalogSnapshot } from "@/lib/shared-catalog";
 import { buildStockCatalogBase } from "@/lib/stock-catalog-base";
 import { loadFreshStockBalances } from "@/lib/stock-operational-data";
 import { createClient } from "@/lib/supabase/server";
+import { loadStockFlowBundleCodes } from "@/lib/stock-flow-bundles";
 import { logPerformanceAudit, performancePayloadBytes } from "@/lib/performance-audit";
 
 export type OutboundCatalogResult =
@@ -17,9 +18,10 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
   const startedAt = performance.now();
   try {
     const supabase = await createClient();
-    const [snapshot, operationalState] = await Promise.all([
+    const [snapshot, operationalState, bundleCodes] = await Promise.all([
       loadSharedCatalogSnapshot(),
       loadFreshStockBalances(supabase),
+      loadStockFlowBundleCodes(supabase),
     ]);
     const { stockBalancesResult, configurationBalancesResult } =
       operationalState;
@@ -75,8 +77,8 @@ export async function getOutboundCatalog(): Promise<OutboundCatalogResult> {
       }),
     );
 
-    const data = { physicalItems, commercialCodes };
-    logPerformanceAudit({ loader: "outbound", phase: "total", durationMs: Math.round(performance.now() - startedAt), rowCount: physicalItems.length + commercialCodes.length, payloadBytes: performancePayloadBytes(data) });
+    const data = { physicalItems, commercialCodes, bundleCodes };
+    logPerformanceAudit({ loader: "outbound", phase: "total", durationMs: Math.round(performance.now() - startedAt), rowCount: physicalItems.length + commercialCodes.length + bundleCodes.length, payloadBytes: performancePayloadBytes(data) });
     return { data, error: null };
   } catch {
     return {

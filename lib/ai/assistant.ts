@@ -634,7 +634,21 @@ function compactItemLookup(result: AssistantItemLookupResult) {
     results: result.results.map((item) =>
       item.kind === "COMMERCIAL_CONFIGURATION"
         ? compactConfiguration(item)
-        : compactPhysicalItem(item),
+        : item.kind === "COMMERCIAL_BUNDLE"
+          ? {
+              kind: item.kind,
+              code: item.code,
+              aliases: item.aliases,
+              description: item.description,
+              ready_quantity: item.ready_quantity,
+              minimum_stock: item.minimum_stock,
+              state: item.state,
+              maximum_assemblable: item.maximum_assemblable,
+              recipe: item.recipe.map(({ code, quantity_per_bundle, available_quantity }) => ({
+                code, quantity_per_bundle, available_quantity,
+              })),
+            }
+          : compactPhysicalItem(item),
     ),
   };
 }
@@ -682,6 +696,22 @@ function formatDirectItemAnswer(
     !/\b(fale|explique|detalhe|sobre|configuracao completa)\b/.test(
       normalizedMessage,
     );
+
+  if (item.kind === "COMMERCIAL_BUNDLE") {
+    if (asksMinimum) {
+      return `O estoque mínimo de ${item.code} é ${item.minimum_stock}.`;
+    }
+    if (asksAssemblyCapacity) {
+      return `Com os componentes livres, você consegue montar ${item.maximum_assemblable} conjuntos ${item.code}. Isso não é saldo pronto.`;
+    }
+    if (/\b(composicao|compoe)\b/.test(normalizedMessage)) {
+      return `O conjunto ${item.code} é formado por ${item.recipe.map((component) => `${component.quantity_per_bundle} × ${component.code}`).join(", ")}.`;
+    }
+    if (/\bsituacao\b/.test(normalizedMessage)) {
+      return `O conjunto ${item.code} está ${item.state === "EMPTY" ? "sem conjuntos prontos" : item.state === "ZERO" ? "zerado" : item.state === "LOW" ? "baixo" : "em estoque"}, considerando somente o saldo pronto.`;
+    }
+    return `Você possui ${item.ready_quantity} ${item.ready_quantity === 1 ? "conjunto" : "conjuntos"} ${item.code} ${item.ready_quantity === 1 ? "pronto" : "prontos"}.`;
+  }
 
   if (asksMinimum) {
     return `O estoque mínimo de ${item.kind === "COMMERCIAL_CONFIGURATION" ? item.matched_commercial_code : item.code} é ${item.minimum_stock}.`;
@@ -760,7 +790,7 @@ function filterItemLookupByQualifier(
     results: result.results.filter((item) =>
       asksWithoutKit
         ? item.kind === "SERVO"
-        : item.kind === "COMMERCIAL_CONFIGURATION",
+        : item.kind === "COMMERCIAL_CONFIGURATION" || item.kind === "COMMERCIAL_BUNDLE",
     ),
   };
 }
@@ -877,6 +907,8 @@ function formatSeparatedItemAnswer(result: AssistantItemLookupResult) {
         ? `- ${customerFacingInventoryLabels.completeServoKit} · Cód. ${item.matched_commercial_code}${item.aliases.length > 1 ? ` (Cód. equivalentes: ${item.aliases.join(", ")})` : ""}: ${item.assembled_quantity}`
         : item.kind === "SERVO"
           ? `- ${customerFacingInventoryLabels.looseServo} · Cód. ${item.code}: ${item.loose_quantity}`
+          : item.kind === "COMMERCIAL_BUNDLE"
+            ? `- Conjunto · Cód. ${item.code}: ${item.ready_quantity} prontos`
           : `- ${item.description} · Cód. ${item.code}: ${item.loose_quantity}`,
     ),
   ].join("\n");
@@ -2370,7 +2402,10 @@ export async function answerAssistantQuestion(
     };
   }
 
-  if (modelInventory && lookup.results.length === 1) {
+  if (
+    modelInventory && lookup.results.length === 1 &&
+    lookup.results[0].kind !== "COMMERCIAL_BUNDLE"
+  ) {
     const item = lookup.results[0];
     const target = findServoModelTarget(
       modelInventory,

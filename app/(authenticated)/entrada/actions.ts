@@ -104,6 +104,7 @@ function normalizeRequest(
     if (
       line.kind !== "ITEM" &&
       line.kind !== "COMMERCIAL_CODE" &&
+      line.kind !== "BUNDLE_CODE" &&
       line.kind !== "NEW_LOOSE_PART"
     ) {
       return invalidRequest("Uma das linhas possui um tipo inválido.");
@@ -177,7 +178,7 @@ function normalizeRequest(
     }
 
     const identifierField =
-      line.kind === "ITEM" ? "item_id" : "commercial_code_id";
+      line.kind === "ITEM" ? "item_id" : line.kind === "BUNDLE_CODE" ? "bundle_code_id" : "commercial_code_id";
     const allowedLineFields = new Set([
       "kind",
       identifierField,
@@ -220,7 +221,11 @@ function normalizeRequest(
             item_id: identifier,
             quantity: consolidatedQuantity,
           }
-        : {
+        : line.kind === "BUNDLE_CODE" ? {
+            kind: "BUNDLE_CODE",
+            bundle_code_id: identifier,
+            quantity: consolidatedQuantity,
+          } : {
             kind: "COMMERCIAL_CODE",
             commercial_code_id: identifier,
             quantity: consolidatedQuantity,
@@ -260,13 +265,13 @@ function normalizeRequest(
           ? first.item_id
           : first.kind === "COMMERCIAL_CODE"
             ? first.commercial_code_id
-            : first.code;
+            : first.kind === "BUNDLE_CODE" ? first.bundle_code_id : first.code;
       const secondId =
         second.kind === "ITEM"
           ? second.item_id
           : second.kind === "COMMERCIAL_CODE"
             ? second.commercial_code_id
-            : second.code;
+            : second.kind === "BUNDLE_CODE" ? second.bundle_code_id : second.code;
 
       return firstId.localeCompare(secondId);
     }),

@@ -53,6 +53,7 @@ test("catálogo mestre atual passa no preflight sem colisão semântica", () => 
 function fakeSupabase({
   items = knownItems,
   commercialCodes = [{ code: "10A" }],
+  bundleCodes = [{ code: "1HC" }],
   readError = null,
   throwOnRead = false,
 } = {}) {
@@ -64,7 +65,7 @@ function fakeSupabase({
     reads,
     from(table) {
       assert.ok(
-        table === "items" || table === "commercial_configuration_codes",
+        table === "items" || table === "commercial_configuration_codes" || table === "commercial_bundle_codes",
       );
       return {
         select(columns) {
@@ -77,7 +78,7 @@ function fakeSupabase({
                 async range(from, to) {
                   reads.push({ table, from, to });
                   if (throwOnRead) throw new Error("network failed");
-                  const source = table === "items" ? items : commercialCodes;
+                  const source = table === "items" ? items : table === "commercial_bundle_codes" ? bundleCodes : commercialCodes;
                   return {
                     data: Array.isArray(source)
                       ? [...source]
@@ -112,6 +113,11 @@ async function expectPolicyRejection(client, write, reason, catalogCodes) {
   );
   assert.deepEqual(client.calls, []);
 }
+
+test("bundle 1HC é código oficial e não pode ser criado como peça avulsa", async () => {
+  const client = fakeSupabase();
+  await expectPolicyRejection(client, {kind:"CATALOG_ONLY_LOOSE_PART",code:"1HC",description:"Outra peça"}, "KNOWN_CODE", ["1HC"]);
+});
 
 test("INV exato conhecido e variantes de consulta nunca chegam ao writer", async () => {
   for (const code of ["1INV", "1-inv", " 1-inv "]) {
