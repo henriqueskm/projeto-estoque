@@ -21,6 +21,7 @@ import {
   loadFreshStockBalances,
 } from "@/lib/stock-operational-data";
 import { createClient } from "@/lib/supabase/server";
+import { buildBundleInventory, loadBundleInventoryRows } from "@/lib/bundle-inventory";
 
 type ItemRow = {
   id: string;
@@ -113,10 +114,11 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
   const startedAt = performance.now();
   try {
     const supabase = await createClient();
-    const [snapshot, operationalState, minimumState] = await Promise.all([
+    const [snapshot, operationalState, minimumState, bundleRows] = await Promise.all([
       loadSharedCatalogSnapshot(),
       loadFreshStockBalances(supabase),
       loadFreshMinimumStocks(supabase),
+      loadBundleInventoryRows(supabase),
     ]);
     const { stockBalancesResult, configurationBalancesResult } =
       operationalState;
@@ -182,6 +184,9 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
         balance.quantity,
       ]),
     );
+    const { bundles, embeddedItems, embeddedConfigurations } = buildBundleInventory(
+      bundleRows, snapshot, looseQuantityByItemId, assembledByConfigurationId,
+    );
     const physicalStockByItemId = calculatePhysicalStockByItem(
       activeItems.map((item) => ({
         id: item.id,
@@ -220,7 +225,9 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
             : null,
         minimumStock: item.minimum_stock,
         ...quantities,
-        state: getStockState(quantities.totalQuantity, item.minimum_stock),
+        embeddedQuantity: embeddedItems.get(item.id) ?? 0,
+        totalQuantity: quantities.totalQuantity + (embeddedItems.get(item.id) ?? 0),
+        state: getStockState(quantities.totalQuantity + (embeddedItems.get(item.id) ?? 0), item.minimum_stock),
         compatibleKitImages: [],
       };
     });
@@ -250,7 +257,10 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
         configurationId: balance.configuration_id,
         quantity: balance.quantity,
       })),
+      { items: embeddedItems, configurations: embeddedConfigurations },
     );
+    summary.lowStockItems += bundles.filter(bundle => bundle.isActive && bundle.state === "LOW").length;
+    summary.outOfStockItems += bundles.filter(bundle => bundle.isActive && bundle.state === "ZERO").length;
     const aliasesByConfigurationId = new Map<
       string,
       Array<{ code: string; isActive: boolean }>
@@ -276,12 +286,13 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
           aliasesByConfigurationId.get(configuration.id) ?? []
         ).sort((first, second) => compareCodes(first.code, second.code));
         const activeAliases = aliases.filter((alias) => alias.isActive);
+        const embeddedInBundlesQuantity = embeddedConfigurations.get(configuration.id) ?? 0;
         const assembledQuantity =
           assembledByConfigurationId.get(configuration.id) ?? 0;
 
         if (!servo || !installationKit || !isInventoryConfigurationVisible(
           configuration.is_active, servo, installationKit,
-          activeAliases.length > 0, assembledQuantity,
+          activeAliases.length > 0, assembledQuantity + embeddedInBundlesQuantity,
         )) {
           return [];
         }
@@ -316,9 +327,11 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
                 looseQuantityByItemId.get(installationKit.id) ?? 0,
             },
             assembledQuantity,
+            embeddedInBundlesQuantity,
+            totalPhysicalQuantity: assembledQuantity + embeddedInBundlesQuantity,
             minimumStock: configuration.minimum_stock,
             state: getConfigurationStockState(
-              assembledQuantity,
+              assembledQuantity + embeddedInBundlesQuantity,
               configuration.minimum_stock,
             ),
             hasAliases: aliases.length > 1,
@@ -386,10 +399,11 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
       summary,
       physicalItems: physicalItemsWithImages,
       configurations: catalogConfigurations,
+      bundles,
       physicalCatalogCount: physicalCatalog.length,
       configurationCatalogCount: configurationCatalog.length,
     };
-    logPerformanceAudit({ loader: "inventory", phase: "total", durationMs: Math.round(performance.now() - startedAt), rowCount: data.physicalItems.length + data.configurations.length, payloadBytes: performancePayloadBytes(data) });
+    logPerformanceAudit({ loader: "inventory", phase: "total", durationMs: Math.round(performance.now() - startedAt), rowCount: data.physicalItems.length + data.configurations.length + data.bundles.length, payloadBytes: performancePayloadBytes(data) });
     return { data, error: null };
   } catch {
     return {

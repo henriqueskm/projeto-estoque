@@ -12,6 +12,7 @@ import {
 } from "@/components/icons";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { StockFlowSection } from "@/components/stock-flow-section";
+import { buildStockFlowSearch } from "@/lib/stock-flow-search";
 import {
   buildInboundPreview,
   type InboundPreviewInputLine,
@@ -43,14 +44,6 @@ type DraftLine = {
 
 type FlowStep = "editing" | "review" | "success";
 type CatalogSection = "separate" | "repair" | "commercial";
-
-function normalizeSearch(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("pt-BR")
-    .trim();
-}
 
 function parseQuantity(value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
@@ -434,34 +427,10 @@ export function InboundEntryFlow({
     () => new Set(lines.map((line) => getOptionKey(line.option))),
     [lines],
   );
-  const activeOptions = useMemo<
-    Array<InboundPhysicalItem | InboundCommercialCode>
-  >(() => {
-    if (openSection === "separate") {
-      return separateItems;
-    }
-
-    if (openSection === "repair") {
-      return repairItems;
-    }
-
-    if (openSection === "commercial") {
-      return catalog.commercialCodes;
-    }
-
-    return [];
-  }, [catalog.commercialCodes, openSection, repairItems, separateItems]);
-  const filteredOptions = useMemo(() => {
-    const normalizedQuery = normalizeSearch(search);
-
-    if (!normalizedQuery) {
-      return activeOptions;
-    }
-
-    return activeOptions.filter((option) =>
-      normalizeSearch(getOptionSearchText(option)).includes(normalizedQuery),
-    );
-  }, [activeOptions, search]);
+  const catalogSections = useMemo(() => buildStockFlowSearch<InboundCatalogOption>(
+    { separate: separateItems, repair: repairItems, commercial: catalog.commercialCodes },
+    search, openSection, getOptionSearchText,
+  ), [catalog.commercialCodes, openSection, repairItems, separateItems, search]);
   const parsedLines = useMemo<InboundPreviewInputLine[]>(
     () =>
       lines.flatMap((line) => {
@@ -489,7 +458,7 @@ export function InboundEntryFlow({
   }
 
   function toggleCatalogSection(section: CatalogSection) {
-    if (isPending) {
+    if (isPending || search.trim()) {
       return;
     }
 
@@ -783,7 +752,8 @@ export function InboundEntryFlow({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function renderCatalogResults() {
+  function renderCatalogResults(section: CatalogSection) {
+    const filteredOptions = catalogSections[section].results;
     return (
       <>
         <p
@@ -807,7 +777,7 @@ export function InboundEntryFlow({
               Tente outro código, descrição, modelo, servo ou kit.
             </p>
           </div>
-        ) : openSection === "commercial" ? (
+        ) : section === "commercial" ? (
           <CommercialCatalogTable
             options={filteredOptions.filter(
               (option): option is InboundCommercialCode =>
@@ -1367,37 +1337,37 @@ export function InboundEntryFlow({
               id="inbound-separate-section"
               title="Item separado"
               description="Servos, kits de instalação e peças avulsas"
-              count={separateItems.length}
-              isOpen={openSection === "separate"}
+              count={catalogSections.separate.count}
+              isOpen={catalogSections.separate.isOpen}
               onToggle={() => toggleCatalogSection("separate")}
               allowStickyContent
             >
               {renderNewLoosePartForm()}
-              {renderCatalogResults()}
+              {renderCatalogResults("separate")}
             </StockFlowSection>
 
             <StockFlowSection
               id="inbound-repair-section"
               title="Reparo"
               description="Jogos e kits de reparo"
-              count={repairItems.length}
-              isOpen={openSection === "repair"}
+              count={catalogSections.repair.count}
+              isOpen={catalogSections.repair.isOpen}
               onToggle={() => toggleCatalogSection("repair")}
               allowStickyContent
             >
-              {renderCatalogResults()}
+              {renderCatalogResults("repair")}
             </StockFlowSection>
 
             <StockFlowSection
               id="inbound-commercial-section"
               title="Servo com kit"
               description="Configurações identificadas por código comercial"
-              count={catalog.commercialCodes.length}
-              isOpen={openSection === "commercial"}
+              count={catalogSections.commercial.count}
+              isOpen={catalogSections.commercial.isOpen}
               onToggle={() => toggleCatalogSection("commercial")}
               allowStickyContent
             >
-              {renderCatalogResults()}
+              {renderCatalogResults("commercial")}
             </StockFlowSection>
           </div>
         </div>

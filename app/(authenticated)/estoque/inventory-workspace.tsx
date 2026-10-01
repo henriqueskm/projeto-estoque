@@ -11,6 +11,7 @@ import {
 import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { ChevronDownIcon, SearchIcon } from "@/components/icons";
 import { InventoryRowActions } from "@/components/inventory-row-actions";
+import { InventoryBundleTable } from "@/components/inventory-bundle-table";
 import { PurchaseRecommendationLauncher } from "@/components/purchase-recommendation-launcher";
 import { getServoFamilyLabel } from "@/lib/inventory-family";
 import type {
@@ -241,6 +242,16 @@ function CommercialCodeBadges({ codes }: { codes: string[] }) {
 }
 
 function PhysicalBalanceSummary({ item }: { item: InventoryPhysicalItem }) {
+  if (item.embeddedQuantity || item.itemType === "LOOSE_PART") {
+    return (
+      <span>
+        {quantityFormatter.format(item.looseQuantity)} livres ·{" "}
+        {item.itemType === "SERVO" || item.itemType === "INSTALLATION_KIT" ? `${quantityFormatter.format(item.mountedQuantity)} em Servos com kit · ` : ""}
+        {quantityFormatter.format(item.embeddedQuantity ?? 0)} em conjuntos · total
+        físico {quantityFormatter.format(item.totalQuantity)}
+      </span>
+    );
+  }
   if (item.itemType === "SERVO") {
     return (
       <span title="Servos sem kit e servos presentes em configurações montadas">
@@ -415,7 +426,7 @@ function PhysicalTable({
                     : ""}
                 </p>
                 {item.itemType === "SERVO" ||
-                item.itemType === "INSTALLATION_KIT" ? (
+                item.itemType === "INSTALLATION_KIT" || item.itemType === "LOOSE_PART" || item.embeddedQuantity ? (
                   <p className="mt-0.5 text-[0.65rem] leading-4 text-text-muted sm:text-xs">
                     <PhysicalBalanceSummary item={item} />
                   </p>
@@ -535,6 +546,7 @@ function ConfigurationTable({
                   Servo {configuration.servo.code} · Kit{" "}
                   {configuration.installationKit.code}
                 </p>
+                {configuration.embeddedInBundlesQuantity ? <p className="mt-1 text-xs text-text-muted">{configuration.assembledQuantity} livres · {configuration.embeddedInBundlesQuantity} em conjuntos · total físico {configuration.totalPhysicalQuantity}</p> : null}
                 <span className="mt-1 inline-flex">
                   <ConfigurationStateBadge state={configuration.state} />
                 </span>
@@ -720,7 +732,7 @@ export function InventoryWorkspace({
           familyLabel,
         ]) &&
         matchesStatus(
-          configuration.assembledQuantity,
+          configuration.totalPhysicalQuantity ?? configuration.assembledQuantity,
           configuration.minimumStock,
           configuration.state,
           statusFilter,
@@ -731,7 +743,7 @@ export function InventoryWorkspace({
     return result.sort((first, second) => {
       if (sort === "quantity") {
         return (
-          second.assembledQuantity - first.assembledQuantity ||
+          (second.totalPhysicalQuantity ?? second.assembledQuantity) - (first.totalPhysicalQuantity ?? first.assembledQuantity) ||
           compareText(
             first.codes[0] ?? first.description,
             second.codes[0] ?? second.description,
@@ -772,6 +784,46 @@ export function InventoryWorkspace({
     [filteredPhysicalItems, hasActiveFilters, hasSearch],
   );
 
+  const filteredBundles = useMemo(
+    () =>
+      inventory.bundles
+        .filter(
+          (bundle) =>
+            matchesSearch(normalizedQuery, [
+              ...bundle.aliases.map((alias) => alias.code),
+              bundle.description,
+              bundle.family,
+              ...bundle.recipe.flatMap((component) => [
+                component.code,
+                component.description,
+              ]),
+            ]) &&
+            matchesStatus(
+              bundle.readyQuantity,
+              bundle.minimumStock,
+              bundle.state,
+              statusFilter,
+            ),
+        )
+        .sort((a, b) =>
+          sort === "quantity"
+            ? b.readyQuantity - a.readyQuantity ||
+              compareText(
+                a.codes[0] ?? a.description,
+                b.codes[0] ?? b.description,
+              )
+            : compareText(
+                sort === "description"
+                  ? a.description
+                  : (a.codes[0] ?? a.description),
+                sort === "description"
+                  ? b.description
+                  : (b.codes[0] ?? b.description),
+              ),
+        ),
+    [inventory.bundles, normalizedQuery, sort, statusFilter],
+  );
+
   const configurationFamilies = useMemo(() => {
     const configurationsByFamily = new Map<
       string,
@@ -789,11 +841,15 @@ export function InventoryWorkspace({
       configurationsByFamily.set(familyLabel, familyConfigurations);
     });
 
+    for (const bundle of filteredBundles) {
+      if (!configurationsByFamily.has(bundle.family)) configurationsByFamily.set(bundle.family, []);
+    }
     return Array.from(configurationsByFamily, ([label, configurations]) => ({
       label,
       configurations,
+      bundles: filteredBundles.filter(bundle => bundle.family === label),
     })).sort((first, second) => compareText(first.label, second.label));
-  }, [filteredConfigurations]);
+  }, [filteredConfigurations, filteredBundles]);
 
   const summaryCards = [
     {
@@ -818,7 +874,7 @@ export function InventoryWorkspace({
     },
   ];
   const totalResults =
-    filteredPhysicalItems.length + filteredConfigurations.length;
+    filteredPhysicalItems.length + filteredConfigurations.length + filteredBundles.length;
 
   function toggleSetValue(
     setter: Dispatch<SetStateAction<Set<string>>>,
@@ -855,7 +911,7 @@ export function InventoryWorkspace({
           <p className="text-right text-xs font-semibold text-text-muted sm:text-sm">
             {quantityFormatter.format(
               inventory.physicalCatalogCount +
-                inventory.configurationCatalogCount,
+                inventory.configurationCatalogCount + inventory.bundles.length,
             )}{" "}
             cadastros
           </p>
@@ -1070,18 +1126,18 @@ export function InventoryWorkspace({
               id="configurations-title"
               className="text-lg font-black text-text-primary sm:text-xl"
             >
-              Servos com kit
+              Servos com kit e conjuntos
             </h2>
           </div>
           <span className="text-right text-xs font-bold text-text-muted">
             {quantityFormatter.format(filteredConfigurations.length)}{" "}
-            configurações
+            configurações · {quantityFormatter.format(filteredBundles.length)} conjuntos
           </span>
         </div>
         <div className="space-y-2">
           {configurationFamilies.map((family, index) => {
             const isOpen =
-              (hasSearch && family.configurations.length > 0) ||
+              (hasSearch && family.configurations.length + family.bundles.length > 0) ||
               openFamilies.has(family.label);
 
             return (
@@ -1089,19 +1145,20 @@ export function InventoryWorkspace({
                 key={family.label}
                 id={`inventory-family-${index}`}
                 title={family.label}
-                description="Configurações físicas e códigos comerciais"
-                count={family.configurations.length}
+                description="Configurações físicas e conjuntos comerciais"
+                count={family.configurations.length + family.bundles.length}
                 isOpen={isOpen}
                 onToggle={() => toggleSetValue(setOpenFamilies, family.label)}
               >
-                <ConfigurationTable
+                {family.configurations.length > 0 ? <ConfigurationTable
                   configurations={family.configurations}
                   highlightedConfigurationId={
                     initialTarget?.kind === "commercial_configuration"
                       ? initialTarget.id
                       : undefined
                   }
-                />
+                /> : null}
+                {family.bundles.length > 0 ? <InventoryBundleTable bundles={family.bundles} /> : null}
               </InventoryAccordion>
             );
           })}

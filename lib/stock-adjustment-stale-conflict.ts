@@ -41,9 +41,17 @@ export async function runStockAdjustmentSubmission<TReceipt>({
   target: InventoryActionTarget;
 }) {
   const targetId =
-    target.kind === "ITEM" ? target.itemId : target.configurationId;
+    target.kind === "ITEM"
+      ? target.itemId
+      : target.kind === "BUNDLE"
+        ? target.bundleId
+        : target.configurationId;
   const expectedQuantity =
-    target.kind === "ITEM" ? target.looseQuantity : target.assembledQuantity;
+    target.kind === "ITEM"
+      ? target.looseQuantity
+      : target.kind === "BUNDLE"
+        ? target.readyQuantity
+        : target.assembledQuantity;
   const result = await execute({
     target_kind: target.kind,
     target_id: targetId,

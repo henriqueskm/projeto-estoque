@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type {
+  BundleOperationActionResult,
   ConfigurationOperationActionResult,
   ConfigurationOperationReceipt,
   ConfigurationOperationType,
@@ -278,6 +279,10 @@ function mapAdjustmentRpcError(code: string | undefined, message: string) {
     } as const;
   }
 
+  if (normalizedMessage.includes("inactive")) {
+    return { message: "Este cadastro está inativo. Atualize a página e confira os dados.", stale: false } as const;
+  }
+
   if (code === "22003") {
     return {
       message: "A quantidade informada excede o limite permitido.",
@@ -395,7 +400,8 @@ export async function adjustInventoryStock(
   if (
     Object.keys(request).some((field) => !allowedFields.has(field)) ||
     (request.target_kind !== "ITEM" &&
-      request.target_kind !== "CONFIGURATION") ||
+      request.target_kind !== "CONFIGURATION" &&
+      request.target_kind !== "BUNDLE") ||
     typeof request.target_id !== "string" ||
     !uuidPattern.test(request.target_id) ||
     !isPostgresInteger(request.counted_quantity) ||
@@ -445,7 +451,11 @@ export async function adjustInventoryStock(
     } else {
       const { data: configuration, error: configurationError } =
         await context.supabase
-          .from("commercial_configurations")
+          .from(
+            request.target_kind === "BUNDLE"
+              ? "commercial_bundles"
+              : "commercial_configurations",
+          )
           .select("id")
           .eq("id", request.target_id)
           .maybeSingle();
@@ -460,11 +470,15 @@ export async function adjustInventoryStock(
     const rpcName =
       request.target_kind === "ITEM"
         ? "adjust_item_stock_checked"
-        : "adjust_configuration_stock_checked";
+        : request.target_kind === "BUNDLE"
+          ? "adjust_commercial_bundle_stock_checked"
+          : "adjust_configuration_stock_checked";
     const targetArgument =
       request.target_kind === "ITEM"
         ? { p_item_id: request.target_id }
-        : { p_configuration_id: request.target_id };
+        : request.target_kind === "BUNDLE"
+          ? { p_bundle_id: request.target_id }
+          : { p_configuration_id: request.target_id };
     const { data, error } = await context.supabase.rpc(rpcName, {
       ...targetArgument,
       p_counted_quantity: request.counted_quantity,
@@ -853,4 +867,160 @@ export async function disassembleCommercialConfiguration(
   input: unknown,
 ): Promise<ConfigurationOperationActionResult> {
   return performConfigurationOperation("DISASSEMBLY", input);
+}
+
+async function performBundleOperation(
+  operationType: ConfigurationOperationType,
+  input: unknown,
+): Promise<BundleOperationActionResult> {
+  const fail = (error: string): BundleOperationActionResult => ({
+    ok: false,
+    error,
+  });
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    return fail("Os dados da operação são inválidos.");
+  const request = input as Record<string, unknown>;
+  const allowed = new Set([
+    "bundle_id",
+    "bundle_code",
+    "quantity",
+    "idempotency_key",
+    "description",
+  ]);
+  if (
+    Object.keys(request).some((key) => !allowed.has(key)) ||
+    typeof request.bundle_id !== "string" ||
+    !uuidPattern.test(request.bundle_id) ||
+    typeof request.bundle_code !== "string" ||
+    !request.bundle_code.trim() ||
+    !isPostgresInteger(request.quantity) ||
+    request.quantity === 0 ||
+    typeof request.idempotency_key !== "string" ||
+    !uuidPattern.test(request.idempotency_key) ||
+    (request.description !== null && typeof request.description !== "string")
+  ) {
+    return fail(
+      "Revise o conjunto e informe uma quantidade inteira positiva dentro do limite permitido.",
+    );
+  }
+  const description =
+    typeof request.description === "string"
+      ? request.description.trim() || null
+      : null;
+  if (description && description.length > maximumReasonLength)
+    return fail("A observação deve ter no máximo 500 caracteres.");
+  try {
+    const context = await getAuthenticatedContext();
+    if (!context)
+      return fail(
+        "Sua sessão ou perfil ativo não está disponível. Entre novamente para continuar.",
+      );
+    const bundleCode = request.bundle_code.trim();
+    const bundleId = request.bundle_id.toLowerCase();
+    // Also accept inactive aliases for disassembly; the RPC enforces lifecycle rules.
+    const { data: alias, error: aliasError } = await context.supabase
+      .from("commercial_bundle_codes")
+      .select("id")
+      .eq("bundle_id", bundleId)
+      .eq("code", bundleCode)
+      .maybeSingle();
+    if (aliasError || !alias)
+      return fail(
+        "Este conjunto ou código não está mais disponível. Atualize a página.",
+      );
+    const { data, error } = await context.supabase.rpc(
+      operationType === "ASSEMBLY"
+        ? "assemble_commercial_bundle"
+        : "disassemble_commercial_bundle",
+      {
+        p_bundle_code: bundleCode,
+        p_quantity: request.quantity,
+        p_idempotency_key: request.idempotency_key.toLowerCase(),
+        p_description: description,
+      },
+    );
+    if (error) {
+      const message = error.message.toLowerCase();
+      if (error.code === "42501" || error.code === "28000")
+        return fail(
+          "Sua sessão não está disponível. Entre novamente para continuar.",
+        );
+      if (message.includes("idempotency"))
+        return fail(
+          "Esta tentativa já foi usada com dados diferentes. Feche a janela e inicie uma nova operação.",
+        );
+      if (message.includes("inactive"))
+        return fail(
+          "Este conjunto, código ou componente está inativo e não pode ser montado.",
+        );
+      if (
+        message.includes("insufficient") ||
+        message.includes("no stock") ||
+        message.includes("maximum assemblable")
+      )
+        return fail(
+          operationType === "ASSEMBLY"
+            ? "Sem saldo livre suficiente dos componentes. Atualize a página e confira os saldos."
+            : "Não há conjuntos prontos suficientes para desmontar. Atualize a página.",
+        );
+      if (error.code === "22003")
+        return fail("A quantidade informada excede o limite permitido.");
+      if (message.includes("does not exist") || message.includes("not found"))
+        return fail(
+          "Este conjunto não está mais disponível. Atualize a página.",
+        );
+      return fail(
+        "Não foi possível confirmar a operação. Confira os dados e tente novamente sem alterá-los.",
+      );
+    }
+    const receipt = data as Record<string, unknown> | null;
+    if (
+      !receipt ||
+      typeof receipt.movement_batch_id !== "string" ||
+      !uuidPattern.test(receipt.movement_batch_id) ||
+      receipt.operation_type !== operationType ||
+      receipt.operation_applied !== true ||
+      receipt.bundle_id !== bundleId ||
+      receipt.bundle_code !== bundleCode ||
+      receipt.quantity !== request.quantity ||
+      !isPostgresInteger(receipt.bundle_quantity_before) ||
+      !isPostgresInteger(receipt.bundle_quantity_after) ||
+      receipt.bundle_quantity_after !==
+        receipt.bundle_quantity_before +
+          (operationType === "ASSEMBLY" ? request.quantity : -request.quantity)
+    ) {
+      return fail(
+        "A operação foi processada, mas a confirmação não pôde ser carregada. Tente novamente com os mesmos dados.",
+      );
+    }
+    for (const path of ["/", "/estoque", "/entrada", "/saida", "/historico"])
+      revalidatePath(path);
+    return {
+      ok: true,
+      receipt: {
+        movementBatchId: receipt.movement_batch_id,
+        bundleId,
+        bundleCode,
+        quantity: request.quantity,
+        quantityBefore: receipt.bundle_quantity_before,
+        quantityAfter: receipt.bundle_quantity_after,
+      },
+    };
+  } catch {
+    return fail(
+      "A conexão falhou. Tente novamente com os mesmos dados para reutilizar a chave segura.",
+    );
+  }
+}
+
+export async function assembleCommercialBundle(
+  input: unknown,
+): Promise<BundleOperationActionResult> {
+  return performBundleOperation("ASSEMBLY", input);
+}
+
+export async function disassembleCommercialBundle(
+  input: unknown,
+): Promise<BundleOperationActionResult> {
+  return performBundleOperation("DISASSEMBLY", input);
 }

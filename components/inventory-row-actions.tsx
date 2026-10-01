@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import {
   ConfigurationOperationDialog,
+  BundleOperationDialog,
   InventoryAdjustmentDialog,
   MinimumStockDialog,
 } from "@/components/inventory-action-dialogs";
@@ -166,7 +167,7 @@ export function InventoryRowActions({
             onKeyDown={handleMenuKeyDown}
             className="absolute top-full right-0 z-30 mt-1 w-56 rounded-xl border border-border-neutral bg-surface p-1.5 shadow-xl"
           >
-            {target.kind === "CONFIGURATION" ? (
+            {target.kind === "CONFIGURATION" || target.kind === "BUNDLE" ? (
               <>
                 <p role="presentation" className="px-3 pt-1 pb-1 text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
                   Operações
@@ -206,14 +207,14 @@ export function InventoryRowActions({
               Ajustar estoque
             </button>
 
-            <button
+            {target.kind !== "BUNDLE" ? <button
               type="button"
               role="menuitem"
               onClick={() => openDialog("MINIMUM_STOCK")}
               className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
             >
               Alterar estoque mínimo
-            </button>
+            </button> : null}
 
             {target.kind === "CONFIGURATION" && hasImage ? (
               <>
@@ -245,12 +246,16 @@ export function InventoryRowActions({
         />
       ) : null}
 
-      {activeDialog === "MINIMUM_STOCK" ? (
+      {activeDialog === "MINIMUM_STOCK" && target.kind !== "BUNDLE" ? (
         <MinimumStockDialog
           target={target}
           onClose={closeDialog}
           onSuccess={finishAction}
         />
+      ) : null}
+
+      {(activeDialog === "ASSEMBLY" || activeDialog === "DISASSEMBLY") && target.kind === "BUNDLE" ? (
+        <BundleOperationDialog target={target} operationType={activeDialog} onClose={closeDialog} onSuccess={finishAction} />
       ) : null}
 
       {activeDialog === "ASSEMBLY" && target.kind === "CONFIGURATION" ? (

@@ -14,11 +14,14 @@ import {
   changeConfigurationMinimumStock,
   changeItemMinimumStock,
   disassembleCommercialConfiguration,
+  assembleCommercialBundle,
+  disassembleCommercialBundle,
 } from "@/app/(authenticated)/estoque/actions";
 import type {
   ConfigurationOperationType,
   InventoryActionTarget,
   InventoryConfigurationActionTarget,
+  InventoryBundleActionTarget,
 } from "@/lib/inventory-action-types";
 import { runStockAdjustmentSubmission } from "@/lib/stock-adjustment-stale-conflict";
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
@@ -144,7 +147,7 @@ function targetDescription(target: InventoryActionTarget) {
 function currentTargetQuantity(target: InventoryActionTarget) {
   return target.kind === "ITEM"
     ? target.looseQuantity
-    : target.assembledQuantity;
+    : target.kind === "BUNDLE" ? target.readyQuantity : target.assembledQuantity;
 }
 
 export function InventoryAdjustmentDialog({
@@ -380,7 +383,7 @@ export function MinimumStockDialog({
   target,
   onClose,
   onSuccess,
-}: DialogBaseProps & { target: InventoryActionTarget }) {
+}: DialogBaseProps & { target: Exclude<InventoryActionTarget, InventoryBundleActionTarget> }) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -513,6 +516,191 @@ export function MinimumStockDialog({
             className="nk-focus min-h-12 rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white disabled:cursor-wait disabled:opacity-70"
           >
             {isPending ? "Salvando..." : "Salvar estoque mínimo"}
+          </button>
+        </div>
+      </form>
+    </DialogFrame>
+  );
+}
+
+export function BundleOperationDialog({
+  target,
+  operationType,
+  onClose,
+  onSuccess,
+}: DialogBaseProps & {
+  target: InventoryBundleActionTarget;
+  operationType: ConfigurationOperationType;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const keyRef = useRef<string | null>(null);
+  const submitGuard = useRef(false);
+  const [quantity, setQuantity] = useState("1");
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const isAssembly = operationType === "ASSEMBLY";
+  const code =
+    (isAssembly
+      ? target.commercialAliases.find((alias) => alias.isActive)?.code
+      : target.commercialCodes[0]) ?? "";
+  const maximum = isAssembly ? target.maximumAssemblable : target.readyQuantity;
+  const unavailable =
+    isAssembly &&
+    (!target.isActive ||
+      !code ||
+      target.recipe.some((component) => !component.isActive))
+      ? "Este conjunto, código ou componente está inativo e não pode ser montado."
+      : maximum <= 0
+        ? isAssembly
+          ? "Sem saldo livre suficiente para montar."
+          : "Nenhum conjunto pronto para desmontar."
+        : null;
+  const parsedQuantity = Number(quantity);
+  const valid =
+    quantity.trim() !== "" &&
+    Number.isInteger(parsedQuantity) &&
+    parsedQuantity > 0 &&
+    parsedQuantity <= Math.min(maximum, maximumInteger);
+  useAccessibleDialog(dialogRef, inputRef, isPending, onClose);
+
+  function changed() {
+    keyRef.current = null;
+    setError(null);
+  }
+
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitGuard.current || isPending) return;
+    if (
+      unavailable ||
+      !valid ||
+      description.trim().length > maximumReasonLength
+    ) {
+      setError(
+        unavailable ??
+          `Informe uma quantidade entre 1 e ${maximum} e observação com até 500 caracteres.`,
+      );
+      return;
+    }
+    keyRef.current ??= crypto.randomUUID();
+    const key = keyRef.current;
+    submitGuard.current = true;
+    startTransition(async () => {
+      try {
+        const result = await (
+          isAssembly ? assembleCommercialBundle : disassembleCommercialBundle
+        )({
+          bundle_id: target.bundleId,
+          bundle_code: code,
+          quantity: parsedQuantity,
+          description: description.trim() || null,
+          idempotency_key: key,
+        });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        onSuccess(
+          `${isAssembly ? "Montagem" : "Desmontagem"} de ${result.receipt.quantity} ${code} confirmada. Saldo pronto: ${result.receipt.quantityBefore} → ${result.receipt.quantityAfter}.`,
+        );
+      } catch {
+        setError("A conexão falhou. Tente novamente com os mesmos dados.");
+      } finally {
+        submitGuard.current = false;
+      }
+    });
+  }
+
+  return (
+    <DialogFrame
+      dialogRef={dialogRef}
+      titleId={titleId}
+      descriptionId={descriptionId}
+      title={isAssembly ? "Montar conjunto" : "Desmontar conjunto"}
+      isPending={isPending}
+      onClose={onClose}
+    >
+      <form onSubmit={submit} aria-busy={isPending} className="space-y-4 p-5">
+        <div id={descriptionId} className="rounded-xl bg-app-background p-3">
+          <p className="font-mono text-lg font-black">{code}</p>
+          <p className="text-sm text-text-muted">{target.description}</p>
+          <p className="mt-2 text-sm font-bold">
+            {isAssembly ? "Pode montar" : "Saldo pronto"}: {maximum}
+          </p>
+          <p className="mt-2 text-sm">
+            {isAssembly ? "Consome por unidade" : "Devolve por unidade"}:{" "}
+            {target.recipe
+              .map(
+                (component) =>
+                  `${component.quantityPerBundle} × ${component.code}`,
+              )
+              .join(" + ")}
+          </p>
+        </div>
+        <label
+          className="block text-sm font-bold"
+          htmlFor={`${titleId}-quantity`}
+        >
+          Quantidade
+        </label>
+        <input
+          ref={inputRef}
+          id={`${titleId}-quantity`}
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={Math.min(maximum, maximumInteger)}
+          step={1}
+          required
+          value={quantity}
+          disabled={isPending}
+          onChange={(event) => {
+            setQuantity(event.target.value);
+            changed();
+          }}
+          className="nk-field min-h-11 w-full rounded-lg border px-3"
+        />
+        <label
+          className="block text-sm font-bold"
+          htmlFor={`${titleId}-description`}
+        >
+          Observação (opcional)
+        </label>
+        <textarea
+          id={`${titleId}-description`}
+          maxLength={500}
+          value={description}
+          disabled={isPending}
+          onChange={(event) => {
+            setDescription(event.target.value);
+            changed();
+          }}
+          className="nk-field w-full rounded-lg border p-3"
+        />
+        {error || unavailable ? (
+          <p role="alert" className="text-sm font-bold text-red-800">
+            {error ?? unavailable}
+          </p>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={onClose}
+            className="nk-focus min-h-11 rounded-lg border px-4 font-bold"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={isPending || !valid || !!unavailable}
+            className="nk-focus min-h-11 rounded-lg bg-brand-charcoal px-4 font-bold text-white disabled:opacity-50"
+          >
+            {isPending ? "Confirmando…" : "Confirmar"}
           </button>
         </div>
       </form>
