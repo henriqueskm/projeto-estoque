@@ -1,4 +1,4 @@
-export type StockFlowCatalogSection = "separate" | "repair" | "commercial";
+export type StockFlowCatalogSection = "separate" | "repair" | "commercial" | "bundles";
 
 export function buildStockFlowSearch<T>(
   sections: Record<StockFlowCatalogSection, T[]>,

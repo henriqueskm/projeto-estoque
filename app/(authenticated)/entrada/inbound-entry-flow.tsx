@@ -12,7 +12,9 @@ import {
 } from "@/components/icons";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { StockFlowSection } from "@/components/stock-flow-section";
+import { StockFlowBundleTable, StockFlowBundleReview } from "@/components/stock-flow-bundles";
 import { buildStockFlowSearch } from "@/lib/stock-flow-search";
+import { assessNewLoosePartCode } from "@/lib/catalog-code-policy";
 import {
   buildInboundPreview,
   type InboundPreviewInputLine,
@@ -27,6 +29,7 @@ import {
   type InboundReceipt,
   type InboundRequestLine,
   type PhysicalItemType,
+  type StockFlowBundleCode,
 } from "@/lib/inbound-types";
 import { submitStockInbound } from "./actions";
 
@@ -43,7 +46,7 @@ type DraftLine = {
 };
 
 type FlowStep = "editing" | "review" | "success";
-type CatalogSection = "separate" | "repair" | "commercial";
+type CatalogSection = "separate" | "repair" | "commercial" | "bundles";
 
 function parseQuantity(value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
@@ -64,6 +67,7 @@ function parseQuantity(value: string) {
 }
 
 function getOptionKey(option: InboundCatalogOption) {
+  if (option.kind === "BUNDLE_CODE") return `BUNDLE_CODE:${option.bundleCodeId}`;
   if (option.kind === "ITEM") {
     return `ITEM:${option.id}`;
   }
@@ -80,6 +84,7 @@ function getQuantityControlId(option: InboundCatalogOption) {
 }
 
 function getOptionSearchText(option: InboundCatalogOption) {
+  if (option.kind === "BUNDLE_CODE") return [option.code, option.description, ...option.aliases, "Conjunto"].join(" ");
   if (option.kind === "ITEM" || option.kind === "NEW_LOOSE_PART") {
     return [
       option.code,
@@ -157,7 +162,7 @@ function OptionBadge({ option }: { option: InboundCatalogOption }) {
     </span>
   ) : (
     <span className="inline-flex rounded-full bg-violet-200 px-2.5 py-1 text-[0.65rem] font-black tracking-wide text-violet-950 uppercase">
-      Servo com kit
+      {option.kind === "BUNDLE_CODE" ? "Conjunto" : "Servo com kit"}
     </span>
   );
 }
@@ -428,9 +433,9 @@ export function InboundEntryFlow({
     [lines],
   );
   const catalogSections = useMemo(() => buildStockFlowSearch<InboundCatalogOption>(
-    { separate: separateItems, repair: repairItems, commercial: catalog.commercialCodes },
+    { separate: separateItems, repair: repairItems, commercial: catalog.commercialCodes, bundles: catalog.bundleCodes },
     search, openSection, getOptionSearchText,
-  ), [catalog.commercialCodes, openSection, repairItems, separateItems, search]);
+  ), [catalog.commercialCodes, catalog.bundleCodes, openSection, repairItems, separateItems, search]);
   const parsedLines = useMemo<InboundPreviewInputLine[]>(
     () =>
       lines.flatMap((line) => {
@@ -515,6 +520,14 @@ export function InboundEntryFlow({
     const existingItem = catalog.physicalItems.find(
       (item) => item.code === code,
     );
+
+    const assessment = assessNewLoosePartCode([
+      ...catalog.physicalItems, ...catalog.commercialCodes, ...catalog.bundleCodes,
+    ], code);
+    if (!existingItem && !assessment.allowed) {
+      setNewLoosePartError("Este código já pertence ao catálogo oficial ou não possui uma identidade válida. Selecione o produto existente.");
+      return;
+    }
 
     if (existingItem) {
       if (existingItem.itemType !== "LOOSE_PART") {
@@ -661,6 +674,7 @@ export function InboundEntryFlow({
   function buildRequestLines(): InboundRequestLine[] {
     return lines.map((line) => {
       const quantity = parseQuantity(line.quantity) as number;
+      if (line.option.kind === "BUNDLE_CODE") return { kind: "BUNDLE_CODE", bundle_code_id: line.option.bundleCodeId, quantity };
 
       if (line.option.kind === "ITEM") {
         return {
@@ -777,6 +791,8 @@ export function InboundEntryFlow({
               Tente outro código, descrição, modelo, servo ou kit.
             </p>
           </div>
+        ) : section === "bundles" ? (
+          <StockFlowBundleTable options={filteredOptions.filter((option): option is StockFlowBundleCode => option.kind === "BUNDLE_CODE")} selectedKeys={selectedKeys} onAdd={addOption} />
         ) : section === "commercial" ? (
           <CommercialCatalogTable
             options={filteredOptions.filter(
@@ -1089,6 +1105,7 @@ export function InboundEntryFlow({
             </section>
           ) : null}
 
+          <StockFlowBundleReview lines={preview.bundleLines} direction="INBOUND" />
           {preview.commercialLines.length > 0 ? (
             <section className="mt-7" aria-labelledby="inbound-review-boxes">
               <h3
@@ -1368,6 +1385,9 @@ export function InboundEntryFlow({
               allowStickyContent
             >
               {renderCatalogResults("commercial")}
+            </StockFlowSection>
+            <StockFlowSection id="inbound-bundles-section" title="Conjuntos" description="Recebimento de conjuntos já prontos" count={catalogSections.bundles.count} isOpen={catalogSections.bundles.isOpen} onToggle={() => toggleCatalogSection("bundles")} allowStickyContent>
+              {renderCatalogResults("bundles")}
             </StockFlowSection>
           </div>
         </div>

@@ -5,6 +5,8 @@ import type {
   InboundPhysicalItem,
 } from "@/lib/inbound-types";
 
+import { buildBundleStockFlowPreview, type BundleStockFlowPreview } from "@/lib/stock-flow-bundle-preview";
+
 const maximumQuantity = 2_147_483_647;
 
 export type InboundPreviewInputLine = {
@@ -35,6 +37,7 @@ export type InboundConfigurationImpact = {
 };
 
 export type InboundPreview = {
+  bundleLines: BundleStockFlowPreview[];
   itemLines: InboundItemLinePreview[];
   commercialLines: InboundCommercialLinePreview[];
   configurationImpacts: InboundConfigurationImpact[];
@@ -170,6 +173,10 @@ export function buildInboundPreview(
       );
     });
 
+  const bundleLines = buildBundleStockFlowPreview(lines, "INBOUND");
+  for (const line of bundleLines.filter((line) => !line.isValid)) {
+    errors.push(`A entrada do conjunto ${line.option.code} excede o limite permitido para o saldo.`);
+  }
   if (!Number.isSafeInteger(totalQuantity)) {
     errors.push("O total de unidades informadas excede o limite permitido.");
   }
@@ -179,6 +186,7 @@ export function buildInboundPreview(
   }
 
   return {
+    bundleLines,
     itemLines,
     commercialLines,
     configurationImpacts,

@@ -56,14 +56,31 @@ export type InboundNewLoosePart = {
 export type InboundCatalog = {
   physicalItems: InboundPhysicalItem[];
   commercialCodes: InboundCommercialCode[];
+  bundleCodes: StockFlowBundleCode[];
+};
+
+export type StockFlowBundleCode = {
+  kind: "BUNDLE_CODE";
+  bundleCodeId: string;
+  bundleId: string;
+  code: string;
+  description: string;
+  readyBalance: number;
+  aliases: string[];
 };
 
 export type InboundCatalogOption =
   | InboundPhysicalItem
   | InboundCommercialCode
+  | StockFlowBundleCode
   | InboundNewLoosePart;
 
 export type InboundRequestLine =
+  | {
+      kind: "BUNDLE_CODE";
+      bundle_code_id: string;
+      quantity: number;
+    }
   | {
       kind: "ITEM";
       item_id: string;

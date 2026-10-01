@@ -21,6 +21,11 @@ import { getInboundCatalog } from "../lib/inbound-data.ts";
 import { getOutboundCatalog } from "../lib/outbound-data.ts";
 import { InboundEntryFlow } from "../app/(authenticated)/entrada/inbound-entry-flow.tsx";
 import { OutboundEntryFlow } from "../app/(authenticated)/saida/outbound-entry-flow.tsx";
+import { buildInboundPreview } from "../lib/inbound-preview.ts";
+import { buildOutboundPreview } from "../lib/outbound-preview.ts";
+import { submitStockInbound } from "../app/(authenticated)/entrada/actions.ts";
+import { submitStockOutbound } from "../app/(authenticated)/saida/actions.ts";
+import { executeCatalogWrite } from "../lib/catalog-writer.ts";
 
 const id = (n) => `72000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const bundleId = id(20),
@@ -178,6 +183,90 @@ beforeEach(() => {
   globalThis.__NK72_MENU_OPEN__ = false;
 });
 
+test("prévia de Entrada recebe bundle pronto sem criar componentes", async () => {
+  const { data } = await getInboundCatalog();
+  const preview = buildInboundPreview([{ option: data.bundleCodes[0], quantity: 2 }]);
+  assert.equal(preview.isValid, true);
+  assert.equal(preview.totalQuantity, 2);
+  assert.deepEqual(preview.itemLines, []);
+  assert.deepEqual(preview.commercialLines, []);
+  assert.deepEqual(preview.configurationImpacts, []);
+  assert.equal(preview.bundleLines[0].currentBalance, 1);
+  assert.equal(preview.bundleLines[0].predictedBalance, 3);
+});
+
+test("prévia de Saída nunca monta bundles nem consome componentes", async () => {
+  const { data } = await getOutboundCatalog();
+  const option = data.bundleCodes[0];
+  const valid = buildOutboundPreview([{ option, quantity: 1 }]);
+  assert.equal(valid.isValid, true);
+  assert.equal(valid.bundleLines[0].predictedBalance, 0);
+  assert.deepEqual(valid.physicalRequirements, []);
+  assert.deepEqual(valid.commercialLines, []);
+  assert.equal(valid.autoAssembledQuantity, 0);
+  const insufficient = buildOutboundPreview([{ option, quantity: 2 }]);
+  assert.equal(insufficient.isValid, false);
+  assert.equal(insufficient.autoAssembledQuantity, 0);
+  assert.deepEqual(insufficient.physicalRequirements, []);
+});
+
+test("aliases de bundle são agregados na prévia sem duplicar disponibilidade", async () => {
+  const { data } = await getOutboundCatalog();
+  const option = data.bundleCodes[0];
+  const lines = [{option,quantity:1},{option:{...option,bundleCodeId:id(22),code:"1HC-A"},quantity:1}];
+  assert.equal(buildOutboundPreview(lines).isValid, false);
+  assert.equal(buildOutboundPreview(lines).bundleLines.length, 1);
+  assert.equal(buildInboundPreview(lines).bundleLines[0].predictedBalance, 3);
+});
+
+test("saldo pronto é relido pela Entrada/Saída sem cache persistente", async () => {
+  assert.equal((await getInboundCatalog()).data.bundleCodes[0].readyBalance, 1);
+  tables.bundle_stock_balances[0].quantity = 4;
+  assert.equal((await getOutboundCatalog()).data.bundleCodes[0].readyBalance, 4);
+  tables.bundle_stock_balances = [];
+  assert.equal((await getInboundCatalog()).data.bundleCodes[0].readyBalance, 0);
+});
+
+test("server actions enviam BUNDLE_CODE somente às RPCs canônicas de Entrada/Saída", async () => {
+  for (const [action, name] of [[submitStockInbound,"stock_inbound_lines"],[submitStockOutbound,"stock_outbound_items"]]) {
+    rpcCalls.length = 0;
+    globalThis.__NK72_RPC_RESULT__ = {data:{movement_batch_id:id(80),lines_processed:1,total_quantity:2,commercial_quantity:0,auto_assembled_quantity:0},error:null};
+    const result = await action({p_lines:[{kind:"BUNDLE_CODE",bundle_code_id:id(21),quantity:1},{kind:"BUNDLE_CODE",bundle_code_id:id(21),quantity:1}],p_idempotency_key:key,p_description:null});
+    assert.equal(result.ok, true);
+    assert.deepEqual(rpcCalls,[{name,args:{p_lines:[{kind:"BUNDLE_CODE",bundle_code_id:id(21),quantity:2}],p_idempotency_key:key,p_description:null}}]);
+    assert.ok(globalThis.__NK72_PATHS__.includes("/estoque"));
+    const bad = await action({p_lines:[{kind:"BUNDLE_CODE",bundle_code_id:id(21),item_id:id(1),quantity:1}],p_idempotency_key:key});
+    assert.equal(bad.ok,false);
+    globalThis.__NK72_RPC_RESULT__ = {data:null,error:{code:"23514",message:"Insufficient stock"}};
+    const failed = await action({p_lines:[{kind:"BUNDLE_CODE",bundle_code_id:id(21),quantity:1}],p_idempotency_key:key});
+    assert.equal(failed.ok,false);
+    assert.match(failed.error, name === "stock_inbound_lines" ? /dados da entrada mudaram/i : /estoque mudou/i);
+  }
+});
+
+test("preflight bloqueia criação de peça 1HC antes de qualquer RPC", async () => {
+  await assert.rejects(executeCatalogWrite(globalThis.__NK72_CLIENT__, {kind:"CATALOG_ONLY_LOOSE_PART",code:"1HC",description:"Não criar"}), (error) => error.reason === "KNOWN_CODE");
+  assert.deepEqual(rpcCalls,[]);
+});
+
+test("catálogo de bundles na Entrada/Saída pagina acima de 1000 e exclui metadata inativa", async () => {
+  tables.commercial_bundles = Array.from({length:1001},(_,i)=>({id:id(1000+i),description:`Conjunto ${i}`,is_active:true}));
+  tables.commercial_bundle_codes = tables.commercial_bundles.map((bundle,i)=>({id:id(3000+i),bundle_id:bundle.id,code:`B-${i}`,is_active:true}));
+  tables.bundle_stock_balances = tables.commercial_bundles.map((bundle)=>({bundle_id:bundle.id,quantity:2}));
+  for (const loader of [getInboundCatalog,getOutboundCatalog]) {
+    calls.length=0;
+    const {data,error} = await loader();
+    assert.equal(error,null);
+    assert.equal(data.bundleCodes.length,1001);
+    assert.equal(data.bundleCodes.find((code)=>code.code==="B-1000").readyBalance,2);
+    for (const table of ["commercial_bundles","commercial_bundle_codes","bundle_stock_balances"])
+      assert.equal(calls.filter((call)=>call.table===table).length,2);
+  }
+  tables.commercial_bundles[0].is_active=false;
+  tables.commercial_bundle_codes[1].is_active=false;
+  assert.equal((await getInboundCatalog()).data.bundleCodes.length,999);
+});
+
 test("loader carrega 1HC em lote, deriva família e preserva receita", async () => {
   const { data, error } = await loadInventoryData();
   assert.equal(error, null);
@@ -275,16 +364,22 @@ test("minimum e balances de bundle são relidos; receita inválida falha fechada
   assert.equal((await loadInventoryData()).data, null);
 });
 
-test("filtro zerado e alerta da configuração consideram seu estoque físico embutido", async () => {
+test("configuração livre zero continua operacionalmente zerada com total físico embutido 1", async () => {
   tables.configuration_stock_balances[0].quantity = 0;
   const { data } = await loadInventoryData();
   assert.equal(data.configurations[0].totalPhysicalQuantity, 1);
-  assert.equal(data.configurations[0].state, "LOW");
+  assert.equal(data.configurations[0].assembledQuantity, 0);
+  assert.equal(data.configurations[0].embeddedInBundlesQuantity, 1);
+  assert.equal(data.configurations[0].state, "ZERO");
+  assert.equal(data.summary.outOfStockItems, 1);
+  assert.equal(data.summary.lowStockItems, 0);
+  assert.equal(data.bundles[0].maximumAssemblable, 0);
   globalThis.__NK72_SEARCH__ = "1H";
   const zero = renderToStaticMarkup(createElement(InventoryWorkspace, { inventory: data, initialStatusFilter: "zero" }));
-  assert.ok(!zero.includes(`inventory-configuration-${configurationId}`));
+  assert.ok(zero.includes(`inventory-configuration-${configurationId}`));
+  assert.match(zero, /0 livres · 1 em conjuntos · total físico 1/);
   const withStock = renderToStaticMarkup(createElement(InventoryWorkspace, { inventory: data, initialStatusFilter: "with-stock" }));
-  assert.ok(withStock.includes(`inventory-configuration-${configurationId}`));
+  assert.ok(!withStock.includes(`inventory-configuration-${configurationId}`));
 });
 
 test("paginação dos quatro readers de bundle completa mais de 1000 linhas", async () => {
@@ -515,6 +610,7 @@ test("busca abre simultaneamente todas as categorias com resultados e restaura m
     separate: ["CIL", "1H físico"],
     repair: ["1H reparo", "outro"],
     commercial: ["1H Servo + Kit"],
+    bundles: ["1HC Conjunto", "outro"],
   };
   const result = buildStockFlowSearch(
     sections,
@@ -536,6 +632,18 @@ test("busca abre simultaneamente todas as categorias com resultados e restaura m
   assert.equal(cleared.separate.isOpen, true);
   assert.equal(cleared.repair.isOpen, false);
   assert.equal(cleared.commercial.isOpen, false);
+  assert.equal(cleared.bundles.count, 2);
+  assert.equal(cleared.bundles.isOpen, false);
+  const exactBundle = buildStockFlowSearch(sections, "1HC", "repair", (option) => option);
+  assert.equal(exactBundle.bundles.count, 1);
+  assert.equal(exactBundle.bundles.isOpen, true);
+  for (const section of ["separate", "repair", "commercial"]) {
+    assert.equal(exactBundle[section].count, 0);
+    assert.equal(exactBundle[section].isOpen, false);
+  }
+  const restoreRepair = buildStockFlowSearch(sections, "", "repair", (option) => option);
+  assert.equal(restoreRepair.repair.isOpen, true);
+  assert.equal(restoreRepair.bundles.isOpen, false);
   assert.equal(
     buildStockFlowSearch(sections, "CIL", "commercial", (option) => option)
       .commercial.isOpen,
@@ -557,10 +665,12 @@ for (const [label, loader, Component, file] of [
     "saida/outbound-entry-flow.tsx",
   ],
 ]) {
-  test(`${label} renderiza categoria encontrada fechada manualmente e nunca oferece BUNDLE_CODE`, async () => {
+  test(`${label} oferece 1HC como Conjunto, busca abre seção própria sem confundir configuração`, async () => {
     const result = await loader();
     const catalog = result.catalog ?? result.data;
     assert.ok(catalog);
+    assert.equal(catalog.bundleCodes[0].code, "1HC");
+    assert.equal(catalog.bundleCodes[0].kind, "BUNDLE_CODE");
     assert.ok(
       !catalog.commercialCodes.some(
         (code) => code.code === "1HC" || code.commercialCode === "1HC",
@@ -574,13 +684,19 @@ for (const [label, loader, Component, file] of [
       new RegExp(`id="${prefix}-commercial-section"[^>]*aria-expanded="true"`),
     );
     assert.ok(html.includes("1H"));
-    assert.ok(!html.includes("1HC"));
+    assert.ok(html.includes("1HC"));
+    globalThis.__NK72_SEARCH__ = "1HC";
+    const bundleHtml = renderToStaticMarkup(createElement(Component, { catalog }));
+    assert.match(bundleHtml, new RegExp(`id="${prefix}-bundles-section"[^>]*aria-expanded="true"`));
+    assert.match(bundleHtml, new RegExp(`id="${prefix}-commercial-section"[^>]*aria-expanded="false"`));
+    assert.match(bundleHtml, /Saldo pronto/);
+    assert.match(bundleHtml, /Adicionar conjunto 1HC/);
     const source = readFileSync(
       new URL(`../app/(authenticated)/${file}`, import.meta.url),
       "utf8",
     );
     assert.match(source, /count=\{catalogSections\.commercial\.count\}/);
-    assert.ok(!source.includes("BUNDLE_CODE"));
+    assert.match(source, /bundle_code_id: line.option.bundleCodeId/);
     globalThis.__NK72_SEARCH__ = "Componente";
     const allCategories = renderToStaticMarkup(
       createElement(Component, { catalog }),

@@ -732,7 +732,7 @@ export function InventoryWorkspace({
           familyLabel,
         ]) &&
         matchesStatus(
-          configuration.totalPhysicalQuantity ?? configuration.assembledQuantity,
+          configuration.assembledQuantity,
           configuration.minimumStock,
           configuration.state,
           statusFilter,
@@ -743,7 +743,7 @@ export function InventoryWorkspace({
     return result.sort((first, second) => {
       if (sort === "quantity") {
         return (
-          (second.totalPhysicalQuantity ?? second.assembledQuantity) - (first.totalPhysicalQuantity ?? first.assembledQuantity) ||
+          second.assembledQuantity - first.assembledQuantity ||
           compareText(
             first.codes[0] ?? first.description,
             second.codes[0] ?? second.description,

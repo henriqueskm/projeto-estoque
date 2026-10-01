@@ -93,12 +93,12 @@ function normalizeRequest(
 
     const line = rawLine as Record<string, unknown>;
 
-    if (line.kind !== "ITEM" && line.kind !== "COMMERCIAL_CODE") {
+    if (line.kind !== "ITEM" && line.kind !== "COMMERCIAL_CODE" && line.kind !== "BUNDLE_CODE") {
       return invalidRequest("Uma das linhas possui um tipo inválido.");
     }
 
     const identifierField =
-      line.kind === "ITEM" ? "item_id" : "commercial_code_id";
+      line.kind === "ITEM" ? "item_id" : line.kind === "BUNDLE_CODE" ? "bundle_code_id" : "commercial_code_id";
     const allowedLineFields = new Set([
       "kind",
       identifierField,
@@ -139,7 +139,11 @@ function normalizeRequest(
             item_id: identifier,
             quantity: consolidatedQuantity,
           }
-        : {
+        : line.kind === "BUNDLE_CODE" ? {
+            kind: "BUNDLE_CODE",
+            bundle_code_id: identifier,
+            quantity: consolidatedQuantity,
+          } : {
             kind: "COMMERCIAL_CODE",
             commercial_code_id: identifier,
             quantity: consolidatedQuantity,
@@ -175,11 +179,11 @@ function normalizeRequest(
       }
 
       const firstId =
-        first.kind === "ITEM" ? first.item_id : first.commercial_code_id;
+        first.kind === "ITEM" ? first.item_id : first.kind === "BUNDLE_CODE" ? first.bundle_code_id : first.commercial_code_id;
       const secondId =
         second.kind === "ITEM"
           ? second.item_id
-          : second.commercial_code_id;
+          : second.kind === "BUNDLE_CODE" ? second.bundle_code_id : second.commercial_code_id;
 
       return firstId.localeCompare(secondId);
     }),
@@ -447,6 +451,7 @@ export async function submitStockOutbound(
     revalidatePath("/");
     revalidatePath("/saida");
     revalidatePath("/entrada");
+    revalidatePath("/estoque");
 
     return { ok: true, receipt };
   } catch {

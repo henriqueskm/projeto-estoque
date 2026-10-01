@@ -4,6 +4,8 @@ import type {
   OutboundPhysicalItem,
 } from "@/lib/outbound-types";
 
+import { buildBundleStockFlowPreview, type BundleStockFlowPreview } from "@/lib/stock-flow-bundle-preview";
+
 const maximumQuantity = 2_147_483_647;
 
 export type OutboundPreviewInputLine = {
@@ -41,6 +43,7 @@ export type OutboundPhysicalRequirement = {
 };
 
 export type OutboundPreview = {
+  bundleLines: BundleStockFlowPreview[];
   itemLines: OutboundItemLinePreview[];
   commercialLines: OutboundCommercialLinePreview[];
   physicalRequirements: OutboundPhysicalRequirement[];
@@ -247,6 +250,10 @@ export function buildOutboundPreview(
     0,
   );
 
+  const bundleLines = buildBundleStockFlowPreview(lines, "OUTBOUND");
+  for (const line of bundleLines.filter((line) => !line.isValid)) {
+    errors.push(`Saldo pronto insuficiente ou quantidade inválida para o conjunto ${line.option.code}. Montagem deve ser feita explicitamente no Estoque.`);
+  }
   if (!Number.isSafeInteger(totalQuantity)) {
     errors.push("O total de unidades excede o limite permitido.");
   }
@@ -256,6 +263,7 @@ export function buildOutboundPreview(
   }
 
   return {
+    bundleLines,
     itemLines: itemLines.map((line) => {
       const requirement = requirementByItem.get(line.option.id);
 

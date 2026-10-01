@@ -331,7 +331,7 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
             totalPhysicalQuantity: assembledQuantity + embeddedInBundlesQuantity,
             minimumStock: configuration.minimum_stock,
             state: getConfigurationStockState(
-              assembledQuantity + embeddedInBundlesQuantity,
+              assembledQuantity,
               configuration.minimum_stock,
             ),
             hasAliases: aliases.length > 1,

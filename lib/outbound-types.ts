@@ -1,4 +1,4 @@
-import type { PhysicalItemType } from "@/lib/inbound-types";
+import type { PhysicalItemType, StockFlowBundleCode } from "@/lib/inbound-types";
 
 export type OutboundPhysicalItem = {
   kind: "ITEM";
@@ -35,13 +35,20 @@ export type OutboundCommercialCode = {
 export type OutboundCatalog = {
   physicalItems: OutboundPhysicalItem[];
   commercialCodes: OutboundCommercialCode[];
+  bundleCodes: StockFlowBundleCode[];
 };
 
 export type OutboundCatalogOption =
   | OutboundPhysicalItem
+  | StockFlowBundleCode
   | OutboundCommercialCode;
 
 export type OutboundRequestLine =
+  | {
+      kind: "BUNDLE_CODE";
+      bundle_code_id: string;
+      quantity: number;
+    }
   | {
       kind: "ITEM";
       item_id: string;

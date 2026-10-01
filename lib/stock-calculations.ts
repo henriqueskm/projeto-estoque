@@ -158,8 +158,7 @@ export function calculatePhysicalStockSummary(
     .filter((configuration) => configuration.isActive)
     .map((configuration) =>
       getConfigurationStockState(
-        (mountedByConfiguration.get(configuration.id) ?? 0) +
-          (embedded?.configurations.get(configuration.id) ?? 0),
+        mountedByConfiguration.get(configuration.id) ?? 0,
         configuration.minimumStock,
       ),
     );
