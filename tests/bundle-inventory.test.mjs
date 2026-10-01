@@ -8,6 +8,7 @@ import {
   loadBundleInventoryRows,
 } from "../lib/bundle-inventory.ts";
 import { loadInventoryData } from "../lib/inventory-data.ts";
+import { calculatePhysicalStockSummary } from "../lib/stock-calculations.ts";
 import { buildStockFlowSearch } from "../lib/stock-flow-search.ts";
 import { runStockAdjustmentSubmission } from "../lib/stock-adjustment-stale-conflict.ts";
 import {
@@ -181,6 +182,7 @@ beforeEach(() => {
   globalThis.__NK72_CLIENT__ = client();
   globalThis.__NK72_PATHS__ = [];
   globalThis.__NK72_SEARCH__ = "";
+  globalThis.__NK72_SORT__ = "code";
   globalThis.__NK72_MENU_OPEN__ = false;
 });
 
@@ -351,7 +353,126 @@ test("montagem conserva total físico de configuração, servo, kit e peças sem
     6,
   );
   assert.equal(after.summary.completeBoxesTotal, 4);
-  assert.equal(after.summary.loosePartTotal, before.summary.loosePartTotal);
+  assert.equal(after.summary.loosePartTotal, before.summary.loosePartTotal - 4);
+});
+
+function physicalRow(data, n, filter = "all") {
+  const html = renderToStaticMarkup(createElement(InventoryWorkspace, {
+    inventory: data,
+    initialStatusFilter: filter,
+    initialTarget: { kind: "item", id: id(n) },
+  }));
+  return html.match(new RegExp(`<tr[^>]*id="inventory-item-${id(n)}"[\\s\\S]*?</tr>`))?.[0] ?? "";
+}
+
+function assertMainQuantity(row, quantity) {
+  // First Quantity span is the operational balance; second is the minimum.
+  assert.match(row, new RegExp(`class="font-mono font-extrabold tabular-nums text-text-primary">${quantity}</span>`));
+  assert.equal(row.match(/class="font-mono font-extrabold tabular-nums text-text-primary">(\d+)<\/span>/)?.[1], String(quantity));
+}
+
+test("servo avulso 0 livre e 3 montados mostra 0 e é zerado, preservando total físico", async () => {
+  tables.bundle_stock_balances = [];
+  tables.stock_balances[0].quantity = 0;
+  tables.items[0].minimum_stock = 1;
+  const { data } = await loadInventoryData();
+  const servo = data.physicalItems.find(item => item.id === id(1));
+  assert.deepEqual([servo.looseQuantity, servo.mountedQuantity, servo.embeddedQuantity, servo.totalQuantity, servo.state], [0, 3, 0, 3, "ZERO"]);
+  const row = physicalRow(data, 1);
+  assertMainQuantity(row, 0);
+  assert.match(row, /0 sem kit · 3 com kit/);
+  assert.match(row, /Zerado/);
+  for (const filter of ["zero", "attention"]) assert.ok(physicalRow(data, 1, filter));
+  assert.equal(physicalRow(data, 1, "with-stock"), "");
+  assert.equal(data.summary.looseServoTotal, 0);
+  assert.equal(data.summary.outOfStockItems, 1);
+  assert.equal(data.configurations[0].assembledQuantity, 3);
+});
+
+test("kit avulso mostra 1 livre e preserva total físico 5 com 4 montados", async () => {
+  tables.bundle_stock_balances = [];
+  tables.configuration_stock_balances[0].quantity = 4;
+  tables.stock_balances[1].quantity = 1;
+  tables.items[1].minimum_stock = 1;
+  const { data } = await loadInventoryData();
+  const kit = data.physicalItems.find(item => item.id === id(2));
+  assert.deepEqual([kit.looseQuantity, kit.mountedQuantity, kit.totalQuantity, kit.state], [1, 4, 5, "LOW"]);
+  assertMainQuantity(physicalRow(data, 2), 1);
+  assert.ok(physicalRow(data, 2, "low"));
+  assert.ok(physicalRow(data, 2, "attention"));
+  assert.equal(data.summary.looseKitTotal, 1);
+  assert.equal(data.summary.lowStockItems, 1);
+});
+
+test("peça avulsa 2 livres e 3 embutidas mostra 2, total físico 5 e mínimo compara livre", async () => {
+  tables.bundle_stock_balances[0].quantity = 3;
+  tables.stock_balances[2].quantity = 2;
+  tables.items[2].minimum_stock = 2;
+  const { data } = await loadInventoryData();
+  const part = data.physicalItems.find(item => item.id === id(3));
+  assert.deepEqual([part.looseQuantity, part.embeddedQuantity, part.totalQuantity, part.state], [2, 3, 5, "LOW"]);
+  const row = physicalRow(data, 3);
+  assertMainQuantity(row, 2);
+  assert.match(row, /2 livres · 3 em conjuntos · total físico 5/);
+  assert.ok(physicalRow(data, 3, "low"));
+  assert.equal(data.summary.loosePartTotal, 17);
+  assert.equal(data.summary.lowStockItems, 1);
+  assert.equal(data.bundles[0].readyQuantity, 3);
+  assert.equal(data.bundles[0].maximumAssemblable, 2);
+});
+
+test("resumo de reparo conta somente livre mesmo quando usado em bundle", async () => {
+  tables.commercial_bundle_components.push({bundle_id:bundleId,item_id:id(7),configuration_id:null,quantity_per_bundle:1});
+  tables.bundle_stock_balances[0].quantity = 3;
+  tables.stock_balances[6].quantity = 0;
+  tables.items[6].minimum_stock = 1;
+  const { data } = await loadInventoryData();
+  const repair = data.physicalItems.find(item => item.id === id(7));
+  assert.deepEqual([repair.looseQuantity, repair.embeddedQuantity, repair.totalQuantity, repair.state], [0, 3, 3, "ZERO"]);
+  assertMainQuantity(physicalRow(data, 7), 0);
+  assert.equal(data.summary.repairKitTotal, 0);
+  assert.equal(data.summary.outOfStockItems, 1);
+  assert.equal(data.bundles[0].maximumAssemblable, 0);
+});
+
+test("ordenação por quantidade e filtros usam livre, não total físico", async () => {
+  tables.bundle_stock_balances[0].quantity = 100;
+  tables.stock_balances[2].quantity = 0;
+  tables.stock_balances[3].quantity = 4;
+  tables.stock_balances[4].quantity = 2;
+  tables.stock_balances[5].quantity = 5;
+  tables.items[2].minimum_stock = 1;
+  const { data } = await loadInventoryData();
+  globalThis.__NK72_SORT__ = "quantity";
+  const html = renderToStaticMarkup(createElement(InventoryWorkspace, {inventory:data,initialTarget:{kind:"item",id:id(3)}}));
+  const order = [...html.matchAll(/id="inventory-item-([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(order, [id(6), id(4), id(5), id(3)]);
+  assert.ok(data.physicalItems.find(item => item.id === id(3)).totalQuantity > 0);
+  assert.equal(physicalRow(data, 3, "with-stock"), "");
+  assert.ok(physicalRow(data, 3, "zero"));
+  assert.ok(physicalRow(data, 3, "attention"));
+  tables.items[2].minimum_stock = 0;
+  const withoutMinimum = (await loadInventoryData()).data;
+  assert.equal(physicalRow(withoutMinimum, 3, "zero"), "");
+  assert.match(physicalRow(withoutMinimum, 3), /Sem saldo/);
+});
+
+test("base livre do resumo é opt-in e preserva os consumidores físicos existentes", () => {
+  const items = [{ id: id(1), itemType: "SERVO", minimumStock: 1, isActive: true },
+    { id: id(3), itemType: "LOOSE_PART", minimumStock: 2, isActive: true }];
+  const loose = [{ itemId: id(1), quantity: 0 }, { itemId: id(3), quantity: 2 }];
+  const configurations = [{ id: configurationId, servoId: id(1), installationKitId: id(2), minimumStock: 1, isActive: true }];
+  const mounted = [{ configurationId, quantity: 3 }];
+  const embedded = { items: new Map([[id(3), 3]]), configurations: new Map() };
+  const physical = calculatePhysicalStockSummary(items, loose, configurations, mounted, embedded);
+  const operational = calculatePhysicalStockSummary(items, loose, configurations, mounted, embedded, "loose");
+  assert.equal(physical.loosePartTotal, 5);
+  assert.equal(physical.lowStockItems, 0);
+  assert.equal(physical.outOfStockItems, 0);
+  assert.equal(operational.loosePartTotal, 2);
+  assert.equal(operational.lowStockItems, 1);
+  assert.equal(operational.outOfStockItems, 1);
+  assert.equal(physical.completeBoxesTotal, operational.completeBoxesTotal);
 });
 
 test("minimum e balances de bundle são relidos; receita inválida falha fechada", async () => {

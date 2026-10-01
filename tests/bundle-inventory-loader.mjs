@@ -61,6 +61,10 @@ export async function load(url, context, nextLoad) {
     'const [search, setSearch] = useState("");',
     'const [search, setSearch] = useState(globalThis.__NK72_SEARCH__ ?? "");',
   );
+  source = source.replace(
+    'const [sort, setSort] = useState<InventorySort>("code");',
+    'const [sort, setSort] = useState<InventorySort>(globalThis.__NK72_SORT__ ?? "code");',
+  );
   if (url.endsWith("/inventory-row-actions.tsx"))
     source = source.replace(
       "const [isOpen, setIsOpen] = useState(false);",

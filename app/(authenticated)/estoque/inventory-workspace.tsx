@@ -186,7 +186,7 @@ function Quantity({ value }: { value: number }) {
 
 function PhysicalStateBadge({ item }: { item: InventoryPhysicalItem }) {
   const details =
-    item.totalQuantity === 0 && item.minimumStock === 0
+    item.looseQuantity === 0 && item.minimumStock === 0
       ? {
           label: "Sem saldo",
           className: "bg-slate-100 text-slate-700",
@@ -436,7 +436,7 @@ function PhysicalTable({
                 </span>
               </td>
               <td className="border-t border-border-neutral/70 px-1 py-2.5 text-right text-sm sm:px-3 sm:text-base">
-                <Quantity value={item.totalQuantity} />
+                <Quantity value={item.looseQuantity} />
               </td>
               <td className="border-t border-border-neutral/70 px-1 py-2.5 text-right text-sm sm:px-3 sm:text-base">
                 <Quantity value={item.minimumStock} />
@@ -685,7 +685,7 @@ export function InventoryWorkspace({
           item.typeLabel,
         ]) &&
         matchesStatus(
-          item.totalQuantity,
+          item.looseQuantity,
           item.minimumStock,
           item.state,
           statusFilter,
@@ -695,7 +695,7 @@ export function InventoryWorkspace({
     return result.sort((first, second) => {
       if (sort === "quantity") {
         return (
-          second.totalQuantity - first.totalQuantity ||
+          second.looseQuantity - first.looseQuantity ||
           compareText(first.code, second.code)
         );
       }

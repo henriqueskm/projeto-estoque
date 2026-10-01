@@ -94,15 +94,15 @@ function compareCodeAndId(
   return compareCodes(firstCode, secondCode) || firstId.localeCompare(secondId);
 }
 
-function getStockState(totalQuantity: number, minimumStock: number): StockState {
-  if (totalQuantity === 0) {
+function getStockState(looseQuantity: number, minimumStock: number): StockState {
+  if (looseQuantity === 0) {
     return "ZERO";
   }
 
   if (
-    totalQuantity > 0 &&
+    looseQuantity > 0 &&
     minimumStock > 0 &&
-    totalQuantity <= minimumStock
+    looseQuantity <= minimumStock
   ) {
     return "LOW";
   }
@@ -227,7 +227,7 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
         ...quantities,
         embeddedQuantity: embeddedItems.get(item.id) ?? 0,
         totalQuantity: quantities.totalQuantity + (embeddedItems.get(item.id) ?? 0),
-        state: getStockState(quantities.totalQuantity + (embeddedItems.get(item.id) ?? 0), item.minimum_stock),
+        state: getStockState(quantities.looseQuantity, item.minimum_stock),
         compatibleKitImages: [],
       };
     });
@@ -258,6 +258,7 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
         quantity: balance.quantity,
       })),
       { items: embeddedItems, configurations: embeddedConfigurations },
+      "loose",
     );
     summary.lowStockItems += bundles.filter(bundle => bundle.isActive && bundle.state === "LOW").length;
     summary.outOfStockItems += bundles.filter(bundle => bundle.isActive && bundle.state === "ZERO").length;
