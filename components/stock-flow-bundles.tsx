@@ -16,10 +16,10 @@ export function StockFlowBundleTable({
       <table className="w-full text-left text-sm">
         <thead className="bg-brand-charcoal text-white">
           <tr>
-            <th className="p-3">Código</th>
-            <th className="p-3">Conjunto</th>
-            <th className="p-3">Saldo pronto</th>
-            <th className="p-3">
+            <th className="p-2 sm:p-3">Código</th>
+            <th className="p-2 sm:p-3">Conjunto</th>
+            <th className="p-2 sm:p-3">Saldo pronto</th>
+            <th className="p-2 sm:p-3">
               <span className="sr-only">Ações</span>
             </th>
           </tr>
@@ -34,10 +34,10 @@ export function StockFlowBundleTable({
                 key={option.bundleCodeId}
                 className="border-t border-border-neutral"
               >
-                <td className="p-3 font-mono font-black">{option.code}</td>
-                <td className="p-3">{option.description}</td>
-                <td className="p-3 font-bold">{option.readyBalance}</td>
-                <td className="p-3">
+                <td className="p-2 font-mono font-black sm:p-3">{option.code}</td>
+                <td className="p-2 sm:p-3">{option.description}</td>
+                <td className="p-2 font-bold sm:p-3">{option.readyBalance}</td>
+                <td className="p-2 sm:p-3">
                   <StockFlowAddButton isSelected={selected} onAdd={() => onAdd(option)} label={`Adicionar conjunto ${option.code}`} />
                 </td>
               </tr>

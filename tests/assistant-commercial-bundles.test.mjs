@@ -467,3 +467,42 @@ test("semantic read-only plan also resolves bundles through the exact summary re
     "commercial_bundle",
   );
 });
+
+test("bundle with zero ready and zero minimum is EMPTY, not a minimum-stock alert", async () => {
+  tables.commercial_bundles[0].minimum_stock = 0;
+  const block = await summary("STATUS");
+  assert.equal(block.results[0].status, "EMPTY");
+  assert.equal(block.results[0].statusLabel, "Sem conjuntos prontos");
+  assert.equal(block.results[0].shortfall, 0);
+  assert.equal(block.results[0].currentStock, 0);
+  assert.equal(block.results[0].maximumAssemblable, 5);
+  assert.ok(parseAssistantStructuredBlock(block));
+  const status = await answer("Qual a situação do 1HC?");
+  assert.match(status.message, /Sem conjuntos prontos/i);
+  assert.doesNotMatch(status.message, /zerado|repor|alerta/i);
+  assert.match((await answer("Qual o saldo do 1HC?")).message, /0 conjuntos 1HC prontos/);
+  assert.match((await answer("Quantos 1HC consigo montar?")).message, /montar 5 conjuntos 1HC.*não é saldo pronto/);
+  assert.match((await answer("Qual o estoque mínimo do 1HC?")).message, /mínimo.*1HC.*0/);
+});
+
+test("bundle state matrix preserves ZERO/LOW/available independently of capacity", async () => {
+  for (const [ready, minimum, status] of [[0, 2, "ZERO"], [1, 2, "LOW"], [2, 2, "LOW"], [3, 2, "OK"], [1, 0, "OK"]]) {
+    tables.bundle_stock_balances[0].quantity = ready;
+    tables.commercial_bundles[0].minimum_stock = minimum;
+    const block = await summary("STATUS");
+    assert.equal(block.results[0].status, status);
+    assert.equal(block.results[0].maximumAssemblable, 5);
+    assert.ok(parseAssistantStructuredBlock(block));
+  }
+});
+
+test("EMPTY structured status is allowed only for a bundle with ready=minimum=0", async () => {
+  tables.commercial_bundles[0].minimum_stock = 0;
+  const block = await summary();
+  const target = block.results[0];
+  for (const patch of [{ minimumStock: 2, shortfall: 2 }, { currentStock: 1 }, { status: "ZERO", statusLabel: "Zerado" }]) {
+    assert.equal(parseAssistantStructuredBlock({ ...block, results: [{ ...target, ...patch }] }), null);
+  }
+  const configuration = await summary("STATUS", "1H");
+  assert.equal(parseAssistantStructuredBlock({ ...configuration, results: [{ ...configuration.results[0], status: "EMPTY", statusLabel: "Sem conjuntos prontos" }] }), null);
+});

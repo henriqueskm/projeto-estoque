@@ -691,9 +691,10 @@ for (const [label, loader, Component, file] of [
     assert.match(bundleHtml, new RegExp(`id="${prefix}-bundles-section"[^>]*aria-expanded="true"`));
     assert.match(bundleHtml, new RegExp(`id="${prefix}-commercial-section"[^>]*aria-expanded="false"`));
     assert.match(bundleHtml, /Saldo pronto/);
+    assert.match(bundleHtml, /class="p-2 sm:p-3"/);
     assert.match(bundleHtml, /Adicionar conjunto 1HC/);
     const bundleButton = bundleHtml.match(
-      /<button[^>]*aria-label="Adicionar conjunto 1HC"[^>]*class="([^"]+)"[^>]*>Adicionar<\/button>/,
+      /<button[^>]*aria-label="Adicionar conjunto 1HC"[^>]*class="([^"]+)"[^>]*>/,
     )?.[1];
     assert.ok(bundleButton);
     const source = readFileSync(
@@ -716,12 +717,12 @@ for (const [label, loader, Component, file] of [
     }
     const addButtons = [
       ...allCategories.matchAll(
-        /<button[^>]*aria-label="Adicionar (?:item|Servo com kit) [^"]+"[^>]*class="([^"]+)"[^>]*>Adicionar<\/button>/g,
+        /<button[^>]*aria-label="Adicionar (?:item|Servo com kit) [^"]+"[^>]*class="([^"]+)"[^>]*>/g,
       ),
     ];
     assert.ok(
       addButtons.length >= 3,
-      "all physical/repair/commercial buttons show readable text on mobile too",
+      "all physical/repair/commercial buttons share responsive presentation",
     );
     for (const button of addButtons) assert.equal(button[1], bundleButton);
     globalThis.__NK72_SEARCH__ = "";
@@ -744,8 +745,15 @@ test("shared Add button stays readable without icons, nowrap and clean selected 
     );
     assert.match(html, /min-h-11/);
     assert.match(html, /whitespace-nowrap/);
-    assert.match(html, /px-3 text-sm font-bold/);
-    assert.doesNotMatch(html, /<svg|font-black|hidden|sm:w-full/);
+    assert.match(html, /w-11/);
+    assert.match(html, /-mx-2/);
+    assert.match(html, /sm:mx-0/);
+    assert.match(html, /sm:w-auto sm:px-3/);
+    assert.match(html, /aria-hidden="true" class="text-xl leading-none sm:hidden"/);
+    assert.match(html, /aria-hidden="true" class="hidden sm:inline"/);
+    assert.ok(html.includes(isSelected ? "✓" : "+"));
+    assert.match(html, isSelected ? /aria-label="item CIL adicionado"/ : /aria-label="Adicionar item CIL"/);
+    assert.doesNotMatch(html, /<svg|font-black|sm:w-full/);
     assert.ok(html.includes(isSelected ? "Adicionado" : "Adicionar"));
     assert.equal(html.includes('disabled=""'), isSelected);
   }

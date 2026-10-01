@@ -710,7 +710,7 @@ export type AssistantInventoryItemSummaryTarget = {
   currentStock: number;
   minimumStock: number | null;
   stockUnitLabel: string;
-  status: "ZERO" | "LOW" | "OK" | "NO_MINIMUM";
+  status: "ZERO" | "LOW" | "OK" | "NO_MINIMUM" | "EMPTY";
   statusLabel: string;
   shortfall: number | null;
   href: string;
@@ -1703,6 +1703,7 @@ function parseInventoryItemSummaryTarget(
     LOW: "Baixo",
     OK: "Em estoque",
     NO_MINIMUM: "Mínimo não definido",
+    EMPTY: "Sem conjuntos prontos",
   }[String(value.status)];
   const expectedStockUnitLabel =
     itemType === "COMMERCIAL_BUNDLE"
@@ -1753,7 +1754,7 @@ function parseInventoryItemSummaryTarget(
     (minimumStock !== null && !isNonnegativeInteger(minimumStock)) ||
     typeof value.stockUnitLabel !== "string" ||
     value.stockUnitLabel !== expectedStockUnitLabel ||
-    !["ZERO", "LOW", "OK", "NO_MINIMUM"].includes(
+    !["ZERO", "LOW", "OK", "NO_MINIMUM", "EMPTY"].includes(
       String(value.status),
     ) ||
     typeof value.statusLabel !== "string" ||
@@ -1765,12 +1766,15 @@ function parseInventoryItemSummaryTarget(
         shortfall !==
           Math.max(minimumStock - value.currentStock, 0)) ||
     (minimumStock !== null &&
-      ((value.currentStock === 0 && value.status !== "ZERO") ||
+      ((value.currentStock === 0 &&
+          value.status !== (value.targetKind === "commercial_bundle" && minimumStock === 0 ? "EMPTY" : "ZERO")) ||
         (value.currentStock > 0 &&
           value.currentStock <= minimumStock &&
           value.status !== "LOW") ||
         (value.currentStock > minimumStock &&
           value.status !== "OK"))) ||
+    (value.status === "EMPTY" &&
+      (value.targetKind !== "commercial_bundle" || minimumStock !== 0 || value.currentStock !== 0)) ||
     !isSafeInventoryHref(value.href) ||
     !(value.targetKind === "commercial_bundle"
       ? value.href === "/estoque"

@@ -708,7 +708,7 @@ function formatDirectItemAnswer(
       return `O conjunto ${item.code} é formado por ${item.recipe.map((component) => `${component.quantity_per_bundle} × ${component.code}`).join(", ")}.`;
     }
     if (/\bsituacao\b/.test(normalizedMessage)) {
-      return `O conjunto ${item.code} está ${item.ready_quantity === 0 ? "zerado" : item.state === "LOW" ? "baixo" : "em estoque"}, considerando somente o saldo pronto.`;
+      return `O conjunto ${item.code} está ${item.state === "EMPTY" ? "sem conjuntos prontos" : item.state === "ZERO" ? "zerado" : item.state === "LOW" ? "baixo" : "em estoque"}, considerando somente o saldo pronto.`;
     }
     return `Você possui ${item.ready_quantity} ${item.ready_quantity === 1 ? "conjunto" : "conjuntos"} ${item.code} ${item.ready_quantity === 1 ? "pronto" : "prontos"}.`;
   }

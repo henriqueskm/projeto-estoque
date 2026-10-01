@@ -1403,7 +1403,9 @@ function bundleSummaryTarget(
     currentStock: bundle.ready_quantity,
     minimumStock,
     stockUnitLabel: getSummaryStockUnitLabel("COMMERCIAL_BUNDLE", bundle.ready_quantity),
-    ...getInventorySummaryStatus(bundle.ready_quantity, minimumStock),
+    ...(bundle.state === "EMPTY"
+      ? { status: "EMPTY" as const, statusLabel: "Sem conjuntos prontos", shortfall: 0 }
+      : getInventorySummaryStatus(bundle.ready_quantity, minimumStock)),
     // The current Inventory route has no bundle target parameter. Never pretend
     // that a bundle UUID identifies a configuration: link to the real Inventory.
     href: "/estoque",

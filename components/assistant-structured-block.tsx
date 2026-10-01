@@ -820,6 +820,7 @@ function InventoryAlertsBlock({
 }
 
 const inventoryStatusClasses = {
+  EMPTY: "bg-slate-100 text-slate-700",
   ZERO: "bg-red-100 text-red-900",
   LOW: "bg-amber-100 text-amber-950",
   OK: "bg-emerald-100 text-emerald-900",
