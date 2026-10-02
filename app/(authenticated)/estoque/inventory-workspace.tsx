@@ -15,6 +15,7 @@ import { InventoryBundleTable } from "@/components/inventory-bundle-table";
 import { PurchaseRecommendationLauncher } from "@/components/purchase-recommendation-launcher";
 import { getServoFamilyLabel } from "@/lib/inventory-family";
 import { inventoryShortcutPlan, type InventoryShortcut } from "@/lib/inventory-shortcuts";
+import { dismissSearchKeyboard } from "@/lib/search-input";
 import {
   matchesCatalogSearch as matchesSearch,
   normalizeCatalogSearch as normalizeSearch,
@@ -963,6 +964,8 @@ export function InventoryWorkspace({
             <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-text-muted" />
             <input
               type="search"
+              enterKeyHint="search"
+              onKeyDown={dismissSearchKeyboard}
               value={query}
               maxLength={100}
               onChange={(event) => setQuery(event.target.value)}

@@ -11,6 +11,7 @@ import {
 } from "@/components/icons";
 import { StockFlowBundleReview } from "@/components/stock-flow-bundles";
 import { StockFlowSearchResults } from "@/components/stock-flow-search-results";
+import { dismissSearchKeyboard } from "@/lib/search-input";
 import { assessNewLoosePartCode } from "@/lib/catalog-code-policy";
 import {
   buildInboundPreview,
@@ -1002,6 +1003,8 @@ export function InboundEntryFlow({
               <input
                 id="inbound-search"
                 type="search"
+                enterKeyHint="search"
+                onKeyDown={dismissSearchKeyboard}
                 value={search}
                 maxLength={maximumSearchLength}
                 onChange={(event) =>
