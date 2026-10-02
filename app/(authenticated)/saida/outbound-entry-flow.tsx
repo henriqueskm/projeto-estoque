@@ -11,6 +11,7 @@ import {
 } from "@/components/icons";
 import { StockFlowBundleReview } from "@/components/stock-flow-bundles";
 import { StockFlowSearchResults } from "@/components/stock-flow-search-results";
+import { dismissSearchKeyboard } from "@/lib/search-input";
 import {
   buildOutboundPreview,
   type OutboundPreviewInputLine,
@@ -827,6 +828,8 @@ export function OutboundEntryFlow({
               <input
                 id="outbound-search"
                 type="search"
+                enterKeyHint="search"
+                onKeyDown={dismissSearchKeyboard}
                 value={search}
                 maxLength={maximumSearchLength}
                 onChange={(event) =>
