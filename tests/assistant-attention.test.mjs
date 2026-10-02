@@ -289,7 +289,7 @@ test("linhas duplicadas não duplicam Pedido nem alvo", () => {
   assert.equal(result.items.find((item) => item.kind === "SUPPLIER_ORDER_PENDING_STOCK")?.count, 1);
 });
 
-test("detalhe de reposição usa remainingGap oficial e limita cinco linhas", () => {
+test("detalhe de reposição usa remainingGap oficial e inclui todos os itens", () => {
   const purchaseRecommendations = Array.from({ length: 8 }, (_, index) =>
     replenishment({
       targetId: `item-${index}`,
@@ -309,8 +309,8 @@ test("detalhe de reposição usa remainingGap oficial e limita cinco linhas", ()
   );
 
   assert.ok(card);
-  assert.equal(card?.detail.lines.length, assistantAttentionDetailLineLimit);
-  assert.equal(card?.detail.remainingCount, 3);
+  assert.equal(card?.detail.lines.length, 8);
+  assert.equal(card?.detail.remainingCount, 0);
   assert.deepEqual(
     card?.detail.lines.slice(0, 2).map((line) => line.code),
     ["C1", "C2"],
@@ -321,7 +321,19 @@ test("detalhe de reposição usa remainingGap oficial e limita cinco linhas", ()
     formatAssistantAttentionDetail(card),
     /Cód\. C1.*SERVO MBF-025.*Já comprado 3 · Comprar mais 8/,
   );
-  assert.match(formatAssistantAttentionDetail(card), /E mais 3 itens/);
+  assert.match(formatAssistantAttentionDetail(card), /Cód\. C8/);
+  assert.doesNotMatch(formatAssistantAttentionDetail(card), /E mais \d+ itens/);
+});
+
+test("alertas de Pedidos continuam limitados sem alterar a reposição completa", () => {
+  const pendingStockOrders = Array.from({ length: 8 }, (_, index) => ({
+    supplierOrderId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    negotiationNumber: String(40000 + index), orderDate: "2026-09-03", waitingStockQuantity: 1,
+  }));
+  const card = buildAssistantAttentionSummary(input({ pendingStockOrders }), generatedAt).items[0];
+  assert.equal(card.kind, "SUPPLIER_ORDER_PENDING_STOCK");
+  assert.equal(card.detail.lines.length, assistantAttentionDetailLineLimit);
+  assert.equal(card.detail.remainingCount, 3);
 });
 
 test("clique local pode criar somente uma resposta da Assistente", () => {
@@ -478,7 +490,9 @@ test("cards são botões acessíveis e injetam detalhes sem rede ou mutação", 
   assert.match(view, /aria-label=\{`Mostrar/);
   assert.match(view, /min-h-24 w-full/);
   assert.match(view, /onClick=\{\(\) => onSelect\(item\)\}/);
-  assert.doesNotMatch(view, /next\/link|<Link|href=/);
+  assert.match(view, /<details/);
+  assert.match(view, /<summary/);
+  assert.match(view, /href="\/estoque\?view=purchase-recommendations"/);
   assert.match(selectionHandler, /setMessages/);
   assert.match(selectionHandler, /createAssistantAttentionMessage/);
   assert.doesNotMatch(

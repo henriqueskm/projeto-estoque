@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ChevronDownIcon } from "@/components/icons";
 import type {
   AssistantAttentionItem,
   AssistantAttentionSummary,
@@ -51,6 +53,65 @@ function greeting(generatedAt: string | null) {
   if (hour >= 5 && hour < 12) return "Bom dia";
   if (hour >= 12 && hour < 18) return "Boa tarde";
   return "Boa noite";
+}
+
+const quantityFormatter = new Intl.NumberFormat("pt-BR");
+
+function ReplenishmentAttention({ item }: {
+  item: Extract<AssistantAttentionItem, { kind: "REPLENISHMENT_NEEDED" }>;
+}) {
+  const presentation = severityPresentation[item.severity];
+  return (
+    <details className="group min-w-0 rounded-xl border border-border-neutral bg-surface">
+      <summary className="nk-focus flex min-h-24 cursor-pointer list-none items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-app-background [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center justify-between gap-2">
+            <strong className="text-sm font-black text-text-primary sm:text-base">{item.title}</strong>
+            <span className={`rounded-full border px-2 py-0.5 text-[0.65rem] font-black ${presentation.badge}`}>{presentation.label}</span>
+          </span>
+          <span className="mt-1 block text-sm font-semibold text-text-muted">
+            {quantityFormatter.format(item.count)} {item.count === 1 ? "item para repor" : "itens para repor"}
+            {item.metadata.zeroStockCount > 0 ? ` · ${quantityFormatter.format(item.metadata.zeroStockCount)} sem estoque` : ""}
+          </span>
+          <span className="mt-2 block text-xs font-bold text-brand-gold-ink group-open:hidden">Ver todos os itens</span>
+          <span className="mt-2 hidden text-xs font-bold text-brand-gold-ink group-open:block">Ocultar itens</span>
+        </span>
+        <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-text-muted transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="min-w-0 border-t border-border-neutral px-3 pb-3 sm:px-4 sm:pb-4">
+        <table className="w-full table-fixed text-left">
+          <caption className="sr-only">Todos os itens que precisam de reposição</caption>
+          <colgroup><col /><col className="w-10 sm:w-14" /><col className="w-10 sm:w-14" /><col className="w-14 sm:w-20" /></colgroup>
+          <thead>
+            <tr className="text-[0.65rem] font-bold text-text-muted sm:text-xs">
+              <th scope="col" className="py-2 pr-2">Item</th>
+              <th scope="col" className="py-2 text-right">Saldo</th>
+              <th scope="col" className="py-2 text-right"><abbr title="Estoque mínimo" className="no-underline">Mín.</abbr></th>
+              <th scope="col" className="py-2 text-right">Comprar</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-neutral">
+            {item.detail.lines.map((line) => (
+              <tr key={line.code}>
+                <th scope="row" className="py-2 pr-2 font-normal">
+                  <span className="block break-all font-mono text-sm font-black text-text-primary">{line.code}</span>
+                  <span title={line.description} className="mt-0.5 line-clamp-2 break-words text-xs leading-4 text-text-muted">{line.description}</span>
+                  {line.pendingPurchaseQuantity > 0 ? <span className="mt-0.5 block text-[0.65rem] text-text-muted">Em Pedidos: {quantityFormatter.format(line.pendingPurchaseQuantity)}</span> : null}
+                </th>
+                <td className="break-all py-2 text-right font-mono text-sm font-bold tabular-nums text-text-primary">{quantityFormatter.format(line.currentStock)}</td>
+                <td className="break-all py-2 text-right font-mono text-sm font-bold tabular-nums text-text-primary">{quantityFormatter.format(line.minimumStock)}</td>
+                <td className="break-all py-2 text-right font-mono text-sm font-black tabular-nums text-red-700">{quantityFormatter.format(line.remainingGap)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-2 text-xs leading-4 text-text-muted">Comprar já considera as quantidades em Pedidos.</p>
+        <Link href="/estoque?view=purchase-recommendations" className="nk-focus mt-3 flex min-h-11 w-full items-center justify-center rounded-xl border border-brand-gold-dark px-3 text-sm font-bold text-brand-gold-ink transition hover:bg-brand-gold-soft">
+          Abrir lista recomendada
+        </Link>
+      </div>
+    </details>
+  );
 }
 
 function AttentionCard({
@@ -140,7 +201,7 @@ export function AssistantAttentionSummaryView({
             O que precisa da minha atenção hoje?
           </h2>
           {attention.items.map((item) => (
-            <AttentionCard
+            item.kind === "REPLENISHMENT_NEEDED" ? <ReplenishmentAttention key={item.kind} item={item} /> : <AttentionCard
               key={item.kind}
               item={item}
               onSelect={onAttentionSelect}
