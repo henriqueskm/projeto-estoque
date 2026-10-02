@@ -6,31 +6,23 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import {
   CheckIcon,
   InboundIcon,
-  PlusIcon,
   SearchIcon,
   TrashIcon,
 } from "@/components/icons";
-import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
-import { StockFlowSection } from "@/components/stock-flow-section";
-import { StockFlowBundleTable, StockFlowBundleReview } from "@/components/stock-flow-bundles";
-import { StockFlowAddButton } from "@/components/stock-flow-add-button";
-import { buildStockFlowSearch } from "@/lib/stock-flow-search";
+import { StockFlowBundleReview } from "@/components/stock-flow-bundles";
+import { StockFlowSearchResults } from "@/components/stock-flow-search-results";
 import { assessNewLoosePartCode } from "@/lib/catalog-code-policy";
 import {
   buildInboundPreview,
   type InboundPreviewInputLine,
 } from "@/lib/inbound-preview";
 import {
-  physicalItemTypeLabels,
   type InboundCatalog,
   type InboundCatalogOption,
-  type InboundCommercialCode,
   type InboundNewLoosePart,
-  type InboundPhysicalItem,
   type InboundReceipt,
   type InboundRequestLine,
   type PhysicalItemType,
-  type StockFlowBundleCode,
 } from "@/lib/inbound-types";
 import { submitStockInbound } from "./actions";
 
@@ -47,7 +39,6 @@ type DraftLine = {
 };
 
 type FlowStep = "editing" | "review" | "success";
-type CatalogSection = "separate" | "repair" | "commercial" | "bundles";
 
 function parseQuantity(value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
@@ -82,33 +73,6 @@ function getOptionKey(option: InboundCatalogOption) {
 
 function getQuantityControlId(option: InboundCatalogOption) {
   return `inbound-quantity-${getOptionKey(option).replace(":", "-")}`;
-}
-
-function getOptionSearchText(option: InboundCatalogOption) {
-  if (option.kind === "BUNDLE_CODE") return [option.code, option.description, ...option.aliases, "Conjunto"].join(" ");
-  if (option.kind === "ITEM" || option.kind === "NEW_LOOSE_PART") {
-    return [
-      option.code,
-      option.description,
-      option.model,
-      physicalItemTypeLabels[option.itemType],
-    ]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  return [
-    option.code,
-    option.description,
-    ...option.aliases,
-    option.servo.code,
-    option.servo.description,
-    option.servo.model,
-    option.installationKit.code,
-    option.installationKit.description,
-  ]
-    .filter(Boolean)
-    .join(" ");
 }
 
 function getPhysicalBalanceLabel(itemType: PhysicalItemType) {
@@ -168,205 +132,6 @@ function OptionBadge({ option }: { option: InboundCatalogOption }) {
   );
 }
 
-const catalogHeaderClassName =
-  "bg-brand-charcoal px-2 py-2.5 text-[0.65rem] font-black uppercase tracking-wide text-slate-200 first:rounded-tl-xl last:rounded-tr-xl sm:px-3 sm:text-xs lg:sticky lg:top-0 lg:z-30";
-
-function CatalogAddButton({
-  code,
-  isSelected,
-  onAdd,
-  variant,
-}: {
-  code: string;
-  isSelected: boolean;
-  onAdd: () => void;
-  variant: "physical" | "commercial";
-}) {
-  const addLabel =
-    variant === "physical" ? "Adicionar item" : "Adicionar Servo com kit";
-
-  return (
-    <StockFlowAddButton isSelected={isSelected} onAdd={onAdd} label={`${addLabel} ${code}`} />
-  );
-}
-
-function PhysicalCatalogTable({
-  items,
-  selectedKeys,
-  onAdd,
-}: {
-  items: InboundPhysicalItem[];
-  selectedKeys: Set<string>;
-  onAdd: (item: InboundPhysicalItem) => void;
-}) {
-  return (
-    <div className="relative -mx-3 mt-3 overflow-hidden bg-surface sm:mx-0 sm:rounded-xl sm:border sm:border-emerald-200 sm:shadow-sm lg:overflow-visible">
-      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
-        <caption className="sr-only">
-          Itens disponíveis para adicionar à entrada
-        </caption>
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[23%] sm:w-[18%]`}
-            >
-              Código
-            </th>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[55%] sm:w-[58%]`}
-            >
-              Descrição
-            </th>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[22%] text-center sm:w-[24%]`}
-            >
-              Ação
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => {
-            const key = getOptionKey(item);
-            const isSelected = selectedKeys.has(key);
-
-            return (
-              <tr
-                key={key}
-                className="align-middle transition hover:bg-emerald-50/60"
-              >
-                <th
-                  scope="row"
-                  className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
-                >
-                  <span className="break-all font-mono text-xs font-black text-text-primary sm:text-sm">
-                    {item.code}
-                  </span>
-                </th>
-                <td className="border-t border-border-neutral/70 px-2 py-2.5 sm:px-3">
-                  <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
-                    {item.description}
-                  </p>
-                  <p className="mt-0.5 text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                    {physicalItemTypeLabels[item.itemType]}
-                    {item.model ? ` · ${item.model}` : ""}
-                  </p>
-                  <p className="text-[0.65rem] leading-4 font-bold text-emerald-900 sm:text-xs">
-                    {getPhysicalBalanceLabel(item.itemType)}: {numberFormatter.format(item.balance)}
-                  </p>
-                </td>
-                <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
-                  <CatalogAddButton
-                    code={item.code}
-                    isSelected={isSelected}
-                    onAdd={() => onAdd(item)}
-                    variant="physical"
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function CommercialCatalogTable({
-  options,
-  selectedKeys,
-  onAdd,
-}: {
-  options: InboundCommercialCode[];
-  selectedKeys: Set<string>;
-  onAdd: (option: InboundCommercialCode) => void;
-}) {
-  return (
-    <div className="relative -mx-3 mt-3 overflow-hidden bg-surface sm:mx-0 sm:rounded-xl sm:border sm:border-violet-200 sm:shadow-sm lg:overflow-visible">
-      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
-        <caption className="sr-only">
-          Servos com kit disponíveis para adicionar à entrada
-        </caption>
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[23%] sm:w-[18%]`}
-            >
-              Código
-            </th>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[55%] sm:w-[58%]`}
-            >
-              Configuração
-            </th>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[22%] text-center sm:w-[24%]`}
-            >
-              Ação
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {options.map((option) => {
-            const key = getOptionKey(option);
-            const isSelected = selectedKeys.has(key);
-
-            return (
-              <tr
-                key={key}
-                className="align-middle transition hover:bg-violet-50/60"
-              >
-                <th
-                  scope="row"
-                  className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
-                >
-                  <span className="break-all font-mono text-xs font-black text-violet-950 sm:text-sm">
-                    {option.code}
-                  </span>
-                </th>
-                <td className="border-t border-border-neutral/70 px-2 py-2.5 sm:px-3">
-                  <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
-                    {option.description}
-                  </p>
-                  <p className="mt-0.5 break-words text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                    Servo {option.servo.code} · Kit {option.installationKit.code}
-                  </p>
-                  <p className="text-[0.65rem] leading-4 font-bold text-violet-900 sm:text-xs">
-                    Montadas: {numberFormatter.format(option.assembledBalance)}
-                    {option.aliases.length > 0
-                      ? ` · Mesmo Servo com kit: ${option.aliases.join(" / ")}`
-                      : ""}
-                  </p>
-                  <CommercialConfigurationImage
-                    commercialCodes={[option.code, ...option.aliases]}
-                    configurationId={option.configurationId}
-                    hasImage={option.hasImage}
-                    compact
-                    triggerVariant="text-link"
-                  />
-                </td>
-                <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
-                  <CatalogAddButton
-                    code={option.code}
-                    isSelected={isSelected}
-                    onAdd={() => onAdd(option)}
-                    variant="commercial"
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export function InboundEntryFlow({
   catalog,
 }: {
@@ -374,9 +139,6 @@ export function InboundEntryFlow({
 }) {
   const router = useRouter();
   const [step, setStep] = useState<FlowStep>("editing");
-  const [openSection, setOpenSection] = useState<CatalogSection | null>(
-    null,
-  );
   const [search, setSearch] = useState("");
   const [isNewLoosePartOpen, setIsNewLoosePartOpen] = useState(false);
   const [newLoosePartCode, setNewLoosePartCode] = useState("");
@@ -395,28 +157,14 @@ export function InboundEntryFlow({
   const idempotencyKey = useRef<string | null>(null);
   const submissionInFlight = useRef(false);
 
-  const separateItems = useMemo(
-    () =>
-      catalog.physicalItems.filter(
-        (item) => item.itemType !== "REPAIR_KIT",
-      ),
-    [catalog],
-  );
-  const repairItems = useMemo(
-    () =>
-      catalog.physicalItems.filter(
-        (item) => item.itemType === "REPAIR_KIT",
-      ),
-    [catalog],
-  );
   const selectedKeys = useMemo(
     () => new Set(lines.map((line) => getOptionKey(line.option))),
     [lines],
   );
-  const catalogSections = useMemo(() => buildStockFlowSearch<InboundCatalogOption>(
-    { separate: separateItems, repair: repairItems, commercial: catalog.commercialCodes, bundles: catalog.bundleCodes },
-    search, openSection, getOptionSearchText,
-  ), [catalog.commercialCodes, catalog.bundleCodes, openSection, repairItems, separateItems, search]);
+  const searchOptions = useMemo(
+    () => [...catalog.physicalItems, ...catalog.commercialCodes, ...catalog.bundleCodes],
+    [catalog.physicalItems, catalog.commercialCodes, catalog.bundleCodes],
+  );
   const parsedLines = useMemo<InboundPreviewInputLine[]>(
     () =>
       lines.flatMap((line) => {
@@ -441,16 +189,6 @@ export function InboundEntryFlow({
     rotateIdempotencyKey();
     setValidationError(null);
     setSubmissionError(null);
-  }
-
-  function toggleCatalogSection(section: CatalogSection) {
-    if (isPending || search.trim()) {
-      return;
-    }
-
-    setOpenSection((current) => (current === section ? null : section));
-    setNewLoosePartError(null);
-    setIsNewLoosePartOpen(false);
   }
 
   function addOption(option: InboundCatalogOption) {
@@ -732,7 +470,6 @@ export function InboundEntryFlow({
     setLines([]);
     setDescription("");
     setSearch("");
-    setOpenSection(null);
     setIsNewLoosePartOpen(false);
     setNewLoosePartCode("");
     setNewLoosePartDescription("");
@@ -747,59 +484,9 @@ export function InboundEntryFlow({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function renderCatalogResults(section: CatalogSection) {
-    const filteredOptions = catalogSections[section].results;
-    return (
-      <>
-        <p
-          className="text-xs font-bold text-text-muted"
-          aria-live="polite"
-        >
-          {!search.trim()
-            ? `${numberFormatter.format(filteredOptions.length)} opções disponíveis`
-            : filteredOptions.length === 1
-              ? "1 opção encontrada"
-              : `${numberFormatter.format(filteredOptions.length)} opções encontradas`}
-        </p>
-
-        {filteredOptions.length === 0 ? (
-          <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
-            <SearchIcon className="mx-auto size-8 text-text-muted" />
-            <h4 className="mt-3 font-black text-text-primary">
-              Nenhum resultado
-            </h4>
-            <p className="mt-1 text-sm font-semibold text-text-muted">
-              Tente outro código, descrição, modelo, servo ou kit.
-            </p>
-          </div>
-        ) : section === "bundles" ? (
-          <StockFlowBundleTable options={filteredOptions.filter((option): option is StockFlowBundleCode => option.kind === "BUNDLE_CODE")} selectedKeys={selectedKeys} onAdd={addOption} />
-        ) : section === "commercial" ? (
-          <CommercialCatalogTable
-            options={filteredOptions.filter(
-              (option): option is InboundCommercialCode =>
-                option.kind === "COMMERCIAL_CODE",
-            )}
-            selectedKeys={selectedKeys}
-            onAdd={addOption}
-          />
-        ) : (
-          <PhysicalCatalogTable
-            items={filteredOptions.filter(
-              (option): option is InboundPhysicalItem =>
-                option.kind === "ITEM",
-            )}
-            selectedKeys={selectedKeys}
-            onAdd={addOption}
-          />
-        )}
-      </>
-    );
-  }
-
   function renderNewLoosePartForm() {
     return (
-      <div className="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50/60 p-4">
+      <div className="mt-3">
         <button
           type="button"
           onClick={() => {
@@ -808,14 +495,13 @@ export function InboundEntryFlow({
           }}
           aria-expanded={isNewLoosePartOpen}
           aria-controls="new-loose-part-form"
-          className="nk-focus inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 text-sm font-black text-white transition hover:bg-emerald-900"
+          className="nk-focus inline-flex min-h-11 items-center justify-center rounded-xl border border-border-neutral px-3 text-sm font-bold text-text-primary transition hover:bg-app-background"
         >
-          <PlusIcon className="size-5" />
           Nova peça avulsa
         </button>
 
         {isNewLoosePartOpen ? (
-          <div id="new-loose-part-form" className="mt-4 grid gap-4">
+          <div id="new-loose-part-form" className="mt-3 grid gap-4 rounded-xl border border-border-neutral bg-app-background p-4">
             <div>
               <label
                 htmlFor="new-loose-part-code"
@@ -1325,52 +1011,10 @@ export function InboundEntryFlow({
                 className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
               />
             </div>
-            <p className="mt-2 text-xs font-semibold text-text-muted">
-              A pesquisa permanece ao trocar de categoria.
-            </p>
           </div>
 
-          <div className="mt-4 space-y-3">
-            <StockFlowSection
-              id="inbound-separate-section"
-              title="Item separado"
-              description="Servos, kits de instalação e peças avulsas"
-              count={catalogSections.separate.count}
-              isOpen={catalogSections.separate.isOpen}
-              onToggle={() => toggleCatalogSection("separate")}
-              allowStickyContent
-            >
-              {renderNewLoosePartForm()}
-              {renderCatalogResults("separate")}
-            </StockFlowSection>
-
-            <StockFlowSection
-              id="inbound-repair-section"
-              title="Reparo"
-              description="Jogos e kits de reparo"
-              count={catalogSections.repair.count}
-              isOpen={catalogSections.repair.isOpen}
-              onToggle={() => toggleCatalogSection("repair")}
-              allowStickyContent
-            >
-              {renderCatalogResults("repair")}
-            </StockFlowSection>
-
-            <StockFlowSection
-              id="inbound-commercial-section"
-              title="Servo com kit"
-              description="Configurações identificadas por código comercial"
-              count={catalogSections.commercial.count}
-              isOpen={catalogSections.commercial.isOpen}
-              onToggle={() => toggleCatalogSection("commercial")}
-              allowStickyContent
-            >
-              {renderCatalogResults("commercial")}
-            </StockFlowSection>
-            <StockFlowSection id="inbound-bundles-section" title="Conjuntos" description="Recebimento de conjuntos já prontos" count={catalogSections.bundles.count} isOpen={catalogSections.bundles.isOpen} onToggle={() => toggleCatalogSection("bundles")} allowStickyContent>
-              {renderCatalogResults("bundles")}
-            </StockFlowSection>
-          </div>
+          {renderNewLoosePartForm()}
+          <StockFlowSearchResults options={searchOptions} search={search} selectedKeys={selectedKeys} onAdd={addOption} />
         </div>
 
         <div className="min-w-0 rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6 lg:sticky lg:top-24">

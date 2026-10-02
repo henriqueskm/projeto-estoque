@@ -11,6 +11,7 @@ import {
 } from "@/components/inventory-action-dialogs";
 import type { InventoryActionTarget } from "@/lib/inventory-action-types";
 import { notifyInventoryDataChanged } from "@/lib/inventory-ui-events";
+import { InventorySaleDialog } from "@/components/inventory-sale-dialog";
 
 type InventoryRowActionsProps = {
   target: InventoryActionTarget;
@@ -18,6 +19,7 @@ type InventoryRowActionsProps = {
 };
 
 type ActiveDialog =
+  | "SALE"
   | "ASSEMBLY"
   | "DISASSEMBLY"
   | "ADJUSTMENT"
@@ -201,6 +203,15 @@ export function InventoryRowActions({
             <button
               type="button"
               role="menuitem"
+              onClick={() => openDialog("SALE")}
+              className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-red-700 transition hover:bg-red-50"
+            >
+              Venda
+            </button>
+
+            <button
+              type="button"
+              role="menuitem"
               onClick={() => openDialog("ADJUSTMENT")}
               className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
             >
@@ -236,6 +247,11 @@ export function InventoryRowActions({
           </div>
         ) : null}
       </div>
+
+      {activeDialog === "SALE" ? (
+        <InventorySaleDialog target={target} onClose={closeDialog} onStale={handleStaleAdjustment}
+          onSuccess={(message) => { finishAction(message); router.refresh(); }} />
+      ) : null}
 
       {activeDialog === "ADJUSTMENT" ? (
         <InventoryAdjustmentDialog

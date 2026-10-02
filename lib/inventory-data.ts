@@ -264,13 +264,14 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
     summary.outOfStockItems += bundles.filter(bundle => bundle.isActive && bundle.state === "ZERO").length;
     const aliasesByConfigurationId = new Map<
       string,
-      Array<{ code: string; isActive: boolean }>
+      Array<{ id: string; code: string; isActive: boolean }>
     >();
 
     configurationCodes.forEach((configurationCode) => {
       const aliases =
         aliasesByConfigurationId.get(configurationCode.configuration_id) ?? [];
       aliases.push({
+        id: configurationCode.id,
         code: configurationCode.code,
         isActive: configurationCode.is_active,
       });

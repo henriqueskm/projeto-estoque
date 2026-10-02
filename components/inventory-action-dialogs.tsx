@@ -34,7 +34,7 @@ type DialogBaseProps = {
   onSuccess: (message: string) => void;
 };
 
-function useAccessibleDialog(
+export function useAccessibleDialog(
   dialogRef: RefObject<HTMLDivElement | null>,
   initialFocusRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>,
   isPending: boolean,
@@ -85,7 +85,7 @@ function useAccessibleDialog(
   }, [dialogRef, initialFocusRef, isPending, onClose]);
 }
 
-function DialogFrame({
+export function DialogFrame({
   children,
   descriptionId,
   dialogRef,

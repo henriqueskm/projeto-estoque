@@ -151,24 +151,21 @@ test("inventory table headers scroll naturally on mobile and remain sticky on de
   assert.doesNotMatch(headerClass, /safe-area-inset-top/);
 });
 
-test("manual stock flows use wider mobile tables without sticky mobile headers", () => {
+test("manual stock flows share compact search results without catalog accordions", () => {
   const inbound = read("app/(authenticated)/entrada/inbound-entry-flow.tsx");
   const outbound = read("app/(authenticated)/saida/outbound-entry-flow.tsx");
   const inboundPage = read("app/(authenticated)/entrada/page.tsx");
   const outboundPage = read("app/(authenticated)/saida/page.tsx");
 
+  const results = read("components/stock-flow-search-results.tsx");
   for (const flow of [inbound, outbound]) {
-    const headerClass = flow.match(
-      /const catalogHeaderClassName =\s*\n\s*"([^"]+)"/,
-    )?.[1] ?? "";
-
-    assert.doesNotMatch(headerClass, /(^|\s)sticky(\s|$)/);
-    assert.doesNotMatch(headerClass, /top-16/);
-    assert.match(headerClass, /lg:sticky lg:top-0 lg:z-30/);
-    assert.match(headerClass, /first:rounded-tl-xl last:rounded-tr-xl/);
-    assert.match(flow, /-mx-3 mt-3 overflow-hidden bg-surface/);
+    assert.match(flow, /<StockFlowSearchResults/);
+    assert.doesNotMatch(flow, /StockFlowSection|catalogHeaderClassName/);
     assert.match(flow, /sm:rounded-3xl sm:border sm:border-border-neutral/);
   }
+  assert.match(results, /min-w-0 flex-1/);
+  assert.match(results, /line-clamp-2 break-words/);
+  assert.match(results, /StockFlowAddButton/);
 
   assert.doesNotMatch(inboundPage, /nk-industrial-grid/);
   assert.doesNotMatch(outboundPage, /nk-industrial-grid/);

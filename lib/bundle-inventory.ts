@@ -142,7 +142,7 @@ export function buildBundleInventory(
         .sort((a, b) =>
           a.code.localeCompare(b.code, "pt-BR", { numeric: true }),
         )
-        .map((code) => ({ code: code.code, isActive: code.is_active }));
+        .map((code) => ({ id: code.id, code: code.code, isActive: code.is_active }));
       const recipe = (componentsByBundle.get(bundle.id) ?? [])
         .map((component) => {
           const configuration = component.configuration_id

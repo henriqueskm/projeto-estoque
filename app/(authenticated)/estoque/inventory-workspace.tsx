@@ -14,6 +14,11 @@ import { InventoryRowActions } from "@/components/inventory-row-actions";
 import { InventoryBundleTable } from "@/components/inventory-bundle-table";
 import { PurchaseRecommendationLauncher } from "@/components/purchase-recommendation-launcher";
 import { getServoFamilyLabel } from "@/lib/inventory-family";
+import { inventoryShortcutPlan, type InventoryShortcut } from "@/lib/inventory-shortcuts";
+import {
+  matchesCatalogSearch as matchesSearch,
+  normalizeCatalogSearch as normalizeSearch,
+} from "@/lib/catalog-search";
 import type {
   InventoryCommercialConfiguration,
   InventoryData,
@@ -57,8 +62,8 @@ const quantityFormatter = new Intl.NumberFormat("pt-BR");
 const physicalGroups: PhysicalGroupDefinition[] = [
   {
     itemType: "SERVO",
-    title: "Servoembreagens",
-    description: "Servos sem kit e presentes em conjuntos montados",
+    title: "Servo sem kit",
+    description: "Servos disponíveis sem kit",
   },
   {
     itemType: "INSTALLATION_KIT",
@@ -120,31 +125,11 @@ const configurationStateDetails: Record<
 const stickyHeaderClassName =
   "bg-brand-charcoal px-2 py-2 text-[0.62rem] font-bold uppercase tracking-wide text-slate-200 first:rounded-tl-lg last:rounded-tr-lg sm:px-3 sm:text-xs lg:sticky lg:top-0 lg:z-30";
 
-function normalizeSearch(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("pt-BR");
-}
-
 function compareText(first: string, second: string) {
   return first.localeCompare(second, "pt-BR", {
     numeric: true,
     sensitivity: "base",
   });
-}
-
-function matchesSearch(
-  normalizedQuery: string,
-  values: Array<string | null | undefined>,
-) {
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return values.some((value) =>
-    value ? normalizeSearch(value).includes(normalizedQuery) : false,
-  );
 }
 
 function matchesStatus(
@@ -301,7 +286,7 @@ function InventoryAccordion({
           aria-expanded={isOpen}
           aria-controls={panelId}
           onClick={onToggle}
-          className="nk-focus flex min-h-14 w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-app-background sm:px-4"
+          className="nk-focus flex min-h-14 w-full scroll-mt-24 items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-app-background sm:px-4"
         >
           <span className="min-w-0">
             <span className="block text-sm font-black text-text-primary sm:text-base">
@@ -653,8 +638,17 @@ export function InventoryWorkspace({
       ),
   );
   const normalizedQuery = normalizeSearch(query.trim());
+  const [scrollRequest, setScrollRequest] = useState<{ target: string } | null>(null);
   const hasSearch = normalizedQuery.length > 0;
   const hasActiveFilters = statusFilter !== "all" || sort !== "code";
+
+  useEffect(() => {
+    if (!scrollRequest) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(scrollRequest.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [scrollRequest]);
 
   useEffect(() => {
     if (!initialTarget) {
@@ -854,22 +848,27 @@ export function InventoryWorkspace({
   const summaryCards = [
     {
       label: "Servos com kit",
+      shortcut: "CONFIGURATION" as const,
       value: inventory.summary.completeBoxesTotal,
     },
     {
       label: "Servos sem kit",
+      shortcut: "SERVO" as const,
       value: inventory.summary.looseServoTotal,
     },
     {
       label: "Kits avulsos",
+      shortcut: "INSTALLATION_KIT" as const,
       value: inventory.summary.looseKitTotal,
     },
     {
       label: "Reparos",
+      shortcut: "REPAIR_KIT" as const,
       value: inventory.summary.repairKitTotal,
     },
     {
       label: "Peças avulsas",
+      shortcut: "LOOSE_PART" as const,
       value: inventory.summary.loosePartTotal,
     },
   ];
@@ -891,6 +890,18 @@ export function InventoryWorkspace({
 
       return next;
     });
+  }
+
+  function openSummaryShortcut(shortcut: InventoryShortcut) {
+    const plan = inventoryShortcutPlan(shortcut);
+    const physicalGroup = plan.physicalGroup;
+    if (physicalGroup) {
+      setQuery("");
+      setStatusFilter("all");
+      setOpenPhysicalGroups((current) => new Set([...current, physicalGroup]));
+    }
+    // Effect runs after the opened/cleared view commits, including repeat clicks.
+    setScrollRequest({ target: plan.scrollTarget });
   }
 
   return (
@@ -924,17 +935,20 @@ export function InventoryWorkspace({
         </h2>
         <div className="grid grid-cols-2 gap-2 min-[480px]:grid-cols-3 lg:grid-cols-5">
           {summaryCards.map((summary) => (
-            <article
+            <button
               key={summary.label}
-              className="flex min-h-14 items-center justify-between gap-2 rounded-xl border border-border-neutral bg-surface px-3 py-2 shadow-sm"
+              type="button"
+              aria-label={`Ver ${summary.label}`}
+              onClick={() => openSummaryShortcut(summary.shortcut)}
+              className="nk-focus flex min-h-14 cursor-pointer items-center justify-between gap-2 rounded-xl border border-border-neutral bg-surface px-3 py-2 text-left shadow-sm transition hover:bg-app-background"
             >
-              <p className="text-[0.68rem] leading-4 font-bold text-text-muted sm:text-xs">
+              <span className="text-[0.68rem] leading-4 font-bold text-text-muted sm:text-xs">
                 {summary.label}
-              </p>
-              <p className="shrink-0 font-mono text-xl font-black tabular-nums text-text-primary sm:text-2xl">
+              </span>
+              <span className="shrink-0 font-mono text-xl font-black tabular-nums text-text-primary sm:text-2xl">
                 {quantityFormatter.format(summary.value)}
-              </p>
-            </article>
+              </span>
+            </button>
           ))}
         </div>
       </section>
@@ -1124,7 +1138,7 @@ export function InventoryWorkspace({
             </p>
             <h2
               id="configurations-title"
-              className="text-lg font-black text-text-primary sm:text-xl"
+              className="scroll-mt-24 text-lg font-black text-text-primary sm:text-xl"
             >
               Servos com kit e conjuntos
             </h2>
