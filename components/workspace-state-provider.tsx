@@ -140,6 +140,9 @@ export function useWorkspaceScroll(key: string, defaults: WorkspaceData, enabled
       window.removeEventListener("keydown", cancel);
       window.removeEventListener("nk:workspace:before-navigation", navigate);
       window.removeEventListener("pagehide", navigate);
+      // Next may deactivate/reactivate a retained route without recreating refs.
+      // Cancellation applies to this visit, not the next workspace activation.
+      cancelled.current = false;
     };
   }, [store, key, hydrated, enabled]);
   return cancelRestore;

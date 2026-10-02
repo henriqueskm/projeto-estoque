@@ -226,3 +226,6 @@ test("sidebar prefetch uses resolved href while retaining idle/intent/dedup poli
   assert.match(sidebar, /href=\{resumeHref\}/); assert.match(sidebar, /router.prefetch\(resolvedHref\)/);
   assert.match(sidebar, /prefetchedRoutesRef.current.has\(resolvedHref\)/); assert.match(sidebar, /scheduleNext\(600\)/); assert.match(sidebar, /scheduleNext\(800\)/);
 });
+test("scroll cancellation does not leak into a retained route's next activation", () => {
+  assert.match(read("components/workspace-state-provider.tsx"), /removeEventListener\("pagehide", navigate\);[\s\S]*?cancelled.current = false/);
+});
