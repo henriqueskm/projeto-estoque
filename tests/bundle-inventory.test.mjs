@@ -25,7 +25,10 @@ import { OutboundEntryFlow } from "../app/(authenticated)/saida/outbound-entry-f
 import { buildInboundPreview } from "../lib/inbound-preview.ts";
 import { buildOutboundPreview } from "../lib/outbound-preview.ts";
 import { submitStockInbound } from "../app/(authenticated)/entrada/actions.ts";
-import { submitStockOutbound } from "../app/(authenticated)/saida/actions.ts";
+import { submitStockOutbound, submitInventorySale } from "../app/(authenticated)/saida/actions.ts";
+import { InventorySaleDialog } from "../components/inventory-sale-dialog.tsx";
+import { buildInventorySaleRequest, createInventorySaleAttempt, formatInventorySaleFeedback, inventorySaleAvailable, inventorySaleCodes } from "../lib/inventory-sale.ts";
+import { matchesCatalogSearch } from "../lib/catalog-search.ts";
 import { executeCatalogWrite } from "../lib/catalog-writer.ts";
 import { StockFlowAddButton } from "../components/stock-flow-add-button.tsx";
 
@@ -129,6 +132,17 @@ function client() {
           filters.push((row) => row[column] === value);
           return this;
         },
+        in(column, values) {
+          filters.push((row) => values.includes(row[column]));
+          return this;
+        },
+        then(resolve) {
+          return Promise.resolve({ data: (tables[table] ?? []).filter((row) => filters.every((filter) => filter(row))), error: null }).then(resolve);
+        },
+        async single() {
+          const rows = (tables[table] ?? []).filter((row) => filters.every((filter) => filter(row)));
+          return { data: rows.length === 1 ? rows[0] : null, error: rows.length === 1 ? null : { message: "missing ledger" } };
+        },
         order(column) {
           orders.push(column);
           return this;
@@ -184,6 +198,165 @@ beforeEach(() => {
   globalThis.__NK72_SEARCH__ = "";
   globalThis.__NK72_SORT__ = "code";
   globalThis.__NK72_MENU_OPEN__ = false;
+});
+
+for (const [label, loader, Component, prop] of [
+  ["Estoque", loadInventoryData, InventoryWorkspace, "inventory"],
+  ["Entrada", getInboundCatalog, InboundEntryFlow, "catalog"],
+  ["Saída", getOutboundCatalog, OutboundEntryFlow, "catalog"],
+]) {
+  for (const search of ["MBF-015", "mbf-015", "MBF015", "mbf015", "MBF 015", "MBF_015", "MBF.015"]) {
+    test(`${label}: ${search} encontra o modelo MBF-015 sem mudar o código exibido`, async () => {
+      const loaded = await loader();
+      assert.equal(loaded.error, null);
+      globalThis.__NK72_SEARCH__ = search;
+      const html = renderToStaticMarkup(createElement(Component, { [prop]: loaded.data ?? loaded.catalog }));
+      assert.match(html, /SERVO MBF-015 Deslocado/);
+      assert.doesNotMatch(html, /Nenhum item encontrado/);
+      if (label === "Estoque") {
+        assert.match(html, /Servo sem kit/);
+        assert.match(html, /Servos disponíveis sem kit/);
+      }
+    });
+  }
+}
+
+test("busca compartilhada preserva descrição, acentos, aliases, 1H/1HC e consulta vazia", () => {
+  for (const query of ["1H", "1HC", "1D", "cilindro", "óleo", "oleo", ""]) {
+    assert.equal(matchesCatalogSearch(query, ["1H", "1HC", "1B / 1D", "Cilindro de Óleo"]), true);
+  }
+  assert.equal(matchesCatalogSearch("...", ["1HC"]), false);
+  assert.equal(matchesCatalogSearch("não existe", ["1HC"]), false);
+});
+
+function saleTarget(kind, available) {
+  if (kind === "ITEM") return { kind, itemId: id(1), code: "1", description: "SERVO MBF-015", itemType: "SERVO", looseQuantity: available, mountedQuantity: 3, minimumStock: 1 };
+  if (kind === "CONFIGURATION") return { kind, configurationId, commercialCodes: ["1H"], commercialAliases: [{ id: id(11), code: "1H", isActive: true }], description: "1H montado", isActive: true, assembledQuantity: available, minimumStock: 0, servo: { id: id(1), isActive: true, looseQuantity: 5 }, installationKit: { id: id(2), isActive: true, looseQuantity: 5 } };
+  return { kind, bundleId, commercialCodes: ["1HC"], commercialAliases: [{ id: id(21), code: "1HC", isActive: true }], description: "Conjunto 1HC", isActive: true, readyQuantity: available, maximumAssemblable: 5, minimumStock: 0, recipe: [] };
+}
+
+for (const [kind, available] of [["ITEM", 0], ["CONFIGURATION", 2], ["BUNDLE", 1]]) {
+  test(`Venda ${kind}: limite é saldo livre/pronto, nunca físico/capacidade`, () => {
+    const target = saleTarget(kind, available);
+    assert.equal(inventorySaleAvailable(target), available);
+    assert.equal(buildInventorySaleRequest(target, inventorySaleCodes(target)[0]?.id ?? "", available + 1, "", key), null);
+    if (available) assert.equal(buildInventorySaleRequest(target, inventorySaleCodes(target)[0].id, 1, "", key).p_lines[0].quantity, 1);
+    const html = renderToStaticMarkup(createElement(InventorySaleDialog, { target, onClose() {}, onSuccess() {}, onStale() {} }));
+    assert.match(html, new RegExp(`Disponível para venda: ${available}`));
+    assert.match(html, /Registrar venda/);
+    assert.match(html, /bg-red-700/);
+    if (!available) assert.match(html, /disabled=""[^>]*>Confirmar venda/);
+    globalThis.__NK72_MENU_OPEN__ = true;
+    const menu = renderToStaticMarkup(createElement(InventoryRowActions, { target }));
+    assert.match(menu, /text-red-700[^>]*>Venda/);
+  });
+}
+
+test("Venda exige alias ativo real; múltiplos aliases oferecem seletor sem duplicar saldo", () => {
+  const target = saleTarget("CONFIGURATION", 3);
+  target.commercialAliases.push({ id: id(12), code: "1D", isActive: true }, { id: id(13), code: "antigo", isActive: false });
+  const html = renderToStaticMarkup(createElement(InventorySaleDialog, { target, onClose() {}, onSuccess() {}, onStale() {} }));
+  assert.match(html, /Código da venda/);
+  assert.match(html, />1D<\/option>/);
+  assert.doesNotMatch(html, />antigo<\/option>/);
+  assert.equal(buildInventorySaleRequest(target, id(13), 1, "", key), null);
+  target.commercialAliases = [];
+  assert.equal(buildInventorySaleRequest(target, id(11), 1, "", key), null);
+  target.commercialAliases = [{ code: "1H", isActive: true }];
+  assert.deepEqual(inventorySaleCodes(target), []);
+});
+
+test("loaders carregam os IDs reais dos aliases usados na Venda", async () => {
+  const { data } = await loadInventoryData();
+  assert.equal(data.configurations[0].aliases[0].id, id(11));
+  assert.equal(data.bundles[0].aliases[0].id, id(21));
+});
+
+for (const [kind, table] of [["ITEM", "stock_movements"], ["CONFIGURATION", "configuration_stock_movements"], ["BUNDLE", "bundle_stock_movements"]]) {
+  test(`Venda ${kind}: OUTBOUND canônico sem autoassembly, comprovante real 3→2 e invalidação`, async () => {
+    const target = saleTarget(kind, 3);
+    const request = buildInventorySaleRequest(target, inventorySaleCodes(target)[0]?.id ?? "", 1, "Venda manual", key);
+    tables[table] = [{ batch_id: id(70), quantity_before: 3, quantity_change: -1, quantity_after: 2 }];
+    globalThis.__NK72_RPC_RESULT__ = { data: { movement_batch_id: id(70), lines_processed: 1, total_quantity: 1, auto_assembled_quantity: 0 }, error: null };
+    const result = await submitInventorySale(request);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.receipt.quantityBefore, 3);
+    assert.equal(result.receipt.quantityAfter, 2);
+    assert.equal(rpcCalls[0].name, "stock_outbound_items");
+    assert.equal(rpcCalls[0].args.p_allow_auto_assembly, false);
+    assert.equal(rpcCalls[0].args.p_idempotency_key, key);
+    assert.deepEqual(rpcCalls[0].args.p_lines, request.p_lines);
+    assert.match(formatInventorySaleFeedback(target, kind === "ITEM" ? "1" : target.commercialCodes[0], result.receipt), /Venda confirmada.*3 → 2/);
+    for (const path of ["/", "/estoque", "/saida"]) assert.ok(globalThis.__NK72_PATHS__.includes(path));
+  });
+}
+
+test("Saída normal conserva política padrão; cliente não pode injetar autoassembly na Venda", async () => {
+  globalThis.__NK72_RPC_RESULT__ = { data: { movement_batch_id: id(70), lines_processed: 1, total_quantity: 1, auto_assembled_quantity: 0 }, error: null };
+  const request = buildInventorySaleRequest(saleTarget("BUNDLE", 3), id(21), 1, "", key);
+  assert.equal((await submitStockOutbound(request)).ok, true);
+  assert.equal("p_allow_auto_assembly" in rpcCalls[0].args, false);
+  assert.equal((await submitInventorySale({ ...request, p_allow_auto_assembly: true })).ok, false);
+  assert.equal(rpcCalls.length, 1);
+});
+
+test("Venda stale/insuficiente devolve erro para refresh e não tenta outro writer/montagem", async () => {
+  globalThis.__NK72_RPC_RESULT__ = { data: null, error: { code: "23514", message: "insufficient stock" } };
+  const result = await submitInventorySale(buildInventorySaleRequest(saleTarget("BUNDLE", 3), id(21), 3, "", key));
+  assert.equal(result.ok, false);
+  assert.equal(result.stale, true);
+  assert.match(result.error, /mudou ou ficou insuficiente/);
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].args.p_allow_auto_assembly, false);
+});
+
+test("Venda preserva erro canônico de mesma chave com payload diferente", async () => {
+  globalThis.__NK72_RPC_RESULT__ = { data: null, error: { code: "22023", message: "idempotency_key has already been used with a different payload." } };
+  const result = await submitInventorySale(buildInventorySaleRequest(saleTarget("BUNDLE", 3), id(21), 2, "", key));
+  assert.equal(result.ok, false);
+  assert.match(result.error, /chave|identificador|tentativa/i);
+  assert.equal(rpcCalls.length, 1);
+});
+
+test("Venda replay lê o mesmo ledger imutável mesmo após o saldo atual mudar", async () => {
+  globalThis.__NK72_RPC_RESULT__ = { data: { movement_batch_id: id(70), lines_processed: 1, total_quantity: 1, auto_assembled_quantity: 0 }, error: null };
+  tables.bundle_stock_movements = [{ batch_id: id(70), quantity_before: 3, quantity_change: -1, quantity_after: 2 }];
+  const request = buildInventorySaleRequest(saleTarget("BUNDLE", 3), id(21), 1, "", key);
+  const first = await submitInventorySale(request);
+  tables.bundle_stock_balances[0].quantity = 0;
+  const replay = await submitInventorySale(request);
+  assert.deepEqual(replay, first);
+  assert.equal(replay.receipt.quantityAfter, 2);
+  assert.deepEqual(rpcCalls[0], rpcCalls[1]);
+});
+
+test("Venda rejeita usuário anônimo antes do writer", async () => {
+  globalThis.__NK72_ACTIVE__ = false;
+  const result = await submitInventorySale(buildInventorySaleRequest(saleTarget("BUNDLE", 3), id(21), 1, "", key));
+  assert.equal(result.ok, false);
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("Venda não inventa feedback se ledger faltar e informa retry seguro", async () => {
+  globalThis.__NK72_RPC_RESULT__ = { data: { movement_batch_id: id(70), lines_processed: 1, total_quantity: 1, auto_assembled_quantity: 0 }, error: null };
+  const result = await submitInventorySale(buildInventorySaleRequest(saleTarget("BUNDLE", 3), id(21), 1, "", key));
+  assert.equal(result.ok, false);
+  assert.match(result.error, /mesma chave evita uma segunda baixa/);
+});
+
+test("tentativa de Venda bloqueia double-click e preserva payload/chave após erro de transporte", async () => {
+  const attempt = createInventorySaleAttempt();
+  const request = buildInventorySaleRequest(saleTarget("BUNDLE", 3), id(21), 1, "", key);
+  let release;
+  const inputs = [];
+  const writer = async (input) => { inputs.push(input); await new Promise((resolve) => { release = resolve; }); throw new Error("network"); };
+  const first = attempt.submit(request, writer);
+  assert.equal(await attempt.submit(request, writer), null);
+  release();
+  await assert.rejects(first, /network/);
+  const changed = { ...request, p_idempotency_key: id(88), p_lines: [{ kind: "BUNDLE_CODE", bundle_code_id: id(21), quantity: 2 }] };
+  await attempt.submit(changed, async (input) => { inputs.push(input); return { ok: false, error: "retry" }; });
+  assert.deepEqual(inputs, [request, request]);
 });
 
 test("prévia de Entrada recebe bundle pronto sem criar componentes", async () => {

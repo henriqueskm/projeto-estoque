@@ -14,6 +14,10 @@ import { InventoryRowActions } from "@/components/inventory-row-actions";
 import { InventoryBundleTable } from "@/components/inventory-bundle-table";
 import { PurchaseRecommendationLauncher } from "@/components/purchase-recommendation-launcher";
 import { getServoFamilyLabel } from "@/lib/inventory-family";
+import {
+  matchesCatalogSearch as matchesSearch,
+  normalizeCatalogSearch as normalizeSearch,
+} from "@/lib/catalog-search";
 import type {
   InventoryCommercialConfiguration,
   InventoryData,
@@ -57,8 +61,8 @@ const quantityFormatter = new Intl.NumberFormat("pt-BR");
 const physicalGroups: PhysicalGroupDefinition[] = [
   {
     itemType: "SERVO",
-    title: "Servoembreagens",
-    description: "Servos sem kit e presentes em conjuntos montados",
+    title: "Servo sem kit",
+    description: "Servos disponíveis sem kit",
   },
   {
     itemType: "INSTALLATION_KIT",
@@ -120,31 +124,11 @@ const configurationStateDetails: Record<
 const stickyHeaderClassName =
   "bg-brand-charcoal px-2 py-2 text-[0.62rem] font-bold uppercase tracking-wide text-slate-200 first:rounded-tl-lg last:rounded-tr-lg sm:px-3 sm:text-xs lg:sticky lg:top-0 lg:z-30";
 
-function normalizeSearch(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("pt-BR");
-}
-
 function compareText(first: string, second: string) {
   return first.localeCompare(second, "pt-BR", {
     numeric: true,
     sensitivity: "base",
   });
-}
-
-function matchesSearch(
-  normalizedQuery: string,
-  values: Array<string | null | undefined>,
-) {
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return values.some((value) =>
-    value ? normalizeSearch(value).includes(normalizedQuery) : false,
-  );
 }
 
 function matchesStatus(

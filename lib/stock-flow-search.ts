@@ -1,3 +1,5 @@
+import { matchesCatalogSearch, normalizeCatalogSearch } from "@/lib/catalog-search";
+
 export type StockFlowCatalogSection = "separate" | "repair" | "commercial" | "bundles";
 
 export function buildStockFlowSearch<T>(
@@ -6,18 +8,12 @@ export function buildStockFlowSearch<T>(
   manualOpenSection: StockFlowCatalogSection | null,
   searchText: (option: T) => string,
 ) {
-  const normalize = (value: string) =>
-    value
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLocaleLowerCase("pt-BR")
-      .trim();
-  const query = normalize(search);
+  const query = normalizeCatalogSearch(search);
   return Object.fromEntries(
     Object.entries(sections).map(([section, options]) => {
       const results = query
         ? options.filter((option) =>
-            normalize(searchText(option)).includes(query),
+            matchesCatalogSearch(query, [searchText(option)]),
           )
         : options;
       return [

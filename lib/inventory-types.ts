@@ -26,6 +26,7 @@ export type InventoryPhysicalItem = {
 };
 
 export type InventoryCommercialAlias = {
+  id?: string;
   code: string;
   isActive: boolean;
 };

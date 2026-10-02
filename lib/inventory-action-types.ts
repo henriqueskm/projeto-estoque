@@ -19,10 +19,7 @@ export type InventoryConfigurationActionTarget = {
   kind: "CONFIGURATION";
   configurationId: string;
   commercialCodes: string[];
-  commercialAliases: Array<{
-    code: string;
-    isActive: boolean;
-  }>;
+  commercialAliases: InventoryCommercialAlias[];
   description: string;
   isActive: boolean;
   assembledQuantity: number;

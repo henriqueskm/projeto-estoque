@@ -11,6 +11,7 @@ import type {
   OutboundRequestLine,
 } from "@/lib/outbound-types";
 import { createClient } from "@/lib/supabase/server";
+import type { InventorySaleActionResult } from "@/lib/inventory-sale";
 
 const maximumQuantity = 2_147_483_647;
 const maximumDescriptionLength = 500;
@@ -258,13 +259,19 @@ function mapRpcError(code: string | undefined, message: string) {
   return "Não foi possível registrar a saída. Revise os dados e tente novamente.";
 }
 
-export async function submitStockOutbound(
+async function performStockOutbound(input: unknown, policy: "NORMAL"): Promise<OutboundActionResult>;
+async function performStockOutbound(input: unknown, policy: "INVENTORY_SALE"): Promise<InventorySaleActionResult>;
+async function performStockOutbound(
   input: unknown,
-): Promise<OutboundActionResult> {
+  policy: "NORMAL" | "INVENTORY_SALE",
+): Promise<OutboundActionResult | InventorySaleActionResult> {
   const normalized = normalizeRequest(input);
 
   if ("ok" in normalized) {
     return normalized;
+  }
+  if (policy === "INVENTORY_SALE" && normalized.lines.length !== 1) {
+    return invalidRequest("A venda pelo Estoque deve conter um único alvo.");
   }
 
   try {
@@ -434,9 +441,14 @@ export async function submitStockOutbound(
       p_lines: normalized.lines,
       p_idempotency_key: normalized.idempotencyKey,
       p_description: normalized.description,
+      ...(policy === "INVENTORY_SALE" ? { p_allow_auto_assembly: false } : {}),
     });
 
     if (error) {
+      if (policy === "INVENTORY_SALE" &&
+        (error.code === "23514" || error.message.toLowerCase().includes("insufficient stock"))) {
+        return { ok: false, error: mapRpcError(error.code, error.message), stale: true };
+      }
       return invalidRequest(mapRpcError(error.code, error.message));
     }
 
@@ -453,10 +465,37 @@ export async function submitStockOutbound(
     revalidatePath("/entrada");
     revalidatePath("/estoque");
 
+    if (policy === "INVENTORY_SALE") {
+      const line = normalized.lines[0];
+      const table = line.kind === "ITEM" ? "stock_movements"
+        : line.kind === "COMMERCIAL_CODE" ? "configuration_stock_movements" : "bundle_stock_movements";
+      // Read the immutable ledger, not a possibly changed current balance.
+      const { data: movement, error: movementError } = await supabase.from(table)
+        .select("quantity_before, quantity_change, quantity_after")
+        .eq("batch_id", receipt.movementBatchId).single();
+      if (movementError || !movement || receipt.linesProcessed !== 1 || receipt.autoAssembledQuantity !== 0 ||
+        receipt.totalQuantity !== line.quantity ||
+        !Number.isInteger(movement.quantity_before) || movement.quantity_before < 0 ||
+        !Number.isInteger(movement.quantity_after) || movement.quantity_after < 0 ||
+        movement.quantity_change !== -line.quantity ||
+        movement.quantity_before + movement.quantity_change !== movement.quantity_after) {
+        return invalidRequest("Não foi possível ler o comprovante da venda. Tente novamente neste dialog, sem mudar os dados: a mesma chave evita uma segunda baixa.");
+      }
+      return { ok: true, receipt: { ...receipt, quantityBefore: movement.quantity_before, quantityAfter: movement.quantity_after } };
+    }
+
     return { ok: true, receipt };
   } catch {
     return invalidRequest(
       "Não foi possível concluir a saída agora. Tente novamente.",
     );
   }
+}
+
+export async function submitStockOutbound(input: unknown): Promise<OutboundActionResult> {
+  return performStockOutbound(input, "NORMAL");
+}
+
+export async function submitInventorySale(input: unknown): Promise<InventorySaleActionResult> {
+  return performStockOutbound(input, "INVENTORY_SALE");
 }
