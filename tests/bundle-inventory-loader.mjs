@@ -14,7 +14,7 @@ export async function resolve(specifier, context, nextResolve) {
     "next/cache":
       "export function revalidatePath(path){globalThis.__NK72_PATHS__.push(path)}",
     "next/navigation":
-      "export function useRouter(){return {refresh(){},push(){}}} export function usePathname(){return '/estoque'}",
+      "export function useRouter(){return {refresh(){},push(){}}} export function usePathname(){return '/estoque'} export function useSearchParams(){return new URLSearchParams()}",
     "next/link":
       "import {createElement} from 'react';export default function Link({children,...props}){return createElement('a',props,children)}",
     "@/components/commercial-configuration-image":
@@ -49,7 +49,7 @@ export async function resolve(specifier, context, nextResolve) {
 }
 
 export async function load(url, context, nextLoad) {
-  if (!url.endsWith(".tsx")) return nextLoad(url, context);
+  if (!url.endsWith(".tsx") && !url.endsWith("/use-stock-flow-workspace.ts")) return nextLoad(url, context);
   let source = await readFile(new URL(url), "utf8");
   // Drive the actual route render from a selected initial search, without adding
   // a test-only prop/state path to the production components.
@@ -64,6 +64,16 @@ export async function load(url, context, nextLoad) {
   source = source.replace(
     'const [sort, setSort] = useState<InventorySort>("code");',
     'const [sort, setSort] = useState<InventorySort>(globalThis.__NK72_SORT__ ?? "code");',
+  );
+  // Workspace hooks replace the old local state initializers. Keep the same
+  // regression fixtures driving the real render, without production test props.
+  source = source.replace(
+    '...inventoryWorkspaceDefaults, statusFilter: "all" as InventoryStatusFilter, sort: "code" as InventorySort,',
+    '...inventoryWorkspaceDefaults, query: globalThis.__NK72_SEARCH__ ?? "", statusFilter: initialStatusFilter, sort: globalThis.__NK72_SORT__ ?? "code",',
+  );
+  source = source.replace(
+    'useWorkspaceState(mode, stockFlowWorkspaceDefaults)',
+    'useWorkspaceState(mode, { ...stockFlowWorkspaceDefaults, search: globalThis.__NK72_SEARCH__ ?? "" })',
   );
   if (url.endsWith("/inventory-row-actions.tsx"))
     source = source.replace(

@@ -11,6 +11,20 @@ export type StatisticsSearchParams = {
   periodo?: string | string[];
 };
 
+function firstValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export function parseStatisticsPeriod(
+  searchParams: StatisticsSearchParams,
+): StatisticsPeriod {
+  const value = Number(firstValue(searchParams.periodo));
+
+  return statisticsPeriods.includes(value as StatisticsPeriod)
+    ? (value as StatisticsPeriod)
+    : 90;
+}
+
 export type StatisticsComparison = {
   current: number;
   previous: number;

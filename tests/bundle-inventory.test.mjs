@@ -251,15 +251,18 @@ for (const [label, shortcut, destination] of [
     const handlerSource = source.slice(source.indexOf("  function openSummaryShortcut("), source.indexOf("\n  return (", source.indexOf("  function openSummaryShortcut(")))
       .replace("shortcut: InventoryShortcut", "shortcut");
     const state = { query: "impossível", filter: "with-stock", physical: new Set(["OTHER"]), families: new Set(["Manual"]), scroll: null };
-    const handler = new Function("inventoryShortcutPlan", "inventory", "setQuery", "setStatusFilter", "setOpenPhysicalGroups", "setOpenFamilies", "setScrollRequest", `return ${handlerSource}`)(
+    let cancelledRestores = 0;
+    const handler = new Function("inventoryShortcutPlan", "inventory", "setQuery", "setStatusFilter", "setOpenPhysicalGroups", "setOpenFamilies", "setScrollRequest", "cancelScrollRestore", `return ${handlerSource}`)(
       inventoryShortcutPlan, data, (query) => { state.query = query; }, (filter) => { state.filter = filter; },
       (update) => { state.physical = update(state.physical); }, (update) => { state.families = update(state.families); },
       (request) => { state.scroll = request; },
+      () => { cancelledRestores += 1; },
     );
     handler(shortcut);
     assert.equal(state.query, shortcut === "CONFIGURATION" ? "impossível" : "");
     assert.equal(state.filter, shortcut === "CONFIGURATION" ? "with-stock" : "all");
     assert.equal(state.scroll.target, destination);
+    assert.equal(cancelledRestores, 1, "ação explícita vence o scroll salvo");
     assert.deepEqual([...state.families], ["Manual"], "atalho não altera famílias abertas manualmente");
     if (shortcut !== "CONFIGURATION") assert.ok(state.physical.has(shortcut));
     assert.ok(state.physical.has("OTHER"));

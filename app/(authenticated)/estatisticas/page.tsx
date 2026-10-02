@@ -1,3 +1,4 @@
+import { WorkspaceScroll } from "@/components/workspace-state-provider";
 import Link from "next/link";
 import { measurePerformanceAudit } from "@/lib/performance-audit";
 import { StatisticsIcon, StockIcon } from "@/components/icons";
@@ -604,6 +605,7 @@ export default async function StatisticsPage({
 
   return (
     <main data-nk-perf-ready="/estatisticas" className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <WorkspaceScroll workspace="estatisticas" />
       <div>
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-charcoal text-brand-gold">

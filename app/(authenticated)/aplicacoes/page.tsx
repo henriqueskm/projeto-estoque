@@ -1,3 +1,4 @@
+import { WorkspaceScroll } from "@/components/workspace-state-provider";
 import { ApplicationsBrandGrid } from "@/app/(authenticated)/aplicacoes/applications-brand-grid";
 import { loadVehicleApplicationBrands } from "@/lib/vehicle-applications";
 import { measurePerformanceAudit } from "@/lib/performance-audit";
@@ -7,6 +8,7 @@ export default async function VehicleApplicationsPage() {
 
   return (
     <main data-nk-perf-ready="/aplicacoes" className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-6 sm:py-8 lg:px-8">
+      <WorkspaceScroll workspace="aplicacoes" />
       <header className="max-w-2xl">
         <h1 className="text-3xl font-black tracking-[-0.025em] text-text-primary sm:text-4xl">
           Aplicações

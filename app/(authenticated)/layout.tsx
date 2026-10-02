@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { WorkspaceStateProvider } from "@/components/workspace-state-provider";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AssistantConversationProvider } from "@/components/assistant-conversation-provider";
 import { AuthenticatedProfileProvider } from "@/components/authenticated-profile-provider";
@@ -20,6 +21,7 @@ export default async function AuthenticatedLayout({
     >
       <SafisaPickupAlertProvider>
         <PushNotificationProvider>
+          <WorkspaceStateProvider key={profile.id} userId={profile.id}>
           <AssistantConversationProvider
             key={profile.id}
             userId={profile.id}
@@ -35,6 +37,7 @@ export default async function AuthenticatedLayout({
               {(process.env.NODE_ENV !== "production" || process.env.VERCEL_ENV === "preview") ? <PerformanceAuditPanel /> : null}
             </div>
           </AssistantConversationProvider>
+          </WorkspaceStateProvider>
         </PushNotificationProvider>
       </SafisaPickupAlertProvider>
     </AuthenticatedProfileProvider>

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useWorkspaceState, useWorkspaceScroll } from "@/components/workspace-state-provider";
+import { orderWorkspaceDefaults } from "@/lib/workspace-state";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -11,6 +13,7 @@ import {
   useState,
   useTransition,
   type RefObject,
+  type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -3865,14 +3868,19 @@ function ActiveSupplierOrdersWorkspace({
   initialOrderId: string | null;
 }) {
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("ALL");
-  const [sort, setSort] = useState<OrderSort>("RECENT");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
-    initialOrderId,
-  );
+  const workspace = useWorkspaceState("pedidos:active", {
+    ...orderWorkspaceDefaults, statusFilter: "ALL" as StatusFilter, closureFilter: "ALL" as HistoryClosureFilter,
+    periodFilter: "ALL" as PeriodFilter, sort: "RECENT" as OrderSort,
+  }, initialOrderId ? { selectedOrderId: initialOrderId } : undefined);
+  const { search, statusFilter, periodFilter, sort, filtersOpen, selectedOrderId } = workspace.state;
+  const setSearch = (value: SetStateAction<string>) => workspace.setState(current => ({ ...current, search: typeof value === "function" ? value(current.search) : value }));
+  const setStatusFilter = (value: SetStateAction<StatusFilter>) => workspace.setState(current => ({ ...current, statusFilter: typeof value === "function" ? value(current.statusFilter) : value }));
+  const setPeriodFilter = (value: SetStateAction<PeriodFilter>) => workspace.setState(current => ({ ...current, periodFilter: typeof value === "function" ? value(current.periodFilter) : value }));
+  const setSort = (value: SetStateAction<OrderSort>) => workspace.setState(current => ({ ...current, sort: typeof value === "function" ? value(current.sort) : value }));
+  const setFiltersOpen = (value: SetStateAction<boolean>) => workspace.setState(current => ({ ...current, filtersOpen: typeof value === "function" ? value(current.filtersOpen) : value }));
+  const updateWorkspace = workspace.setState;
+  const setSelectedOrderId = useCallback((value: SetStateAction<string | null>) => updateWorkspace(current => ({ ...current, selectedOrderId: typeof value === "function" ? value(current.selectedOrderId) : value })), [updateWorkspace]);
+  useWorkspaceScroll("pedidos:active", { ...orderWorkspaceDefaults, sort: "RECENT" });
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -4009,7 +4017,7 @@ function ActiveSupplierOrdersWorkspace({
       }
       router.refresh();
     },
-    [router],
+    [router, setSelectedOrderId],
   );
 
   function openOrder(orderId: string) {
@@ -4525,15 +4533,19 @@ function HistorySupplierOrdersWorkspace({
   initialOrderId: string | null;
 }) {
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [closureFilter, setClosureFilter] =
-    useState<HistoryClosureFilter>("ALL");
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("ALL");
-  const [sort, setSort] = useState<HistorySort>("CLOSED_RECENT");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
-    initialOrderId,
-  );
+  const workspace = useWorkspaceState("pedidos:history", {
+    ...orderWorkspaceDefaults, statusFilter: "ALL" as StatusFilter, closureFilter: "ALL" as HistoryClosureFilter,
+    periodFilter: "ALL" as PeriodFilter, sort: "CLOSED_RECENT" as HistorySort,
+  }, initialOrderId ? { selectedOrderId: initialOrderId } : undefined);
+  const { search, closureFilter, periodFilter, sort, filtersOpen, selectedOrderId } = workspace.state;
+  const setSearch = (value: SetStateAction<string>) => workspace.setState(current => ({ ...current, search: typeof value === "function" ? value(current.search) : value }));
+  const setClosureFilter = (value: SetStateAction<HistoryClosureFilter>) => workspace.setState(current => ({ ...current, closureFilter: typeof value === "function" ? value(current.closureFilter) : value }));
+  const setPeriodFilter = (value: SetStateAction<PeriodFilter>) => workspace.setState(current => ({ ...current, periodFilter: typeof value === "function" ? value(current.periodFilter) : value }));
+  const setSort = (value: SetStateAction<HistorySort>) => workspace.setState(current => ({ ...current, sort: typeof value === "function" ? value(current.sort) : value }));
+  const setFiltersOpen = (value: SetStateAction<boolean>) => workspace.setState(current => ({ ...current, filtersOpen: typeof value === "function" ? value(current.filtersOpen) : value }));
+  const updateWorkspace = workspace.setState;
+  const setSelectedOrderId = useCallback((value: SetStateAction<string | null>) => updateWorkspace(current => ({ ...current, selectedOrderId: typeof value === "function" ? value(current.selectedOrderId) : value })), [updateWorkspace]);
+  useWorkspaceScroll("pedidos:history", { ...orderWorkspaceDefaults, sort: "CLOSED_RECENT" });
   const [feedback, setFeedback] = useState<string | null>(null);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
   const detailState = useSupplierOrderDetail(
@@ -5023,11 +5035,13 @@ export function SupplierOrdersWorkspace({
 }: SupplierOrdersWorkspaceProps) {
   return view === "history" ? (
     <HistorySupplierOrdersWorkspace
+      key={initialOrderId ?? "history"}
       data={data}
       initialOrderId={initialOrderId}
     />
   ) : (
     <ActiveSupplierOrdersWorkspace
+      key={initialOrderId ?? "active"}
       data={data}
       initialOrderId={initialOrderId}
     />
