@@ -204,8 +204,9 @@ function buildReplenishmentItem(
       partiallyCoveredCount,
       zeroStockCount,
     },
-    detail: limitDetailLines(
-      orderedTargets.map((target) => ({
+    detail: {
+      // Replenishment is an expandable compact list, not a five-line chat preview.
+      lines: orderedTargets.map((target) => ({
         code: target.primaryCode,
         description: target.description,
         currentStock: safeQuantity(target.currentStock),
@@ -215,7 +216,8 @@ function buildReplenishmentItem(
         ),
         remainingGap: safeQuantity(target.remainingGap ?? 0),
       })),
-    ),
+      remainingCount: 0,
+    },
   };
 }
 
