@@ -893,14 +893,12 @@ export function InventoryWorkspace({
   }
 
   function openSummaryShortcut(shortcut: InventoryShortcut) {
-    const plan = inventoryShortcutPlan(shortcut, inventory.configurations);
-    setQuery("");
-    setStatusFilter("all");
+    const plan = inventoryShortcutPlan(shortcut);
     const physicalGroup = plan.physicalGroup;
     if (physicalGroup) {
+      setQuery("");
+      setStatusFilter("all");
       setOpenPhysicalGroups((current) => new Set([...current, physicalGroup]));
-    } else {
-      setOpenFamilies((current) => new Set([...current, ...plan.families]));
     }
     // Effect runs after the opened/cleared view commits, including repeat clicks.
     setScrollRequest({ target: plan.scrollTarget });

@@ -245,23 +245,23 @@ for (const [label, shortcut, destination] of [
   ["Peças avulsas", "LOOSE_PART", "inventory-physical-loose_part"],
   ["Servos com kit", "CONFIGURATION", "configurations-title"],
 ]) {
-  test(`atalho ${label}: handler limpa pesquisa/filtro, abre destino e pede scroll correto`, async () => {
+  test(`atalho ${label}: handler preserva comportamento da categoria e pede scroll correto`, async () => {
     const { data } = await loadInventoryData();
     const source = readFileSync(new URL("../app/(authenticated)/estoque/inventory-workspace.tsx", import.meta.url), "utf8");
     const handlerSource = source.slice(source.indexOf("  function openSummaryShortcut("), source.indexOf("\n  return (", source.indexOf("  function openSummaryShortcut(")))
       .replace("shortcut: InventoryShortcut", "shortcut");
-    const state = { query: "impossível", filter: "with-stock", physical: new Set(["OTHER"]), families: new Set(), scroll: null };
+    const state = { query: "impossível", filter: "with-stock", physical: new Set(["OTHER"]), families: new Set(["Manual"]), scroll: null };
     const handler = new Function("inventoryShortcutPlan", "inventory", "setQuery", "setStatusFilter", "setOpenPhysicalGroups", "setOpenFamilies", "setScrollRequest", `return ${handlerSource}`)(
       inventoryShortcutPlan, data, (query) => { state.query = query; }, (filter) => { state.filter = filter; },
       (update) => { state.physical = update(state.physical); }, (update) => { state.families = update(state.families); },
       (request) => { state.scroll = request; },
     );
     handler(shortcut);
-    assert.equal(state.query, "");
-    assert.equal(state.filter, "all");
+    assert.equal(state.query, shortcut === "CONFIGURATION" ? "impossível" : "");
+    assert.equal(state.filter, shortcut === "CONFIGURATION" ? "with-stock" : "all");
     assert.equal(state.scroll.target, destination);
-    if (shortcut === "CONFIGURATION") assert.deepEqual([...state.families], ["MBF-015"]);
-    else assert.ok(state.physical.has(shortcut));
+    assert.deepEqual([...state.families], ["Manual"], "atalho não altera famílias abertas manualmente");
+    if (shortcut !== "CONFIGURATION") assert.ok(state.physical.has(shortcut));
     assert.ok(state.physical.has("OTHER"));
     const firstScroll = state.scroll;
     handler(shortcut);
@@ -271,11 +271,8 @@ for (const [label, shortcut, destination] of [
   });
 }
 
-test("atalho Servos com kit abre somente famílias com configurações; bundle-only não é adicionado", async () => {
-  const { data } = await loadInventoryData();
-  data.bundles.push({ ...data.bundles[0], family: "Só conjunto" });
-  const plan = inventoryShortcutPlan("CONFIGURATION", data.configurations);
-  assert.deepEqual(plan.families, ["MBF-015"]);
+test("atalho Servos com kit apenas rola até a seção, sem abrir famílias", async () => {
+  const plan = inventoryShortcutPlan("CONFIGURATION");
   assert.equal(plan.physicalGroup, null);
   assert.equal(plan.scrollTarget, "configurations-title");
   const source = readFileSync(new URL("../app/(authenticated)/estoque/inventory-workspace.tsx", import.meta.url), "utf8");
@@ -307,6 +304,14 @@ for (const [label, loader, Component] of [["Entrada", getInboundCatalog, Inbound
     assert.match(html, /Conjunto/);
     assert.match(html, /Montado/);
     assert.match(html, /Pronto/);
+  });
+  test(`${label}: item físico mostra Saldo, não Livre, sem mudar a quantidade`, async () => {
+    const { data } = await loader();
+    const option = data.physicalItems.find((item) => item.itemType === "LOOSE_PART");
+    const html = renderToStaticMarkup(createElement(StockFlowSearchResults, { options: [option], search: option.code, selectedKeys: new Set(), onAdd() {} }));
+    assert.match(html, />Saldo<\/span>/);
+    assert.doesNotMatch(html, />Livre<\/span>/);
+    assert.equal(stockFlowSearchBalance(option), option.balance);
   });
 }
 

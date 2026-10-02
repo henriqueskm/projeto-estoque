@@ -41,7 +41,7 @@ export function StockFlowSearchResults<T extends StockFlowSearchOption>({ option
                     hasImage={option.hasImage} compact triggerVariant="text-link" /> : null}
                 </div>
                 <div className="max-w-24 shrink-0 text-right">
-                  <span className="block text-[0.65rem] text-text-muted">{option.kind === "ITEM" ? "Livre" : option.kind === "COMMERCIAL_CODE" ? "Montado" : "Pronto"}</span>
+                  <span className="block text-[0.65rem] text-text-muted">{option.kind === "ITEM" ? "Saldo" : option.kind === "COMMERCIAL_CODE" ? "Montado" : "Pronto"}</span>
                   <span className="block break-all font-mono text-base font-extrabold tabular-nums text-text-primary">{numberFormatter.format(stockFlowSearchBalance(option))}</span>
                 </div>
                 <StockFlowAddButton isSelected={selectedKeys.has(key)} onAdd={() => onAdd(option)} label={`Adicionar ${noun} ${option.code}`} />
