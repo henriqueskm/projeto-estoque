@@ -9,12 +9,8 @@ import {
   SearchIcon,
   TrashIcon,
 } from "@/components/icons";
-import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
-import { StockFlowSection } from "@/components/stock-flow-section";
-import { StockFlowBundleTable, StockFlowBundleReview } from "@/components/stock-flow-bundles";
-import { StockFlowAddButton } from "@/components/stock-flow-add-button";
-import { buildStockFlowSearch } from "@/lib/stock-flow-search";
-import { physicalItemTypeLabels, type StockFlowBundleCode } from "@/lib/inbound-types";
+import { StockFlowBundleReview } from "@/components/stock-flow-bundles";
+import { StockFlowSearchResults } from "@/components/stock-flow-search-results";
 import {
   buildOutboundPreview,
   type OutboundPreviewInputLine,
@@ -22,8 +18,6 @@ import {
 import type {
   OutboundCatalog,
   OutboundCatalogOption,
-  OutboundCommercialCode,
-  OutboundPhysicalItem,
   OutboundReceipt,
   OutboundRequestLine,
 } from "@/lib/outbound-types";
@@ -40,7 +34,6 @@ type DraftLine = {
 };
 
 type FlowStep = "editing" | "review" | "success";
-type CatalogSection = "separate" | "repair" | "commercial" | "bundles";
 
 function parseQuantity(value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
@@ -65,26 +58,6 @@ function getOptionKey(option: OutboundCatalogOption) {
   return option.kind === "ITEM"
     ? `ITEM:${option.id}`
     : `COMMERCIAL_CODE:${option.commercialCodeId}`;
-}
-
-function getOptionSearchText(option: OutboundCatalogOption) {
-  if (option.kind === "BUNDLE_CODE") return [option.code, option.description, ...option.aliases, "Conjunto"].join(" ");
-  if (option.kind === "ITEM") {
-    return `${option.code} ${option.description} ${option.model ?? ""} ${physicalItemTypeLabels[option.itemType]}`;
-  }
-
-  return [
-    option.code,
-    option.description,
-    ...option.aliases,
-    option.servo.code,
-    option.servo.description,
-    option.servo.model,
-    option.installationKit.code,
-    option.installationKit.description,
-  ]
-    .filter(Boolean)
-    .join(" ");
 }
 
 function Summary({
@@ -128,208 +101,6 @@ function OptionBadge({ option }: { option: OutboundCatalogOption }) {
   );
 }
 
-const catalogHeaderClassName =
-  "bg-brand-charcoal px-2 py-2.5 text-[0.65rem] font-black uppercase tracking-wide text-slate-200 first:rounded-tl-xl last:rounded-tr-xl sm:px-3 sm:text-xs lg:sticky lg:top-0 lg:z-30";
-
-function CatalogAddButton({
-  code,
-  isSelected,
-  onAdd,
-  variant,
-}: {
-  code: string;
-  isSelected: boolean;
-  onAdd: () => void;
-  variant: "physical" | "commercial";
-}) {
-  const addLabel =
-    variant === "physical" ? "Adicionar item" : "Adicionar Servo com kit";
-
-  return (
-    <StockFlowAddButton isSelected={isSelected} onAdd={onAdd} label={`${addLabel} ${code}`} />
-  );
-}
-
-function PhysicalCatalogTable({
-  items,
-  selectedKeys,
-  onAdd,
-}: {
-  items: OutboundPhysicalItem[];
-  selectedKeys: Set<string>;
-  onAdd: (item: OutboundPhysicalItem) => void;
-}) {
-  return (
-    <div className="relative -mx-3 mt-3 overflow-hidden bg-surface sm:mx-0 sm:rounded-xl sm:border sm:border-red-200 sm:shadow-sm lg:overflow-visible">
-      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
-        <caption className="sr-only">
-          Itens disponíveis para adicionar à saída
-        </caption>
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[23%] sm:w-[18%]`}
-            >
-              Código
-            </th>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[55%] sm:w-[58%]`}
-            >
-              Descrição
-            </th>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[22%] text-center sm:w-[24%]`}
-            >
-              Ação
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => {
-            const key = getOptionKey(item);
-            const isSelected = selectedKeys.has(key);
-
-            return (
-              <tr
-                key={key}
-                className="align-middle transition hover:bg-red-50/50"
-              >
-                <th
-                  scope="row"
-                  className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
-                >
-                  <span className="break-all font-mono text-xs font-black text-text-primary sm:text-sm">
-                    {item.code}
-                  </span>
-                </th>
-                <td className="border-t border-border-neutral/70 px-2 py-2.5 sm:px-3">
-                  <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
-                    {item.description}
-                  </p>
-                  <p className="mt-0.5 text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                    {physicalItemTypeLabels[item.itemType]}
-                    {item.model ? ` · ${item.model}` : ""}
-                  </p>
-                  <p className="text-[0.65rem] leading-4 font-bold text-red-900 sm:text-xs">
-                    Saldo avulso: {numberFormatter.format(item.balance)}
-                  </p>
-                </td>
-                <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
-                  <CatalogAddButton
-                    code={item.code}
-                    isSelected={isSelected}
-                    onAdd={() => onAdd(item)}
-                    variant="physical"
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function CommercialCatalogTable({
-  options,
-  selectedKeys,
-  onAdd,
-}: {
-  options: OutboundCommercialCode[];
-  selectedKeys: Set<string>;
-  onAdd: (option: OutboundCommercialCode) => void;
-}) {
-  return (
-    <div className="relative -mx-3 mt-3 overflow-hidden bg-surface sm:mx-0 sm:rounded-xl sm:border sm:border-violet-200 sm:shadow-sm lg:overflow-visible">
-      <table className="w-full table-fixed border-separate border-spacing-0 text-left">
-        <caption className="sr-only">
-          Servos com kit disponíveis para adicionar à saída
-        </caption>
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[23%] sm:w-[18%]`}
-            >
-              Código
-            </th>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[55%] sm:w-[58%]`}
-            >
-              Configuração
-            </th>
-            <th
-              scope="col"
-              className={`${catalogHeaderClassName} w-[22%] text-center sm:w-[24%]`}
-            >
-              Ação
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {options.map((option) => {
-            const key = getOptionKey(option);
-            const isSelected = selectedKeys.has(key);
-
-            return (
-              <tr
-                key={key}
-                className="align-middle transition hover:bg-violet-50/60"
-              >
-                <th
-                  scope="row"
-                  className="border-t border-border-neutral/70 px-2 py-2.5 font-normal sm:px-3"
-                >
-                  <span className="break-all font-mono text-xs font-black text-violet-950 sm:text-sm">
-                    {option.code}
-                  </span>
-                </th>
-                <td className="border-t border-border-neutral/70 px-2 py-2.5 sm:px-3">
-                  <p className="line-clamp-2 break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
-                    {option.description}
-                  </p>
-                  <p className="mt-0.5 break-words text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                    Servo {option.servo.code} · Kit {option.installationKit.code}
-                  </p>
-                  <p className="text-[0.65rem] leading-4 font-bold text-violet-900 sm:text-xs">
-                    Montadas: {numberFormatter.format(option.assembledBalance)}
-                    {option.aliases.length > 0
-                      ? ` · Mesmo Servo com kit: ${option.aliases.join(" / ")}`
-                      : ""}
-                  </p>
-                  <p className="text-[0.65rem] leading-4 font-semibold text-text-muted sm:text-xs">
-                    Componentes separados: servo {numberFormatter.format(option.servo.balance)} · kit {numberFormatter.format(option.installationKit.balance)}
-                  </p>
-                  <CommercialConfigurationImage
-                    commercialCodes={[option.code, ...option.aliases]}
-                    configurationId={option.configurationId}
-                    hasImage={option.hasImage}
-                    compact
-                    triggerVariant="text-link"
-                  />
-                </td>
-                <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
-                  <CatalogAddButton
-                    code={option.code}
-                    isSelected={isSelected}
-                    onAdd={() => onAdd(option)}
-                    variant="commercial"
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export function OutboundEntryFlow({
   catalog,
 }: {
@@ -337,9 +108,6 @@ export function OutboundEntryFlow({
 }) {
   const router = useRouter();
   const [step, setStep] = useState<FlowStep>("editing");
-  const [openSection, setOpenSection] = useState<CatalogSection | null>(
-    null,
-  );
   const [search, setSearch] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [description, setDescription] = useState("");
@@ -350,28 +118,14 @@ export function OutboundEntryFlow({
   const idempotencyKey = useRef<string | null>(null);
   const submissionInFlight = useRef(false);
 
-  const separateItems = useMemo(
-    () =>
-      catalog.physicalItems.filter(
-        (item) => item.itemType !== "REPAIR_KIT",
-      ),
-    [catalog],
-  );
-  const repairItems = useMemo(
-    () =>
-      catalog.physicalItems.filter(
-        (item) => item.itemType === "REPAIR_KIT",
-      ),
-    [catalog],
-  );
   const selectedKeys = useMemo(
     () => new Set(lines.map((line) => getOptionKey(line.option))),
     [lines],
   );
-  const catalogSections = useMemo(() => buildStockFlowSearch<OutboundCatalogOption>(
-    { separate: separateItems, repair: repairItems, commercial: catalog.commercialCodes, bundles: catalog.bundleCodes },
-    search, openSection, getOptionSearchText,
-  ), [catalog.commercialCodes, catalog.bundleCodes, openSection, repairItems, separateItems, search]);
+  const searchOptions = useMemo(
+    () => [...catalog.physicalItems, ...catalog.commercialCodes, ...catalog.bundleCodes],
+    [catalog.physicalItems, catalog.commercialCodes, catalog.bundleCodes],
+  );
   const parsedLines = useMemo<OutboundPreviewInputLine[]>(
     () =>
       lines.flatMap((line) => {
@@ -400,14 +154,6 @@ export function OutboundEntryFlow({
     rotateIdempotencyKey();
     setValidationError(null);
     setSubmissionError(null);
-  }
-
-  function toggleCatalogSection(section: CatalogSection) {
-    if (isPending || search.trim()) {
-      return;
-    }
-
-    setOpenSection((current) => (current === section ? null : section));
   }
 
   function addOption(option: OutboundCatalogOption) {
@@ -571,7 +317,6 @@ export function OutboundEntryFlow({
     setLines([]);
     setDescription("");
     setSearch("");
-    setOpenSection(null);
     setValidationError(null);
     setSubmissionError(null);
     setReceipt(null);
@@ -579,57 +324,6 @@ export function OutboundEntryFlow({
     setStep("editing");
     router.refresh();
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function renderCatalogResults(section: CatalogSection) {
-    const filteredOptions = catalogSections[section].results;
-    return (
-      <>
-        <p
-          className="text-xs font-bold text-text-muted"
-          aria-live="polite"
-        >
-          {!search.trim()
-            ? `${numberFormatter.format(filteredOptions.length)} opções disponíveis`
-            : filteredOptions.length === 1
-              ? "1 opção encontrada"
-              : `${numberFormatter.format(filteredOptions.length)} opções encontradas`}
-        </p>
-
-        {filteredOptions.length === 0 ? (
-          <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
-            <SearchIcon className="mx-auto size-8 text-text-muted" />
-            <h4 className="mt-3 font-black text-text-primary">
-              Nenhum resultado
-            </h4>
-            <p className="mt-1 text-sm font-semibold text-text-muted">
-              Tente pesquisar por outro código, descrição, modelo, servo ou
-              kit.
-            </p>
-          </div>
-        ) : section === "bundles" ? (
-          <StockFlowBundleTable options={filteredOptions.filter((option): option is StockFlowBundleCode => option.kind === "BUNDLE_CODE")} selectedKeys={selectedKeys} onAdd={addOption} />
-        ) : section === "commercial" ? (
-          <CommercialCatalogTable
-            options={filteredOptions.filter(
-              (option): option is OutboundCommercialCode =>
-                option.kind === "COMMERCIAL_CODE",
-            )}
-            selectedKeys={selectedKeys}
-            onAdd={addOption}
-          />
-        ) : (
-          <PhysicalCatalogTable
-            items={filteredOptions.filter(
-              (option): option is OutboundPhysicalItem =>
-                option.kind === "ITEM",
-            )}
-            selectedKeys={selectedKeys}
-            onAdd={addOption}
-          />
-        )}
-      </>
-    );
   }
 
   if (step === "success" && receipt) {
@@ -1114,7 +808,7 @@ export function OutboundEntryFlow({
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
-        <div className="sm:rounded-3xl sm:border sm:border-border-neutral sm:bg-surface sm:p-6 sm:shadow-sm">
+        <div className="min-w-0 sm:rounded-3xl sm:border sm:border-border-neutral sm:bg-surface sm:p-6 sm:shadow-sm">
           <div>
             <h2 className="text-xl font-black text-text-primary">
               Selecione itens ou códigos
@@ -1142,51 +836,9 @@ export function OutboundEntryFlow({
                 className="nk-field min-h-13 w-full rounded-2xl border pr-4 pl-12 text-base font-semibold outline-none transition placeholder:text-text-muted"
               />
             </div>
-            <p className="mt-2 text-xs font-semibold text-text-muted">
-              A pesquisa permanece ao trocar de categoria.
-            </p>
           </div>
 
-          <div className="mt-4 space-y-3">
-            <StockFlowSection
-              id="outbound-separate-section"
-              title="Item separado"
-              description="Servos, kits de instalação e peças avulsas"
-              count={catalogSections.separate.count}
-              isOpen={catalogSections.separate.isOpen}
-              onToggle={() => toggleCatalogSection("separate")}
-              allowStickyContent
-            >
-              {renderCatalogResults("separate")}
-            </StockFlowSection>
-
-            <StockFlowSection
-              id="outbound-repair-section"
-              title="Reparo"
-              description="Jogos e kits de reparo"
-              count={catalogSections.repair.count}
-              isOpen={catalogSections.repair.isOpen}
-              onToggle={() => toggleCatalogSection("repair")}
-              allowStickyContent
-            >
-              {renderCatalogResults("repair")}
-            </StockFlowSection>
-
-            <StockFlowSection
-              id="outbound-commercial-section"
-              title="Servo com kit"
-              description="Configurações identificadas por código comercial"
-              count={catalogSections.commercial.count}
-              isOpen={catalogSections.commercial.isOpen}
-              onToggle={() => toggleCatalogSection("commercial")}
-              allowStickyContent
-            >
-              {renderCatalogResults("commercial")}
-            </StockFlowSection>
-            <StockFlowSection id="outbound-bundles-section" title="Conjuntos" description="Saída somente do saldo pronto, sem montagem automática" count={catalogSections.bundles.count} isOpen={catalogSections.bundles.isOpen} onToggle={() => toggleCatalogSection("bundles")} allowStickyContent>
-              {renderCatalogResults("bundles")}
-            </StockFlowSection>
-          </div>
+          <StockFlowSearchResults options={searchOptions} search={search} selectedKeys={selectedKeys} onAdd={addOption} />
         </div>
 
         <div className="rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6 lg:sticky lg:top-24">

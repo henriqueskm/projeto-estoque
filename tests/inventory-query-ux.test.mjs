@@ -89,35 +89,27 @@ function inventorySnapshot() {
   };
 }
 
-function extractFunction(source, name, nextName) {
-  const start = source.indexOf(`function ${name}`);
-  const end = source.indexOf(`function ${nextName}`, start + 1);
-  return source.slice(start, end === -1 ? undefined : end);
-}
-
-for (const [label, path, searchId, nextFunction] of [
+for (const [label, path, searchId] of [
   [
     "Entrada",
     "app/(authenticated)/entrada/inbound-entry-flow.tsx",
     "inbound-search",
-    "addOption",
   ],
   [
     "Saída",
     "app/(authenticated)/saida/outbound-entry-flow.tsx",
     "outbound-search",
-    "addOption",
   ],
 ]) {
-  test(`busca global da ${label} permanece preenchida ao trocar de aba`, () => {
+  test(`busca global da ${label} permanece controlada antes dos resultados únicos`, () => {
     const source = read(path);
-    const toggle = extractFunction(source, "toggleCatalogSection", nextFunction);
-
-    assert.doesNotMatch(toggle, /setSearch\(\s*["']{2}\s*\)/);
+    assert.match(source, /value=\{search\}/);
+    assert.match(source, /setSearch\(event\.target\.value\.slice/);
+    assert.doesNotMatch(source, /StockFlowSection|toggleCatalogSection/);
     assert.ok(
       source.indexOf(`id="${searchId}"`) <
-        source.indexOf("<StockFlowSection"),
-      "o campo de pesquisa deve aparecer antes das abas de categoria",
+        source.indexOf("<StockFlowSearchResults"),
+      "o campo de pesquisa deve aparecer antes dos resultados unificados",
     );
   });
 }

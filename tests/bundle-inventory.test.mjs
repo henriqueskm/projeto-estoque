@@ -29,6 +29,9 @@ import { submitStockOutbound, submitInventorySale } from "../app/(authenticated)
 import { InventorySaleDialog } from "../components/inventory-sale-dialog.tsx";
 import { buildInventorySaleRequest, createInventorySaleAttempt, formatInventorySaleFeedback, inventorySaleAvailable, inventorySaleCodes } from "../lib/inventory-sale.ts";
 import { matchesCatalogSearch } from "../lib/catalog-search.ts";
+import { StockFlowSearchResults } from "../components/stock-flow-search-results.tsx";
+import { buildStockFlowSearchResults, stockFlowSearchCategory, stockFlowSearchBalance, stockFlowSearchKey } from "../lib/stock-flow-search-results.ts";
+import { inventoryShortcutPlan } from "../lib/inventory-shortcuts.ts";
 import { executeCatalogWrite } from "../lib/catalog-writer.ts";
 import { StockFlowAddButton } from "../components/stock-flow-add-button.tsx";
 
@@ -234,6 +237,151 @@ function saleTarget(kind, available) {
   if (kind === "CONFIGURATION") return { kind, configurationId, commercialCodes: ["1H"], commercialAliases: [{ id: id(11), code: "1H", isActive: true }], description: "1H montado", isActive: true, assembledQuantity: available, minimumStock: 0, servo: { id: id(1), isActive: true, looseQuantity: 5 }, installationKit: { id: id(2), isActive: true, looseQuantity: 5 } };
   return { kind, bundleId, commercialCodes: ["1HC"], commercialAliases: [{ id: id(21), code: "1HC", isActive: true }], description: "Conjunto 1HC", isActive: true, readyQuantity: available, maximumAssemblable: 5, minimumStock: 0, recipe: [] };
 }
+
+for (const [label, shortcut, destination] of [
+  ["Servos sem kit", "SERVO", "inventory-physical-servo"],
+  ["Kits avulsos", "INSTALLATION_KIT", "inventory-physical-installation_kit"],
+  ["Reparos", "REPAIR_KIT", "inventory-physical-repair_kit"],
+  ["Peças avulsas", "LOOSE_PART", "inventory-physical-loose_part"],
+  ["Servos com kit", "CONFIGURATION", "configurations-title"],
+]) {
+  test(`atalho ${label}: handler limpa pesquisa/filtro, abre destino e pede scroll correto`, async () => {
+    const { data } = await loadInventoryData();
+    const source = readFileSync(new URL("../app/(authenticated)/estoque/inventory-workspace.tsx", import.meta.url), "utf8");
+    const handlerSource = source.slice(source.indexOf("  function openSummaryShortcut("), source.indexOf("\n  return (", source.indexOf("  function openSummaryShortcut(")))
+      .replace("shortcut: InventoryShortcut", "shortcut");
+    const state = { query: "impossível", filter: "with-stock", physical: new Set(["OTHER"]), families: new Set(), scroll: null };
+    const handler = new Function("inventoryShortcutPlan", "inventory", "setQuery", "setStatusFilter", "setOpenPhysicalGroups", "setOpenFamilies", "setScrollRequest", `return ${handlerSource}`)(
+      inventoryShortcutPlan, data, (query) => { state.query = query; }, (filter) => { state.filter = filter; },
+      (update) => { state.physical = update(state.physical); }, (update) => { state.families = update(state.families); },
+      (request) => { state.scroll = request; },
+    );
+    handler(shortcut);
+    assert.equal(state.query, "");
+    assert.equal(state.filter, "all");
+    assert.equal(state.scroll.target, destination);
+    if (shortcut === "CONFIGURATION") assert.deepEqual([...state.families], ["MBF-015"]);
+    else assert.ok(state.physical.has(shortcut));
+    assert.ok(state.physical.has("OTHER"));
+    const firstScroll = state.scroll;
+    handler(shortcut);
+    assert.notEqual(state.scroll, firstScroll, "repeat click schedules a fresh scroll even to the same target");
+    const html = renderToStaticMarkup(createElement(InventoryWorkspace, { inventory: data }));
+    assert.match(html, new RegExp(`<button[^>]*type="button"[^>]*aria-label="Ver ${label}"[^>]*class="[^"]*nk-focus`));
+  });
+}
+
+test("atalho Servos com kit abre somente famílias com configurações; bundle-only não é adicionado", async () => {
+  const { data } = await loadInventoryData();
+  data.bundles.push({ ...data.bundles[0], family: "Só conjunto" });
+  const plan = inventoryShortcutPlan("CONFIGURATION", data.configurations);
+  assert.deepEqual(plan.families, ["MBF-015"]);
+  assert.equal(plan.physicalGroup, null);
+  assert.equal(plan.scrollTarget, "configurations-title");
+  const source = readFileSync(new URL("../app/(authenticated)/estoque/inventory-workspace.tsx", import.meta.url), "utf8");
+  assert.match(source, /scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/);
+  assert.match(source, /scroll-mt-24/);
+});
+
+for (const [label, loader, Component] of [["Entrada", getInboundCatalog, InboundEntryFlow], ["Saída", getOutboundCatalog, OutboundEntryFlow]]) {
+  for (const query of ["", "   "]) {
+    test(`${label} com pesquisa ${JSON.stringify(query)} não renderiza catálogo nem accordions`, async () => {
+      const { data } = await loader();
+      globalThis.__NK72_SEARCH__ = query;
+      const html = renderToStaticMarkup(createElement(Component, { catalog: data }));
+      assert.match(html, /Digite um código, modelo ou descrição para encontrar um item/);
+      assert.doesNotMatch(html, /data-stock-flow-result=|Adicionar item|Adicionar conjunto|Adicionar Servo com kit/);
+      assert.doesNotMatch(html, /(?:inbound|outbound)-(?:separate|repair|commercial|bundles)-section/);
+      if (label === "Entrada") {
+        assert.match(html, /Nova peça avulsa/);
+        assert.doesNotMatch(html, /id="new-loose-part-code"/);
+      }
+    });
+  }
+  test(`${label}: lista única ordena 1H antes de 1HC e mostra categoria/saldo operacional`, async () => {
+    const { data } = await loader();
+    globalThis.__NK72_SEARCH__ = "1H";
+    const html = renderToStaticMarkup(createElement(Component, { catalog: data }));
+    assert.ok(html.indexOf(`data-stock-flow-result="COMMERCIAL_CODE:${id(11)}"`) < html.indexOf(`data-stock-flow-result="BUNDLE_CODE:${id(21)}"`));
+    assert.match(html, /Servo com kit/);
+    assert.match(html, /Conjunto/);
+    assert.match(html, /Montado/);
+    assert.match(html, /Pronto/);
+  });
+}
+
+test("lista compartilhada mantém saldo livre/montado/pronto e seis categorias distintas", async () => {
+  const { data } = await getInboundCatalog();
+  const options = [...data.physicalItems, ...data.commercialCodes, ...data.bundleCodes];
+  assert.deepEqual(new Set(options.map(stockFlowSearchCategory)), new Set(["Servo sem kit", "Kit de instalação", "Reparo", "Peça avulsa", "Servo com kit", "Conjunto"]));
+  assert.equal(stockFlowSearchBalance(data.physicalItems[0]), 5);
+  assert.equal(stockFlowSearchBalance(data.commercialCodes[0]), 3);
+  assert.equal(stockFlowSearchBalance(data.bundleCodes[0]), 1);
+});
+
+test("lista compartilhada preserva Adicionado/✓ e aria-label; selecionado desabilitado", async () => {
+  const { data } = await getInboundCatalog();
+  const option = data.bundleCodes[0];
+  const html = renderToStaticMarkup(createElement(StockFlowSearchResults, { options: [option], search: "1HC", selectedKeys: new Set([stockFlowSearchKey(option)]), onAdd() {} }));
+  assert.match(html, /aria-label="conjunto 1HC adicionado"/);
+  assert.match(html, /disabled=""/);
+  assert.match(html, /sm:hidden">✓/);
+  assert.match(html, /hidden sm:inline">Adicionado/);
+  assert.equal((html.match(/data-stock-flow-result=/g) ?? []).length, 1);
+});
+
+for (const [label, flow, nextFunction, optionType] of [
+  ["Entrada", "entrada/inbound-entry-flow.tsx", "addNewLoosePart", "InboundCatalogOption"],
+  ["Saída", "saida/outbound-entry-flow.tsx", "changeQuantity", "OutboundCatalogOption"],
+]) {
+  test(`${label}: handler existente adiciona ao carrinho uma vez e mantém quantidade no carrinho`, async () => {
+    const { data } = await getInboundCatalog();
+    const option = data.bundleCodes[0];
+    const source = readFileSync(new URL(`../app/(authenticated)/${flow}`, import.meta.url), "utf8");
+    const handlerSource = source.slice(source.indexOf("  function addOption("), source.indexOf(`  function ${nextFunction}(`))
+      .replace(`option: ${optionType}`, "option");
+    let lines = [], payloadChanges = 0;
+    const renderHandler = () => new Function("selectedKeys", "getOptionKey", "isPending", "markPayloadChanged", "setLines", `return ${handlerSource}`)(
+      new Set(lines.map((line) => stockFlowSearchKey(line.option))), stockFlowSearchKey, false,
+      () => { payloadChanges++; }, (update) => { lines = update(lines); },
+    );
+    renderHandler()(option);
+    renderHandler()(option);
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0].quantity, "1");
+    assert.equal(lines[0].option, option);
+    assert.equal(payloadChanges, 1);
+  });
+}
+
+test("ranking determinístico prioriza código exato, equivalência de modelo/código, prefixo e descrição", () => {
+  const base = { kind: "ITEM", itemType: "SERVO", balance: 0, description: "contém MBF015", model: null };
+  const options = [
+    { ...base, id: id(1), code: "OUTRO" },
+    { ...base, id: id(2), code: "MBF015-EXTRA" },
+    { ...base, id: id(3), code: "MBF-015" },
+    { ...base, id: id(4), code: "MBF015" },
+  ];
+  assert.deepEqual(buildStockFlowSearchResults(options, "MBF015").results.map((option) => option.code), ["MBF015", "MBF-015", "MBF015-EXTRA", "OUTRO"]);
+  assert.equal(buildStockFlowSearchResults(options, "inexistente").total, 0);
+});
+
+test("pesquisa ampla limita a 30 sem truncar a contagem e mantém código exato primeiro", () => {
+  const options = Array.from({ length: 54 }, (_, n) => ({ kind: "ITEM", id: id(100 + n), code: `P${n}`, itemType: "LOOSE_PART", model: null, description: "Componente genérico", balance: 1 }));
+  const found = buildStockFlowSearchResults(options, "componente");
+  assert.equal(found.total, 54);
+  assert.equal(found.results.length, 30);
+  const html = renderToStaticMarkup(createElement(StockFlowSearchResults, { options, search: "componente", selectedKeys: new Set(), onAdd() {} }));
+  assert.match(html, /Mostrando 30 de 54 resultados. Refine a pesquisa/);
+  assert.equal(buildStockFlowSearchResults(options, "P53").results[0].code, "P53");
+});
+
+test("pesquisa específica por modelo compacto não esconde mais de 30 correspondências fortes", () => {
+  const options = Array.from({ length: 35 }, (_, n) => ({ kind: "ITEM", id: id(100 + n), code: `P${n}`, itemType: "SERVO", model: "MBF-015", description: "Servo", balance: 1 }));
+  const found = buildStockFlowSearchResults(options, "MBF015");
+  assert.equal(found.total, 35);
+  assert.equal(found.results.length, 35);
+});
 
 for (const [kind, available] of [["ITEM", 0], ["CONFIGURATION", 2], ["BUNDLE", 1]]) {
   test(`Venda ${kind}: limite é saldo livre/pronto, nunca físico/capacidade`, () => {
@@ -977,71 +1125,33 @@ for (const [label, loader, Component, file] of [
     "saida/outbound-entry-flow.tsx",
   ],
 ]) {
-  test(`${label} oferece 1HC como Conjunto, busca abre seção própria sem confundir configuração`, async () => {
+  test(`${label} oferece 1HC nos resultados unificados, com categoria e saldo pronto`, async () => {
     const result = await loader();
     const catalog = result.catalog ?? result.data;
     assert.ok(catalog);
-    assert.equal(catalog.bundleCodes[0].code, "1HC");
     assert.equal(catalog.bundleCodes[0].kind, "BUNDLE_CODE");
-    assert.ok(
-      !catalog.commercialCodes.some(
-        (code) => code.code === "1HC" || code.commercialCode === "1HC",
-      ),
-    );
+    assert.ok(!catalog.commercialCodes.some((code) => code.code === "1HC"));
     globalThis.__NK72_SEARCH__ = "1H";
     const html = renderToStaticMarkup(createElement(Component, { catalog }));
-    const prefix = label === "Entrada" ? "inbound" : "outbound";
-    assert.match(
-      html,
-      new RegExp(`id="${prefix}-commercial-section"[^>]*aria-expanded="true"`),
-    );
-    assert.ok(html.includes("1H"));
-    assert.ok(html.includes("1HC"));
+    assert.match(html, /Resultados da pesquisa/);
+    assert.match(html, /Conjunto/);
+    assert.match(html, /Servo com kit/);
+    assert.ok(html.indexOf(`data-stock-flow-result="COMMERCIAL_CODE:${id(11)}"`) < html.indexOf(`data-stock-flow-result="BUNDLE_CODE:${id(21)}"`));
     globalThis.__NK72_SEARCH__ = "1HC";
     const bundleHtml = renderToStaticMarkup(createElement(Component, { catalog }));
-    assert.match(bundleHtml, new RegExp(`id="${prefix}-bundles-section"[^>]*aria-expanded="true"`));
-    assert.match(bundleHtml, new RegExp(`id="${prefix}-commercial-section"[^>]*aria-expanded="false"`));
-    assert.match(bundleHtml, /Saldo pronto/);
-    assert.match(bundleHtml, /class="p-2 sm:p-3"/);
     assert.match(bundleHtml, /Adicionar conjunto 1HC/);
-    const bundleButton = bundleHtml.match(
-      /<button[^>]*aria-label="Adicionar conjunto 1HC"[^>]*class="([^"]+)"[^>]*>/,
-    )?.[1];
-    assert.ok(bundleButton);
-    const source = readFileSync(
-      new URL(`../app/(authenticated)/${file}`, import.meta.url),
-      "utf8",
-    );
-    assert.match(source, /count=\{catalogSections\.commercial\.count\}/);
+    assert.match(bundleHtml, /Pronto/);
+    assert.doesNotMatch(bundleHtml, /(?:inbound|outbound)-(?:separate|repair|commercial|bundles)-section/);
+    const source = readFileSync(new URL(`../app/(authenticated)/${file}`, import.meta.url), "utf8");
     assert.match(source, /bundle_code_id: line.option.bundleCodeId/);
     globalThis.__NK72_SEARCH__ = "Componente";
-    const allCategories = renderToStaticMarkup(
-      createElement(Component, { catalog }),
-    );
-    for (const section of ["separate", "repair", "commercial"]) {
-      assert.match(
-        allCategories,
-        new RegExp(
-          `id="${prefix}-${section}-section"[^>]*aria-expanded="true"`,
-        ),
-      );
-    }
-    const addButtons = [
-      ...allCategories.matchAll(
-        /<button[^>]*aria-label="Adicionar (?:item|Servo com kit) [^"]+"[^>]*class="([^"]+)"[^>]*>/g,
-      ),
-    ];
-    assert.ok(
-      addButtons.length >= 3,
-      "all physical/repair/commercial buttons share responsive presentation",
-    );
-    for (const button of addButtons) assert.equal(button[1], bundleButton);
+    const allCategories = renderToStaticMarkup(createElement(Component, { catalog }));
+    assert.match(allCategories, /Peça avulsa/);
+    assert.match(allCategories, /Reparo/);
     globalThis.__NK72_SEARCH__ = "";
     const cleared = renderToStaticMarkup(createElement(Component, { catalog }));
-    assert.match(
-      cleared,
-      new RegExp(`id="${prefix}-commercial-section"[^>]*aria-expanded="false"`),
-    );
+    assert.match(cleared, /Digite um código, modelo ou descrição/);
+    assert.doesNotMatch(cleared, /data-stock-flow-result=|Adicionar conjunto|Adicionar item/);
   });
 }
 

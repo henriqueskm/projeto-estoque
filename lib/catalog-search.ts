@@ -4,7 +4,7 @@ export function normalizeCatalogSearch(value: string) {
     .toLocaleLowerCase("pt-BR").trim();
 }
 
-function compact(value: string) {
+export function compactCatalogSearch(value: string) {
   return normalizeCatalogSearch(value).replace(/[^\p{L}\p{N}]/gu, "");
 }
 
@@ -14,9 +14,9 @@ export function matchesCatalogSearch(
 ) {
   const query = normalizeCatalogSearch(search);
   if (!query) return true;
-  const compactQuery = compact(query);
+  const compactQuery = compactCatalogSearch(query);
   return values.some((value) => value != null && (
     normalizeCatalogSearch(value).includes(query) ||
-    (compactQuery.length > 0 && compact(value).includes(compactQuery))
+    (compactQuery.length > 0 && compactCatalogSearch(value).includes(compactQuery))
   ));
 }
