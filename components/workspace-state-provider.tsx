@@ -35,7 +35,9 @@ export function WorkspaceStateProvider({ userId, children }: { userId: string; c
     }
     // Capture a final scroll/state before Next changes the route. No href mutation.
     const beforeNavigate = (event: MouseEvent) => {
-      if (event.target instanceof Element && event.target.closest("a[href]")) {
+      const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (link && link.origin === window.location.origin && link.target !== "_blank" && !link.hasAttribute("download")
+        && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
         window.dispatchEvent(new Event("nk:workspace:before-navigation"));
         store.flush();
       }
@@ -106,14 +108,15 @@ export function useWorkspaceScroll(key: string, defaults: WorkspaceData, enabled
     let frame = 0;
     let attempts = 0;
     let restoring = enabled;
+    let departing = false;
     const initialDefaults = defaultsRef.current;
     const saved = store.read(key)?.scrollTop ?? 0;
     lastPosition.current = saved;
     const save = () => {
-      if (!restoring) { lastPosition.current = window.scrollY; store.scroll(key, window.scrollY, initialDefaults); }
+      if (!restoring && !departing) { lastPosition.current = window.scrollY; store.scroll(key, window.scrollY, initialDefaults); }
     };
     const cancel = () => { cancelled.current = true; restoring = false; };
-    const navigate = () => { cancel(); save(); store.flush(); };
+    const navigate = () => { cancel(); save(); departing = true; store.flush(); };
     function restore() {
       if (cancelled.current || !enabled) { restoring = false; return; }
       const max = document.documentElement.scrollHeight - window.innerHeight;
@@ -130,6 +133,7 @@ export function useWorkspaceScroll(key: string, defaults: WorkspaceData, enabled
     window.addEventListener("keydown", cancel);
     window.addEventListener("nk:workspace:before-navigation", navigate);
     window.addEventListener("pagehide", navigate);
+    window.addEventListener("popstate", navigate);
     return () => {
       window.cancelAnimationFrame(frame);
       // Next may reset window scroll before unmount: retain last observed position.
@@ -140,6 +144,7 @@ export function useWorkspaceScroll(key: string, defaults: WorkspaceData, enabled
       window.removeEventListener("keydown", cancel);
       window.removeEventListener("nk:workspace:before-navigation", navigate);
       window.removeEventListener("pagehide", navigate);
+      window.removeEventListener("popstate", navigate);
       // Next may deactivate/reactivate a retained route without recreating refs.
       // Cancellation applies to this visit, not the next workspace activation.
       cancelled.current = false;

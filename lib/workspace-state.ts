@@ -71,7 +71,7 @@ export function normalizeWorkspaceData(key: string, value: unknown): WorkspaceDa
   if (!isWorkspaceKey(key) || !record(value)) return null;
   let clean: WorkspaceData;
   if (key === "estoque") clean = {
-    query: text(value.query), statusFilter: choice(value.statusFilter, ["all", "attention", "low", "zero", "with-stock"]),
+    query: text(value.query), statusFilter: choice(value.statusFilter, ["all", "attention", "low", "zero", "with-stock", "with-minimum"]),
     sort: choice(value.sort, ["code", "description", "quantity"]), areFiltersOpen: typeof value.areFiltersOpen === "boolean" ? value.areFiltersOpen : undefined,
     openPhysicalGroups: stringArray(value.openPhysicalGroups, 4)?.filter(x => ["SERVO", "INSTALLATION_KIT", "REPAIR_KIT", "LOOSE_PART"].includes(x)),
     openFamilies: stringArray(value.openFamilies, 200),

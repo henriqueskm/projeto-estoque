@@ -229,3 +229,15 @@ test("sidebar prefetch uses resolved href while retaining idle/intent/dedup poli
 test("scroll cancellation does not leak into a retained route's next activation", () => {
   assert.match(read("components/workspace-state-provider.tsx"), /removeEventListener\("pagehide", navigate\);[\s\S]*?cancelled.current = false/);
 });
+test("inventory preserves the existing with-minimum filter too", () => {
+  const { store, medium } = storeFor();
+  store.set("estoque", { ...inventoryWorkspaceDefaults, statusFilter: "with-minimum" }); store.flush();
+  assert.equal(storeFor(id(100), medium).store.read("estoque").data.statusFilter, "with-minimum");
+});
+test("route reset cannot overwrite scroll captured before navigation", () => {
+  const source = read("components/workspace-state-provider.tsx");
+  assert.match(source, /!restoring && !departing/);
+  assert.match(source, /cancel\(\); save\(\); departing = true; store.flush\(\)/);
+  assert.match(source, /link.origin === window.location.origin/);
+  assert.match(source, /addEventListener\("popstate", navigate\)/);
+});
