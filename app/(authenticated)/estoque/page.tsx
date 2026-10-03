@@ -92,9 +92,10 @@ export default async function InventoryPage({
         </>
       ) : (
         <InventoryWorkspace
-          key={`${initialStatusFilter}-${initialTarget?.kind ?? "none"}-${initialTarget?.id ?? "none"}`}
+          key={`${resolvedSearchParams.status !== undefined ? "explicit" : "resume"}-${initialStatusFilter}-${initialTarget?.kind ?? "none"}-${initialTarget?.id ?? "none"}`}
           inventory={inventoryResult.data}
           initialStatusFilter={initialStatusFilter}
+          hasExplicitStatusFilter={resolvedSearchParams.status !== undefined}
           initialTarget={initialTarget}
           isPurchaseRecommendationsInitiallyOpen={
             isPurchaseRecommendationsOpen

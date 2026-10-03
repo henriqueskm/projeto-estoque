@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useWorkspaceState, useWorkspaceScroll } from "@/components/workspace-state-provider";
 import { ArrowLeftIcon, ChevronDownIcon, SearchIcon } from "@/components/icons";
 import {
   filterVehicleApplications,
@@ -34,10 +35,12 @@ export function ApplicationsWorkspace({
   applications,
   authoritativeSourceKitCodes,
 }: ApplicationsWorkspaceProps) {
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<
-    VehicleApplicationCategory | "ALL"
-  >("ALL");
+  const workspaceKey = `aplicacoes:${brand.slug}`;
+  const workspace = useWorkspaceState(workspaceKey, { query: "", category: "ALL" as VehicleApplicationCategory | "ALL" });
+  const { query, category } = workspace.state;
+  const setQuery = (value: string) => workspace.setState(current => ({ ...current, query: value }));
+  const setCategory = (value: VehicleApplicationCategory | "ALL") => workspace.setState(current => ({ ...current, category: value }));
+  useWorkspaceScroll(workspaceKey, { query: "", category: "ALL" });
   const availableCategories = useMemo(
     () =>
       categoryOrder.filter((candidate) =>

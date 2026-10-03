@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition, type SetStateAction } from "react";
+import { useStockFlowWorkspace } from "@/components/use-stock-flow-workspace";
 import {
   CheckIcon,
   InboundIcon,
@@ -33,11 +34,6 @@ const maximumItemCodeLength = 120;
 const maximumSearchLength = 120;
 const maximumLines = 500;
 const numberFormatter = new Intl.NumberFormat("pt-BR");
-
-type DraftLine = {
-  option: InboundCatalogOption;
-  quantity: string;
-};
 
 type FlowStep = "editing" | "review" | "success";
 
@@ -139,23 +135,24 @@ export function InboundEntryFlow({
   catalog: InboundCatalog;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState<FlowStep>("editing");
-  const [search, setSearch] = useState("");
-  const [isNewLoosePartOpen, setIsNewLoosePartOpen] = useState(false);
-  const [newLoosePartCode, setNewLoosePartCode] = useState("");
-  const [newLoosePartDescription, setNewLoosePartDescription] =
-    useState("");
-  const [newLoosePartQuantity, setNewLoosePartQuantity] = useState("1");
-  const [newLoosePartError, setNewLoosePartError] = useState<string | null>(
-    null,
-  );
-  const [lines, setLines] = useState<DraftLine[]>([]);
-  const [description, setDescription] = useState("");
+  const workspace = useStockFlowWorkspace<InboundCatalogOption>("entrada", catalog);
+  const { search, description } = workspace.state;
+  const { lines, setLines } = workspace;
+  const [receipt, setReceipt] = useState<InboundReceipt | null>(null);
+  const step: FlowStep = receipt ? "success" : workspace.state.step;
+  const setStep = (value: FlowStep) => { if (value !== "success") workspace.setField("step", value); };
+  const setSearch = (value: string) => workspace.setField("search", value);
+  const setDescription = (value: string) => workspace.setField("description", value);
+  const { isNewLoosePartOpen, newLoosePartCode, newLoosePartDescription, newLoosePartQuantity } = workspace.state;
+  const setIsNewLoosePartOpen = (value: SetStateAction<boolean>) => workspace.setField("isNewLoosePartOpen", value);
+  const setNewLoosePartCode = (value: string) => workspace.setField("newLoosePartCode", value);
+  const setNewLoosePartDescription = (value: string) => workspace.setField("newLoosePartDescription", value);
+  const setNewLoosePartQuantity = (value: string) => workspace.setField("newLoosePartQuantity", value);
+  const [newLoosePartError, setNewLoosePartError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<InboundReceipt | null>(null);
   const [isPending, startTransition] = useTransition();
-  const idempotencyKey = useRef<string | null>(null);
+
   const submissionInFlight = useRef(false);
 
   const selectedKeys = useMemo(
@@ -183,7 +180,7 @@ export function InboundEntryFlow({
   );
 
   function rotateIdempotencyKey() {
-    idempotencyKey.current = globalThis.crypto.randomUUID();
+    workspace.setField("idempotencyKey", globalThis.crypto.randomUUID());
   }
 
   function markPayloadChanged() {
@@ -368,6 +365,7 @@ export function InboundEntryFlow({
   }
 
   function reviewEntry() {
+    workspace.cancelScrollRestore();
     const error = validateDraft();
 
     if (error) {
@@ -382,6 +380,7 @@ export function InboundEntryFlow({
   }
 
   function returnToEditing() {
+    workspace.cancelScrollRestore();
     if (isPending) {
       return;
     }
@@ -422,6 +421,7 @@ export function InboundEntryFlow({
   }
 
   function confirmEntry() {
+    if (workspace.needsReconciliation) return;
     if (isPending || submissionInFlight.current) {
       return;
     }
@@ -435,8 +435,9 @@ export function InboundEntryFlow({
     }
 
     const key =
-      idempotencyKey.current ?? globalThis.crypto.randomUUID();
-    idempotencyKey.current = key;
+      workspace.state.idempotencyKey ?? globalThis.crypto.randomUUID();
+    workspace.setField("idempotencyKey", key);
+    workspace.persistNow();
     submissionInFlight.current = true;
     setSubmissionError(null);
 
@@ -453,8 +454,9 @@ export function InboundEntryFlow({
           return;
         }
 
+        workspace.clear();
+        workspace.cancelScrollRestore();
         setReceipt(result.receipt);
-        rotateIdempotencyKey();
         setStep("success");
         window.scrollTo({ top: 0, behavior: "smooth" });
       } catch {
@@ -468,6 +470,8 @@ export function InboundEntryFlow({
   }
 
   function startNewEntry() {
+    workspace.clear();
+    workspace.cancelScrollRestore();
     setLines([]);
     setDescription("");
     setSearch("");
@@ -1017,6 +1021,7 @@ export function InboundEntryFlow({
           </div>
 
           {renderNewLoosePartForm()}
+          {workspace.reconciliationNotice ? <p role="status" className="mb-3 text-sm font-bold text-amber-900">Um item salvo neste rascunho não está mais disponível e foi removido. Revise os itens antes de confirmar.</p> : null}
           <StockFlowSearchResults options={searchOptions} search={search} selectedKeys={selectedKeys} onAdd={addOption} />
         </div>
 

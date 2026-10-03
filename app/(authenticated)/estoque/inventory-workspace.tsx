@@ -1,5 +1,8 @@
 "use client";
 
+import { useWorkspaceState, useWorkspaceScroll } from "@/components/workspace-state-provider";
+import { inventoryWorkspaceDefaults } from "@/lib/workspace-state";
+
 import {
   useEffect,
   useMemo,
@@ -34,6 +37,7 @@ import type {
 type InventoryWorkspaceProps = {
   inventory: InventoryData;
   initialStatusFilter?: InventoryStatusFilter;
+  hasExplicitStatusFilter?: boolean;
   initialTarget?: InventoryDeepLinkTarget;
   isPurchaseRecommendationsInitiallyOpen?: boolean;
 };
@@ -600,6 +604,7 @@ function FilterIcon() {
 export function InventoryWorkspace({
   inventory,
   initialStatusFilter = "all",
+  hasExplicitStatusFilter = false,
   initialTarget,
   isPurchaseRecommendationsInitiallyOpen = false,
 }: InventoryWorkspaceProps) {
@@ -619,25 +624,23 @@ export function InventoryWorkspace({
         targetedConfiguration.servo.description,
       )
     : null;
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState<InventoryStatusFilter>(initialStatusFilter);
-  const [sort, setSort] = useState<InventorySort>("code");
-  const [areFiltersOpen, setAreFiltersOpen] = useState(
-    initialStatusFilter !== "all",
-  );
-  const [openPhysicalGroups, setOpenPhysicalGroups] = useState<Set<string>>(
-    () =>
-      new Set(
-        targetedPhysicalItem ? [targetedPhysicalItem.itemType] : [],
-      ),
-  );
-  const [openFamilies, setOpenFamilies] = useState<Set<string>>(
-    () =>
-      new Set(
-        targetedConfigurationFamily ? [targetedConfigurationFamily] : [],
-      ),
-  );
+  const workspace = useWorkspaceState("estoque", {
+    ...inventoryWorkspaceDefaults, statusFilter: "all" as InventoryStatusFilter, sort: "code" as InventorySort,
+  }, initialTarget ? {
+    query: "", statusFilter: initialStatusFilter, areFiltersOpen: initialStatusFilter !== "all",
+    openPhysicalGroups: targetedPhysicalItem ? [targetedPhysicalItem.itemType] : [],
+    openFamilies: targetedConfigurationFamily ? [targetedConfigurationFamily] : [],
+  } : hasExplicitStatusFilter ? { statusFilter: initialStatusFilter, areFiltersOpen: initialStatusFilter !== "all" } : undefined);
+  const { query, statusFilter, sort, areFiltersOpen } = workspace.state;
+  const setQuery = (value: string) => workspace.setState(current => ({ ...current, query: value }));
+  const setStatusFilter = (value: InventoryStatusFilter) => workspace.setState(current => ({ ...current, statusFilter: value }));
+  const setSort = (value: InventorySort) => workspace.setState(current => ({ ...current, sort: value }));
+  const setAreFiltersOpen = (value: SetStateAction<boolean>) => workspace.setState(current => ({ ...current, areFiltersOpen: typeof value === "function" ? value(current.areFiltersOpen) : value }));
+  const openPhysicalGroups = useMemo(() => new Set(workspace.state.openPhysicalGroups), [workspace.state.openPhysicalGroups]);
+  const openFamilies = useMemo(() => new Set(workspace.state.openFamilies), [workspace.state.openFamilies]);
+  const setOpenPhysicalGroups = (update: SetStateAction<Set<string>>) => workspace.setState(current => ({ ...current, openPhysicalGroups: Array.from(typeof update === "function" ? update(new Set(current.openPhysicalGroups)) : update) }));
+  const setOpenFamilies = (update: SetStateAction<Set<string>>) => workspace.setState(current => ({ ...current, openFamilies: Array.from(typeof update === "function" ? update(new Set(current.openFamilies)) : update) }));
+  const cancelScrollRestore = useWorkspaceScroll("estoque", inventoryWorkspaceDefaults, !initialTarget && !isPurchaseRecommendationsInitiallyOpen);
   const normalizedQuery = normalizeSearch(query.trim());
   const [scrollRequest, setScrollRequest] = useState<{ target: string } | null>(null);
   const hasSearch = normalizedQuery.length > 0;
@@ -902,6 +905,7 @@ export function InventoryWorkspace({
       setOpenPhysicalGroups((current) => new Set([...current, physicalGroup]));
     }
     // Effect runs after the opened/cleared view commits, including repeat clicks.
+    cancelScrollRestore();
     setScrollRequest({ target: plan.scrollTarget });
   }
 

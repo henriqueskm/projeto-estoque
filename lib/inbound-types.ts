@@ -50,7 +50,8 @@ export type InboundNewLoosePart = {
   description: string;
   itemType: "LOOSE_PART";
   model: null;
-  balance: 0;
+  // A restored, unacknowledged create may already exist after a lost response.
+  balance: number;
 };
 
 export type InboundCatalog = {

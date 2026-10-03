@@ -16,28 +16,16 @@ import {
 } from "@/lib/statistics-calculations";
 import { fetchAllStatisticsRows } from "@/lib/statistics-pagination";
 import {
-  statisticsPeriods,
+
   type StatisticsDataResult,
   type StatisticsPeriod,
-  type StatisticsSearchParams,
+
 } from "@/lib/statistics-types";
 import { createClient } from "@/lib/supabase/server";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
-function firstValue(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-export function parseStatisticsPeriod(
-  searchParams: StatisticsSearchParams,
-): StatisticsPeriod {
-  const value = Number(firstValue(searchParams.periodo));
-
-  return statisticsPeriods.includes(value as StatisticsPeriod)
-    ? (value as StatisticsPeriod)
-    : 90;
-}
+export { parseStatisticsPeriod } from "@/lib/statistics-types";
 
 function chunks<T>(values: T[], size = 100) {
   const result: T[][] = [];

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useWorkspaceResumeHref, useWorkspaceResumeResolver } from "@/components/workspace-state-provider";
 import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
@@ -92,15 +93,16 @@ function NavigationLink({
   nested?: boolean;
 }) {
   const isActive = isCurrentSection(pathname, href);
+  const resumeHref = useWorkspaceResumeHref(href);
 
   return (
     <Link
-      href={href}
+      href={resumeHref}
       prefetch={false}
       aria-current={isActive ? "page" : undefined}
       onClick={onNavigate}
-      onPointerEnter={() => onIntent(href)}
-      onFocus={() => onIntent(href)}
+      onPointerEnter={() => onIntent(resumeHref)}
+      onFocus={() => onIntent(resumeHref)}
       className={`nk-focus flex min-h-11 items-center gap-3 rounded-xl text-sm font-black transition ${
         nested ? "px-3 pl-11" : "px-3"
       } ${
@@ -289,6 +291,7 @@ function NavigationContent({
 export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const resolveHref = useWorkspaceResumeResolver();
   const isAssistantHome = pathname === "/";
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDrawerClosing, setIsDrawerClosing] = useState(false);
@@ -304,17 +307,18 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
 
   const warmRoute = useCallback(
     (href: string) => {
+      const resolvedHref = resolveHref(href);
       if (
-        isCurrentSection(pathname, href) ||
-        prefetchedRoutesRef.current.has(href)
+        isCurrentSection(pathname, resolvedHref.split("?")[0]) ||
+        prefetchedRoutesRef.current.has(resolvedHref)
       ) {
         return;
       }
 
-      prefetchedRoutesRef.current.add(href);
-      router.prefetch(href);
+      prefetchedRoutesRef.current.add(resolvedHref);
+      router.prefetch(resolvedHref);
     },
-    [pathname, router],
+    [pathname, router, resolveHref],
   );
 
   const closeDrawer = useCallback((restoreFocus = false) => {

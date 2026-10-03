@@ -1,4 +1,6 @@
+import { WorkspaceScroll } from "@/components/workspace-state-provider";
 import Link from "next/link";
+import { createHistoryHref } from "@/lib/history-query";
 import { measurePerformanceAudit } from "@/lib/performance-audit";
 import {
   ArrowLeftIcon,
@@ -47,43 +49,7 @@ function formatDate(value: string) {
     : dateFormatter.format(date);
 }
 
-function createHistoryHref(
-  filters: HistoryFilters,
-  page = filters.page,
-) {
-  const params = new URLSearchParams();
 
-  if (filters.type !== "ALL") {
-    params.set("tipo", filters.type);
-  }
-
-  if (filters.source !== "ALL") {
-    params.set("origem", filters.source);
-  }
-
-  if (filters.dateFrom) {
-    params.set("dataInicial", filters.dateFrom);
-  }
-
-  if (filters.dateTo) {
-    params.set("dataFinal", filters.dateTo);
-  }
-
-  if (filters.user) {
-    params.set("usuario", filters.user);
-  }
-
-  if (filters.query) {
-    params.set("busca", filters.query);
-  }
-
-  if (page > 1) {
-    params.set("pagina", String(page));
-  }
-
-  const query = params.toString();
-  return query ? `/historico?${query}` : "/historico";
-}
 
 function hasActiveFilters(filters: HistoryFilters) {
   return Boolean(
@@ -169,6 +135,7 @@ export default async function HistoryPage({
 
   return (
     <main data-nk-perf-ready="/historico" className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
+      <WorkspaceScroll workspace="historico" />
       <Link
         href="/"
         className="nk-focus inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-bold text-text-primary transition hover:bg-surface"

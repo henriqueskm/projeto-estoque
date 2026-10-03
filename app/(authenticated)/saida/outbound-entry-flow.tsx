@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
+import { useStockFlowWorkspace } from "@/components/use-stock-flow-workspace";
 import {
   CheckIcon,
   OutboundIcon,
@@ -28,11 +29,6 @@ const maximumQuantity = 2_147_483_647;
 const maximumDescriptionLength = 500;
 const maximumSearchLength = 120;
 const numberFormatter = new Intl.NumberFormat("pt-BR");
-
-type DraftLine = {
-  option: OutboundCatalogOption;
-  quantity: string;
-};
 
 type FlowStep = "editing" | "review" | "success";
 
@@ -108,15 +104,18 @@ export function OutboundEntryFlow({
   catalog: OutboundCatalog;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState<FlowStep>("editing");
-  const [search, setSearch] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([]);
-  const [description, setDescription] = useState("");
+  const workspace = useStockFlowWorkspace<OutboundCatalogOption>("saida", catalog);
+  const { search, description } = workspace.state;
+  const { lines, setLines } = workspace;
+  const [receipt, setReceipt] = useState<OutboundReceipt | null>(null);
+  const step: FlowStep = receipt ? "success" : workspace.state.step;
+  const setStep = (value: FlowStep) => { if (value !== "success") workspace.setField("step", value); };
+  const setSearch = (value: string) => workspace.setField("search", value);
+  const setDescription = (value: string) => workspace.setField("description", value);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<OutboundReceipt | null>(null);
   const [isPending, startTransition] = useTransition();
-  const idempotencyKey = useRef<string | null>(null);
+
   const submissionInFlight = useRef(false);
 
   const selectedKeys = useMemo(
@@ -148,7 +147,7 @@ export function OutboundEntryFlow({
   );
 
   function rotateIdempotencyKey() {
-    idempotencyKey.current = globalThis.crypto.randomUUID();
+    workspace.setField("idempotencyKey", globalThis.crypto.randomUUID());
   }
 
   function markPayloadChanged() {
@@ -219,6 +218,7 @@ export function OutboundEntryFlow({
   }
 
   function reviewOutbound() {
+    workspace.cancelScrollRestore();
     const error = validateDraft();
 
     if (error) {
@@ -233,6 +233,7 @@ export function OutboundEntryFlow({
   }
 
   function returnToEditing() {
+    workspace.cancelScrollRestore();
     if (isPending) {
       return;
     }
@@ -262,6 +263,7 @@ export function OutboundEntryFlow({
   }
 
   function confirmOutbound() {
+    if (workspace.needsReconciliation) return;
     if (isPending || submissionInFlight.current) {
       return;
     }
@@ -282,8 +284,9 @@ export function OutboundEntryFlow({
     }
 
     const key =
-      idempotencyKey.current ?? globalThis.crypto.randomUUID();
-    idempotencyKey.current = key;
+      workspace.state.idempotencyKey ?? globalThis.crypto.randomUUID();
+    workspace.setField("idempotencyKey", key);
+    workspace.persistNow();
     submissionInFlight.current = true;
     setSubmissionError(null);
 
@@ -300,8 +303,9 @@ export function OutboundEntryFlow({
           return;
         }
 
+        workspace.clear();
+        workspace.cancelScrollRestore();
         setReceipt(result.receipt);
-        rotateIdempotencyKey();
         setStep("success");
         window.scrollTo({ top: 0, behavior: "smooth" });
       } catch {
@@ -315,6 +319,8 @@ export function OutboundEntryFlow({
   }
 
   function startNewOutbound() {
+    workspace.clear();
+    workspace.cancelScrollRestore();
     setLines([]);
     setDescription("");
     setSearch("");
@@ -841,6 +847,7 @@ export function OutboundEntryFlow({
             </div>
           </div>
 
+          {workspace.reconciliationNotice ? <p role="status" className="mb-3 text-sm font-bold text-amber-900">Um item salvo neste rascunho não está mais disponível e foi removido. Revise os itens antes de confirmar.</p> : null}
           <StockFlowSearchResults options={searchOptions} search={search} selectedKeys={selectedKeys} onAdd={addOption} />
         </div>
 
