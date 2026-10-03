@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -165,6 +166,8 @@ function QuantityFlow({
 export default async function HistoryDetailPage({
   params,
 }: HistoryDetailPageProps) {
+  // Operational data waits for a real navigation, never a runtime prefetch.
+  await connection();
   const { batchId } = await params;
 
   if (!isUuid(batchId)) {

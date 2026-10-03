@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
 import { WorkspaceStateProvider } from "@/components/workspace-state-provider";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -22,6 +23,7 @@ export default function AuthenticatedLayout({
 async function AuthenticatedContent({
   children,
 }: Readonly<{ children: ReactNode }>) {
+  await connection();
   const profile = await measurePerformanceAudit("auth", "layout_profile", requireActiveProfile);
 
   return (

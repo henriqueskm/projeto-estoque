@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import {
   InventoryWorkspace,
   type InventoryDeepLinkTarget,
@@ -34,6 +35,8 @@ function parseInitialStatusFilter(
 export default async function InventoryPage({
   searchParams,
 }: InventoryPageProps) {
+  // Operational data waits for a real navigation, never a runtime prefetch.
+  await connection();
   const resolvedSearchParams = await searchParams;
   const initialStatusFilter = parseInitialStatusFilter(
     resolvedSearchParams.status,

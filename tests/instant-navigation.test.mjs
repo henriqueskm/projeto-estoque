@@ -96,3 +96,14 @@ test("secondary build boundaries preserve proposal authorization and manual not-
   assert.match(manual, /if \(!article\) notFound\(\)/);
   assert.match(manual, /generateStaticParams/);
 });
+
+test("operational pages block runtime prefetch before starting any loader", () => {
+  for (const route of ["estoque", "entrada", "saida", "pedidos", "aplicacoes", "estatisticas", "historico", "aplicacoes/[slug]", "historico/[batchId]"]) {
+    const source = read(`app/(authenticated)/${route}/page.tsx`);
+    assert.match(source, /import \{ connection \} from "next\/server"/);
+    assert.match(source, /export default async function[\s\S]*?\)\s*\{\s*\/\/[^\n]*\n\s*await connection\(\);/);
+    assert.doesNotMatch(source, /["']use cache["']/);
+  }
+  assert.match(read("app/(authenticated)/layout.tsx"), /await connection\(\);\s*const profile = await measurePerformanceAudit/);
+  assert.match(read("app/(authenticated)/page.tsx"), /await connection\(\);\s*return loadAssistantAttention\(\)/);
+});

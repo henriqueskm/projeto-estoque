@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { ApplicationsWorkspace } from "@/app/(authenticated)/aplicacoes/[slug]/applications-workspace";
 import { loadVehicleApplicationsByBrand } from "@/lib/vehicle-applications";
@@ -9,6 +10,8 @@ type BrandApplicationsPageProps = {
 export default async function BrandApplicationsPage({
   params,
 }: BrandApplicationsPageProps) {
+  // Operational data waits for a real navigation, never a runtime prefetch.
+  await connection();
   const { slug } = await params;
   const result = await loadVehicleApplicationsByBrand(slug);
 

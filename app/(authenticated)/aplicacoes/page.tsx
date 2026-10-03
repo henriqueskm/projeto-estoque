@@ -1,9 +1,12 @@
+import { connection } from "next/server";
 import { WorkspaceScroll } from "@/components/workspace-state-provider";
 import { ApplicationsBrandGrid } from "@/app/(authenticated)/aplicacoes/applications-brand-grid";
 import { loadVehicleApplicationBrands } from "@/lib/vehicle-applications";
 import { measurePerformanceAudit } from "@/lib/performance-audit";
 
 export default async function VehicleApplicationsPage() {
+  // Operational data waits for a real navigation, never a runtime prefetch.
+  await connection();
   const result = await measurePerformanceAudit("applications", "page_data", loadVehicleApplicationBrands, (value) => ({ queryCount: 1, waveCount: 1, rowCount: value.data?.length ?? 0 }));
 
   return (

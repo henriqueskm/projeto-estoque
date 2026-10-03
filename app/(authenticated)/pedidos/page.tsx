@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { SupplierOrdersWorkspace } from "@/app/(authenticated)/pedidos/orders-workspace";
 import { OrdersIcon } from "@/components/icons";
 import {
@@ -14,6 +15,8 @@ type SupplierOrdersPageProps = {
 export default async function SupplierOrdersPage({
   searchParams,
 }: SupplierOrdersPageProps) {
+  // Operational data waits for a real navigation, never a runtime prefetch.
+  await connection();
   const params = await searchParams;
   const requestedView = params.view;
   const requestedOrder = params.order;

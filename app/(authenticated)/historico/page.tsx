@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { WorkspaceScroll } from "@/components/workspace-state-provider";
 import Link from "next/link";
 import { createHistoryHref } from "@/lib/history-query";
@@ -128,6 +129,8 @@ function Pagination({
 export default async function HistoryPage({
   searchParams,
 }: HistoryPageProps) {
+  // Operational data waits for a real navigation, never a runtime prefetch.
+  await connection();
   const filters = parseHistoryFilters(await searchParams);
   const historyResult = await measurePerformanceAudit("history", "page_data", () => loadHistoryList(filters));
   const history = historyResult.data;
