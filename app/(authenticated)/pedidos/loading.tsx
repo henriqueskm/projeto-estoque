@@ -1,11 +1,13 @@
 export default function SupplierOrdersLoading() {
   return (
     <main
+      data-nk-perf-shell="/pedidos"
       className="mx-auto w-full max-w-7xl px-3 py-4 motion-safe:animate-pulse sm:px-6 sm:py-6 lg:px-8"
       aria-busy="true"
       aria-label="Carregando pedidos"
     >
-      <div className="h-9 w-36 rounded-lg bg-border-neutral/60" />
+      <h1 className="text-2xl font-black text-text-primary sm:text-3xl">Pedidos</h1>
+      <p className="mt-1 text-sm text-text-muted">Carregando pedidos atuais…</p>
       <div className="mt-4 h-12 w-full max-w-[25rem] rounded-xl border border-border-neutral bg-surface" />
       <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (

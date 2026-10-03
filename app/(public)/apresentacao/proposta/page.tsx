@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { CommercialProposalLogin } from "@/components/public-site/commercial-proposal-login";
 import {
@@ -7,8 +8,6 @@ import {
   verifyCommercialProposalSessionToken,
 } from "@/lib/commercial-proposal-auth";
 import { commercialProposalLogout } from "./actions";
-
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Proposta comercial | NK Estoque",
@@ -124,8 +123,12 @@ function CommercialProposalContent() {
   );
 }
 
-export default async function CommercialProposalPage() {
+async function AuthenticatedProposalContent() {
   const session = await hasCommercialProposalSession();
   if (!session) return <CommercialProposalLogin />;
   return <CommercialProposalContent />;
+}
+
+export default function CommercialProposalPage() {
+  return <Suspense fallback={<main className="public-shell py-8" aria-busy="true">Verificando acesso…</main>}><AuthenticatedProposalContent /></Suspense>;
 }

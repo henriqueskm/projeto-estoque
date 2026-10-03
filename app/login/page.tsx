@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { LoginForm } from "./login-form";
 
@@ -5,9 +6,16 @@ type LoginPageProps = {
   searchParams: Promise<{ error?: string }>;
 };
 
-export default async function LoginPage({ searchParams }: LoginPageProps) {
+async function InactiveProfileNotice({ searchParams }: LoginPageProps) {
   const { error } = await searchParams;
+  return error === "inactive" ? (
+    <div role="alert" className="mt-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950">
+      Seu perfil não está ativo. Procure o responsável pelo sistema.
+    </div>
+  ) : null;
+}
 
+export default function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="nk-industrial-grid relative flex min-h-screen items-center justify-center overflow-hidden bg-brand-charcoal px-4 py-8 sm:px-6 sm:py-12">
       <div
@@ -42,14 +50,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </p>
           </div>
 
-          {error === "inactive" ? (
-            <div
-              role="alert"
-              className="mt-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950"
-            >
-              Seu perfil não está ativo. Procure o responsável pelo sistema.
-            </div>
-          ) : null}
+          <Suspense fallback={null}><InactiveProfileNotice searchParams={searchParams} /></Suspense>
 
           <LoginForm />
 
