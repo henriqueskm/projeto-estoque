@@ -12,17 +12,26 @@ test("a new or restored empty conversation starts at its saved scroll position",
   assert.doesNotMatch(home, /scrollTop > 0 \? scrollTop : conversation\.scrollHeight/);
 });
 
-test("sidebar keeps the shell mounted and delegates shell prefetch to Next", () => {
+test("sidebar keeps the shell mounted and warms only guarded route shells", () => {
   const sidebar = read("components/app-sidebar.tsx");
   const layout = read("app/(authenticated)/layout.tsx");
 
   assert.match(layout, /<AppSidebar/);
   assert.match(layout, /\{children\}/);
-  assert.doesNotMatch(sidebar, /prefetch=|router\.prefetch|idleWarmRoutes|onPointerEnter|requestIdleCallback/);
-  assert.match(sidebar, /href=\{resumeHref\}/);
-  assert.match(sidebar, /href="\/estatisticas"/);
-  assert.match(sidebar, /href="\/historico"/);
+  assert.match(sidebar, /prefetch=\{false\}/);
+  assert.match(sidebar, /const idleWarmRoutes = \[/);
+  assert.match(sidebar, /"\/estoque"[\s\S]*"\/entrada"[\s\S]*"\/saida"/);
+  assert.match(sidebar, /"\/pedidos"[\s\S]*"\/aplicacoes"/);
+  assert.match(
+    sidebar.slice(
+      sidebar.indexOf("const idleWarmRoutes"),
+      sidebar.indexOf("function isCurrentSection"),
+    ),
+    /estatisticas[\s\S]*historico/,
+  );
   assert.match(sidebar, /isCurrentSection\(pathname, href\)/);
+  assert.match(sidebar, /requestIdleCallback/);
+  assert.match(sidebar, /scheduleNext\(600\)/);
   assert.match(sidebar, /onNavigate=\{\(\) => closeDrawer\(\)\}/);
 });
 
