@@ -5,7 +5,6 @@ import {
 } from "@/lib/push-subscription-http";
 import { createClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
 
 function json(body: unknown, status: number) {
   return NextResponse.json(body, {

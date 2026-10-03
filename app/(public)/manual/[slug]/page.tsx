@@ -6,7 +6,6 @@ import { getManualArticle, manualArticles } from "@/lib/public-manual-content";
 
 type ManualArticlePageProps = { params: Promise<{ slug: string }> };
 
-export const dynamicParams = false;
 
 export function generateStaticParams() {
   return manualArticles.map((article) => ({ slug: article.slug }));

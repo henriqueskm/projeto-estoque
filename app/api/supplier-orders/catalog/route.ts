@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { loadSupplierOrderCatalogWithClient } from "@/lib/supplier-orders-data";
 import { authenticateSupplierOrdersRequest } from "@/lib/supplier-orders-route-auth";
 
-export const dynamic = "force-dynamic";
 
 export async function GET() {
   const startedAt = performance.now();

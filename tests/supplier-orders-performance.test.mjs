@@ -518,7 +518,7 @@ test("read routes are authenticated, dynamic and no-store", () => {
   ]) {
     const source = readFileSync(path, "utf8");
     assert.match(source, /authenticateSupplierOrdersRequest/);
-    assert.match(source, /force-dynamic/);
+    assert.doesNotMatch(source, /export const dynamic|["']use cache["']/);
     assert.match(source, /Cache-Control.*no-store/s);
   }
 });

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { loadPurchaseRecommendations } from "@/lib/purchase-recommendations";
 import { createClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
 
 function response(body: unknown, status = 200) {
   return NextResponse.json(body, {
