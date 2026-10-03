@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useWorkspaceResumeHref, useWorkspaceResumeResolver } from "@/components/workspace-state-provider";
-import { usePathname, useRouter } from "next/navigation";
+import { useWorkspaceResumeHref } from "@/components/workspace-state-provider";
+import { usePathname } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -43,16 +43,7 @@ type NavigationContentProps = AppSidebarProps & {
   operationsExpanded: boolean;
   onToggleOperations: () => void;
   onNavigate?: () => void;
-  onIntent: (href: string) => void;
 };
-
-const idleWarmRoutes = [
-  "/estoque",
-  "/entrada",
-  "/saida",
-  "/pedidos",
-  "/aplicacoes",
-] as const;
 
 function isCurrentSection(pathname: string, href: string) {
   if (href === "/") {
@@ -80,7 +71,6 @@ function NavigationLink({
   label,
   pathname,
   onNavigate,
-  onIntent,
   children,
   nested = false,
 }: {
@@ -88,7 +78,6 @@ function NavigationLink({
   label: string;
   pathname: string;
   onNavigate?: () => void;
-  onIntent: (href: string) => void;
   children: ReactNode;
   nested?: boolean;
 }) {
@@ -98,11 +87,8 @@ function NavigationLink({
   return (
     <Link
       href={resumeHref}
-      prefetch={false}
       aria-current={isActive ? "page" : undefined}
       onClick={onNavigate}
-      onPointerEnter={() => onIntent(resumeHref)}
-      onFocus={() => onIntent(resumeHref)}
       className={`nk-focus flex min-h-11 items-center gap-3 rounded-xl text-sm font-black transition ${
         nested ? "px-3 pl-11" : "px-3"
       } ${
@@ -127,7 +113,6 @@ function NavigationContent({
   operationsExpanded,
   onToggleOperations,
   onNavigate,
-  onIntent,
 }: NavigationContentProps) {
   const operationsId = `operations-${idSuffix}`;
   const initials = getInitials(userName, hasRegisteredName);
@@ -148,7 +133,6 @@ function NavigationContent({
             label="Assistente IA"
             pathname={pathname}
             onNavigate={onNavigate}
-            onIntent={onIntent}
           >
             <AssistantIcon className="size-5" />
           </NavigationLink>
@@ -158,7 +142,6 @@ function NavigationContent({
             label="Pedidos"
             pathname={pathname}
             onNavigate={onNavigate}
-            onIntent={onIntent}
           >
             <OrdersIcon className="size-5" />
           </NavigationLink>
@@ -168,7 +151,6 @@ function NavigationContent({
             label="Estoque"
             pathname={pathname}
             onNavigate={onNavigate}
-            onIntent={onIntent}
           >
             <StockIcon className="size-5" />
           </NavigationLink>
@@ -178,7 +160,6 @@ function NavigationContent({
             label="Aplicações"
             pathname={pathname}
             onNavigate={onNavigate}
-            onIntent={onIntent}
           >
             <ApplicationsIcon className="size-5" />
           </NavigationLink>
@@ -216,7 +197,6 @@ function NavigationContent({
                   label="Entrada"
                   pathname={pathname}
                   onNavigate={onNavigate}
-                  onIntent={onIntent}
                   nested
                 >
                   <InboundIcon className="size-4" />
@@ -226,7 +206,6 @@ function NavigationContent({
                   label="Saída"
                   pathname={pathname}
                   onNavigate={onNavigate}
-                  onIntent={onIntent}
                   nested
                 >
                   <OutboundIcon className="size-4" />
@@ -240,7 +219,6 @@ function NavigationContent({
             label="Estatísticas"
             pathname={pathname}
             onNavigate={onNavigate}
-            onIntent={onIntent}
           >
             <StatisticsIcon className="size-5" />
           </NavigationLink>
@@ -250,7 +228,6 @@ function NavigationContent({
             label="Histórico"
             pathname={pathname}
             onNavigate={onNavigate}
-            onIntent={onIntent}
           >
             <ClockIcon className="size-5" />
           </NavigationLink>
@@ -269,10 +246,7 @@ function NavigationContent({
             <p className="truncate text-sm font-black text-white">{userName}</p>
             <Link
               href="/minha-conta"
-              prefetch={false}
               onClick={onNavigate}
-              onPointerEnter={() => onIntent("/minha-conta")}
-              onFocus={() => onIntent("/minha-conta")}
               className="nk-focus mt-0.5 inline-flex rounded text-xs font-bold text-brand-gold hover:underline"
             >
               Minha conta
@@ -290,8 +264,6 @@ function NavigationContent({
 
 export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
-  const resolveHref = useWorkspaceResumeResolver();
   const isAssistantHome = pathname === "/";
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDrawerClosing, setIsDrawerClosing] = useState(false);
@@ -301,25 +273,8 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const drawerCloseTimerRef = useRef<number | null>(null);
-  const prefetchedRoutesRef = useRef(new Set<string>());
 
   useDocumentScrollLock(isDrawerOpen);
-
-  const warmRoute = useCallback(
-    (href: string) => {
-      const resolvedHref = resolveHref(href);
-      if (
-        isCurrentSection(pathname, resolvedHref.split("?")[0]) ||
-        prefetchedRoutesRef.current.has(resolvedHref)
-      ) {
-        return;
-      }
-
-      prefetchedRoutesRef.current.add(resolvedHref);
-      router.prefetch(resolvedHref);
-    },
-    [pathname, router, resolveHref],
-  );
 
   const closeDrawer = useCallback((restoreFocus = false) => {
     if (!isDrawerOpen || isDrawerClosing) {
@@ -355,50 +310,6 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
       }
     };
   }, []);
-
-  useEffect(() => {
-    const queue = idleWarmRoutes.filter(
-      (href) => !isCurrentSection(pathname, href),
-    );
-    const idleWindow = window as Window & {
-      requestIdleCallback?: Window["requestIdleCallback"];
-      cancelIdleCallback?: Window["cancelIdleCallback"];
-    };
-    let queueIndex = 0;
-    let cancelled = false;
-    let delayTimer: number | null = null;
-    let idleHandle: number | null = null;
-
-    function scheduleNext(delay: number) {
-      delayTimer = window.setTimeout(() => {
-        const run = () => {
-          if (cancelled) return;
-
-          const href = queue[queueIndex];
-          queueIndex += 1;
-          if (href) warmRoute(href);
-
-          if (queueIndex < queue.length) {
-            scheduleNext(600);
-          }
-        };
-
-        if (typeof idleWindow.requestIdleCallback === "function") {
-          idleHandle = idleWindow.requestIdleCallback(run, { timeout: 1_500 });
-        } else {
-          run();
-        }
-      }, delay);
-    }
-
-    scheduleNext(800);
-
-    return () => {
-      cancelled = true;
-      if (delayTimer !== null) window.clearTimeout(delayTimer);
-      if (idleHandle !== null) idleWindow.cancelIdleCallback?.(idleHandle);
-    };
-  }, [pathname, warmRoute]);
 
   useEffect(() => {
     if (!isDrawerOpen || isDrawerClosing) {
@@ -452,10 +363,7 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
         <div className="mx-4 mt-4 flex items-center gap-2 border-b border-white/10 pb-5">
           <Link
             href="/"
-            prefetch={false}
             aria-label="Ir para o Assistente IA"
-            onPointerEnter={() => warmRoute("/")}
-            onFocus={() => warmRoute("/")}
             className="nk-focus min-w-0 flex-1 rounded-xl px-2"
           >
             <BrandMark variant="full" size="sm" inverted />
@@ -471,7 +379,6 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
           onToggleOperations={() =>
             setOperationsExpanded((current) => !current)
           }
-          onIntent={warmRoute}
         />
       </aside>
 
@@ -492,10 +399,7 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
           <div className="pointer-events-none absolute right-[7.25rem] left-[4.5rem] flex h-12 items-center justify-center">
             <Link
               href="/"
-              prefetch={false}
               aria-label="Ir para a Assistente NK"
-              onPointerEnter={() => warmRoute("/")}
-              onFocus={() => warmRoute("/")}
               className="nk-focus pointer-events-auto flex max-w-full items-center justify-center rounded-full border border-border-neutral bg-surface px-2 py-1 shadow-[0_10px_28px_-18px_rgba(23,29,33,0.75)]"
             >
               <BrandMark
@@ -527,11 +431,8 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
           ) : (
             <Link
               href="/"
-              prefetch={false}
               aria-label="Abrir Assistente NK"
               title="Abrir Assistente NK"
-              onPointerEnter={() => warmRoute("/")}
-              onFocus={() => warmRoute("/")}
               className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-full text-brand-charcoal transition hover:bg-app-background"
             >
               <ComposeIcon className="size-5" />
@@ -587,7 +488,6 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
                 setOperationsExpanded((current) => !current)
               }
               onNavigate={() => closeDrawer()}
-              onIntent={warmRoute}
             />
           </div>
         </div>

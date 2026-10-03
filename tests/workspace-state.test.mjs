@@ -221,10 +221,11 @@ test("scroll restoration is bounded/cancellable and deep links/cards have priori
   assert.match(inventory, /!initialTarget && !isPurchaseRecommendationsInitiallyOpen/); assert.match(inventory, /cancelScrollRestore\(\);\s*setScrollRequest/);
   assert.match(inventory, /hasExplicitStatusFilter \? \{ statusFilter: initialStatusFilter/);
 });
-test("sidebar prefetch uses resolved href while retaining idle/intent/dedup policy", () => {
+test("native sidebar prefetch preserves resolved workspace hrefs", () => {
   const sidebar = read("components/app-sidebar.tsx");
-  assert.match(sidebar, /href=\{resumeHref\}/); assert.match(sidebar, /router.prefetch\(resolvedHref\)/);
-  assert.match(sidebar, /prefetchedRoutesRef.current.has\(resolvedHref\)/); assert.match(sidebar, /scheduleNext\(600\)/); assert.match(sidebar, /scheduleNext\(800\)/);
+  assert.match(sidebar, /const resumeHref = useWorkspaceResumeHref\(href\)/);
+  assert.match(sidebar, /href=\{resumeHref\}/);
+  assert.doesNotMatch(sidebar, /prefetch=|router\.prefetch|prefetchedRoutesRef|scheduleNext|onIntent/);
 });
 test("scroll cancellation does not leak into a retained route's next activation", () => {
   assert.match(read("components/workspace-state-provider.tsx"), /removeEventListener\("pagehide", navigate\);[\s\S]*?cancelled.current = false/);

@@ -63,3 +63,36 @@ test("diagnostics are gated, hidden Activity markers excluded and observers clea
   assert.match(panel, /shellMs === null \? "não observado"/);
   assert.doesNotMatch(panel, /fetch\(|sendBeacon|localStorage|access_token|refresh_token|\.setAttribute\(/);
 });
+
+test("official flags do not change dependencies or introduce operational caches", () => {
+  const config = read("next.config.ts");
+  assert.match(config, /cacheComponents: true/);
+  assert.match(config, /partialPrefetching: true/);
+  assert.doesNotMatch(config, /experimental|staleTimes/);
+  const dependencies = JSON.parse(read("package.json")).dependencies;
+  assert.equal(dependencies.next, "16.3.8");
+  assert.equal(dependencies.react, "19.2.4");
+  const catalog = read("lib/shared-catalog.ts");
+  assert.match(catalog, /unstable_cache/);
+  assert.doesNotMatch(catalog, /["']use cache["']/);
+});
+
+test("compatibility removal keeps authenticated handlers no-store and runtime-only", () => {
+  for (const route of ["catalog/configuration-image", "purchase-recommendations", "push-subscriptions", "safisa-pickup-alerts", "supplier-orders/[orderId]", "supplier-orders/[orderId]/media", "supplier-orders/catalog", "supplier-orders/search"]) {
+    const source = read(`app/api/${route}/route.ts`);
+    assert.match(source, /no-store/);
+    assert.match(source, /getClaims|authenticateSupplierOrdersRequest/);
+    assert.doesNotMatch(source, /export const dynamic|["']use cache["']/);
+  }
+});
+
+test("secondary build boundaries preserve proposal authorization and manual not-found guard", () => {
+  const proposal = read("app/(public)/apresentacao/proposta/page.tsx");
+  assert.match(proposal, /await hasCommercialProposalSession\(\)/);
+  assert.match(proposal, /if \(!session\) return <CommercialProposalLogin/);
+  assert.match(proposal, /<Suspense[\s\S]*<AuthenticatedProposalContent/);
+  assert.doesNotMatch(proposal, /["']use cache["']/);
+  const manual = read("app/(public)/manual/[slug]/page.tsx");
+  assert.match(manual, /if \(!article\) notFound\(\)/);
+  assert.match(manual, /generateStaticParams/);
+});
