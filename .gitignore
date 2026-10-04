@@ -44,3 +44,10 @@ next-env.d.ts
 /supabase/.temp/
 # Resultados de execução locais do laboratório de linguagem natural.
 artifacts/assistant-eval/
+
+# Agent browser tooling: may contain cookies, credentials or business data.
+.playwright/
+.playwright-cli/
+/artifacts/agent-ux/
+/playwright-report/
+/test-results/
