@@ -240,3 +240,96 @@ Assistant routing or remote stock operation was changed. PR #78 stays Draft;
 no merge or auto-merge.
 
 Preview: https://projeto-estoque-sp4o-git-codex-nk-p-b09da0-henrqueskms-projects.vercel.app/
+
+## Activity lifecycle follow-up — transactional UI
+
+Correction on reviewed `c7729e1891711c635550b7aabb1219faccf9d28e`;
+implementation tested in Preview: `41df494b556faed30365df33dbe89fe8985a5777`.
+Cache Components, partial prefetching, streaming, `connection()`, shell markers
+and all preceding measurements remain unchanged.
+
+The shared `useRouteTransientCleanup` returns a **layout Effect cleanup**:
+React Activity calls it when hiding a retained route, not only on traditional
+unmount. It also listens to the existing before-navigation event, `popstate`
+and `pagehide`; mouse clicks are not the only trigger. A visit generation makes
+late asynchronous UI callbacks inert even if the route has already reappeared.
+This follows the installed Next preserving-UI-state guide and
+[React Activity's Effect lifecycle](https://react.dev/reference/react/Activity).
+
+- Inventory clears its action menu, mutation dialog and feedback only.
+- Orders clears creation/editing, nested confirmations, finalization, stock-entry
+  dialogs and feedback. The safe read-only selected Order can reopen normally.
+- Inbound/Outbound clear completed receipts and transient errors, **not** the
+  editing/review draft, cart, key or existing in-flight guard. A real successful
+  response still clears its committed draft, but cannot revive a hidden receipt
+  or scroll another route.
+- Inventory/Orders keep a route-owned pending gate outside disposable dialogs.
+  Closing or hiding a dialog does not release it; only the actual promise's
+  `finally` does. Another submission is blocked while that operation remains
+  pending in the retained route. Keys and canonical writers are unchanged.
+- No Workspace State schema, persistence, query, filter, sort, accordion or
+  scroll reset was introduced. Idle Inventory rows do not register cleanup
+  listeners until they have transient UI to dispose.
+
+### Authenticated Activity smoke
+
+Chrome, existing authenticated branch Preview, Cache Components actually active.
+The old ready-marker DOM remained present with zero client rects after navigating
+away from Inventory, Orders, Inbound and Outbound: these were retained **hidden**
+routes, not just conventional unmount/reload tests.
+
+- Inventory Sale, Adjustment, Minimum, Assembly, Disassembly and action menu
+  were opened without submitting. Back/Forward never reopened them. MBF015
+  search and the open Servo accordion remained restored.
+- Orders creation, editing and exclusion confirmation closed on Back/Forward.
+  Search, pending status filter, oldest-first sort and active view survived.
+  The real selected read-only Order detail returned after its fresh detail read;
+  its editing/confirmation dialog did not.
+- Inbound review with a configuration line and Outbound review with a bundle
+  line survived client-side navigation to Inventory and browser Back. Inbound
+  review also survived a subsequent visit from Outbound. Our test lines were
+  removed afterward using local cart Remove controls only.
+- No stock, Order or minimum operation was confirmed. Pending completion,
+  receipt suppression and key identity are proved by controlled-promise/local
+  tests, **not** by a fabricated remote mutation or remote receipt smoke.
+- Browser captured warning/error logs: 0. The CDP exception/event tail also
+  contained 0 errors but was truncated, so it is not a complete exception trace.
+  The diagnostics panel was switched off after measurement.
+
+### Follow-up navigation samples
+
+Same Preview and existing panel, normal desktop viewport, no CPU/network
+throttling. These are observed first/repeated visits during a functional smoke,
+not controlled cold/warm cache benchmarks. Shell/ready retain the original DOM
+marker/frame limitations. Initial Home ready was 2,432 ms.
+
+| Destination | First shell ms | First ready ms | Later sequence shell ms | Later ready ms |
+| --- | ---: | ---: | ---: | ---: |
+| Inventory | 82 | 2168 | 58 | 1172 |
+| Orders | 59 | 2144 | not observed | 1122 |
+| Inbound | 59 | 2167 | 46 | 1115 |
+| Outbound | 36 | 2134 | not observed | 1157 |
+
+The observed early shells remain in the tens-of-milliseconds range; a retained
+route can instead return directly to its ready marker. **One intermediate
+Inbound return observed shell 1,111 ms / ready 2,134 ms**. Its cause was not
+established; it is retained as a limitation, not discarded to claim consistently
+instant navigation. No shell/ready instrumentation or prefetch was changed by
+this lifecycle correction, and no universal latency guarantee is claimed.
+
+### Follow-up verification
+
+**399 unique tests passed, 0 failed, 0 skipped**: the prior 367 regressions,
+18 new lifecycle/pending-promise tests in `tests/route-transient-state.test.mjs`,
+7 existing Order stale-conflict tests and 7 existing Adjustment stale-conflict
+tests. New tests exercise the cleanup actually returned to the layout Effect,
+navigation events including popstate, preserved review/key, discarded receipts,
+late completion and pending-gate ownership; source-contract assertions verify
+the production hooks/dialogs. They are not presented as a React DOM E2E suite;
+actual Activity hiding/restoration was verified in the authenticated smoke above.
+
+TypeScript, changed-file ESLint with zero warnings, diff-check and Webpack build
+passed. The implementation's standard Vercel build was READY. Only technical
+documentation was added after that tested implementation. No migration, RPC,
+writer, stock calculation, balance, AI or remote operation changed. PR #78
+remains Draft, without merge or auto-merge.
