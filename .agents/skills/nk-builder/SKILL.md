@@ -53,3 +53,21 @@ Se um teste falhar, investigue somente o necessário para o escopo e corrija reg
 Retorne de forma curta: arquivos alterados; implementação; testes e resultados; HEAD SHA; PR criada ou atualizada, se aplicável; `NOTES` ou pendências.
 
 Não faça segunda rodada automática de Reviewer. O Lead fará a revisão externa após o Builder terminar.
+
+## UI/UX Tooling
+
+Estas skills são consultores especializados, não um designer autônomo. Não redefinem produto, escopo, regras de negócio ou arquitetura. Nenhuma ferramenta autoriza merge ou operação remota. Instruções upstream de fix, revamp ou alterações abrangentes não ampliam o escopo do Lead.
+
+- **Sem UI:** não carregue skills de design/motion para migration, RPC, RLS, cálculo de estoque, backend, parser ou refactor puramente server. Economize contexto.
+- **UI relevante:** antes de implementar, consulte `emil-design-eng` para hierarquia, spacing, affordance, feedback, foco e craft. Ela não altera regras de negócio.
+- **Animação:** consulte `review-animations` quando alterar motion existente; `improve-animations` em auditorias explícitas. Para nova animação cuja utilidade seja incerta, consulte `find-animation-opportunities`, inclusive para decidir não animar.
+- **Motion já aprovado:** consulte `transitions-dev` e, quando pertinente, `transitions-polish` para recipes/tokens. Adapte à arquitetura atual; não escolha motion somente porque há uma recipe bonita. Use apenas as skills gratuitas, não Transitions Pro nem Transitions Agent fix/revamp.
+- **Mobile UX:** consulte `mobile-native` para touch, viewport, safe areas, inputs e teclado.
+- **UI importante concluída:** quando fizer sentido, use `break-ui` como checagem adversarial focada com fixtures não sensíveis. Não instale DemoToggle nem fixtures em produção e não execute uma revisão independente completa automática.
+- **Preview/browser disponível:** consulte `playwright-cli` e use o CLI local oficial para smoke visual. Respeite as restrições de browser do ambiente; se impedirem o CLI, registre a limitação e use o navegador permitido. Playwright não substitui testes unitários, TypeScript, lint ou validação de negócio.
+
+Ordem recomendada: ler escopo do Lead → inspecionar implementação existente → carregar somente skills necessárias → implementar mudança mínima → Transitions.dev somente para motion aprovado → testes focados → Preview quando aplicável → Playwright CLI → break-ui/review skill quando pertinente → reportar evidências → **não fazer merge**.
+
+Siga a política e o checklist de `docs/AGENT_UX_TOOLING.md`: viewports 320/375/768/1440, reduced motion, foco, navegação/Activity e Workspace State sem apagar estado útil. Motion não deve bloquear uso, mascarar latência ou prejudicar os shells Instant Navigation.
+
+Smokes são read-only ou param antes da confirmação. Não confirme Entrada, Saída, Venda, Ajuste, Montagem, Desmontagem, mínimo ou mutações de Pedidos sem autorização humana explícita. Não exporte sessão humana nem registre secrets. Cookies, storage state, screenshots, traces e vídeos ficam em diretórios locais ignorados; nunca faça upload automático ou commit desses artefatos. Atualizações de ferramentas/skills exigem PR revisável, nunca updater automático.

@@ -88,6 +88,7 @@
     "remotion": "4.0.512"
   },
   "devDependencies": {
+    "@playwright/cli": "0.1.22",
     "@remotion/cli": "4.0.512",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",

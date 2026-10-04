@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "installedAt": "2026-10-03",
+  "hashFormat": "sorted relative paths (POSIX), LF text, LF separators; SHA-256",
+  "skills": [
+    {
+      "name": "emil-design-eng",
+      "fileCount": 2,
+      "sha256": "a1853639fee02079db44a3cb40f86136bfc980467433036f0b6b31b18722ec4e",
+      "source": "emilkowalski/skills",
+      "revision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d"
+    },
+    {
+      "name": "review-animations",
+      "fileCount": 3,
+      "sha256": "a39f0ba4e790b9dfdae334286dd87b3a042ee84106a0e6eecbb4320645358927",
+      "source": "emilkowalski/skills",
+      "revision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d"
+    },
+    {
+      "name": "improve-animations",
+      "fileCount": 4,
+      "sha256": "722ca142c4479b4345ad18672a140e96ecd590ba29a00d57950456677dd260a9",
+      "source": "emilkowalski/skills",
+      "revision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d"
+    },
+    {
+      "name": "find-animation-opportunities",
+      "fileCount": 2,
+      "sha256": "3d9aabcb76eeb294440c873c2eb6424ae97db83ee1df189332ffaecd8e988bb2",
+      "source": "emilkowalski/skills",
+      "revision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d"
+    },
+    {
+      "name": "mobile-native",
+      "fileCount": 2,
+      "sha256": "266300fa6326a51db951dc3bbee7c82b4b25812a823e41676b64d4139e9f14f2",
+      "source": "emilkowalski/skills",
+      "revision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d"
+    },
+    {
+      "name": "break-ui",
+      "fileCount": 3,
+      "sha256": "1d312f3a1f9019c6d0095110ffc9d0a8ccec4568d642665e07945c5fa097c802",
+      "source": "emilkowalski/skills",
+      "revision": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d"
+    },
+    {
+      "name": "transitions-dev",
+      "fileCount": 35,
+      "sha256": "757fa22d184e09bcd7b1a1787b5797f489b7b6d3ae3c3635505b645482c724ed",
+      "source": "Jakubantalik/transitions.dev",
+      "revision": "3bc58021c69725d8bf42108632ac6cf14f2b1d3c"
+    },
+    {
+      "name": "transitions-polish",
+      "fileCount": 4,
+      "sha256": "4d45607929e252048e2d455c297fb3fd823afed31f73e1f9f036eabeb97a73aa",
+      "source": "Jakubantalik/transitions.dev",
+      "revision": "3bc58021c69725d8bf42108632ac6cf14f2b1d3c"
+    },
+    {
+      "name": "playwright-cli",
+      "fileCount": 13,
+      "sha256": "ecc59fa09c6340cdae6c4d0c51c4712bf2eaa4ee7bd3bcd45f11c9351e688ec5",
+      "source": "microsoft/playwright",
+      "revision": "e8149b8257d32dcf8f72573ecc43e72439da7080"
+    }
+  ]
+}
