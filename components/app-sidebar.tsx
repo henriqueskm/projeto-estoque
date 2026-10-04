@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { waitForDrawerExit } from "@/lib/drawer-exit";
 import { useWorkspaceResumeHref, useWorkspaceResumeResolver } from "@/components/workspace-state-provider";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -302,7 +303,8 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
-  const drawerCloseTimerRef = useRef<number | null>(null);
+  const restoreDrawerFocusRef = useRef(false);
+  const drawerFocusFrameRef = useRef<number | null>(null);
   const prefetchedRoutesRef = useRef(new Set<string>());
 
   useDocumentScrollLock(isDrawerOpen);
@@ -323,37 +325,47 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
     [pathname, router, resolveHref],
   );
 
-  const closeDrawer = useCallback((restoreFocus = false) => {
-    if (!isDrawerOpen || isDrawerClosing) {
-      return;
+  const finishDrawerClose = useCallback(() => {
+    setIsDrawerOpen(false);
+    setIsDrawerClosing(false);
+    if (restoreDrawerFocusRef.current) {
+      drawerFocusFrameRef.current = window.requestAnimationFrame(() => {
+        drawerFocusFrameRef.current = null;
+        menuButtonRef.current?.focus();
+      });
     }
+    restoreDrawerFocusRef.current = false;
+  }, []);
 
-    setIsDrawerClosing(true);
-    drawerCloseTimerRef.current = window.setTimeout(() => {
-      setIsDrawerOpen(false);
-      setIsDrawerClosing(false);
-      drawerCloseTimerRef.current = null;
+  const closeDrawer = useCallback((restoreFocus = false) => {
+    if (!isDrawerOpen) return;
+    restoreDrawerFocusRef.current ||= restoreFocus;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      finishDrawerClose();
+    } else if (!isDrawerClosing) {
+      setIsDrawerClosing(true);
+    }
+  }, [finishDrawerClose, isDrawerClosing, isDrawerOpen]);
 
-      if (restoreFocus) {
-        window.requestAnimationFrame(() => menuButtonRef.current?.focus());
-      }
-    }, 240);
-  }, [isDrawerClosing, isDrawerOpen]);
+  useEffect(() => {
+    if (!isDrawerClosing || !drawerRef.current) return;
+    return waitForDrawerExit(drawerRef.current, finishDrawerClose);
+  }, [finishDrawerClose, isDrawerClosing]);
 
   const openDrawer = useCallback(() => {
-    if (drawerCloseTimerRef.current) {
-      window.clearTimeout(drawerCloseTimerRef.current);
-      drawerCloseTimerRef.current = null;
+    if (drawerFocusFrameRef.current !== null) {
+      window.cancelAnimationFrame(drawerFocusFrameRef.current);
+      drawerFocusFrameRef.current = null;
     }
-
+    restoreDrawerFocusRef.current = false;
     setIsDrawerClosing(false);
     setIsDrawerOpen(true);
   }, []);
 
   useEffect(() => {
     return () => {
-      if (drawerCloseTimerRef.current) {
-        window.clearTimeout(drawerCloseTimerRef.current);
+      if (drawerFocusFrameRef.current !== null) {
+        window.cancelAnimationFrame(drawerFocusFrameRef.current);
       }
     };
   }, []);
@@ -403,11 +415,11 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
   }, [pathname, warmRoute]);
 
   useEffect(() => {
-    if (!isDrawerOpen || isDrawerClosing) {
+    if (!isDrawerOpen) {
       return;
     }
 
-    closeButtonRef.current?.focus();
+    if (!isDrawerClosing) closeButtonRef.current?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {

@@ -748,7 +748,7 @@ function CompactQuantityControl({
         aria-label={`Diminuir ${label}`}
         disabled={disabled || value <= minimum}
         onClick={() => update(value - 1)}
-        className="nk-focus inline-flex size-8 items-center justify-center rounded-l-lg text-base font-black text-text-primary disabled:cursor-not-allowed disabled:opacity-35"
+        className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-l-lg text-base font-black text-text-primary sm:size-8 disabled:cursor-not-allowed disabled:opacity-35"
       >
         −
       </button>
@@ -766,14 +766,14 @@ function CompactQuantityControl({
             update(parsed);
           }
         }}
-        className="nk-focus h-8 w-8 border-x border-border-neutral bg-white text-center font-mono text-xs font-black text-text-primary disabled:bg-slate-100"
+        className="nk-focus h-11 w-16 min-w-0 border-x border-border-neutral bg-white text-center font-mono text-base font-black tabular-nums text-text-primary sm:h-8 sm:w-14 sm:text-sm disabled:bg-slate-100"
       />
       <button
         type="button"
         aria-label={`Aumentar ${label}`}
         disabled={disabled || value >= maximum}
         onClick={() => update(value + 1)}
-        className="nk-focus inline-flex size-8 items-center justify-center rounded-r-lg text-base font-black text-text-primary disabled:cursor-not-allowed disabled:opacity-35"
+        className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-r-lg text-base font-black text-text-primary sm:size-8 disabled:cursor-not-allowed disabled:opacity-35"
       >
         +
       </button>

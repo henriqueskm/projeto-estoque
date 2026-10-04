@@ -45,23 +45,23 @@ function RecommendationIdentity({
 }) {
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-black text-text-primary">
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="min-w-0 font-mono text-xl font-black text-text-primary [overflow-wrap:anywhere] sm:text-2xl">
           Cód. {item.primaryCode}
-        </span>
+        </h3>
         <span className="text-[0.65rem] font-black tracking-[0.08em] text-text-muted uppercase">
           {item.typeLabel}
         </span>
       </div>
+      <p className="mt-1 break-words text-sm font-semibold text-text-muted">
+        {item.description}
+      </p>
       {item.aliases.length > 0 ? (
-        <p className="mt-1 text-xs font-semibold text-text-muted">
+        <p className="mt-1 text-xs text-text-muted [overflow-wrap:anywhere]">
           Também:{" "}
           {item.aliases.map((alias) => `Cód. ${alias}`).join(", ")}
         </p>
       ) : null}
-      <p className="mt-1.5 break-words text-sm font-bold text-text-primary">
-        {item.description}
-      </p>
     </>
   );
 }
@@ -73,31 +73,32 @@ function StockMetrics({
   item: PurchaseRecommendationItem;
   includePending?: boolean;
 }) {
-  const metrics: Array<readonly [string, number | null]> = [
-    ["Estoque atual", item.currentStock],
-    ["Estoque mínimo", item.minimumStock],
+  const metrics: Array<readonly [string, string, number | null]> = [
+    ["Atual", "Estoque atual", item.currentStock],
+    ["Mín.", "Estoque mínimo", item.minimumStock],
   ];
 
   if (includePending) {
     metrics.push(
-      ["Compra pendente", item.pendingPurchaseQuantity],
-      ["Saldo projetado", item.projectedStock],
+      ["Compra pendente", "Compra pendente", item.pendingPurchaseQuantity],
+      ["Projetado", "Saldo projetado", item.projectedStock],
     );
   } else {
-    metrics.push(["Falta para o mínimo", item.shortfall]);
+    metrics.push(["Falta", "Falta para o mínimo", item.shortfall]);
   }
 
   return (
-    <dl className="mt-3 grid grid-cols-2 gap-1.5">
-      {metrics.map(([label, value]) => (
+    <dl className={`mt-3 grid rounded-lg bg-app-background ${includePending ? "grid-cols-2 gap-y-2 py-2" : "grid-cols-3 py-2"}`}>
+      {metrics.map(([label, accessibleLabel, value]) => (
         <div
           key={label}
-          className="rounded-lg border border-border-neutral bg-app-background px-2.5 py-2"
+          className="min-w-0 border-border-neutral px-2 text-center not-first:border-l"
         >
           <dt className="text-[0.62rem] font-black text-text-muted uppercase">
-            {label}
+            <span aria-hidden="true">{label}</span>
+            <span className="sr-only">{accessibleLabel}</span>
           </dt>
-          <dd className="mt-0.5 font-mono text-base font-black text-text-primary">
+          <dd className="mt-0.5 font-mono text-lg font-black tabular-nums text-text-primary [overflow-wrap:anywhere]">
             {value === null ? "—" : quantityFormatter.format(value)}
           </dd>
         </div>
@@ -110,7 +111,7 @@ function InventoryLink({ item }: { item: PurchaseRecommendationItem }) {
   return (
     <Link
       href={item.inventoryHref}
-      className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-border-neutral px-3 text-sm font-black text-text-primary transition hover:bg-app-background"
+      className="nk-focus inline-flex min-h-11 items-center justify-center rounded-xl border border-border-neutral px-3 text-sm font-bold text-text-primary transition hover:bg-app-background"
     >
       Abrir no Estoque
     </Link>
@@ -124,18 +125,11 @@ function BuyNowCard({ item }: { item: PurchaseRecommendationItem }) {
     <article className="rounded-xl border border-amber-200 bg-white p-3 shadow-sm">
       <RecommendationIdentity item={item} />
       <StockMetrics item={item} />
-      <div className="mt-3 flex flex-wrap items-end justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-        <div>
-          <span className="block text-[0.62rem] font-black tracking-[0.1em] text-amber-950 uppercase">
-            Comprar
-          </span>
-          <strong className="font-mono text-2xl font-black text-text-primary">
-            {quantityFormatter.format(recommendation)}
-          </strong>{" "}
-          <span className="text-xs font-bold text-text-muted">
-            {quantityLabel(recommendation)}
-          </span>
-        </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 text-base font-black text-amber-950 [overflow-wrap:anywhere]">
+          Comprar <strong className="font-mono text-xl tabular-nums">{quantityFormatter.format(recommendation)}</strong>{" "}
+          <span className="text-xs font-semibold">{quantityLabel(recommendation)}</span>
+        </p>
         <InventoryLink item={item} />
       </div>
     </article>
@@ -187,7 +181,7 @@ function AlreadyOrderedCard({
               </div>
               <Link
                 href={order.href}
-                className="nk-focus inline-flex min-h-10 items-center rounded-lg border border-border-neutral bg-white px-3 text-xs font-black text-text-primary transition hover:bg-slate-50"
+                className="nk-focus inline-flex min-h-11 items-center rounded-lg border border-border-neutral bg-white px-3 text-xs font-bold text-text-primary transition hover:bg-slate-50"
               >
                 Abrir Pedido
               </Link>
@@ -210,17 +204,10 @@ function MissingMinimumCard({
   return (
     <article className="rounded-xl border border-border-neutral bg-white p-3 shadow-sm">
       <RecommendationIdentity item={item} />
-      <div className="mt-3 rounded-lg border border-border-neutral bg-app-background px-3 py-2.5">
-        <p className="text-xs font-semibold text-text-muted">
-          Estoque atual
-        </p>
-        <p className="font-mono text-lg font-black text-text-primary">
-          {quantityFormatter.format(item.currentStock)}
-        </p>
-        <p className="mt-1 text-xs font-bold text-text-primary">
-          Estoque mínimo não definido
-        </p>
-      </div>
+      <p className="mt-3 text-sm text-text-muted">
+        Estoque atual: <strong className="font-mono text-lg font-black tabular-nums text-text-primary">{quantityFormatter.format(item.currentStock)}</strong>
+      </p>
+      <p className="mt-1 text-xs font-semibold text-text-muted">Estoque mínimo não definido</p>
       <div className="mt-3">
         <InventoryLink item={item} />
       </div>
@@ -404,7 +391,7 @@ export function PurchaseRecommendationPanel({
       >
         <header className="shrink-0 border-b border-border-neutral bg-white px-4 py-4 sm:px-5">
           <div className="flex items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <p className="text-[0.65rem] font-black tracking-[0.14em] text-brand-gold-ink uppercase">
                 Reposição
               </p>
@@ -430,23 +417,6 @@ export function PurchaseRecommendationPanel({
               ×
             </button>
           </div>
-          {data ? (
-            <div className="mt-3 grid grid-cols-3 gap-1.5">
-              {tabs.map((tab) => (
-                <div
-                  key={tab.id}
-                  className="rounded-lg border border-border-neutral bg-app-background px-2 py-2 text-center"
-                >
-                  <strong className="block font-mono text-base text-text-primary">
-                    {quantityFormatter.format(tab.count)}
-                  </strong>
-                  <span className="block text-[0.58rem] font-black text-text-muted uppercase sm:text-[0.65rem]">
-                    {tab.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-4">
@@ -519,7 +489,7 @@ export function PurchaseRecommendationPanel({
                     role="tab"
                     aria-selected={activeTab === tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`nk-focus min-h-11 rounded-lg px-1.5 py-2 text-[0.66rem] font-black sm:text-xs ${
+                    className={`nk-focus min-h-11 min-w-0 rounded-lg px-1.5 py-2 text-[0.66rem] font-black sm:text-xs ${
                       activeTab === tab.id
                         ? "bg-brand-charcoal text-white"
                         : "text-text-muted hover:bg-app-background"
@@ -545,7 +515,7 @@ export function PurchaseRecommendationPanel({
                   </button>
                   <p
                     aria-live="polite"
-                    className="w-full text-right text-xs font-bold text-text-muted"
+                    className={copyStatus === "idle" ? "sr-only" : "w-full text-right text-xs font-bold text-text-muted"}
                   >
                     {copyStatus === "copied"
                       ? "Lista copiada."

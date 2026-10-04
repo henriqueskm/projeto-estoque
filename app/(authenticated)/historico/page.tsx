@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { WorkspaceScroll } from "@/components/workspace-state-provider";
+import { HistoryFilterDisclosure } from "@/components/history-filter-disclosure";
 import Link from "next/link";
 import { createHistoryHref } from "@/lib/history-query";
 import { measurePerformanceAudit } from "@/lib/performance-audit";
@@ -135,6 +136,14 @@ export default async function HistoryPage({
   const historyResult = await measurePerformanceAudit("history", "page_data", () => loadHistoryList(filters));
   const history = historyResult.data;
   const filtered = hasActiveFilters(filters);
+  const activeFilterCount = [
+    filters.type !== "ALL",
+    filters.source !== "ALL",
+    filters.dateFrom,
+    filters.dateTo,
+    filters.user,
+    filters.query,
+  ].filter(Boolean).length;
 
   return (
     <main data-nk-perf-ready="/historico" className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
@@ -152,7 +161,7 @@ export default async function HistoryPage({
           aria-hidden="true"
           className="absolute inset-y-0 left-0 w-1.5 bg-brand-gold"
         />
-        <div className="flex items-start gap-3">
+        <div className="flex flex-col items-start gap-3 min-[430px]:flex-row">
           <span className="mt-1 flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-gold text-brand-charcoal">
             <ClockIcon className="size-6" />
           </span>
@@ -160,7 +169,7 @@ export default async function HistoryPage({
             <p className="text-xs font-black tracking-[0.2em] text-brand-gold uppercase">
               Auditoria · Somente leitura
             </p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">
+            <h1 className="mt-2 text-2xl font-black tracking-tight text-white [overflow-wrap:anywhere] min-[430px]:text-3xl sm:text-4xl">
               Histórico de movimentações
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-200 sm:text-base sm:leading-7">
@@ -198,6 +207,7 @@ export default async function HistoryPage({
           </span>
         </div>
 
+        <HistoryFilterDisclosure key={createHistoryHref(filters, 1)} activeCount={activeFilterCount}>
         <form
           action="/historico"
           method="get"
@@ -319,6 +329,7 @@ export default async function HistoryPage({
             segura.
           </p>
         ) : null}
+        </HistoryFilterDisclosure>
       </section>
 
       {historyResult.error ? (
