@@ -12,7 +12,7 @@ test("a new or restored empty conversation starts at its saved scroll position",
   assert.doesNotMatch(home, /scrollTop > 0 \? scrollTop : conversation\.scrollHeight/);
 });
 
-test("sidebar keeps the shell mounted and warms routes selectively", () => {
+test("sidebar keeps the shell mounted and warms only guarded route shells", () => {
   const sidebar = read("components/app-sidebar.tsx");
   const layout = read("app/(authenticated)/layout.tsx");
 
@@ -22,12 +22,12 @@ test("sidebar keeps the shell mounted and warms routes selectively", () => {
   assert.match(sidebar, /const idleWarmRoutes = \[/);
   assert.match(sidebar, /"\/estoque"[\s\S]*"\/entrada"[\s\S]*"\/saida"/);
   assert.match(sidebar, /"\/pedidos"[\s\S]*"\/aplicacoes"/);
-  assert.doesNotMatch(
+  assert.match(
     sidebar.slice(
       sidebar.indexOf("const idleWarmRoutes"),
       sidebar.indexOf("function isCurrentSection"),
     ),
-    /estatisticas|historico/,
+    /estatisticas[\s\S]*historico/,
   );
   assert.match(sidebar, /isCurrentSection\(pathname, href\)/);
   assert.match(sidebar, /requestIdleCallback/);

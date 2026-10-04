@@ -5,7 +5,6 @@ import {
 } from "@/lib/supplier-orders-data";
 import { authenticateSupplierOrdersRequest } from "@/lib/supplier-orders-route-auth";
 
-export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const startedAt = performance.now();

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useWorkspaceState, useWorkspaceScroll } from "@/components/workspace-state-provider";
+import { RouteMutationBoundary, useRouteMutation, useRouteMutationPending, useRouteTransientCleanup } from "@/components/route-transient-state";
 import { orderWorkspaceDefaults } from "@/lib/workspace-state";
 import { useRouter } from "next/navigation";
 import {
@@ -859,6 +860,7 @@ function OrderFormDialog({
   >({});
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const runMutation = useRouteMutation(startTransition);
 
   useAccessibleDialog(dialogRef, firstInputRef, isPending, onClose);
 
@@ -1175,7 +1177,7 @@ function OrderFormDialog({
       idempotency_key: idempotencyKey,
     };
 
-    startTransition(async () => {
+    runMutation(async (isCurrentVisit) => {
       const result =
         mode === "EDIT" && order
           ? await updateSupplierOrder({
@@ -1185,6 +1187,7 @@ function OrderFormDialog({
             } satisfies UpdateSupplierOrderInput)
           : await createSupplierOrder(sharedInput);
 
+      if (!isCurrentVisit()) return;
       if (!result.ok) {
         if (result.stale) {
           onStale(result.error);
@@ -2161,6 +2164,7 @@ function ConfirmationDialog({
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const runMutation = useRouteMutation(startTransition);
   const isCancellation = kind !== "MARK_ALL";
   const markAllQuantity = order.readyWaitingPickupQuantity;
   const title =
@@ -2201,12 +2205,12 @@ function ConfirmationDialog({
     idempotencyKeyRef.current = idempotencyKey;
     const attemptSequence = ++attemptSequenceRef.current;
 
-    startTransition(async () => {
+    runMutation(async (isCurrentVisit) => {
       await runSupplierOrderConfirmationMutation({
         supplierOrder: order,
         idempotencyKey,
         isCurrentAttempt: () =>
-          attemptSequence === attemptSequenceRef.current,
+          isCurrentVisit() && attemptSequence === attemptSequenceRef.current,
         execute: ({ expected_updated_at, idempotency_key }) =>
           kind === "MARK_ALL"
             ? markSupplierOrderAllPicked({
@@ -2359,6 +2363,7 @@ function FinalizationDialog({
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const runMutation = useRouteMutation(startTransition);
 
   useAccessibleDialog(
     dialogRef,
@@ -2380,7 +2385,7 @@ function FinalizationDialog({
     idempotencyKeyRef.current = idempotencyKey;
     setError(null);
 
-    startTransition(async () => {
+    runMutation(async (isCurrentVisit) => {
       const result = await finalizeSupplierOrder({
         supplier_order_id: order.id,
         expected_updated_at: order.updatedAt,
@@ -2388,6 +2393,7 @@ function FinalizationDialog({
         idempotency_key: idempotencyKey,
       });
 
+      if (!isCurrentVisit()) return;
       if (!result.ok) {
         if (result.stale) {
           idempotencyKeyRef.current = null;
@@ -2524,6 +2530,7 @@ function StockEntryDialog({
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const runMutation = useRouteMutation(startTransition);
 
   useAccessibleDialog(
     dialogRef,
@@ -2597,7 +2604,7 @@ function StockEntryDialog({
     idempotencyKeyRef.current = idempotencyKey;
     setError(null);
 
-    startTransition(async () => {
+    runMutation(async (isCurrentVisit) => {
       const result = await createSupplierOrderStockEntryAction({
         supplierOrderId: order.id,
         lines: selectedItems.map((item) => ({
@@ -2609,6 +2616,7 @@ function StockEntryDialog({
         idempotencyKey,
       });
 
+      if (!isCurrentVisit()) return;
       if (!result.ok) {
         if (result.stale) {
           idempotencyKeyRef.current = null;
@@ -2882,6 +2890,12 @@ function OrderDetailsDialog({
   const [stockEntryOpen, setStockEntryOpen] = useState(false);
   const [headerActionsOpen, setHeaderActionsOpen] = useState(false);
   const [isPending] = useTransition();
+  useRouteTransientCleanup(() => {
+    setConfirmation(null);
+    setFinalizing(false);
+    setStockEntryOpen(false);
+    setHeaderActionsOpen(false);
+  });
 
   const closeHeaderActions = useCallback((restoreFocus = true) => {
     setHeaderActionsOpen(false);
@@ -3885,6 +3899,13 @@ function ActiveSupplierOrdersWorkspace({
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
+  const mutationPending = useRouteMutationPending();
+  useRouteTransientCleanup(() => {
+    setEditingOrderId(null);
+    setCreatingOrder(false);
+    setFeedback(null);
+    // selectedOrderId, filters, sort and scroll belong to Workspace State.
+  });
   const detailState = useSupplierOrderDetail(
     selectedOrderId,
     "active",
@@ -4047,6 +4068,7 @@ function ActiveSupplierOrdersWorkspace({
         </div>
         <button
           type="button"
+          disabled={mutationPending}
           onClick={() => {
             loadCatalog();
             setCreatingOrder(true);
@@ -4210,6 +4232,7 @@ function ActiveSupplierOrdersWorkspace({
           </p>
           <button
             type="button"
+            disabled={mutationPending}
             onClick={() => {
               loadCatalog();
               setCreatingOrder(true);
@@ -4548,6 +4571,7 @@ function HistorySupplierOrdersWorkspace({
   useWorkspaceScroll("pedidos:history", { ...orderWorkspaceDefaults, sort: "CLOSED_RECENT" });
   const [feedback, setFeedback] = useState<string | null>(null);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
+  useRouteTransientCleanup(() => { setFeedback(null); });
   const detailState = useSupplierOrderDetail(
     selectedOrderId,
     "history",
@@ -5033,7 +5057,7 @@ export function SupplierOrdersWorkspace({
   view,
   initialOrderId,
 }: SupplierOrdersWorkspaceProps) {
-  return view === "history" ? (
+  return <RouteMutationBoundary>{view === "history" ? (
     <HistorySupplierOrdersWorkspace
       key={initialOrderId ?? "history"}
       data={data}
@@ -5045,5 +5069,5 @@ export function SupplierOrdersWorkspace({
       data={data}
       initialOrderId={initialOrderId}
     />
-  );
+  )}</RouteMutationBoundary>;
 }

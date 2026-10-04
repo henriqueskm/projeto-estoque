@@ -46,7 +46,8 @@ test("proposal is dynamically guarded while the proxy stays narrowly scoped", ()
   const actions = read("app/(public)/apresentacao/proposta/actions.ts");
   const proxy = read("lib/supabase/proxy.ts");
 
-  assert.match(page, /export const dynamic = "force-dynamic"/);
+  assert.match(page, /<Suspense[\s\S]*<AuthenticatedProposalContent/);
+  assert.doesNotMatch(page, /export const dynamic|["']use cache["']/);
   assert.match(page, /const session = await hasCommercialProposalSession\(\);/);
   assert.match(page, /if \(!session\) return <CommercialProposalLogin \/>;/);
   assert.match(page, /R\$ 6\.000/);

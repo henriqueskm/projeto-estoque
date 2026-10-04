@@ -52,6 +52,8 @@ const idleWarmRoutes = [
   "/saida",
   "/pedidos",
   "/aplicacoes",
+  "/estatisticas",
+  "/historico",
 ] as const;
 
 function isCurrentSection(pathname: string, href: string) {

@@ -25,6 +25,8 @@ import type {
 } from "@/lib/inventory-action-types";
 import { runStockAdjustmentSubmission } from "@/lib/stock-adjustment-stale-conflict";
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
+import { useRouteMutation } from "@/components/route-transient-state";
+import { notifyInventoryDataChanged } from "@/lib/inventory-ui-events";
 
 const maximumInteger = 2_147_483_647;
 const maximumReasonLength = 500;
@@ -171,6 +173,7 @@ export function InventoryAdjustmentDialog({
   const attemptSequenceRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const runMutation = useRouteMutation(startTransition, notifyInventoryDataChanged);
   const isLooseComponent =
     target.kind === "ITEM" &&
     (target.itemType === "SERVO" ||
@@ -218,14 +221,14 @@ export function InventoryAdjustmentDialog({
     idempotencyKeyRef.current = idempotencyKey;
     const attemptSequence = ++attemptSequenceRef.current;
 
-    startTransition(async () => {
+    runMutation(async (isCurrentVisit) => {
       await runStockAdjustmentSubmission({
         target,
         countedQuantity: quantity,
         reason: normalizedReason,
         idempotencyKey,
         isCurrentAttempt: () =>
-          attemptSequence === attemptSequenceRef.current,
+          isCurrentVisit() && attemptSequence === attemptSequenceRef.current,
         execute: adjustInventoryStock,
         clearAttempt: () => {
           idempotencyKeyRef.current = null;
@@ -391,6 +394,7 @@ export function MinimumStockDialog({
   const [minimumStock, setMinimumStock] = useState(String(target.minimumStock));
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const runMutation = useRouteMutation(startTransition, notifyInventoryDataChanged);
 
   useAccessibleDialog(dialogRef, inputRef, isPending, onClose);
 
@@ -408,7 +412,7 @@ export function MinimumStockDialog({
       return;
     }
 
-    startTransition(async () => {
+    runMutation(async (isCurrentVisit) => {
       const result =
         target.kind === "ITEM"
           ? await changeItemMinimumStock({
@@ -420,6 +424,7 @@ export function MinimumStockDialog({
               minimum_stock: normalizedMinimumStock,
             });
 
+      if (!isCurrentVisit()) return;
       if (!result.ok) {
         setError(result.error);
         return;
@@ -542,6 +547,7 @@ export function BundleOperationDialog({
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const runMutation = useRouteMutation(startTransition, notifyInventoryDataChanged);
   const isAssembly = operationType === "ASSEMBLY";
   const code =
     (isAssembly
@@ -589,7 +595,7 @@ export function BundleOperationDialog({
     keyRef.current ??= crypto.randomUUID();
     const key = keyRef.current;
     submitGuard.current = true;
-    startTransition(async () => {
+    runMutation(async (isCurrentVisit) => {
       try {
         const result = await (
           isAssembly ? assembleCommercialBundle : disassembleCommercialBundle
@@ -600,6 +606,7 @@ export function BundleOperationDialog({
           description: description.trim() || null,
           idempotency_key: key,
         });
+        if (!isCurrentVisit()) return;
         if (!result.ok) {
           setError(result.error);
           return;
@@ -608,6 +615,7 @@ export function BundleOperationDialog({
           `${isAssembly ? "Montagem" : "Desmontagem"} de ${result.receipt.quantity} ${code} confirmada. Saldo pronto: ${result.receipt.quantityBefore} → ${result.receipt.quantityAfter}.`,
         );
       } catch {
+        if (!isCurrentVisit()) return;
         setError("A conexão falhou. Tente novamente com os mesmos dados.");
       } finally {
         submitGuard.current = false;
@@ -731,6 +739,7 @@ export function ConfigurationOperationDialog({
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const runMutation = useRouteMutation(startTransition, notifyInventoryDataChanged);
   const idempotencyKeyRef = useRef<string | null>(null);
   const hasSubmittedRef = useRef(false);
   const submitGuardRef = useRef(false);
@@ -811,7 +820,7 @@ export function ConfigurationOperationDialog({
     hasSubmittedRef.current = true;
     submitGuardRef.current = true;
 
-    startTransition(async () => {
+    runMutation(async (isCurrentVisit) => {
       try {
         const action = isAssembly
           ? assembleCommercialConfiguration
@@ -824,6 +833,7 @@ export function ConfigurationOperationDialog({
           description: normalizedDescription || null,
         });
 
+        if (!isCurrentVisit()) return;
         if (!result.ok) {
           setError(result.error);
           return;
@@ -839,6 +849,7 @@ export function ConfigurationOperationDialog({
           `Operação confirmada. ${operationLabel} de ${receipt.quantity}. Servo sem kit: ${receipt.servoQuantityBefore} → ${receipt.servoQuantityAfter}. Kit avulso: ${receipt.kitQuantityBefore} → ${receipt.kitQuantityAfter}. Servos com kit: ${receipt.configurationQuantityBefore} → ${receipt.configurationQuantityAfter}.${commercialCodeLabel}`,
         );
       } catch {
+        if (!isCurrentVisit()) return;
         setError(
           "A conexão falhou durante a confirmação. Tente novamente sem alterar os dados para reutilizar a mesma chave segura.",
         );

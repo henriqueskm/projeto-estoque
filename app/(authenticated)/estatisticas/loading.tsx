@@ -1,11 +1,13 @@
 export default function StatisticsLoading() {
   return (
     <main
+      data-nk-perf-shell="/estatisticas"
       className="mx-auto w-full max-w-7xl px-3 py-4 motion-safe:animate-pulse sm:px-6 sm:py-6 lg:px-8"
       aria-busy="true"
       aria-label="Carregando estatísticas"
     >
-      <div className="h-8 w-40 rounded-lg bg-border-neutral/60" />
+      <h1 className="text-2xl font-black text-text-primary sm:text-3xl">Estatísticas</h1>
+      <p className="mt-1 text-sm text-text-muted">Carregando métricas atuais…</p>
       <div className="mt-4 h-12 rounded-2xl bg-border-neutral/60" />
       <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (

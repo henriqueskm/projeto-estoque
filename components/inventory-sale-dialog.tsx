@@ -3,6 +3,8 @@
 import { useId, useRef, useState, useTransition } from "react";
 import { submitInventorySale } from "@/app/(authenticated)/saida/actions";
 import { DialogFrame, useAccessibleDialog } from "@/components/inventory-action-dialogs";
+import { useRouteMutation } from "@/components/route-transient-state";
+import { notifyInventoryDataChanged } from "@/lib/inventory-ui-events";
 import type { InventoryActionTarget } from "@/lib/inventory-action-types";
 import {
   buildInventorySaleRequest, createInventorySaleAttempt, formatInventorySaleFeedback,
@@ -20,6 +22,7 @@ export function InventorySaleDialog({ target, onClose, onSuccess, onStale }: {
   const quantityRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [isPending, startTransition] = useTransition();
+  const runMutation = useRouteMutation(startTransition, notifyInventoryDataChanged);
   const [attempt] = useState(createInventorySaleAttempt);
   const codes = inventorySaleCodes(target);
   const [codeId, setCodeId] = useState(codes[0]?.id ?? "");
@@ -40,9 +43,10 @@ export function InventorySaleDialog({ target, onClose, onSuccess, onStale }: {
     if (!request || !code) return;
     setLocked(true);
     setError(null);
-    startTransition(async () => {
+    runMutation(async (isCurrentVisit) => {
       try {
         const result = await attempt.submit(request, submitInventorySale);
+        if (!isCurrentVisit()) return;
         if (!result) return;
         if (result.ok) onSuccess(formatInventorySaleFeedback(target, code, result.receipt));
         else if (result.stale) {
@@ -50,6 +54,7 @@ export function InventorySaleDialog({ target, onClose, onSuccess, onStale }: {
           onClose();
         } else setError(result.error);
       } catch {
+        if (!isCurrentVisit()) return;
         setError("Não foi possível confirmar o resultado. Tente novamente neste dialog com a mesma chave, ou atualize o Estoque para conferir a venda.");
       }
     });

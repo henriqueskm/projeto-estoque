@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { connection } from "next/server";
+import { Suspense, type ReactNode } from "react";
 import { WorkspaceStateProvider } from "@/components/workspace-state-provider";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AssistantConversationProvider } from "@/components/assistant-conversation-provider";
@@ -9,9 +10,20 @@ import { requireActiveProfile } from "@/lib/auth";
 import { PerformanceAuditPanel } from "@/components/performance-audit-panel";
 import { measurePerformanceAudit } from "@/lib/performance-audit";
 
-export default async function AuthenticatedLayout({
+export default function AuthenticatedLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
+  return (
+    <Suspense fallback={<main aria-busy="true" aria-label="Verificando acesso" className="min-h-dvh bg-app-background px-4 py-8 text-text-primary"><p className="text-lg font-black">Negócios K</p><p className="mt-2 text-sm text-text-muted">Verificando acesso…</p></main>}>
+      <AuthenticatedContent>{children}</AuthenticatedContent>
+    </Suspense>
+  );
+}
+
+async function AuthenticatedContent({
+  children,
+}: Readonly<{ children: ReactNode }>) {
+  await connection();
   const profile = await measurePerformanceAudit("auth", "layout_profile", requireActiveProfile);
 
   return (

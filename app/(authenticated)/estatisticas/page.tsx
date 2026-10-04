@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { WorkspaceScroll } from "@/components/workspace-state-provider";
 import Link from "next/link";
 import { measurePerformanceAudit } from "@/lib/performance-audit";
@@ -595,6 +596,8 @@ function UnmovedSection({
 export default async function StatisticsPage({
   searchParams,
 }: StatisticsPageProps) {
+  // Operational data waits for a real navigation, never a runtime prefetch.
+  await connection();
   const period = parseStatisticsPeriod(await searchParams);
   const result = await measurePerformanceAudit("statistics", "page_data", () => loadStatisticsData(period));
   const statistics = result.data;

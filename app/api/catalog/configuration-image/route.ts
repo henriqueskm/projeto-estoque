@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { isInventoryConfigurationVisible } from "@/lib/configuration-image-visibility";
 import { logPerformanceAudit } from "@/lib/performance-audit";
 
-export const dynamic = "force-dynamic";
 const lifetimeSeconds = 600;
 const headers = { "Cache-Control": "private, no-store" };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

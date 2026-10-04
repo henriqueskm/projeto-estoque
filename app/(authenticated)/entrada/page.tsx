@@ -1,9 +1,12 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { ArrowLeftIcon, InboundIcon } from "@/components/icons";
 import { getInboundCatalog } from "@/lib/inbound-data";
 import { InboundEntryFlow } from "./inbound-entry-flow";
 
 export default async function InboundPage() {
+  // Operational data waits for a real navigation, never a runtime prefetch.
+  await connection();
   const catalog = await getInboundCatalog();
 
   return (

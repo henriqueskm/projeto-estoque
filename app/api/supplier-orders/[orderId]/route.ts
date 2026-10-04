@@ -6,7 +6,6 @@ import {
 } from "@/lib/supplier-orders-data";
 import { authenticateSupplierOrdersRequest } from "@/lib/supplier-orders-route-auth";
 
-export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ orderId: string }> };
 
