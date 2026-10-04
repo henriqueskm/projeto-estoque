@@ -12,6 +12,7 @@ import {
 import type { InventoryActionTarget } from "@/lib/inventory-action-types";
 import { notifyInventoryDataChanged } from "@/lib/inventory-ui-events";
 import { InventorySaleDialog } from "@/components/inventory-sale-dialog";
+import { useRouteMutationPending, useRouteTransientCleanup } from "@/components/route-transient-state";
 
 type InventoryRowActionsProps = {
   target: InventoryActionTarget;
@@ -40,6 +41,12 @@ export function InventoryRowActions({
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const mutationPending = useRouteMutationPending();
+  useRouteTransientCleanup(() => {
+    setIsOpen(false);
+    setActiveDialog(null);
+    setFeedback(null);
+  }, isOpen || activeDialog !== null || feedback !== null);
   const targetLabel =
     target.kind === "ITEM"
       ? target.code
@@ -139,6 +146,7 @@ export function InventoryRowActions({
   }
 
   function openDialog(dialog: Exclude<ActiveDialog, null>) {
+    if (mutationPending) return;
     setIsOpen(false);
     setFeedback(null);
     setActiveDialog(dialog);
@@ -151,6 +159,7 @@ export function InventoryRowActions({
           ref={triggerRef}
           type="button"
           aria-label={`Abrir ações de ${targetLabel}`}
+          disabled={mutationPending}
           aria-haspopup="menu"
           aria-expanded={isOpen}
           aria-controls={menuId}

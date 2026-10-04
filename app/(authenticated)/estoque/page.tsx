@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { RouteMutationBoundary } from "@/components/route-transient-state";
 import {
   InventoryWorkspace,
   type InventoryDeepLinkTarget,
@@ -94,7 +95,7 @@ export default async function InventoryPage({
           </div>
         </>
       ) : (
-        <InventoryWorkspace
+        <RouteMutationBoundary><InventoryWorkspace
           key={`${resolvedSearchParams.status !== undefined ? "explicit" : "resume"}-${initialStatusFilter}-${initialTarget?.kind ?? "none"}-${initialTarget?.id ?? "none"}`}
           inventory={inventoryResult.data}
           initialStatusFilter={initialStatusFilter}
@@ -103,7 +104,7 @@ export default async function InventoryPage({
           isPurchaseRecommendationsInitiallyOpen={
             isPurchaseRecommendationsOpen
           }
-        />
+        /></RouteMutationBoundary>
       )}
     </main>
   );

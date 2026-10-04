@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
+import { useRouteTransientCleanup } from "@/components/route-transient-state";
 import { useStockFlowWorkspace } from "@/components/use-stock-flow-workspace";
 import {
   CheckIcon,
@@ -117,6 +118,12 @@ export function OutboundEntryFlow({
   const [isPending, startTransition] = useTransition();
 
   const submissionInFlight = useRef(false);
+  const visit = useRouteTransientCleanup(() => {
+    setReceipt(null);
+    setValidationError(null);
+    setSubmissionError(null);
+    // Do not clear the draft, rotate its key or release the in-flight guard.
+  });
 
   const selectedKeys = useMemo(
     () => new Set(lines.map((line) => getOptionKey(line.option))),
@@ -289,6 +296,7 @@ export function OutboundEntryFlow({
     workspace.persistNow();
     submissionInFlight.current = true;
     setSubmissionError(null);
+    const isCurrentVisit = visit.capture();
 
     startTransition(async () => {
       try {
@@ -299,16 +307,18 @@ export function OutboundEntryFlow({
         });
 
         if (!result.ok) {
-          setSubmissionError(result.error);
+          if (isCurrentVisit()) setSubmissionError(result.error);
           return;
         }
 
         workspace.clear();
+        if (!isCurrentVisit()) return;
         workspace.cancelScrollRestore();
         setReceipt(result.receipt);
         setStep("success");
         window.scrollTo({ top: 0, behavior: "smooth" });
       } catch {
+        if (!isCurrentVisit()) return;
         setSubmissionError(
           "A comunicação foi interrompida. Tente confirmar novamente.",
         );
