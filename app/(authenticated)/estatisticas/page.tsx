@@ -108,7 +108,7 @@ function MetricCard({
 
   return (
     <article className={`rounded-2xl border p-3.5 ${toneStyles[tone]}`}>
-      <p className="text-xs font-black tracking-[0.12em] uppercase">{label}</p>
+      <p className={`text-xs font-black uppercase ${label === "Desmontagens" ? "tracking-normal [overflow-wrap:anywhere] sm:tracking-[0.12em]" : "tracking-[0.12em]"}`}>{label}</p>
       <p className="mt-1 text-2xl font-black tabular-nums">
         {quantityFormatter.format(value)}
       </p>

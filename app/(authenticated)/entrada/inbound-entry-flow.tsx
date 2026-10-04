@@ -13,6 +13,7 @@ import {
 } from "@/components/icons";
 import { StockFlowBundleReview } from "@/components/stock-flow-bundles";
 import { StockFlowSearchResults } from "@/components/stock-flow-search-results";
+import { StockFlowCartShortcut } from "@/components/stock-flow-cart-shortcut";
 import { dismissSearchKeyboard } from "@/lib/search-input";
 import { assessNewLoosePartCode } from "@/lib/catalog-code-policy";
 import {
@@ -1032,6 +1033,7 @@ export function InboundEntryFlow({
           </div>
 
           {renderNewLoosePartForm()}
+          <StockFlowCartShortcut count={lines.length} headingId="inbound-cart-title" />
           {workspace.reconciliationNotice ? <p role="status" className="mb-3 text-sm font-bold text-amber-900">Um item salvo neste rascunho não está mais disponível e foi removido. Revise os itens antes de confirmar.</p> : null}
           <StockFlowSearchResults options={searchOptions} search={search} selectedKeys={selectedKeys} onAdd={addOption} />
         </div>
@@ -1042,7 +1044,7 @@ export function InboundEntryFlow({
               <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
                 Entrada atual
               </p>
-              <h2 className="mt-1 text-xl font-black text-text-primary">
+              <h2 id="inbound-cart-title" tabIndex={-1} className="nk-focus mt-1 scroll-mt-20 text-xl font-black text-text-primary">
                 Linhas e quantidades
               </h2>
             </div>

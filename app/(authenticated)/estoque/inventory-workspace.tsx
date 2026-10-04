@@ -989,6 +989,7 @@ export function InventoryWorkspace({
           </label>
           <button
             type="button"
+            aria-label="Filtros do estoque"
             aria-expanded={areFiltersOpen}
             aria-controls="inventory-filter-panel"
             onClick={() => setAreFiltersOpen((current) => !current)}
