@@ -2,15 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { createSemanticBackHistory, readSemanticMarker } from "../lib/semantic-back-history.ts";
+import { createRouteMutationGate } from "../lib/route-transient-state.ts";
 
 function browser(url = "/estoque", standalone = false) {
-  let index = 0; let counter = 0; let exitCount = 0; let popCount = 0;
+  let index = 0; let counter = 0; let exitCount = 0; let popCount = 0; let exitOpen = false;
+  const traversals = [];
   const stack = [{ url, state: { __NA: true, nextTree: "untouched" } }];
   const history = {
     get state() { return stack[index].state; },
     pushState(state, _, route) { stack.splice(index + 1); stack.push({ state: structuredClone(state), url: route ?? stack[index].url }); index += 1; },
     replaceState(state, _, route) { stack[index] = { state: structuredClone(state), url: route ?? stack[index].url }; },
     go(delta) {
+      traversals.push(delta);
       const target = index + delta;
       if (target < 0 || target >= stack.length) return;
       index = target;
@@ -18,10 +21,10 @@ function browser(url = "/estoque", standalone = false) {
     },
   };
   const coordinator = createSemanticBackHistory({ history, href: () => stack[index].url, standalone: () => standalone,
-    exit: () => { exitCount += 1; }, beforePop: () => { popCount += 1; }, id: () => `entry-${++counter}` });
+    exit: open => { exitOpen = open; if (open) exitCount += 1; }, beforePop: () => { popCount += 1; }, id: () => `entry-${++counter}` });
   coordinator.ensure();
-  return { coordinator, history, stack, back: () => history.go(-1), forward: () => history.go(1),
-    get url() { return stack[index].url; }, get exitCount() { return exitCount; }, get popCount() { return popCount; } };
+  return { coordinator, history, stack, traversals, back: () => history.go(-1), forward: () => history.go(1),
+    get url() { return stack[index].url; }, get exitCount() { return exitCount; }, get exitOpen() { return exitOpen; }, get popCount() { return popCount; } };
 }
 function participant(browser, key, initial, restoreGuard = () => true) {
   let value = initial;
@@ -54,6 +57,57 @@ test("pending mutation cannot cause a navigation loop or acquire a second submis
   const b = browser(); let closes = 0;
   b.coordinator.openTransient("mutation", () => { closes += 1; }, () => true);
   b.back(); assert.equal(closes, 0); assert.equal(b.stack.length, 2); assert.equal(b.popCount, 0);
+});
+
+for (const kind of ["MARK_ALL", "CANCEL", "CANCEL_REMAINING"]) {
+  test(`ConfirmationDialog ${kind}: Back closes only confirmation, next Back closes order, Forward is safe`, () => {
+    const b = browser("/pedidos");
+    const state = participant(b, "pedidos:active", { search: "40959", statusFilter: "PARTIAL", sort: "OLDEST", selectedOrderId: null });
+    state.change({ ...state.value, selectedOrderId: "safe-order-id" });
+    const detail = structuredClone(state.value);
+    let confirmation = true;
+    b.coordinator.openTransient(kind, () => { confirmation = false; }, () => false);
+    b.back();
+    assert.equal(confirmation, false);
+    assert.deepEqual(state.value, detail, "selected order, search, filters and sort stay unchanged");
+    b.back(); assert.equal(state.value.selectedOrderId, null);
+    b.forward(); assert.equal(state.value.selectedOrderId, "safe-order-id");
+    b.forward(); assert.equal(confirmation, false, "transaction confirmation is not restorable");
+    assert.deepEqual(state.value, detail);
+  });
+  test(`ConfirmationDialog ${kind}: pending Back retains modal/detail and the #78 submission gate`, () => {
+    const b = browser("/pedidos");
+    const state = participant(b, "pedidos:active", { selectedOrderId: null, search: "kept" });
+    state.change({ ...state.value, selectedOrderId: "safe-order-id" });
+    const gate = createRouteMutationGate();
+    const release = gate.acquire();
+    let confirmation = true;
+    b.coordinator.openTransient(kind, () => { confirmation = false; }, gate.isPending);
+    const entryId = readSemanticMarker(b.history.state).id;
+    const length = b.stack.length;
+    const popsBefore = b.popCount;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      b.back(); assert.equal(gate.acquire(), null, "second submit cannot acquire the in-flight gate");
+      assert.equal(readSemanticMarker(b.history.state).id, entryId);
+      assert.equal(confirmation, true); assert.equal(state.value.selectedOrderId, "safe-order-id");
+    }
+    assert.equal(b.popCount, popsBefore, "no route cleanup/restore while mutation is pending");
+    assert.equal(b.stack.length, length);
+    release(); b.back(); assert.equal(confirmation, false); assert.equal(state.value.selectedOrderId, "safe-order-id");
+  });
+}
+
+test("order confirmation/finalization/stock entry use exactly the DialogShell default transient registration", () => {
+  const source = readFileSync(new URL("../app/(authenticated)/pedidos/orders-workspace.tsx", import.meta.url), "utf8");
+  for (const [name, next] of [["ConfirmationDialog", "FinalizationDialog"], ["FinalizationDialog", "StockEntryDialog"], ["StockEntryDialog", "OrderDetailsDialog"]]) {
+    const component = source.slice(source.indexOf(`function ${name}(`), source.indexOf(`function ${next}(`));
+    assert.equal((component.match(/<DialogShell\b/g) ?? []).length, 1);
+    assert.match(component, /isPending=\{isPending\}/);
+    assert.doesNotMatch(component, /semanticTransient=|useSemanticTransient\(/, "no opt-out or duplicate registration");
+  }
+  const shell = source.slice(source.indexOf("function DialogShell("), source.indexOf("function DialogShell(") + 1000);
+  assert.match(shell, /semanticTransient = true/);
+  assert.equal((shell.match(/useSemanticTransient\(semanticTransient, onClose, isPending\)/g) ?? []).length, 1);
 });
 
 test("Estoque: filter, group, family unwind in exact reverse order", () => {
@@ -118,6 +172,29 @@ test("ordinary browser has no sentinel/exit trap", () => {
   const b = browser("/pedidos"); assert.equal(b.stack.length, 1); b.back(); assert.equal(b.exitCount, 0);
 });
 
+test("standalone exit: Back cancels, another Back reopens, Continue/Escape and Exit keep a single boundary", () => {
+  const b = browser("/pedidos", true);
+  const state = participant(b, "pedidos:active", { search: "kept", statusFilter: "PARTIAL", selectedOrderId: null });
+  const original = structuredClone(state.value);
+  const length = b.stack.length;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    b.back(); assert.equal(b.exitOpen, true);
+    b.back(); assert.equal(b.exitOpen, false);
+    assert.equal(b.url, "/pedidos"); assert.deepEqual(state.value, original);
+    assert.equal(b.stack.length, length);
+  }
+  b.back(); assert.equal(b.exitOpen, true);
+  b.coordinator.continueInApp(); assert.equal(b.exitOpen, false);
+  b.back(); assert.equal(b.exitOpen, true, "Continue re-arms the same boundary");
+  assert.equal(b.stack.filter(entry => readSemanticMarker(entry.state)?.kind === "EXIT_BOUNDARY").length, 1);
+  assert.equal(b.popCount, 0, "exit attempts never restore/clear useful Workspace state");
+  assert.equal(b.traversals.length, 28, "each Back has only one bounded forward bounce");
+  b.coordinator.leaveApp(); assert.equal(b.exitOpen, false); assert.equal(b.traversals.at(-1), -2);
+  const attempts = b.exitCount;
+  b.back(); assert.equal(b.exitCount, attempts, "released boundary no longer traps Back");
+  assert.equal(b.stack.length, length);
+});
+
 test("StrictMode transient effect probe does not duplicate history", () => {
   const b = browser(); const first = b.coordinator.openTransient("same-hook", () => {}, () => false);
   b.coordinator.retireTransient(first);
@@ -172,6 +249,8 @@ test("source integration leaves Workspace v1 and all transactional writers untou
   const hook = read("components/semantic-back-provider.tsx");
   assert.match(hook, /isStandaloneMode/); assert.match(hook, /useLayoutEffect/); assert.match(hook, /aria-modal="true"/);
   assert.match(hook, /nk-exit-title/); assert.match(hook, /event.key === "Escape"/); assert.match(hook, /event.key === "Tab"/);
+  assert.match(hook, /event.key === "Escape"\) \{ event.preventDefault\(\); onContinue\(\);/);
+  assert.match(hook, /onContinue=\{\(\) => coordinator.continueInApp\(\)\}/);
   assert.doesNotMatch(hook, /window.confirm|window.close|about:blank|router.refresh|\.rpc\(/);
   assert.equal((hook.match(/addEventListener\("popstate"/g) ?? []).length, 1);
   for (const mode of ["entrada", "saida"]) {

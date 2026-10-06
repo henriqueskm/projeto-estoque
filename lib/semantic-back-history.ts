@@ -21,7 +21,7 @@ export function readSemanticMarker(state: unknown): Marker | null {
 }
 export function createSemanticBackHistory({ history, href, standalone, exit, beforePop, id, internalDocumentNavigation = () => false }: {
   history: HistoryPort; href: () => string; standalone: () => boolean;
-  exit: () => void; beforePop: () => void; id: () => string;
+  exit: (open: boolean) => void; beforePop: () => void; id: () => string;
   internalDocumentNavigation?: () => boolean;
 }) {
   const entries = new Map<string, Entry>();
@@ -31,6 +31,7 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
   let initialized = false;
   let released = false;
   let returningFromBoundary = false;
+  let exitOpen = false;
   let returningFromBlocked = false;
   let guarded = false;
   const pathname = () => href().split(/[?#]/)[0];
@@ -139,7 +140,10 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
       if (returningFromBoundary) {
         returningFromBoundary = false;
         if (marker) current = entries.get(marker.id) ?? null;
-        exit();
+        // Back while the exit dialog is open means Continue. Both attempts
+        // bounce to the existing entry, without a new sentinel or state restore.
+        exitOpen = !exitOpen;
+        exit(exitOpen);
         return;
       }
       const activeTransient = current && transient.get(current.marker.id);
@@ -157,8 +161,8 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
       current = marker ? entries.get(marker.id) ?? null : null;
       if (current) restore(current); // TRANSIENT forward restores only safe state.
     },
-    continueInApp() { released = false; },
-    leaveApp() { released = true; history.go(-2); },
+    continueInApp() { released = false; exitOpen = false; exit(false); },
+    leaveApp() { released = true; exitOpen = false; exit(false); history.go(-2); },
     dispose() { entries.clear(); participants.clear(); transient.clear(); },
   };
 }

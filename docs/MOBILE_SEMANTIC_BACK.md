@@ -62,8 +62,11 @@ entrada existente e abre **Sair do Negócios K?**; não empilha sentinelas novas
 Reload de uma entrada marcada reutiliza a fronteira. Navegações documentais
 internas por GET mantêm o histórico anterior em vez de adicionar outra fronteira.
 
-Continuar fecha o dialog, preserva estado e reativa a proteção. Escape equivale
-a Continuar. O foco inicial vai a Continuar; Tab/Shift+Tab ficam no dialog e
+Continuar fecha o dialog, preserva estado e reativa a proteção. Escape e um
+segundo Back com o dialog aberto equivalem a Continuar. Esse Back retorna à
+mesma entrada, fecha o dialog e não restaura/limpa Workspace nem cria uma nova
+fronteira. Um novo Back pode abrir o dialog novamente. O foco inicial vai a
+Continuar; Tab/Shift+Tab ficam no dialog e
 o foco anterior é restaurado. Não há motion novo nem `window.confirm()`.
 
 Sair libera a proteção e tenta atravessar a fronteira pelo histórico real.
@@ -87,9 +90,15 @@ autorizada por esta PR.
 
 ### Evidência local e pendências
 
-- 29 testes novos do coordenador semântico; 253 testes combinados de navegação,
+- 37 testes do coordenador semântico; 261 testes combinados de navegação,
   Workspace, Activity, UI/mobile, Lista e inventory passaram, sem falhas/skips.
 - Mais 19 testes de ações/performance de Pedidos e 7 de stale conflict passaram.
+- A revisão adicionou 8 regressões: MARK_ALL/CANCEL/CANCEL_REMAINING fecham
+  somente a confirmação no primeiro Back, mantêm o detalhe/filtros/pesquisa,
+  não reabrem por Forward e respeitam o gate pending. ConfirmationDialog,
+  FinalizationDialog e StockEntryDialog têm somente o registro padrão do
+  DialogShell. Tentativas repetidas de exit/Continue/Sair mantêm uma fronteira,
+  tamanho constante do histórico e um único retorno limitado por tentativa.
 - TypeScript, ESLint com zero warnings e diff-check passaram. Builds padrão Next
   e Webpack mantêm Cache Components e Partial Prefetching habilitados.
 - O Preview requer autenticação humana própria. O CLI dedicado encontra primeiro

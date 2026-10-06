@@ -63,7 +63,7 @@ export function SemanticBackProvider({ children }: { children: ReactNode }) {
       const previous = new URL(document.referrer);
       return previous.origin === window.location.origin && ["/", "/estoque", "/entrada", "/saida", "/pedidos", "/historico", "/estatisticas", "/aplicacoes", "/minha-conta"].some(route => previous.pathname === route || (route !== "/" && previous.pathname.startsWith(`${route}/`)));
     },
-    exit: () => setExitOpen(true),
+    exit: open => setExitOpen(open),
     beforePop: () => window.dispatchEvent(new Event("nk:semantic:before-pop")),
   }));
   useEffect(() => {
@@ -75,7 +75,7 @@ export function SemanticBackProvider({ children }: { children: ReactNode }) {
   return <SemanticContext.Provider value={coordinator}>
     <Suspense fallback={null}><HistoryRouteTracker /></Suspense>
     {children}
-    {exitOpen ? <ExitDialog onContinue={() => { coordinator.continueInApp(); setExitOpen(false); }} onExit={() => { setExitOpen(false); coordinator.leaveApp(); }} /> : null}
+    {exitOpen ? <ExitDialog onContinue={() => coordinator.continueInApp()} onExit={() => coordinator.leaveApp()} /> : null}
   </SemanticContext.Provider>;
 }
 

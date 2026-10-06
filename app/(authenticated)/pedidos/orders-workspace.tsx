@@ -2261,7 +2261,6 @@ function ConfirmationDialog({
   return (
     <DialogShell
       title={title}
-      semanticTransient={false}
       titleId={titleId}
       descriptionId={descriptionId}
       dialogRef={dialogRef}
