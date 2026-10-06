@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { execFileSync as run } from "node:child_process";
+import { execFileSync as run, spawn } from "node:child_process";
 
-const container = process.env.SAFISA_TEST_DB_CONTAINER ?? "supabase_db_nk_current_state_baseline";
+const container = process.env.SAFISA_TEST_DB_CONTAINER ?? "supabase_db_nk_pr82_push";
 const windowsDocker = join(process.env.LOCALAPPDATA ?? "", "Programs", "DockerDesktop", "resources", "bin", "docker.exe");
 const docker = existsSync(windowsDocker) ? windowsDocker : "docker";
 const ids = {
@@ -48,10 +48,15 @@ function number(sql) {
 }
 
 console.log("ALVO CONFIRMADO: SUPABASE LOCAL DESCARTÁVEL");
+assert.match(container, /^supabase_db_nk_pr82_push[a-z0-9_]*$/);
+assert.equal(JSON.parse(run(docker, ["inspect", "-f", "{{json .Config.Labels}}", container], { encoding: "utf8" }))["nk.disposable"], "nk-pr82-push");
 assert.equal(psql("select current_database() = 'postgres'"), "t");
 assert.equal(psql("select to_regclass('public.push_subscriptions') is not null"), "t");
 assert.equal(psql("select to_regclass('public.push_notification_events') is not null"), "t");
 psql(idempotentDisableMigration);
+if (psql("select exists(select 1 from information_schema.columns where table_schema='public' and table_name='push_notification_events' and column_name='portal_event_id')") === "f") {
+  psql(readFileSync(new URL("../supabase/migrations/20261006104415_safisa_item_ready_push_notifications.sql", import.meta.url), "utf8"));
+}
 assert.equal(psql("select has_function_privilege('authenticated', 'public.disable_push_subscription(uuid,text)', 'execute')"), "t");
 assert.equal(psql("select has_function_privilege('anon', 'public.disable_push_subscription(uuid,text)', 'execute')"), "f");
 assert.equal(psql(`
@@ -140,14 +145,26 @@ psql(`
 `);
 
 asAuthenticated(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(1)}', 3, '${key(2)}')`);
-assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(1)}'`), 0, "PARTIALLY_READY does not enqueue");
+assert.equal(number(`select count(*) from public.push_notification_events p join public.supplier_order_items i on i.id=p.supplier_order_item_id
+  where p.supplier_order_id = '${orderId(1)}' and p.event_type='SAFISA_ITEM_READY' and p.quantity_delta=3
+    and p.code_snapshot=i.code_snapshot and p.description_snapshot=i.description_snapshot`), 1, "partial 3 enqueues the canonical line snapshot and delta");
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id='${orderId(1)}' and event_type='SAFISA_FULLY_READY'`), 0);
+asAuthenticated(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(1)}', 2, '${key(12)}')`);
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id='${orderId(1)}' and quantity_delta=2`), 1, "second legitimate operation reports only 2");
+const replay = asAuthenticated(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(1)}', 3, '${key(2)}')`);
+assert.match(replay, /portal_event_id/);
+assert.equal(number(`select ready_quantity from public.supplier_order_items where id='${lineId(1)}'`), 5);
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id='${orderId(1)}'`), 2);
+assert.equal(number(`select count(*) from public.safisa_portal_events where idempotency_key='${key(2)}'`), 1);
+asAuthenticatedFailure(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(1)}', 4, '${key(2)}')`, /idempotency_key/i);
 
 asAuthenticated(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(2)}', 5, '${key(3)}')`);
-assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(2)}'`), 0, "one ready line is still partial");
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(2)}' and event_type='SAFISA_ITEM_READY' and quantity_delta=5`), 1, "all remaining of one line enqueues one ITEM_READY");
 asAuthenticated(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(3)}', 5, '${key(4)}')`);
 assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(2)}' and event_type = 'SAFISA_FULLY_READY'`), 1);
 asAuthenticated(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(3)}', 5, '${key(4)}')`);
-assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(2)}'`), 1, "idempotent replay does not duplicate");
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(2)}'`), 2, "replay does not duplicate either notification");
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_item_id='${lineId(3)}'`), 0, "last individual action has only FULLY_READY");
 
 asAuthenticated(ids.safisa, `select public.increment_safisa_ready_quantity('${lineId(4)}', 8, '${key(5)}')`);
 assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id = '${orderId(3)}'`), 1, "cancelled quantity participates in FULLY_READY");
@@ -161,7 +178,102 @@ assert.equal(number(`select count(*) from public.push_notification_events where 
 assert.match(asRole("authenticated", ids.internalA, `select public.claim_safisa_fully_ready_push_event('${orderId(2)}')`, true), /permission denied/i);
 const claimed = asRole("service_role", null, `select public.claim_safisa_fully_ready_push_event('${orderId(2)}')`);
 assert.match(claimed, /SAFISA_FULLY_READY/);
-assert.equal(number(`select attempt_count from public.push_notification_events where supplier_order_id = '${orderId(2)}'`), 1);
+assert.equal(number(`select attempt_count from public.push_notification_events where supplier_order_id = '${orderId(2)}' and event_type='SAFISA_FULLY_READY'`), 1);
+
+// Multi-line mark-all remains atomic and creates no individual source event.
+psql(`insert into public.supplier_orders(id,negotiation_number,order_date,created_by,created_by_name_snapshot)
+  values('${orderId(5)}','990005',current_date,'${ids.internalA}','Internal A');
+  insert into public.supplier_order_items(id,supplier_order_id,item_id,code_snapshot,description_snapshot,item_type_snapshot,ordered_quantity,position)
+  values('${lineId(6)}','${orderId(5)}','${itemId}','1H','SERVO 1H','ITEM',2,0),
+  ('${lineId(7)}','${orderId(5)}','${itemId}','2A','SERVO 2A','ITEM',3,1),
+  ('${lineId(8)}','${orderId(5)}','${itemId}','6C','SERVO 6C','ITEM',1,2);`);
+asAuthenticated(ids.safisa, `select public.mark_safisa_order_remaining_ready('${orderId(5)}','${key(20)}')`);
+asAuthenticated(ids.safisa, `select public.mark_safisa_order_remaining_ready('${orderId(5)}','${key(20)}')`);
+assert.equal(number(`select sum(ready_quantity) from public.supplier_order_items where supplier_order_id='${orderId(5)}'`), 6);
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id='${orderId(5)}'`), 1);
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id='${orderId(5)}' and event_type='SAFISA_FULLY_READY'`), 1);
+assert.equal(number(`select count(*) from public.safisa_portal_events where supplier_order_id='${orderId(5)}' and event_type='READY_QUANTITY_INCREMENTED'`), 0);
+
+// Positive correction is audit only, never an item notification.
+const beforeCorrection = number(`select count(*) from public.push_notification_events where supplier_order_id='${orderId(1)}'`);
+const version = psql(`select updated_at from public.supplier_order_items where id='${lineId(1)}'`);
+asAuthenticated(ids.safisa, `select public.correct_safisa_ready_quantity('${lineId(1)}',6,'Correcao local',true,'${version}','${key(21)}')`);
+assert.equal(number(`select count(*) from public.push_notification_events where supplier_order_id='${orderId(1)}'`), beforeCorrection);
+
+// Concurrent replay and distinct legitimate operations serialize on canonical locks.
+function concurrentSql(sql) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(docker, ["exec", container, "psql", "-U", "postgres", "-d", "postgres", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-c", sql], { windowsHide: true });
+    let output = "", error = "";
+    child.stdout.on("data", value => { output += value; });
+    child.stderr.on("data", value => { error += value; });
+    child.on("error", reject);
+    child.on("close", code => code === 0 ? resolve(output.trim()) : reject(new Error(error)));
+  });
+}
+const concurrentIncrement = `begin; select set_config('request.jwt.claim.sub','${ids.safisa}',true); set local role authenticated;
+  select public.increment_safisa_ready_quantity('${lineId(1)}',1,'${key(22)}'); commit;`;
+await Promise.all(Array.from({ length: 4 }, () => concurrentSql(concurrentIncrement)));
+assert.equal(number(`select ready_quantity from public.supplier_order_items where id='${lineId(1)}'`), 7);
+assert.equal(number(`select count(*) from public.safisa_portal_events where idempotency_key='${key(22)}'`), 1);
+assert.equal(number(`select count(*) from public.push_notification_events where portal_event_id in(select id from public.safisa_portal_events where idempotency_key='${key(22)}')`), 1);
+
+const portalId = psql(`select id from public.safisa_portal_events where idempotency_key='${key(22)}'`);
+asAuthenticatedFailure(ids.internalA, `select public.claim_safisa_ready_push_event('${orderId(1)}','${portalId}')`, /permission denied/i);
+assert.match(asRole("anon", null, `select public.complete_safisa_ready_push_event('${portalId}',1,'SENT')`, true), /permission denied/i);
+const claims = await Promise.all(Array.from({ length: 4 }, () => concurrentSql(`set role service_role; select public.claim_safisa_ready_push_event('${orderId(1)}','${portalId}');`)));
+assert.equal(claims.filter(value => value.includes('"event_type"')).length, 1, "one worker wins concurrent claims");
+const claimedItem = JSON.parse(claims.find(value => value.includes('"event_type"')));
+assert.equal(claimedItem.quantity_delta, 1);
+assert.equal(claimedItem.attempt_count, 1);
+psql(`update public.push_notification_events set updated_at=now()-interval '11 minutes' where id='${claimedItem.id}'`);
+const reclaimed = JSON.parse(asRole("service_role", null, `select public.claim_safisa_ready_push_event('${orderId(1)}','${portalId}')`));
+assert.equal(reclaimed.attempt_count, 2);
+asRole("service_role", null, `select public.complete_safisa_ready_push_event('${claimedItem.id}',1,'SENT')`);
+assert.equal(psql(`select status from public.push_notification_events where id='${claimedItem.id}'`), "SENDING", "expired worker cannot finish newer claim");
+asRole("service_role", null, `select public.complete_safisa_ready_push_event('${claimedItem.id}',2,'FAILED','FCM_TIMEOUT')`);
+const finalClaim = JSON.parse(asRole("service_role", null, `select public.claim_safisa_ready_push_event('${orderId(1)}','${portalId}')`));
+assert.equal(finalClaim.attempt_count, 3);
+asRole("service_role", null, `select public.complete_safisa_ready_push_event('${claimedItem.id}',3,'FAILED')`);
+assert.equal(asRole("service_role", null, `select public.claim_safisa_ready_push_event('${orderId(1)}','${portalId}')`), "");
+
+// Hold a row lock without changing status: SKIP LOCKED must return immediately.
+const lockHolder = spawn(docker, ["exec", "-i", container, "psql", "-U", "postgres", "-d", "postgres", "-X", "-qAt", "-v", "ON_ERROR_STOP=1"], { windowsHide: true });
+const locked = new Promise((resolve, reject) => {
+  lockHolder.stdout.on("data", value => { if (value.toString().includes("ROW_LOCKED")) resolve(); });
+  lockHolder.on("error", reject);
+});
+const lockDone = new Promise((resolve, reject) => { lockHolder.on("close", code => code === 0 ? resolve() : reject(new Error("lock-holder failed"))); });
+const firstPortal = psql(`select id from public.safisa_portal_events where idempotency_key='${key(2)}'`);
+lockHolder.stdin.write(`begin; select id from public.push_notification_events where portal_event_id='${firstPortal}' for update; select 'ROW_LOCKED';\n`);
+await locked;
+assert.equal(asRole("service_role", null, `set local statement_timeout='1s'; select public.claim_safisa_ready_push_event('${orderId(1)}','${firstPortal}')`), "", "locked row is skipped, not waited on");
+lockHolder.stdin.end("rollback;\n");
+await lockDone;
+
+// FK reset order: queue before immutable portal audit, then lines/orders. Keep
+// the historic deployment-reset contract fail-closed, never refresh it blindly.
+assert.equal(number(`select count(*) from public.push_notification_events p left join public.safisa_portal_events e on e.id=p.portal_event_id
+  where p.event_type='SAFISA_ITEM_READY' and (e.id is null or e.event_type <> 'READY_QUANTITY_INCREMENTED'
+    or e.quantity_delta<>p.quantity_delta or e.supplier_order_item_id<>p.supplier_order_item_id or e.supplier_order_id<>p.supplier_order_id)`), 0);
+assert.equal(psql("select has_table_privilege('authenticated','public.push_notification_events','select') or has_table_privilege('authenticated','public.push_notification_events','insert')"), "f");
+assert.equal(psql("select has_function_privilege('authenticated','private.enqueue_safisa_item_ready_push()','execute')"), "f");
+for (const signature of ["public.claim_safisa_ready_push_event(uuid,uuid)", "public.complete_safisa_ready_push_event(uuid,integer,text,text)"]) {
+  assert.equal(psql(`select has_function_privilege('authenticated','${signature}','execute') or has_function_privilege('anon','${signature}','execute')`), "f");
+  assert.equal(psql(`select has_function_privilege('service_role','${signature}','execute')`), "t");
+  assert.equal(psql(`select prosecdef and array_to_string(proconfig,',')='search_path=""' from pg_proc where oid='${signature}'::regprocedure`), "t");
+}
+const queueBeforeReset = number("select count(*) from public.push_notification_events");
+assert.ok(queueBeforeReset > 0);
+psql(`begin;
+  delete from public.push_notification_events;
+  alter table public.safisa_portal_events disable trigger safisa_portal_events_reject_mutation;
+  delete from public.safisa_portal_events where event_type in('MEMBER_STATUS_CHANGED','ORDER_PUBLISHED','ORDER_REVOKED','READY_QUANTITY_INCREMENTED','READY_QUANTITIES_ALL_MARKED');
+  alter table public.safisa_portal_events enable trigger safisa_portal_events_reject_mutation;
+  rollback;`);
+assert.equal(number("select count(*) from public.push_notification_events"), queueBeforeReset, "local reset FK rehearsal rolls back every row");
 
 console.log("SUBSCRIPTIONS/RLS/REASSIGNMENT: PASS");
 console.log("PARTIAL/FULL/REPLAY/CANCELLATION PARITY: PASS");
+console.log("ITEM DELTAS / CORRECTION / MARK-ALL ONE PUSH / CONCURRENT REPLAY / SKIP LOCKED / LEASE FENCING: PASS");
+console.log("NEW RPC GRANTS / RLS / RESET FK ORDER WITH FULL ROLLBACK: PASS");

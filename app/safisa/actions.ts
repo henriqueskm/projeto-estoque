@@ -10,7 +10,7 @@ import {
   SafisaPortalDataError,
 } from "@/lib/safisa-portal-data";
 import type { SafisaActionResult } from "@/lib/safisa-portal-types";
-import { dispatchSafisaFullyReadyPush } from "@/lib/safisa-push-dispatch";
+import { dispatchSafisaFullyReadyPush, dispatchSafisaReadyPush } from "@/lib/safisa-push-dispatch";
 import { runSafisaMutation } from "@/lib/safisa-action-errors";
 
 export type SafisaLoginState = {
@@ -108,16 +108,24 @@ export async function incrementSafisaReadyQuantity(
     const order = await getSafisaOrder(supabase, input.supplierOrderId);
     const line = order.lines.find((item) => item.supplierOrderItemId === input.supplierOrderItemId);
     if (!line) return { status: "error", message: "Este item não pertence ao pedido." };
-    const mutationResult = await runSafisaMutation(() =>
-      supabase.rpc("increment_safisa_ready_quantity", {
+    const delivery = { portalEventId: "" };
+    const mutationResult = await runSafisaMutation(async () => {
+      const response = await supabase.rpc("increment_safisa_ready_quantity", {
         p_supplier_order_item_id: line.supplierOrderItemId,
         p_increment_quantity: input.incrementQuantity,
         p_idempotency_key: input.idempotencyKey,
-      }),
-    );
+      });
+      if (!response.error && isUuid(response.data?.portal_event_id)) delivery.portalEventId = response.data.portal_event_id;
+      return response;
+    });
     if (mutationResult) return mutationResult;
 
-    await dispatchSafisaFullyReadyPush(input.supplierOrderId);
+    if (delivery.portalEventId) {
+      await dispatchSafisaReadyPush(input.supplierOrderId, delivery.portalEventId);
+    } else {
+      // Compatibility while the forward-only migration awaits human approval.
+      await dispatchSafisaFullyReadyPush(input.supplierOrderId);
+    }
     revalidatePath("/safisa");
     return { status: "success", message: `${input.incrementQuantity} unidade(s) informada(s) como pronta(s).` };
   } catch (error) {
@@ -144,16 +152,23 @@ export async function markSafisaRemainingReady(
     const order = await getSafisaOrder(supabase, input.supplierOrderId);
     const line = order.lines.find((item) => item.supplierOrderItemId === input.supplierOrderItemId);
     if (!line) return { status: "error", message: "Este item não pertence ao pedido." };
-    const mutationResult = await runSafisaMutation(() =>
-      supabase.rpc("increment_safisa_ready_quantity", {
+    const delivery = { portalEventId: "" };
+    const mutationResult = await runSafisaMutation(async () => {
+      const response = await supabase.rpc("increment_safisa_ready_quantity", {
         p_supplier_order_item_id: line.supplierOrderItemId,
         p_increment_quantity: input.incrementQuantity,
         p_idempotency_key: input.idempotencyKey,
-      }),
-    );
+      });
+      if (!response.error && isUuid(response.data?.portal_event_id)) delivery.portalEventId = response.data.portal_event_id;
+      return response;
+    });
     if (mutationResult) return mutationResult;
 
-    await dispatchSafisaFullyReadyPush(input.supplierOrderId);
+    if (delivery.portalEventId) {
+      await dispatchSafisaReadyPush(input.supplierOrderId, delivery.portalEventId);
+    } else {
+      await dispatchSafisaFullyReadyPush(input.supplierOrderId);
+    }
     revalidatePath("/safisa");
     return { status: "success", message: "Todo o restante foi informado como pronto." };
   } catch (error) {
