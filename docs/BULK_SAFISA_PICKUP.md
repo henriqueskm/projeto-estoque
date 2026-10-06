@@ -72,6 +72,53 @@ Os testes concorrentes cobrem mesma ação, bulks sobrepostos, bulks disjuntos c
 targets em ordem oposta, retirada individual e entrada vinculada histórica.
 Nenhum `SKIP LOCKED` é usado: Pedido problemático não pode ser pulado.
 
+### Gate concorrente com writers Safisa — 2026-10-06
+
+Quatro regressões adicionais usam **duas sessões PostgreSQL reais**, chamando os
+wrappers públicos autenticados, sem substituir workers ou alterar seus locks.
+Cada writer é exercitado como primeiro e segundo vencedor, deterministicamente:
+a primeira sessão executa o writer e conserva a transação aberta; a segunda
+executa o outro writer. Antes do COMMIT, `pg_stat_activity`, `pg_blocking_pids()`
+e `wait_event_type = 'Lock'` comprovam a sobreposição e quem bloqueia quem.
+Não basta iniciar dois processos ou presumir corrida por um sleep.
+
+Timeouts locais: statement **6 s**, lock **5 s**, sessão idle-in-transaction
+**10 s**; deadline **4 s** para observar cada barreira. As duas sessões são
+encerradas inclusive se uma asserção falhar. Nenhum deadlock/timeout foi aceito
+como resultado legítimo, e o contador `pg_stat_database.deadlocks` permaneceu igual.
+
+Fixture sanitizada: dois Pedidos, três linhas, **6 unidades** na prévia inicial.
+O Pedido concorrente tem `3/10` unidades prontas de um item e `1/7` de um kit;
+o outro Pedido tem duas prontas. A Safisa incrementa **2** na primeira linha ou
+marca todo o restante das duas linhas (**13 novas unidades**).
+
+| Writer Safisa | Primeiro vencedor | Resultado comprovado |
+| --- | --- | --- |
+| `increment_safisa_ready_quantity` | Bulk | Somente 6 retiradas/estocadas; incremento posterior 2 continua pendente; nova prévia e alerta mostram 2. |
+| `increment_safisa_ready_quantity` | Safisa | Incremento persistido; bulk antigo rejeitado com SQLSTATE `40001`; zero efeitos de bulk nos dois Pedidos; nova prévia/alerta mostram 8. |
+| `mark_safisa_order_remaining_ready` | Bulk | Somente 6 retiradas/estocadas; mark-all posterior mantém 13 aguardando próxima retirada; nova prévia/alerta mostram 13. |
+| `mark_safisa_order_remaining_ready` | Safisa | Mark-all persistido; bulk antigo rejeitado com SQLSTATE `40001`; zero efeitos de bulk nos dois Pedidos; nova prévia/alerta mostram 19. |
+
+Nos dois casos stale, comparação integral das contagens pré/pós prova ausência
+de alterações em picked, stocked, balances físicos/configurações, eventos de
+Pedido, movements, batches, stock entries e ledger bulk. Nos casos de sucesso,
+receipt, estoque e picked/stocked são exatamente 6, com dois entries/batches e
+um ledger. A linha concorrente permanece `ready > picked` após a Safisa.
+Também são verificados `before + change = after`, saldos não negativos e um
+único evento canônico da ação Safisa. **Nenhuma quantidade nova é incluída
+silenciosamente e nenhum double-stock ocorre.**
+
+Reprodução focada, no container descartável já preparado:
+
+```powershell
+$env:BULK_TEST_DB_CONTAINER='supabase_db_nk_pr84_bulk_v4'
+node --test --test-name-pattern='real bulk vs Safisa' tests/bulk-safisa-pickup.local.mjs
+```
+
+Resultado: **4/4 aprovados**. A hierarquia atual Pedido → linhas da Safisa é
+compatível com todos os Pedidos → todas as linhas → metadata/balances → filhos
+do bulk. Não foram alterados writers, arquitetura ou migration para fechar o gate.
+
 ## Idempotência e transporte
 
 O ledger tem `UNIQUE(user_id, idempotency_key)`. Request normalizada por UUID e
@@ -133,11 +180,16 @@ node --test tests/bulk-safisa-pickup.local.mjs
 node --experimental-strip-types --experimental-loader ./tests/bulk-safisa-pickup-loader.mjs --test tests/bulk-safisa-pickup.test.mjs
 ```
 
-Resultados: **23 testes SQL novos**, **18 testes app novos** e **403 regressões**
+Resultados: **27 testes SQL (incluindo as quatro corridas Safisa)**, **18 testes app novos** e **403 regressões**
 app/source aprovados (421 app/source no total). Além disso, suites SQL canônicas
 atomic pickup A–M + três corridas e automatic lifecycle A–O + quatro corridas
 aprovadas no mesmo ambiente descartável. Incluem stale, rollback tardio real,
 idempotência, auth/grants, limites de 101 Pedidos/504 linhas, aliases e auditoria.
+Reexecutados em 2026-10-06 após fechar o gate: 27/27 bulk SQL e 421/421 app/source,
+atomic pickup A–M + três corridas, lifecycle A–O + quatro corridas. A suíte SQL
+push também passou em clone descartável separado: deltas individuais, correção,
+mark-all com um push, replay concorrente, SKIP LOCKED, lease fencing, grants/RLS
+e ordem de reset com rollback integral. Nenhuma entrega FCM remota foi executada.
 
 TypeScript, ESLint zero warnings, diff-check, build Webpack e build padrão
 Next/Turbopack aprovados. Cache Components/Partial Prefetching continuam ativos.

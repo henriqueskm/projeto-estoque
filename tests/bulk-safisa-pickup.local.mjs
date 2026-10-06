@@ -68,6 +68,116 @@ function concurrent(statement, actor = user) {
   });
 }
 
+// Hold a real transaction AFTER its public writer, then prove that the other
+// public writer is waiting on its locks before allowing COMMIT. No timing-only
+// assumption about which Docker/psql process wins, and no replacement workers.
+function raceSession(statement, actor, name, hold = false) {
+  const child = spawn(docker, ["exec", "-i", container, "psql", "-U", "postgres", "-d", "postgres", "-X", "-qAt",
+    "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose"], { windowsHide: true });
+  let out = "", err = "";
+  const done = new Promise((resolve, rejectPromise) => {
+    child.stdout.on("data", c => { out += c; }); child.stderr.on("data", c => { err += c; });
+    child.on("error", rejectPromise);
+    child.on("close", code => resolve({ code, out, err }));
+  });
+  child.stdin.write(`begin; set local application_name='${name}';
+    set local statement_timeout='6s'; set local lock_timeout='5s';
+    set local idle_in_transaction_session_timeout='10s';
+    select set_config('request.jwt.claim.sub','${actor}',true); set local role authenticated;
+    ${statement}; select 'NK_RACE_READY';\n`);
+  if (!hold) child.stdin.end("commit;\n");
+  return { done, output: () => out, finish: command => child.stdin.end(`${command};\n`) };
+}
+async function waitForRace(condition, message) {
+  const deadline = Date.now() + 4000;
+  while (Date.now() < deadline) {
+    if (condition()) return;
+    await new Promise(resolve => setTimeout(resolve, 40));
+  }
+  assert.fail(message);
+}
+async function orderedWriterRace(firstStatement, firstActor, secondStatement, secondActor) {
+  const first = raceSession(firstStatement, firstActor, "nk_pr84_race_first", true);
+  let second, overlapProven = false;
+  try {
+    await waitForRace(() => first.output().includes("NK_RACE_READY"), "First public writer did not finish within the short deadline");
+    second = raceSession(secondStatement, secondActor, "nk_pr84_race_second");
+    await waitForRace(() => number(`select count(*) from pg_stat_activity waiting
+      join pg_stat_activity holder on holder.pid=any(pg_blocking_pids(waiting.pid))
+      where waiting.application_name='nk_pr84_race_second' and waiting.wait_event_type='Lock'
+        and holder.application_name='nk_pr84_race_first' and holder.state='idle in transaction'`) === 1,
+    "Second public writer never demonstrably waited on the first transaction");
+    overlapProven = true;
+  } finally {
+    first.finish(overlapProven ? "commit" : "rollback");
+    // Always drain both sessions, including an assertion failure; no test can
+    // leave a live transaction affecting a later fixture.
+    await Promise.all([first.done, ...(second ? [second.done] : [])]);
+  }
+  return Promise.all([first.done, second.done]);
+}
+
+for (const operation of ["increment", "mark-all"]) {
+  for (const winner of ["bulk", "Safisa"]) {
+    test(`real bulk vs Safisa ${operation}: ${winner} wins, exact preview or 40001 rollback`, async () => {
+      const safisa = uid(4);
+      sql(`insert into auth.users(id,aud,role,created_at,updated_at)
+        values('${safisa}','authenticated','authenticated',now(),now()) on conflict(id) do nothing;
+        insert into public.profiles(id,name,is_active) values('${safisa}','Safisa Race Fixture',false)
+        on conflict(id) do update set name=excluded.name,is_active=false;`);
+      asUser(`select public.set_safisa_portal_member_status('${safisa}',true,'${uid(600)}')`);
+      seed(1,[{ready:2}]);
+      const order = seed(2,[{ready:3},{target:kit,ready:1,ordered:7}]);
+      const r = request(), before = counts();
+      const deadlocks = number("select deadlocks from pg_stat_database where datname=current_database()");
+      const safisaStatement = operation === "increment"
+        ? `select public.increment_safisa_ready_quantity('${uid(1020)}',2,'${uid(601)}')`
+        : `select public.mark_safisa_order_remaining_ready('${order}','${uid(601)}')`;
+      const bulkStatement = bulkSQL(r,uid(500));
+      const results = winner === "bulk"
+        ? await orderedWriterRace(bulkStatement,user,safisaStatement,safisa)
+        : await orderedWriterRace(safisaStatement,safisa,bulkStatement,user);
+      const [bulkResult, safisaResult] = winner === "bulk" ? results : [...results].reverse();
+      assert.equal(safisaResult.code,0,safisaResult.err);
+      assert.equal(number(`select count(*) from public.safisa_portal_events
+        where actor_user_id='${safisa}' and idempotency_key='${uid(601)}'`),1);
+      const posteriorDelta = operation === "increment" ? 2 : 13;
+      const state = JSON.parse(sql(`select json_build_object('ready',ready_quantity,'picked',picked_quantity,'stocked',stocked_quantity)
+        from public.supplier_order_items where id='${uid(1020)}'`));
+      assert.equal(state.ready,operation === "increment" ? 5 : 10);
+      if (winner === "bulk") {
+        assert.equal(bulkResult.code,0,bulkResult.err);
+        const receipt = json(bulkResult.out);
+        assert.equal(receipt.total_picked_quantity,6);
+        assert.equal(receipt.total_stock_entry_quantity,6);
+        assert.equal(state.picked,3); assert.equal(state.stocked,3);
+        assert.equal(counts().picked,6); assert.equal(counts().stocked,6);
+        assert.equal(counts().stock,6); assert.equal(counts().config,0);
+        assert.equal(counts().entries,2); assert.equal(counts().batches,2); assert.equal(counts().ledger,1);
+        assert.equal(number("select sum(quantity_change) from public.stock_movements"),6);
+        assert.equal(preview().order_count,1);
+        assert.equal(preview().total_quantity,posteriorDelta);
+      } else {
+        assert.notEqual(bulkResult.code,0);
+        assert.match(bulkResult.err,/40001: supplier_order_version_conflict/);
+        assert.deepEqual(counts(),before,"Old bulk must have ZERO effects, including the other order and global ledger");
+        assert.equal(state.picked,0); assert.equal(state.stocked,0);
+        assert.equal(preview().order_count,2);
+        assert.equal(preview().total_quantity,6+posteriorDelta);
+      }
+      const alerts = json(asUser("select public.list_safisa_ready_pickup_alerts(100)"));
+      const fresh = preview();
+      assert.equal(alerts.alerts.reduce((sum,line) => sum+line.ready_waiting_pickup_quantity,0),fresh.total_quantity);
+      assert.equal(fresh.orders.find(o => o.supplier_order_id === order).lines.reduce((sum,line) => sum+line.quantity_to_pickup,0),
+        (winner === "bulk" ? 0 : 4)+posteriorDelta);
+      assert.equal(number(`select count(*) from public.stock_movements
+        where quantity_before+quantity_change<>quantity_after or quantity_before<0 or quantity_after<0`),0);
+      assert.equal(number("select count(*) from public.stock_balances where quantity<0"),0);
+      assert.equal(number("select deadlocks from pg_stat_database where datname=current_database()"),deadlocks);
+    });
+  }
+}
+
 test("fresh preview is read-only, complete and includes partial + fully ready orders and snapshot labels", () => {
   seed(1,[{ready:3,code:"1H"},{target:kit,ready:2}]); seed(2,[{ordered:5,ready:5}]); seed(3,[{ready:0}]);
   const before=counts(), p=preview(); assert.deepEqual(counts(),before);
