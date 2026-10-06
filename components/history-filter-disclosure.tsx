@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
 
 // Only the disclosure is client-side; the GET form/data remain server-rendered.
 export function HistoryFilterDisclosure({
@@ -11,7 +12,9 @@ export function HistoryFilterDisclosure({
   children: ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(activeCount > 0);
+  const [manuallyOpened, setManuallyOpened] = useState(false);
   const panelId = useId();
+  useSemanticTransient(isOpen && manuallyOpened, () => setIsOpen(false));
 
   return (
     <>
@@ -19,7 +22,7 @@ export function HistoryFilterDisclosure({
         type="button"
         aria-expanded={isOpen}
         aria-controls={panelId}
-        onClick={() => setIsOpen((current) => !current)}
+        onClick={() => { setManuallyOpened(true); setIsOpen((current) => !current); }}
         className="nk-focus mt-3 flex min-h-11 w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-border-neutral px-3 text-sm font-bold text-text-primary md:hidden"
       >
         <span>{isOpen ? "Ocultar filtros" : "Filtros"}</span>

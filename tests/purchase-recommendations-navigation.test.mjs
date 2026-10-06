@@ -264,6 +264,9 @@ function compileLauncher(hooks, getSearchParams) {
     if (specifier === "next/navigation") {
       return { useSearchParams: getSearchParams };
     }
+    if (specifier === "@/components/semantic-back-provider") {
+      return { useSemanticBackHistory: () => null };
+    }
     if (specifier === "@/components/purchase-recommendation-panel") {
       return { PurchaseRecommendationPanel: panelType };
     }
@@ -394,12 +397,12 @@ test("native history keeps URL, modal state, and stale revalidation coherent", a
       "purchase-recommendations",
     );
     assert.equal(
-      browser.routerUrl.searchParams.get("view"),
+      new URL(browser.window.location.href).searchParams.get("view"),
       "purchase-recommendations",
     );
     assert.deepEqual(browser.historyCalls[0], {
       kind: "push",
-      suppliedData: { nkPurchaseRecommendations: true },
+      suppliedData: { __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: ["", {}], nkPurchaseRecommendations: true },
     });
     assert.equal(browser.window.history.state.__NA, true);
     assert.equal(fetchRequests.length, 1);
@@ -467,7 +470,7 @@ test("native history keeps URL, modal state, and stale revalidation coherent", a
   }
 });
 
-test("closing a direct deep link replaces URL without forwarding Next internals", async () => {
+test("closing a direct deep link preserves Next internals while replacing its URL", async () => {
   const browser = createControlledBrowser(
     "https://example.test/estoque?view=purchase-recommendations",
   );
@@ -508,9 +511,9 @@ test("closing a direct deep link replaces URL without forwarding Next internals"
     assert.equal(fetchRequests.length, 1, "close must not fetch");
     assert.deepEqual(browser.historyCalls.at(-1), {
       kind: "replace",
-      suppliedData: null,
+      suppliedData: { __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: ["", {}] },
     });
-    assert.equal(browser.routerUrl.searchParams.get("view"), null);
+    assert.equal(new URL(browser.window.location.href).searchParams.get("view"), null);
     assert.equal(browser.window.history.state.__NA, true);
     assert.equal(
       findElement(harness.tree, (node) => node.type === panelType),

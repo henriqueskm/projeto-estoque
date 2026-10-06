@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useSemanticCheckpoint } from "@/components/semantic-back-provider";
 import type {
   PurchaseRecommendationItem,
   PurchaseRecommendationSummary,
@@ -263,6 +264,13 @@ export function PurchaseRecommendationPanel({
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [activeTab, setActiveTab] =
     useState<RecommendationTab>("buy-now");
+  const tabsHistory = useSemanticCheckpoint("recommendation-tab", { tab: activeTab }, value => {
+    if (value.tab === "buy-now" || value.tab === "already-ordered" || value.tab === "missing-minimum") setActiveTab(value.tab);
+  });
+  function selectTab(tab: RecommendationTab) {
+    tabsHistory.commit({ tab: activeTab }, { tab });
+    setActiveTab(tab);
+  }
   const [copyStatus, setCopyStatus] = useState<
     "idle" | "copied" | "error"
   >("idle");
@@ -488,7 +496,7 @@ export function PurchaseRecommendationPanel({
                     type="button"
                     role="tab"
                     aria-selected={activeTab === tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => selectTab(tab.id)}
                     className={`nk-focus min-h-11 min-w-0 rounded-lg px-1.5 py-2 text-[0.66rem] font-black sm:text-xs ${
                       activeTab === tab.id
                         ? "bg-brand-charcoal text-white"

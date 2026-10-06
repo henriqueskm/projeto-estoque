@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useWorkspaceState, useWorkspaceScroll } from "@/components/workspace-state-provider";
+import { useWorkspaceScroll } from "@/components/workspace-state-provider";
+import { useSemanticWorkspaceState, useSemanticTransient } from "@/components/semantic-back-provider";
 import { RouteMutationBoundary, useRouteMutation, useRouteMutationPending, useRouteTransientCleanup } from "@/components/route-transient-state";
 import { orderWorkspaceDefaults } from "@/lib/workspace-state";
 import { useRouter } from "next/navigation";
@@ -591,6 +592,7 @@ function DialogShell({
   title,
   titleId,
   wide = false,
+  semanticTransient = true,
 }: {
   children: React.ReactNode;
   closeButtonRef?: RefObject<HTMLButtonElement | null>;
@@ -603,7 +605,9 @@ function DialogShell({
   title: string;
   titleId: string;
   wide?: boolean;
+  semanticTransient?: boolean;
 }) {
+  useSemanticTransient(semanticTransient, onClose, isPending);
   return createPortal(
     <div
       ref={dialogRef}
@@ -1210,6 +1214,7 @@ function OrderFormDialog({
   return (
     <DialogShell
       title={mode === "EDIT" ? "Editar pedido" : "Novo pedido"}
+      semanticTransient={false}
       titleId={titleId}
       descriptionId={descriptionId}
       dialogRef={dialogRef}
@@ -2906,6 +2911,7 @@ function OrderDetailsDialog({
       );
     }
   }, []);
+  useSemanticTransient(headerActionsOpen, () => closeHeaderActions());
 
   const handleClose = useCallback(() => {
     if (!isPending) {
@@ -3214,6 +3220,7 @@ function OrderDetailsDialog({
   return (
     <DialogShell
       title={`Pedido ${order.negotiationNumber}`}
+      semanticTransient={false}
       titleId={titleId}
       descriptionId={descriptionId}
       dialogRef={dialogRef}
@@ -3882,7 +3889,7 @@ function ActiveSupplierOrdersWorkspace({
   initialOrderId: string | null;
 }) {
   const router = useRouter();
-  const workspace = useWorkspaceState("pedidos:active", {
+  const workspace = useSemanticWorkspaceState("pedidos:active", {
     ...orderWorkspaceDefaults, statusFilter: "ALL" as StatusFilter, closureFilter: "ALL" as HistoryClosureFilter,
     periodFilter: "ALL" as PeriodFilter, sort: "RECENT" as OrderSort,
   }, initialOrderId ? { selectedOrderId: initialOrderId } : undefined);
@@ -3900,6 +3907,10 @@ function ActiveSupplierOrdersWorkspace({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
   const mutationPending = useRouteMutationPending();
+  useSemanticTransient(creatingOrder || editingOrderId !== null, () => {
+    setCreatingOrder(false);
+    setEditingOrderId(null);
+  }, mutationPending);
   useRouteTransientCleanup(() => {
     setEditingOrderId(null);
     setCreatingOrder(false);
@@ -4556,7 +4567,7 @@ function HistorySupplierOrdersWorkspace({
   initialOrderId: string | null;
 }) {
   const router = useRouter();
-  const workspace = useWorkspaceState("pedidos:history", {
+  const workspace = useSemanticWorkspaceState("pedidos:history", {
     ...orderWorkspaceDefaults, statusFilter: "ALL" as StatusFilter, closureFilter: "ALL" as HistoryClosureFilter,
     periodFilter: "ALL" as PeriodFilter, sort: "CLOSED_RECENT" as HistorySort,
   }, initialOrderId ? { selectedOrderId: initialOrderId } : undefined);

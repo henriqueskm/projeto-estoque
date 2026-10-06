@@ -24,7 +24,7 @@ for (const state of ["Venda", "Ajuste", "Montagem", "Desmontagem", "Estoque mín
   });
 }
 
-for (const event of ["nk:workspace:before-navigation", "popstate", "pagehide"]) {
+for (const event of ["nk:workspace:before-navigation", "nk:semantic:before-pop", "pagehide"]) {
   test(`${event} resets a confirmation and invalidates late callbacks`, () => {
     const visit = createRouteVisit(); const target = new EventTarget();
     let confirmation = true; let resets = 0;

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { waitForDrawerExit } from "@/lib/drawer-exit";
 import { useWorkspaceResumeHref, useWorkspaceResumeResolver } from "@/components/workspace-state-provider";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
 import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
@@ -361,6 +362,8 @@ export function AppSidebar({ userName, hasRegisteredName }: AppSidebarProps) {
     setIsDrawerClosing(false);
     setIsDrawerOpen(true);
   }, []);
+
+  useSemanticTransient(isDrawerOpen, () => closeDrawer(true));
 
   useEffect(() => {
     return () => {

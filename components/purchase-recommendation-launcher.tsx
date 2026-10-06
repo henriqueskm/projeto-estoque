@@ -10,6 +10,7 @@ import {
 import { PurchaseRecommendationPanel } from "@/components/purchase-recommendation-panel";
 import type { PurchaseRecommendationsData } from "@/lib/purchase-recommendation-types";
 import { inventoryDataChangedEvent } from "@/lib/inventory-ui-events";
+import { useSemanticBackHistory } from "@/components/semantic-back-provider";
 
 const recommendationsView = "purchase-recommendations";
 const recommendationHistoryMarker = "nkPurchaseRecommendations";
@@ -68,6 +69,7 @@ export function PurchaseRecommendationLauncher({
   initiallyOpen: boolean;
 }) {
   const searchParams = useSearchParams();
+  const semanticHistory = useSemanticBackHistory();
   const [isOpen, setIsOpen] = useState(initiallyOpen);
   const [data, setData] = useState<PurchaseRecommendationsData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +89,8 @@ export function PurchaseRecommendationLauncher({
   const triggerRef = useRef<HTMLAnchorElement>(null);
   const urlRequestsOpen =
     searchParams.get("view") === recommendationsView;
+
+  useEffect(() => { if (initiallyOpen) semanticHistory?.seedRecommendations(); }, [initiallyOpen, semanticHistory]);
 
   const loadRecommendations = useCallback((mode: RequestMode) => {
     if (
@@ -195,6 +199,8 @@ export function PurchaseRecommendationLauncher({
     setIsOpen(false);
     isOpenRef.current = false;
 
+    if (semanticHistory?.closeRecommendations()) return;
+
     const historyState = window.history.state;
 
     if (
@@ -205,8 +211,8 @@ export function PurchaseRecommendationLauncher({
       return;
     }
 
-    window.history.replaceState(null, "", recommendationUrl(false));
-  }, []);
+    window.history.replaceState({ ...window.history.state }, "", recommendationUrl(false));
+  }, [semanticHistory]);
 
   const open = useCallback(() => {
     setIsOpen(true);
@@ -216,11 +222,12 @@ export function PurchaseRecommendationLauncher({
       new URL(window.location.href).searchParams.get("view") !==
       recommendationsView
     ) {
-      window.history.pushState(
-        { [recommendationHistoryMarker]: true },
-        "",
-        recommendationUrl(true),
-      );
+      if (semanticHistory) {
+        semanticHistory.commit("recommendations", { open: false }, { open: true }, false, recommendationUrl(true));
+        window.history.replaceState({ ...window.history.state, [recommendationHistoryMarker]: true }, "", recommendationUrl(true));
+      } else {
+        window.history.pushState({ ...window.history.state, [recommendationHistoryMarker]: true }, "", recommendationUrl(true));
+      }
     }
 
     const loadMode = getRecommendationLoadMode(
@@ -228,7 +235,7 @@ export function PurchaseRecommendationLauncher({
       confirmedAtRef.current,
     );
     if (loadMode) void loadRecommendations(loadMode);
-  }, [loadRecommendations]);
+  }, [loadRecommendations, semanticHistory]);
 
   useEffect(() => {
     isMountedRef.current = true;

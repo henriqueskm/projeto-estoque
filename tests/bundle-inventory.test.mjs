@@ -252,9 +252,17 @@ for (const [label, shortcut, destination] of [
       .replace("shortcut: InventoryShortcut", "shortcut");
     const state = { query: "impossível", filter: "with-stock", physical: new Set(["OTHER"]), families: new Set(["Manual"]), scroll: null };
     let cancelledRestores = 0;
-    const handler = new Function("inventoryShortcutPlan", "inventory", "setQuery", "setStatusFilter", "setOpenPhysicalGroups", "setOpenFamilies", "setScrollRequest", "cancelScrollRestore", `return ${handlerSource}`)(
-      inventoryShortcutPlan, data, (query) => { state.query = query; }, (filter) => { state.filter = filter; },
-      (update) => { state.physical = update(state.physical); }, (update) => { state.families = update(state.families); },
+    let workspaceWrites = 0;
+    const workspace = { setState(update) {
+      workspaceWrites += 1;
+      const next = update({ query: state.query, statusFilter: state.filter, openPhysicalGroups: [...state.physical], openFamilies: [...state.families] });
+      state.query = next.query;
+      state.filter = next.statusFilter;
+      state.physical = new Set(next.openPhysicalGroups);
+      state.families = new Set(next.openFamilies);
+    } };
+    const handler = new Function("inventoryShortcutPlan", "workspace", "setScrollRequest", "cancelScrollRestore", `return ${handlerSource}`)(
+      inventoryShortcutPlan, workspace,
       (request) => { state.scroll = request; },
       () => { cancelledRestores += 1; },
     );
@@ -263,6 +271,7 @@ for (const [label, shortcut, destination] of [
     assert.equal(state.filter, shortcut === "CONFIGURATION" ? "with-stock" : "all");
     assert.equal(state.scroll.target, destination);
     assert.equal(cancelledRestores, 1, "ação explícita vence o scroll salvo");
+    assert.equal(workspaceWrites, shortcut === "CONFIGURATION" ? 0 : 1, "um clique cria no máximo um checkpoint semântico");
     assert.deepEqual([...state.families], ["Manual"], "atalho não altera famílias abertas manualmente");
     if (shortcut !== "CONFIGURATION") assert.ok(state.physical.has(shortcut));
     assert.ok(state.physical.has("OTHER"));
