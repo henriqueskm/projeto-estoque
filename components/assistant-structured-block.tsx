@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
+import { SafisaBulkPickupAction } from "@/components/safisa-bulk-pickup-dialog";
 import type {
   AssistantClarificationBlock,
   AssistantClarificationCategory,
@@ -1451,6 +1452,9 @@ function AssistantAttentionOrders({
         <p className="mt-2 text-xs font-bold text-text-muted">
           + {quantityFormatter.format(block.remainingCount)} {block.remainingCount === 1 ? "Pedido adicional" : "Pedidos adicionais"}
         </p>
+      ) : null}
+      {block.alertKind === "SAFISA_READY_PICKUP" ? (
+        <SafisaBulkPickupAction enabled={block.orders.some(order => order.quantity > 0)} />
       ) : null}
     </div>
   );

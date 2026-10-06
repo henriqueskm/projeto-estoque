@@ -104,7 +104,13 @@ function NavigationLink({
       href={resumeHref}
       prefetch={false}
       aria-current={isActive ? "page" : undefined}
-      onClick={onNavigate}
+      data-nk-navigation
+      onClick={(event) => {
+        if (isActive && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+          event.preventDefault();
+        }
+        onNavigate?.();
+      }}
       onPointerEnter={() => onIntent(resumeHref)}
       onFocus={() => onIntent(resumeHref)}
       className={`nk-focus flex min-h-11 items-center gap-3 rounded-xl text-sm font-black transition ${

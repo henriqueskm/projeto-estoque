@@ -36,6 +36,8 @@ export function WorkspaceStateProvider({ userId, children }: { userId: string; c
     // Capture a final scroll/state before Next changes the route. No href mutation.
     const beforeNavigate = (event: MouseEvent) => {
       const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      // The current sidebar tab only dismisses the drawer, not the workspace.
+      if (link?.hasAttribute("data-nk-navigation") && link.getAttribute("aria-current") === "page") return;
       if (link && link.origin === window.location.origin && link.target !== "_blank" && !link.hasAttribute("download")
         && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
         window.dispatchEvent(new Event("nk:workspace:before-navigation"));

@@ -33,7 +33,7 @@ async function AuthenticatedContent({
       hasRegisteredName={profile.hasRegisteredName}
     >
       <SafisaPickupAlertProvider>
-        <PushNotificationProvider>
+        <PushNotificationProvider key={profile.id} userId={profile.id}>
           <WorkspaceStateProvider key={profile.id} userId={profile.id}>
           <SemanticBackProvider>
           <AssistantConversationProvider
