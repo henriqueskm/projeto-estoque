@@ -3,7 +3,7 @@
 export const semanticHistoryKey = "__nkSemanticBack";
 export type SemanticValue = Record<string, string | boolean | null | string[]>;
 type Marker = { version: 1; id: string; route: string; kind: string; key: string; guarded?: boolean };
-type Entry = { marker: Marker; values: Record<string, SemanticValue>; parentId: string | null; departing?: boolean };
+type Entry = { marker: Marker; values: Record<string, SemanticValue>; parentId: string | null; departing?: boolean; consumptionRequested?: boolean };
 type Participant = { route: string; read: () => SemanticValue; restore: (value: SemanticValue) => void };
 type HistoryPort = {
   state: unknown;
@@ -64,6 +64,16 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
       if (participant.route === pathname() && entry.values[key]) participant.restore(entry.values[key]);
     }
   }
+  function consumeTransient(entryId: string) {
+    const entry = entries.get(entryId);
+    const marker = readSemanticMarker(history.state);
+    if (!entry || transient.has(entryId) || entry.departing || entry.consumptionRequested
+      || marker?.id !== entryId || marker.route !== href()) return;
+    // history.go is asynchronous. Toggle cleanup and the queued effect cleanup
+    // can both run before popstate; reserve consumption before requesting Back.
+    entry.consumptionRequested = true;
+    history.go(-1);
+  }
   return {
     ensure,
     beforeNavigation() {
@@ -123,7 +133,7 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
     openTransient(key: string, close: () => void, blocked: () => boolean) {
       const entry = ensure();
       // React StrictMode's effect probe must not push another checkpoint.
-      if (entry.marker.kind === "TRANSIENT" && entry.marker.key === key && !entry.departing && !transient.has(entry.marker.id)) {
+      if (entry.marker.kind === "TRANSIENT" && entry.marker.key === key && !entry.departing && !entry.consumptionRequested && !transient.has(entry.marker.id)) {
         transient.set(entry.marker.id, { close, blocked });
         return entry.marker.id;
       }
@@ -134,11 +144,10 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
     },
     retireTransient(entryId: string, consume = false) {
       transient.delete(entryId);
-      if (consume && !entries.get(entryId)?.departing && readSemanticMarker(history.state)?.id === entryId) history.go(-1);
+      if (consume) consumeTransient(entryId);
     },
     consumeRetiredTransient(entryId: string) {
-      const marker = readSemanticMarker(history.state);
-      if (!transient.has(entryId) && !entries.get(entryId)?.departing && marker?.id === entryId && marker.route === href()) history.go(-1);
+      consumeTransient(entryId);
     },
     invalidate(key: string) {
       // Completion/payload changes invalidate old Review identities, never drafts.

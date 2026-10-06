@@ -19,7 +19,7 @@ Legacy records without a valid ownership acknowledgement cannot safely identify 
 
 ## Same-tab drawer and actual Assistant pickup flow
 
-The active sidebar section prevents ordinary same-tab navigation and only closes the drawer. Its marker also avoids the capture-phase workspace departure event, preserving open workspace state. The existing Semantic Back coordinator consumes only the drawer's own transient checkpoint, not the underlying filter/detail. Modified/new-tab clicks remain normal links. Workspace State schema v1 and the coordinator are unchanged.
+The active sidebar section prevents ordinary same-tab navigation and only closes the drawer. Its marker also avoids the capture-phase workspace departure event, preserving open workspace state. The existing Semantic Back coordinator consumes only the drawer's own transient checkpoint, not the underlying filter/detail. Modified/new-tab clicks remain normal links. Workspace State schema v1 is unchanged.
 
 “Itens prontos na Safisa” → existing local chat response listing Pedidos → reused `SafisaBulkPickupAction` → fresh server preview → existing confirmation boundary. The chat CTA is limited to `SAFISA_READY_PICKUP`, not pending stock entries. The #84 RPC, stale check, atomicity, idempotency, pending/uncertain gates and refresh remain unchanged. Chat snapshots never supply pickup quantities to the writer.
 
@@ -183,3 +183,32 @@ remain. Standard Next/Turbopack and Webpack builds both pass with CC/PPR enabled
 No migration, RPC, writer, Auth cleanup, remote stock/subscription mutation or
 Workspace schema change. The previous Attention source-contract NOTE remains;
 the physical Android gate and historical-stack limitation are not waived.
+
+## Same-tab drawer — asynchronous history consumption
+
+The previous synchronous History test double hid a race: toggling a transient
+closed requests Back immediately, while effect cleanup schedules another request
+on the next animation frame. If `popstate` has not arrived yet, both paths saw the
+same drawer marker and could consume an underlying filter or route as well.
+
+Consumption is now reserved once per checkpoint **in memory, before** requesting
+`history.go(-1)`. Both cleanup paths use the same guard; Activity/departing-route
+protection and StrictMode reattachment remain intact. A consumed identity is not
+reused when a drawer is reopened after Forward. No new listener, history field,
+sentinel, route navigation, Workspace reset or mutation gate is introduced.
+
+Three regressions use deferred history traversal: both cleanup orders preserve
+the current route/search/filter/group and leave native Back available for the
+previous useful state; reopening a consumed Forward checkpoint gets a new
+consumable identity. All three fail before the fix and pass after it.
+
+Focused validation: **193 passed, 0 failed/skipped**, including Semantic Back,
+Workspace State, Activity, Instant Navigation, drawer lifecycle, persistent
+device push, PWA/Auth and UI layout. TypeScript, scoped ESLint with zero warnings
+and `git diff --check` pass, as does the Webpack production build with CC/PPR
+enabled. Browser validation on the actual local sidebar/coordinator at
+320/375/768/1440 px preserves the current route/filter on the active-tab click;
+the following native Back restores the previous filter. Zero console errors.
+Auth/API boundaries are simulated locally; this does not claim a physical
+Android test. No migration, RPC, writer, remote stock/subscription operation,
+Auth or push behavior change.

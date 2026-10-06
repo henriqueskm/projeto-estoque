@@ -4,26 +4,32 @@ import { readFileSync } from "node:fs";
 import { createSemanticBackHistory, readSemanticMarker } from "../lib/semantic-back-history.ts";
 import { createRouteMutationGate } from "../lib/route-transient-state.ts";
 
-function browser(url = "/estoque", standalone = false, requestExit = () => {}) {
+function browser(url = "/estoque", standalone = false, requestExit = () => {}, deferred = false) {
   let index = 0; let counter = 0; let exitCount = 0; let popCount = 0; let exitOpen = false;
   const traversals = [];
+  const pending = [];
   const stack = [{ url, state: { __NA: true, nextTree: "untouched" } }];
+  function traverse(delta) {
+    const target = index + delta;
+    if (target < 0 || target >= stack.length) return;
+    index = target;
+    coordinator.pop(history.state);
+  }
   const history = {
     get state() { return stack[index].state; },
     pushState(state, _, route) { stack.splice(index + 1); stack.push({ state: structuredClone(state), url: route ?? stack[index].url }); index += 1; },
     replaceState(state, _, route) { stack[index] = { state: structuredClone(state), url: route ?? stack[index].url }; },
     go(delta) {
       traversals.push(delta);
-      const target = index + delta;
-      if (target < 0 || target >= stack.length) return;
-      index = target;
-      coordinator.pop(history.state);
+      if (deferred) pending.push(delta);
+      else traverse(delta);
     },
   };
   const coordinator = createSemanticBackHistory({ history, href: () => stack[index].url, standalone: () => standalone,
     exit: open => { exitOpen = open; if (open) exitCount += 1; }, beforePop: () => { popCount += 1; }, id: () => `entry-${++counter}`, requestExit });
   coordinator.ensure();
   return { coordinator, history, stack, traversals, back: () => history.go(-1), forward: () => history.go(1),
+    flush: () => { while (pending.length) traverse(pending.shift()); },
     get url() { return stack[index].url; }, get exitCount() { return exitCount; }, get exitOpen() { return exitOpen; }, get popCount() { return popCount; } };
 }
 function participant(browser, key, initial, restoreGuard = () => true) {
@@ -232,6 +238,43 @@ test("manual dialog close consumes its checkpoint but Activity departure never t
   b.history.pushState({ __NA: true }, "", "/pedidos"); b.coordinator.ensure();
   b.coordinator.retireTransient(second); b.coordinator.consumeRetiredTransient(second);
   assert.equal(b.url, "/pedidos");
+});
+
+for (const cleanupOrder of ["toggle-first", "animation-frame-first"]) {
+  test(`same-tab drawer: delayed popstate and ${cleanupOrder} cleanup consume only the drawer checkpoint`, () => {
+    const b = browser("/", false, () => {}, true);
+    b.history.pushState({ __NA: true, nextTree: "stock" }, "", "/estoque"); b.coordinator.ensure();
+    const state = participant(b, "estoque", { query: "MBF015", statusFilter: "all", openPhysicalGroups: [] });
+    state.change({ ...state.value, statusFilter: "low", openPhysicalGroups: ["SERVO"] });
+    const usefulState = structuredClone(state.value);
+    const drawer = b.coordinator.openTransient("drawer", () => {}, () => false);
+    b.coordinator.retireTransient(drawer);
+    if (cleanupOrder === "toggle-first") b.coordinator.retireTransient(drawer, true);
+    b.coordinator.consumeRetiredTransient(drawer);
+    b.coordinator.retireTransient(drawer, true);
+    b.coordinator.consumeRetiredTransient(drawer);
+    assert.deepEqual(b.traversals, [-1], "cleanup paths cannot queue two Back traversals before popstate");
+    assert.equal(readSemanticMarker(b.history.state).id, drawer, "real History API has not completed yet");
+    b.flush();
+    assert.equal(b.url, "/estoque"); assert.deepEqual(state.value, usefulState);
+    assert.equal(readSemanticMarker(b.history.state).kind, "STATE");
+    b.back(); b.flush();
+    assert.equal(state.value.statusFilter, "all", "the previous useful checkpoint was not consumed by closing the menu");
+    b.back(); b.flush(); assert.equal(b.url, "/");
+  });
+}
+
+test("a drawer reopened on a consumed Forward checkpoint gets a fresh consumable identity", () => {
+  const b = browser("/estoque", false, () => {}, true);
+  const first = b.coordinator.openTransient("drawer", () => {}, () => false);
+  b.coordinator.retireTransient(first, true); b.flush();
+  b.forward(); b.flush();
+  const next = b.coordinator.openTransient("drawer", () => {}, () => false);
+  assert.notEqual(next, first, "a consumed entry must not be reused by the StrictMode probe path");
+  b.coordinator.retireTransient(next, true); b.coordinator.consumeRetiredTransient(next);
+  b.flush();
+  assert.equal(readSemanticMarker(b.history.state).id, first);
+  assert.deepEqual(b.traversals, [-1, 1, -1]);
 });
 
 test("GET route filters and period navigation retain their own native entries", () => {
