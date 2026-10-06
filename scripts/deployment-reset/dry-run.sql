@@ -140,6 +140,7 @@ operational_counts as (
     union all select 'movement_batches', count(*) from public.movement_batches
     union all select 'outbound_batch_lines', count(*) from public.outbound_batch_lines
     union all select 'push_notification_events', count(*) from public.push_notification_events
+    union all select 'supplier_order_bulk_pickup_operations', count(*) from public.supplier_order_bulk_pickup_operations
     union all select 'safisa_order_authorizations', count(*) from public.safisa_order_authorizations
     union all select 'safisa_portal_events', count(*) from public.safisa_portal_events
     union all select 'stock_adjustment_requests', count(*) from private.stock_adjustment_requests

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { SafisaPickupAlertsResult } from "@/lib/safisa-pickup-alerts";
+import { inventoryDataChangedEvent } from "@/lib/inventory-ui-events";
 import {
   applySafisaPickupAlertRefreshFailure,
   applySafisaPickupAlertRefreshSuccess,
@@ -38,38 +39,41 @@ export function SafisaPickupAlertProvider({
   );
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshInFlightRef = useRef(false);
+  const refreshRequestedRef = useRef(false);
 
   const refreshAlerts = useCallback(async () => {
-    if (refreshInFlightRef.current) return;
+    if (refreshInFlightRef.current) {
+      refreshRequestedRef.current = true;
+      return;
+    }
 
     refreshInFlightRef.current = true;
     setIsRefreshing(true);
 
     try {
-      const response = await fetch("/api/safisa-pickup-alerts", {
-        cache: "no-store",
-        credentials: "same-origin",
-        headers: { Accept: "application/json" },
-      });
-
-      if (!response.ok) {
-        setState((previous) => applySafisaPickupAlertRefreshFailure(previous));
-        return;
-      }
-
-      const next = (await response.json()) as SafisaPickupAlertsResult["data"];
-      if (
-        !Array.isArray(next.alerts) ||
-        !Number.isSafeInteger(next.alertCount) ||
-        typeof next.isComplete !== "boolean"
-      ) {
-        setState((previous) => applySafisaPickupAlertRefreshFailure(previous));
-        return;
-      }
-
-      setState(applySafisaPickupAlertRefreshSuccess(next));
-    } catch {
-      setState((previous) => applySafisaPickupAlertRefreshFailure(previous));
+      do {
+        refreshRequestedRef.current = false;
+        try {
+          const response = await fetch("/api/safisa-pickup-alerts", {
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+          });
+          if (!response.ok) {
+            setState(previous => applySafisaPickupAlertRefreshFailure(previous));
+            continue;
+          }
+          const next = (await response.json()) as SafisaPickupAlertsResult["data"];
+          if (!Array.isArray(next.alerts) || !Number.isSafeInteger(next.alertCount) || typeof next.isComplete !== "boolean") {
+            setState(previous => applySafisaPickupAlertRefreshFailure(previous));
+            continue;
+          }
+          setState(applySafisaPickupAlertRefreshSuccess(next));
+        } catch {
+          setState(previous => applySafisaPickupAlertRefreshFailure(previous));
+        }
+        // A mutation during an older read requires one fresh follow-up, not a 60s wait.
+      } while (refreshRequestedRef.current);
     } finally {
       refreshInFlightRef.current = false;
       setIsRefreshing(false);
@@ -89,11 +93,13 @@ export function SafisaPickupAlertProvider({
     }
 
     window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener(inventoryDataChangedEvent, refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     const interval = window.setInterval(refreshWhenVisible, 60_000);
 
     return () => {
       window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener(inventoryDataChangedEvent, refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.clearTimeout(initialRefreshTimer);
       window.clearInterval(interval);
