@@ -10,6 +10,7 @@ import {
 import { BellIcon, CloseIcon } from "@/components/icons";
 import { useSafisaPickupAlerts } from "@/components/safisa-pickup-alert-provider";
 import { PushNotificationControl } from "@/components/push-notification-control";
+import { SafisaBulkPickupAction } from "@/components/safisa-bulk-pickup-dialog";
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
 
@@ -234,11 +235,13 @@ export function SafisaPickupAlertBell({
 export function SafisaPickupAlertHomeSummary() {
   const { alerts, alertCount, error, hasConfirmedData, isComplete } =
     useSafisaPickupAlerts();
+  const [hasUnresolvedPickup, setHasUnresolvedPickup] = useState(false);
 
-  if (alertCount === 0 || (!hasConfirmedData && error)) return null;
+  const hasPickup = alertCount > 0 && !(!hasConfirmedData && error);
 
   return (
     <section
+      hidden={!hasPickup && !hasUnresolvedPickup}
       aria-labelledby="safisa-pickup-home-heading"
       className="mt-4 rounded-xl border border-border-neutral bg-surface px-3 py-2.5 shadow-sm sm:mt-5 sm:px-4"
     >
@@ -251,8 +254,8 @@ export function SafisaPickupAlertHomeSummary() {
             Retiradas Safisa
           </h2>
           <p className="text-xs font-semibold text-text-muted">
-            {isComplete
-              ? `${orderLabel(alertCount)} aguardando retirada`
+            {!hasPickup && hasUnresolvedPickup ? "Verifique o resultado da retirada anterior." : isComplete
+              ? `${orderLabel(alertCount)} · ${quantityFormatter.format(alerts.reduce((total, alert) => total + alert.readyWaitingPickupQuantity, 0))} unidades aguardando retirada`
               : "Pedidos com unidades aguardando retirada"}
           </p>
         </div>
@@ -263,6 +266,7 @@ export function SafisaPickupAlertHomeSummary() {
           Ver todos
         </Link>
       </div>
+      <SafisaBulkPickupAction enabled={hasPickup} onUnresolvedChange={setHasUnresolvedPickup} />
       <ul className="mt-2 space-y-1.5">
         {alerts.slice(0, 3).map((alert) => (
           <li key={alert.supplierOrderId}>

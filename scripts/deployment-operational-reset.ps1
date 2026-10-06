@@ -55,6 +55,7 @@ $requiredRelations = @(
   "public.outbound_batch_lines",
   "public.profiles",
   "public.push_notification_events",
+  "public.supplier_order_bulk_pickup_operations",
   "public.push_subscriptions",
   "public.repair_kits",
   "public.safisa_order_authorizations",

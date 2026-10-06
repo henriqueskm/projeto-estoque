@@ -110,6 +110,7 @@ $$;
 
 -- Block concurrent writes before any snapshot, and keep the FK order explicit.
 lock table public.push_notification_events,
+  public.supplier_order_bulk_pickup_operations,
   public.safisa_portal_events,
   public.safisa_order_authorizations,
   public.supplier_order_stock_entry_lines,
@@ -156,6 +157,8 @@ create temporary table deployment_reset_expected_counts (
 ) on commit drop;
 insert into deployment_reset_expected_counts
 select 'public.push_notification_events', count(*) from public.push_notification_events
+union all
+select 'public.supplier_order_bulk_pickup_operations', count(*) from public.supplier_order_bulk_pickup_operations
 union all
 select 'public.safisa_portal_events', count(*) from public.safisa_portal_events
 union all
@@ -368,6 +371,9 @@ end;
 $guard$;
 
 do $delete_push$ declare affected bigint; begin
+  delete from public.supplier_order_bulk_pickup_operations;
+  get diagnostics affected = row_count;
+  perform pg_temp.deployment_reset_assert_affected('public.supplier_order_bulk_pickup_operations', affected);
   delete from public.push_notification_events;
   get diagnostics affected = row_count;
   perform pg_temp.deployment_reset_assert_affected('public.push_notification_events', affected);
@@ -490,6 +496,7 @@ begin
     + (select count(*) from public.safisa_order_authorizations)
     + (select count(*) from public.safisa_portal_events)
     + (select count(*) from public.push_notification_events)
+    + (select count(*) from public.supplier_order_bulk_pickup_operations)
     + (select count(*) from private.stock_adjustment_requests)
     + (select count(*) from private.configuration_operation_requests)
     + (select count(*) from public.stock_balances)

@@ -13,6 +13,7 @@ begin
     + (select count(*) from public.supplier_orders)
     + (select count(*) from public.safisa_portal_events)
     + (select count(*) from public.push_notification_events)
+    + (select count(*) from public.supplier_order_bulk_pickup_operations)
   into operational_rows;
 
   if operational_rows <> 0 then
@@ -268,5 +269,8 @@ insert into public.outbound_batch_lines(id,batch_id,item_id,quantity,assembled_q
 insert into public.supplier_order_items(supplier_order_id,item_id,code_snapshot,description_snapshot,item_type_snapshot,ordered_quantity,position)
  select '40000000-0000-0000-0000-000000000001',id,code,description,item_type,1,
  row_number() over(order by code)::integer from public.items where item_type='LOOSE_PART' and code<>'110';
+
+insert into public.supplier_order_bulk_pickup_operations(user_id,user_name_snapshot,idempotency_key,request,result)
+values('10000000-0000-0000-0000-000000000001','Reset Test Internal','48000000-0000-4000-8000-000000000001','[]'::jsonb,'{}'::jsonb);
 
 commit;
