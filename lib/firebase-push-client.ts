@@ -190,7 +190,7 @@ export async function subscribeToForegroundPush(listener: () => void) {
   if (!context) return () => undefined;
 
   return onMessage(context.messaging, (payload) => {
-    if (payload.data?.type === "SAFISA_FULLY_READY") {
+    if (payload.data?.type === "SAFISA_FULLY_READY" || payload.data?.type === "SAFISA_ITEM_READY") {
       listener();
     }
   });

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -77,16 +78,26 @@ test("automated Execute tests are exclusive, behavioral and cover late sabotage 
   assert.doesNotMatch(runner, /Add-PsqlVariable/);
 });
 
-function probe(env = {}, mode = "DryRun", ref = contract.projectRef) {
+function probe(env = {}, mode = "DryRun", ref = contract.projectRef, staleContract = false) {
   const dir = mkdtempSync(join(tmpdir(), "nk-reset-cli-probe-"));
   mkdirSync(join(dir, "supabase", ".temp"), { recursive: true });
   writeFileSync(join(dir, "supabase", ".temp", "project-ref"), ref, "utf8");
+  // Transport mocks must reach the transport gates after forward migrations.
+  // This generated TEST-ONLY contract changes only local migration identity;
+  // the production PRE/POST fingerprints and historical contract stay intact.
+  const migrations = readdirSync("supabase/migrations").filter(name => name.endsWith(".sql")).sort();
+  const testContractPath = join(dir, "test-contract.json");
+  const migrationRows = migrations.map(name => `${name.slice(0, 14)}|${name.slice(15, -4)}`).join("\n");
+  writeFileSync(testContractPath, JSON.stringify(staleContract ? contract : {
+    ...contract, migrationCount: migrations.length, latestMigration: migrations.at(-1).slice(0, 14),
+    migrationFingerprint: createHash("md5").update(migrationRows).digest("hex"),
+  }), "utf8");
   const result = spawnSync("powershell.exe", [
     "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
     resolve("tests/fixtures/deployment-reset-api-probe.ps1"),
     "-Runner", resolve("scripts/deployment-operational-reset.ps1"),
     "-MockCli", resolve("tests/fixtures/deployment-reset-readonly-cli.mock.ps1"),
-    "-LinkedWorkspace", dir, "-Mode", mode
+    "-LinkedWorkspace", dir, "-Mode", mode, "-TestContract", testContractPath
   ], { encoding: "utf8", env: { ...process.env, ...env }, windowsHide: true });
   assert.equal(result.error, undefined);
   const output = result.stdout + result.stderr;
@@ -98,6 +109,22 @@ test("read-only Management API wrapper restores local sentinel setting after suc
   const result = probe();
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /PASS API wrapper/);
+});
+test("obsolete reset contract still fails closed before the mocked transport", () => {
+  const result = probe({}, "DryRun", contract.projectRef, true);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /Local migration files do not match the registered reset contract/);
+});
+
+test("reset and backup retain both queue types and delete their new source FK before audit rows", () => {
+  const backup = readFileSync("scripts/deployment-backup.mjs", "utf8");
+  assert.match(dryRun, /select 'push_notification_events', count\(\*\) from public\.push_notification_events/);
+  assert.match(backup, /['"]push_notification_events['"]/);
+  assert.ok(execute.indexOf("delete from public.push_notification_events") < execute.indexOf("delete from public.safisa_portal_events"));
+  const newMigration = readFileSync("supabase/migrations/20261006104415_safisa_item_ready_push_notifications.sql", "utf8");
+  assert.match(newMigration, /references public\.safisa_portal_events\(id\) on delete restrict/);
+  assert.match(newMigration, /event_type in \('SAFISA_FULLY_READY', 'SAFISA_ITEM_READY'\)/);
+  assert.doesNotMatch(execute, /event_type\s*=\s*'SAFISA_FULLY_READY'/);
 });
 test("Management API rejects Execute before invoking any transport", () => {
   const result = probe({}, "Execute");

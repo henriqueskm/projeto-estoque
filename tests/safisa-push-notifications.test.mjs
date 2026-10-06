@@ -9,7 +9,7 @@ import {
   parsePushSubscriptionBody,
   readPushSubscriptionBody,
 } from "../lib/push-subscription-http.ts";
-import { dispatchSafisaFullyReadyPush } from "../lib/safisa-push-dispatch.ts";
+import { dispatchSafisaFullyReadyPush, dispatchSafisaReadyPush } from "../lib/safisa-push-dispatch.ts";
 import {
   beginPushOperation,
   createPushOperationGate,
@@ -69,10 +69,10 @@ function fakeAdmin({ event = eventFixture, subscriptions = [] } = {}) {
 
   const client = {
     async rpc(name, args) {
-      if (name === "claim_safisa_fully_ready_push_event") {
+      if (name === "claim_safisa_fully_ready_push_event" || name === "claim_safisa_ready_push_event") {
         return { data: event, error: null };
       }
-      if (name === "complete_safisa_fully_ready_push_event") {
+      if (name === "complete_safisa_fully_ready_push_event" || name === "complete_safisa_ready_push_event") {
         completed.push(args);
         return { data: null, error: null };
       }
@@ -1501,7 +1501,134 @@ test("server dispatch succeeds once and records SENT", async () => {
   assert.equal(messages[0].fids.length, 2);
   assert.equal("tokens" in messages[0], false);
   assert.equal(messages[0].data.type, "SAFISA_FULLY_READY");
+  assert.equal(messages[0].data.title, "Pedido pronto para retirada ✅");
+  assert.equal(messages[0].data.body, "Pedido 40959 está completamente pronto na Safisa.");
   assert.equal(admin.completed.at(-1).p_status, "SENT");
+});
+
+const itemEventFixture = {
+  ...eventFixture, event_type: "SAFISA_ITEM_READY", attempt_count: 1,
+  supplier_order_item_id: "10000000-0000-4000-8000-000000000003",
+  portal_event_id: "10000000-0000-4000-8000-000000000004",
+  code_snapshot: "1H", description_snapshot: "SERVO MBF-025", quantity_delta: 3,
+};
+
+test("ITEM_READY sends snapshot and operation delta as strings with a fenced completion", async () => {
+  const admin = fakeAdmin({ event: itemEventFixture, subscriptions: [subscription(1)] });
+  const messages = [];
+  assert.equal(await dispatchSafisaReadyPush(eventFixture.supplier_order_id, itemEventFixture.portal_event_id, {
+    adminClient: admin.client, async sendEachForMulticast(message) {
+      messages.push(message); return batch([{ success: true }]);
+    },
+  }), "sent");
+  assert.equal(messages[0].data.title, "Item pronto no pedido 40959 ✅");
+  assert.equal(messages[0].data.body, "Cód. 1H — SERVO MBF-025 — 3 unidades prontas.");
+  assert.equal(messages[0].data.quantity, "3");
+  assert.equal(messages[0].data.supplierOrderItemId, itemEventFixture.supplier_order_item_id);
+  assert.equal(messages[0].data.eventId, itemEventFixture.id);
+  assert.ok(Object.values(messages[0].data).every(value => typeof value === "string"));
+  assert.equal(admin.completed[0].p_attempt_count, 1);
+});
+
+test("final individual action dispatches FULLY_READY only and an already claimed replay sends nothing", async () => {
+  const messages = [];
+  for (const event of [{ ...eventFixture, attempt_count: 1 }, null]) {
+    const admin = fakeAdmin({ event, subscriptions: [subscription(1)] });
+    assert.equal(await dispatchSafisaReadyPush(eventFixture.supplier_order_id, itemEventFixture.portal_event_id, {
+      adminClient: admin.client, async sendEachForMulticast(message) { messages.push(message); return batch([{ success: true }]); },
+    }), event ? "sent" : "not_pending");
+    if (event) assert.equal(admin.completed[0].p_attempt_count, 1);
+  }
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].data.type, "SAFISA_FULLY_READY");
+  assert.equal(messages[0].data.title, "Pedido pronto para retirada ✅");
+});
+
+test("ITEM_READY malformed claim never reaches recipients or FCM", async () => {
+  for (const change of [{ event_type: "UNKNOWN" }, { quantity_delta: 0 }, { quantity_delta: 3.5 },
+    { quantity_delta: 2147483648 }, { supplier_order_item_id: "bad" }, { portal_event_id: "bad" },
+    { portal_event_id: eventFixture.id }, { supplier_order_id: itemEventFixture.supplier_order_item_id },
+    { description_snapshot: "" }, { attempt_count: 4 }, { attempt_count: undefined }]) {
+    const admin = fakeAdmin({ event: { ...itemEventFixture, ...change }, subscriptions: [subscription(1)] });
+    assert.equal(await dispatchSafisaReadyPush(eventFixture.supplier_order_id, itemEventFixture.portal_event_id, {
+      adminClient: admin.client, async sendEachForMulticast() { assert.fail("must not send"); },
+    }), "failed");
+    assert.equal(admin.completed.length, 0);
+  }
+});
+
+test("ITEM_READY sanitizes and bounds text without changing durable snapshots", async () => {
+  const admin = fakeAdmin({ event: { ...itemEventFixture, code_snapshot: "<b>1H</b>",
+    description_snapshot: "<b>SERVO</b>\n" + "😀".repeat(500) }, subscriptions: [subscription(1)] });
+  await dispatchSafisaReadyPush(eventFixture.supplier_order_id, itemEventFixture.portal_event_id, {
+    adminClient: admin.client, async sendEachForMulticast(message) {
+      assert.equal(message.data.code, "1H");
+      assert.equal(Array.from(message.data.description).length, 300);
+      assert.doesNotMatch(message.data.description, /[<>\n]/);
+      assert.ok(Buffer.byteLength(JSON.stringify(message.data)) < 4096);
+      return batch([{ success: true }]);
+    },
+  });
+});
+
+test("ITEM_READY keeps invalid FID disabling, timeout and no-recipient statuses", async () => {
+  for (const scenario of ["invalid", "timeout", "empty"]) {
+    const admin = fakeAdmin({ event: itemEventFixture, subscriptions: scenario === "empty" ? [] : [subscription(1)] });
+    const result = await dispatchSafisaReadyPush(eventFixture.supplier_order_id, itemEventFixture.portal_event_id, {
+      adminClient: admin.client, timeoutMs: 5, sendEachForMulticast() {
+        if (scenario === "timeout") return new Promise(() => undefined);
+        return Promise.resolve(batch([{ success: false, error: { code: "messaging/registration-token-not-registered" } }]));
+      },
+    });
+    assert.equal(result, scenario === "empty" ? "no_recipients" : "failed");
+    assert.equal(admin.completed[0].p_status, scenario === "empty" ? "NO_RECIPIENTS" : "FAILED");
+    if (scenario === "invalid") assert.deepEqual(admin.disabledIds, [subscription(1).id]);
+    if (scenario === "timeout") assert.equal(admin.completed[0].p_last_error_code, "FCM_TIMEOUT");
+  }
+});
+
+function itemPushData(overrides = {}) {
+  return { type: "SAFISA_ITEM_READY", eventId: itemEventFixture.id,
+    supplierOrderId: eventFixture.supplier_order_id, supplierOrderItemId: itemEventFixture.supplier_order_item_id,
+    negotiationNumber: "40959", code: "1H", description: "SERVO MBF-025", quantity: "3", ...overrides };
+}
+
+test("ITEM_READY worker uses event-specific tags and safe Pedido clicks", async () => {
+  const { handlers, notifications, opened } = loadServiceWorker();
+  for (const eventId of [itemEventFixture.id, itemEventFixture.portal_event_id]) {
+    let task;
+    handlers.get("push")({ data: { json: () => ({ data: itemPushData({ eventId }) }) }, waitUntil(value) { task = value; } });
+    await task;
+  }
+  assert.equal(notifications[0].title, "Item pronto no pedido 40959 ✅");
+  assert.equal(notifications[0].options.body, "Cód. 1H — SERVO MBF-025 — 3 unidades prontas.");
+  assert.notEqual(notifications[0].options.tag, notifications[1].options.tag);
+  let click;
+  handlers.get("notificationclick")({ notification: { data: notifications[0].options.data, close() {} }, waitUntil(value) { click = value; } });
+  await click;
+  assert.deepEqual(opened, [`/pedidos?order=${eventFixture.supplier_order_id}`]);
+});
+
+test("ITEM_READY worker rejects malformed, HTML, external destinations and unknown types", () => {
+  const { handlers, notifications } = loadServiceWorker();
+  for (const overrides of [{ eventId: "bad" }, { supplierOrderId: "bad" }, { supplierOrderItemId: "bad" },
+    { type: "UNKNOWN" }, { quantity: "0" }, { quantity: "3.5" }, { quantity: 3 }, { quantity: "2147483648" },
+    { description: "<b>HTML</b>" }, { description: "x".repeat(301) }, { code: "" },
+    { negotiationNumber: "wrong" }, { url: "https://evil.example/pedidos" }]) {
+    handlers.get("push")({ data: { json: () => ({ data: itemPushData(overrides) }) }, waitUntil() { assert.fail("must reject"); } });
+  }
+  assert.equal(notifications.length, 0);
+});
+
+test("foreground refresh recognizes both safe event types without exposing recipients", () => {
+  const callback = clientSource.slice(clientSource.indexOf("return onMessage(context.messaging"));
+  const body = callback.slice(callback.indexOf("=> {") + 4, callback.lastIndexOf("});"));
+  for (const type of ["SAFISA_FULLY_READY", "SAFISA_ITEM_READY", "UNKNOWN"]) {
+    let count = 0;
+    vm.runInNewContext(body, { payload: { data: { type } }, listener() { count++; } });
+    assert.equal(count, type === "UNKNOWN" ? 0 : 1);
+  }
+  assert.doesNotMatch(clientSource, /push_subscriptions|service_role/);
 });
 
 test("server dispatch limits each multicast request to 500 FIDs", async () => {

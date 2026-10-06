@@ -19,23 +19,38 @@ function pushDataFromEvent(event) {
       : payload;
 
     if (
-      data.type !== "SAFISA_FULLY_READY" ||
+      (data.type !== "SAFISA_FULLY_READY" && data.type !== "SAFISA_ITEM_READY") ||
       typeof data.supplierOrderId !== "string" ||
       !supplierOrderIdPattern.test(data.supplierOrderId) ||
       typeof data.negotiationNumber !== "string" ||
-      !negotiationNumberPattern.test(data.negotiationNumber)
+      !negotiationNumberPattern.test(data.negotiationNumber) || data.negotiationNumber.length > 120
     ) {
       return null;
     }
 
-    return {
+    const base = {
+      type: data.type,
       supplierOrderId: data.supplierOrderId,
       negotiationNumber: data.negotiationNumber,
       url: `/pedidos?order=${encodeURIComponent(data.supplierOrderId)}`,
     };
+    if (data.type === "SAFISA_FULLY_READY") return base;
+    if (typeof data.eventId !== "string" || !supplierOrderIdPattern.test(data.eventId) ||
+        typeof data.supplierOrderItemId !== "string" || !supplierOrderIdPattern.test(data.supplierOrderItemId) ||
+        !isNotificationText(data.code, 80) || !isNotificationText(data.description, 300) ||
+        typeof data.quantity !== "string" || !/^[1-9]\d{0,9}$/.test(data.quantity) ||
+        Number(data.quantity) > 2147483647 ||
+        (data.url !== undefined && data.url !== base.url)) return null;
+    return { ...base, eventId: data.eventId, supplierOrderItemId: data.supplierOrderItemId,
+      code: data.code, description: data.description, quantity: data.quantity };
   } catch {
     return null;
   }
+}
+
+function isNotificationText(value, limit) {
+  return typeof value === "string" && value.trim().length > 0 &&
+    Array.from(value).length <= limit && !/[<>\u0000-\u001f\u007f]/.test(value);
 }
 
 function safeNotificationUrl(value) {
@@ -67,15 +82,20 @@ self.addEventListener("push", (event) => {
   const data = pushDataFromEvent(event);
   if (!data) return;
 
+  const itemReady = data.type === "SAFISA_ITEM_READY";
   event.waitUntil(
-    self.registration.showNotification("Pedido pronto para retirada ✅", {
-      body: `Pedido ${data.negotiationNumber} está completamente pronto na Safisa.`,
+    self.registration.showNotification(itemReady
+      ? `Item pronto no pedido ${data.negotiationNumber} ✅` : "Pedido pronto para retirada ✅", {
+      body: itemReady
+        ? `Cód. ${data.code} — ${data.description} — ${data.quantity} ${data.quantity === "1" ? "unidade pronta" : "unidades prontas"}.`
+        : `Pedido ${data.negotiationNumber} está completamente pronto na Safisa.`,
       icon: "/icons/nk-app-icon-192.png",
       badge: "/icons/nk-app-icon-192.png",
-      tag: `safisa-fully-ready:${data.supplierOrderId}`,
+      tag: itemReady ? `safisa-item-ready:${data.eventId}` : `safisa-fully-ready:${data.supplierOrderId}`,
       renotify: false,
       data: {
-        type: "SAFISA_FULLY_READY",
+        type: data.type,
+        ...(itemReady ? { eventId: data.eventId, supplierOrderItemId: data.supplierOrderItemId } : {}),
         supplierOrderId: data.supplierOrderId,
         url: data.url,
       },
