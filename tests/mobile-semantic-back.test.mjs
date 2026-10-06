@@ -189,7 +189,9 @@ test("standalone exit: Back cancels, another Back reopens, Continue/Escape and E
   assert.equal(b.stack.filter(entry => readSemanticMarker(entry.state)?.kind === "EXIT_BOUNDARY").length, 1);
   assert.equal(b.popCount, 0, "exit attempts never restore/clear useful Workspace state");
   assert.equal(b.traversals.length, 28, "each Back has only one bounded forward bounce");
-  b.coordinator.leaveApp(); assert.equal(b.exitOpen, false); assert.equal(b.traversals.at(-1), -2);
+  const traversalsBeforeExit = b.traversals.length;
+  b.coordinator.leaveApp(); assert.equal(b.exitOpen, false);
+  assert.equal(b.traversals.length, traversalsBeforeExit, "Exit releases the guard without navigating to an older URL");
   const attempts = b.exitCount;
   b.back(); assert.equal(b.exitCount, attempts, "released boundary no longer traps Back");
   assert.equal(b.stack.length, length);

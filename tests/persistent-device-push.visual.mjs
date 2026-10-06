@@ -9,14 +9,14 @@ const css = readdirSync(".next/static", { recursive: true }).filter(name => name
   .map(name => readFileSync(join(".next/static", name), "utf8")).join("\n");
 const mocks = {
   "next/navigation": `import {useSyncExternalStore} from 'react';const listeners=new Set();
-    window.__navigate=href=>{history.pushState({...history.state},'',href);window.__navs++;listeners.forEach(f=>f())};
+    window.__navigate=(href,replace=false)=>{history[replace?'replaceState':'pushState']({...history.state},'',href);window.__navs++;listeners.forEach(f=>f())};
     const subscribe=f=>{listeners.add(f);return()=>listeners.delete(f)};
     export function usePathname(){return useSyncExternalStore(subscribe,()=>location.pathname)}
     export function useSearchParams(){return new URLSearchParams(location.search)}
     export function useRouter(){return {push:window.__navigate,prefetch(){},refresh(){window.__refreshes++}}}`,
   "next/link": `import {createElement as h} from 'react';export default function Link({href,children,onClick,prefetch,...props}){
     return h('a',{...props,href,onClick:e=>{onClick?.(e);if(!e.defaultPrevented&&!e.metaKey&&!e.ctrlKey){e.preventDefault();window.__navigate(href)}}},children)}`,
-  "@/app/auth/actions": `export async function logout(){window.__logouts++;window.__setUser(null)}`,
+  "@/app/auth/actions": `export async function logout(){window.__logouts++;if(window.__standaloneFixture)window.__navigate('/login',true);window.__setUser(null)}`,
   "@/lib/firebase-push-client": `export function isFirebasePushConfigured(){return true}
     export async function browserSupportsFirebasePush(){return true}
     export async function requestFirebasePushPermission(){window.__permissionRequests++;window.Notification.permission='granted';return true}
@@ -43,6 +43,8 @@ const bundle = await build({ bundle: true, write: false, platform: "browser", fo
     import {buildAssistantAttentionSummary} from './lib/assistant-attention';
     import {createAssistantAttentionMessage} from './lib/assistant-attention-chat';
     import {inventoryWorkspaceDefaults} from './lib/workspace-state';
+    window.__standaloneFixture=new URLSearchParams(location.search).get('standalone')==='1';
+    if(window.__standaloneFixture){const match=window.matchMedia.bind(window);window.matchMedia=query=>query==='(display-mode: standalone)'?{...match(query),matches:true}:match(query)}
     window.__permissionRequests=0;window.__unregisters=0;window.__unsubscribes=0;window.__logouts=0;
     window.__posts=0;window.__deletes=0;window.__navs=0;window.__refreshes=0;window.__previewReads=0;window.__beforeNavigation=0;
     window.addEventListener('nk:workspace:before-navigation',()=>window.__beforeNavigation++);
@@ -69,10 +71,11 @@ const bundle = await build({ bundle: true, write: false, platform: "browser", fo
           onAttentionSelect={item=>setMessage(createAssistantAttentionMessage(item,crypto.randomUUID()))}/>
         {message?.structuredBlock ? <AssistantStructuredBlockView block={message.structuredBlock}/> : null}
       </main></>}
-    function Fixture(){const [user,setUser]=useState(userA);window.__setUser=setUser;window.__userId=user;
+    function Fixture(){const [user,setUser]=useState(window.__standaloneFixture&&location.pathname==='/login'?null:userA);window.__setUser=setUser;window.__userId=user;
+      const login=user=>{if(window.__standaloneFixture)window.__navigate('/',true);setUser(user)};
       return user ? <PushNotificationProvider key={user} userId={user}><WorkspaceStateProvider userId={user}>
         <SemanticBackProvider><Content/></SemanticBackProvider></WorkspaceStateProvider></PushNotificationProvider>
-      : <><button onClick={()=>setUser(userA)}>Login A (fixture)</button><button onClick={()=>setUser(userB)}>Login B (fixture)</button></>}
+      : <><button onClick={()=>login(userA)}>Login A (fixture)</button><button onClick={()=>login(userB)}>Login B (fixture)</button></>}
     createRoot(document.getElementById('fixture')).render(<Fixture/>);` },
   plugins: [{ name: "local-only-network-boundaries", setup(builder) {
     builder.onResolve({ filter: /^(next\/(link|navigation)|@\/)/ }, args => {

@@ -44,3 +44,56 @@ Results: 120/120 push/alerts/Semantic Back/device regressions (10 new cases); 80
 NOTE: the pre-existing `Home streams Attention without blocking the Assistant shell` source-contract in `tests/assistant-attention.test.mjs` expects `loadAssistantAttention()` directly, but base main already calls the `connection()`-gated `loadAttentionOnNavigation()`. The two files are untouched. The remaining Attention cases pass; no unrelated correction was made.
 
 No migration, RPC, queue/dispatcher, stock writer, IA, remote configuration, subscription or inventory operation changed/executed by this PR's validation. Draft; no merge/auto-merge.
+
+## Correction 4 — PWA exit is not logout
+
+`leaveApp()` now only releases the existing guard and closes its dialog. It
+does **not** call `history.go(-2)` or perform any navigation, Auth, push or storage
+cleanup. The next native Back is unguarded; the runtime owns leaving/minimizing
+the PWA. We cannot delete arbitrary older browser history or guarantee physical
+closure from web code. No new sentinel, external destination or close-window hack.
+
+The successful login Server Action explicitly uses `RedirectType.replace`
+(Next defaults Server Actions to push). The login form's existing Suspense
+boundary now checks verified Supabase claims and the active internal profile.
+An already authorized user visiting `/login` redirects to `/` without sign-out;
+anonymous/invalid claims and inactive/missing/error profiles retain login access
+without a Home/login redirect loop. Authorization is not cached or weakened.
+Explicit logout remains `signOut({ scope: "local" })` → `/login`, with no push cleanup.
+
+Additional local regressions: 9 Auth/exit cases execute the real Server Action
+and login page with mocked network/navigation boundaries. Combined focused
+push/alerts/Semantic Back/device/Auth suites: **129 passed, 0 failed/skipped**.
+Workspace State/Activity/Instant Navigation/Attention UI: **80 passed**.
+Scoped ESLint (zero warnings), TypeScript, diff-check and Webpack build passed;
+Cache Components and Partial Prefetching remain enabled.
+
+```powershell
+node tests/persistent-device-push.visual.mjs
+npx --no-install playwright-cli -s=nk85exit open http://127.0.0.1:3085/login?standalone=1 --browser=chrome
+npx --no-install playwright-cli -s=nk85exit run-code --filename=tests/pwa-exit-auth.smoke.js
+```
+
+Browser fixture: real coordinator/provider, History API and exit dialog;
+standalone detection emulated, Auth/Firebase boundaries simulated. Login replace,
+repeated Back/Continue, second Back to cancel, Escape, Exit without traversal,
+released native Back, explicit logout preserving push passed at **320/375/768/1440**.
+Zero console errors, JS exceptions, failed requests or horizontal overflow.
+The previous device push/drawer/chat-preview smoke also passes all four sizes.
+These results do **not** prove a real authenticated session survives reopening on
+physical Android, or that Android closes/minimizes the installed window.
+
+### Required human Android/PWA gate — pending, not approved
+
+Use the new Preview installed/opened as standalone on a physical Android:
+
+1. Login normally; Back at the app boundary opens the exit dialog.
+2. Continue retains page/scroll/state; repeat Back, then Back again to cancel.
+3. Open the exit dialog again and select Sair: no login form, logout or push change.
+4. Use native Back to leave/minimize (record the runtime's actual behavior).
+5. Reopen: the existing valid session still opens the authenticated app.
+6. Explicit menu logout alone shows login; enabled notifications remain enabled.
+7. Login again without another permission prompt; direct `/login` returns to Home.
+
+No remote login/logout, push mutation or stock operation was executed by the
+automated validation. This mandatory physical gate remains open for the user.

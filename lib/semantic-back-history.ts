@@ -162,7 +162,14 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
       if (current) restore(current); // TRANSIENT forward restores only safe state.
     },
     continueInApp() { released = false; exitOpen = false; exit(false); },
-    leaveApp() { released = true; exitOpen = false; exit(false); history.go(-2); },
+    leaveApp() {
+      released = true;
+      exitOpen = false;
+      exit(false);
+      // Releasing the guard is not logout or a request to visit an older URL.
+      // PWA runtimes own closing/minimizing: let the next native Back proceed.
+      // A blind traversal here could land on a pre-authentication /login entry.
+    },
     dispose() { entries.clear(); participants.clear(); transient.clear(); },
   };
 }
