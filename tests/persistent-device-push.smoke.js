@@ -71,6 +71,11 @@ async (page) => {
       "Same tab triggered route navigation/workspace cleanup");
     await page.getByRole("button", { name: "Mostrar itens prontos na safisa no chat" }).click();
     await page.getByText("Pedido 40959", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Zerar alertas (fixture)" }).click();
+    await page.getByRole("button", { name: "Retirar todos os prontos" }).waitFor({ state: "hidden" });
+    check(await page.getByText("Pedido 40959", { exact: true }).isVisible(), "Old chat must remain while live CTA hides");
+    await page.getByRole("button", { name: "Restaurar alertas (fixture)" }).click();
+    await page.getByRole("button", { name: "Retirar todos os prontos" }).waitFor();
     await page.getByRole("button", { name: "Retirar todos os prontos" }).click();
     await page.getByRole("heading", { name: "Prévia da retirada Safisa" }).waitFor();
     check((await metrics()).previewReads === 1, "Chat bulk must fetch fresh preview");

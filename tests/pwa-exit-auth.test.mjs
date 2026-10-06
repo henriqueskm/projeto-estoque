@@ -90,5 +90,7 @@ test("explicit logout still signs out locally and goes to login; never cleans pu
 test("exit implementation has no auth/push/storage cleanup or programmatic navigation", () => {
   const source = readFileSync(new URL("../lib/semantic-back-history.ts", import.meta.url), "utf8");
   const leave = source.slice(source.indexOf("leaveApp()"), source.indexOf("dispose()"));
-  assert.doesNotMatch(leave, /history\.go|signOut|localStorage|sessionStorage|fetch\(|window\.close|location\s*=/);
+  assert.doesNotMatch(leave, /history\.go|signOut|localStorage|sessionStorage|fetch\(|location\s*=/);
+  assert.match(leave, /if \(standalone\(\)\)[\s\S]*requestExit\(\)/);
+  assert.match(readFileSync(new URL("../components/semantic-back-provider.tsx", import.meta.url), "utf8"), /requestExit: \(\) => window.close\(\)/);
 });

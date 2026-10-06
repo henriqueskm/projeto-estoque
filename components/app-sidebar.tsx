@@ -87,14 +87,16 @@ function NavigationLink({
   onIntent,
   children,
   nested = false,
+  account = false,
 }: {
   href: string;
   label: string;
   pathname: string;
   onNavigate?: () => void;
   onIntent: (href: string) => void;
-  children: ReactNode;
+  children?: ReactNode;
   nested?: boolean;
+  account?: boolean;
 }) {
   const isActive = isCurrentSection(pathname, href);
   const resumeHref = useWorkspaceResumeHref(href);
@@ -113,7 +115,7 @@ function NavigationLink({
       }}
       onPointerEnter={() => onIntent(resumeHref)}
       onFocus={() => onIntent(resumeHref)}
-      className={`nk-focus flex min-h-11 items-center gap-3 rounded-xl text-sm font-black transition ${
+      className={account ? "nk-focus mt-0.5 inline-flex rounded text-xs font-bold text-brand-gold hover:underline" : `nk-focus flex min-h-11 items-center gap-3 rounded-xl text-sm font-black transition ${
         nested ? "px-3 pl-11" : "px-3"
       } ${
         isActive
@@ -121,9 +123,9 @@ function NavigationLink({
           : "text-slate-200 hover:bg-white/10 hover:text-white"
       }`}
     >
-      <span aria-hidden="true" className="flex size-5 shrink-0 items-center">
+      {!account ? <span aria-hidden="true" className="flex size-5 shrink-0 items-center">
         {children}
-      </span>
+      </span> : null}
       <span>{label}</span>
     </Link>
   );
@@ -277,16 +279,14 @@ function NavigationContent({
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-black text-white">{userName}</p>
-            <Link
+            <NavigationLink
               href="/minha-conta"
-              prefetch={false}
-              onClick={onNavigate}
-              onPointerEnter={() => onIntent("/minha-conta")}
-              onFocus={() => onIntent("/minha-conta")}
-              className="nk-focus mt-0.5 inline-flex rounded text-xs font-bold text-brand-gold hover:underline"
-            >
-              Minha conta
-            </Link>
+              label="Minha conta"
+              pathname={pathname}
+              onNavigate={onNavigate}
+              onIntent={onIntent}
+              account
+            />
           </div>
         </div>
         <PushAwareLogoutForm buttonClassName="nk-focus mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-black text-red-200 transition hover:bg-red-950/45 hover:text-white">

@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { SafisaBulkPickupAction } from "@/components/safisa-bulk-pickup-dialog";
+import { useSafisaPickupAlerts } from "@/components/safisa-pickup-alert-provider";
 import type {
   AssistantClarificationBlock,
   AssistantClarificationCategory,
@@ -1412,6 +1413,14 @@ function SupplierOrderCard({
   );
 }
 
+function LiveSafisaBulkPickupAction() {
+  const { hasConfirmedData, error, alertCount } = useSafisaPickupAlerts();
+  const liveHasPickup = hasConfirmedData && !error && alertCount > 0;
+  // Keep the action mounted: an uncertain existing attempt must remain retryable
+  // even when the latest alert read is empty/unavailable.
+  return <SafisaBulkPickupAction enabled={liveHasPickup} />;
+}
+
 function AssistantAttentionOrders({
   block,
 }: {
@@ -1454,7 +1463,7 @@ function AssistantAttentionOrders({
         </p>
       ) : null}
       {block.alertKind === "SAFISA_READY_PICKUP" ? (
-        <SafisaBulkPickupAction enabled={block.orders.some(order => order.quantity > 0)} />
+        <LiveSafisaBulkPickupAction />
       ) : null}
     </div>
   );

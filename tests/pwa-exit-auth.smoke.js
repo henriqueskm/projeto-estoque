@@ -50,6 +50,7 @@ async (page) => {
     await page.getByRole("button", { name: "Logout (fixture)" }).click();
     await page.getByRole("button", { name: "Login A (fixture)" }).waitFor();
     const afterLogout = await metrics();
+    check(await page.evaluate(() => window.__closeAttempts) === 1, "Explicit Sair must attempt immediate closing even when runtime refuses");
     check(afterLogout.logouts === 1 && afterLogout.url === "/login", "Explicit logout still goes to login");
     check(afterLogout.enabled && afterLogout.deletes === 0 && afterLogout.unregisters === 0 && afterLogout.preference === "enabled", "Explicit logout changed push");
     check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Horizontal overflow");

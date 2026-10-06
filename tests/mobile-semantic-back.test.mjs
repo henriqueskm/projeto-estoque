@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createSemanticBackHistory, readSemanticMarker } from "../lib/semantic-back-history.ts";
 import { createRouteMutationGate } from "../lib/route-transient-state.ts";
 
-function browser(url = "/estoque", standalone = false) {
+function browser(url = "/estoque", standalone = false, requestExit = () => {}) {
   let index = 0; let counter = 0; let exitCount = 0; let popCount = 0; let exitOpen = false;
   const traversals = [];
   const stack = [{ url, state: { __NA: true, nextTree: "untouched" } }];
@@ -21,7 +21,7 @@ function browser(url = "/estoque", standalone = false) {
     },
   };
   const coordinator = createSemanticBackHistory({ history, href: () => stack[index].url, standalone: () => standalone,
-    exit: open => { exitOpen = open; if (open) exitCount += 1; }, beforePop: () => { popCount += 1; }, id: () => `entry-${++counter}` });
+    exit: open => { exitOpen = open; if (open) exitCount += 1; }, beforePop: () => { popCount += 1; }, id: () => `entry-${++counter}`, requestExit });
   coordinator.ensure();
   return { coordinator, history, stack, traversals, back: () => history.go(-1), forward: () => history.go(1),
     get url() { return stack[index].url; }, get exitCount() { return exitCount; }, get exitOpen() { return exitOpen; }, get popCount() { return popCount; } };
@@ -172,6 +172,26 @@ test("ordinary browser has no sentinel/exit trap", () => {
   const b = browser("/pedidos"); assert.equal(b.stack.length, 1); b.back(); assert.equal(b.exitCount, 0);
 });
 
+for (const refuses of [false, true]) {
+  test(`explicit standalone Exit attempts immediate closure; refusal=${refuses} keeps safe released fallback`, () => {
+    let attempts = 0;
+    const b = browser("/", true, () => { attempts += 1; if (refuses) throw Error("runtime refused"); });
+    const state = participant(b, "home", { search: "preserved" });
+    b.back(); assert.equal(b.exitOpen, true);
+    const length = b.stack.length, traversals = b.traversals.length;
+    b.coordinator.leaveApp();
+    assert.equal(attempts, 1, "attempt occurs synchronously in the explicit gesture");
+    assert.equal(b.exitOpen, false); assert.equal(b.url, "/");
+    assert.equal(b.traversals.length, traversals, "never blindly traverse older login history");
+    assert.equal(b.stack.length, length); assert.equal(state.value.search, "preserved");
+    b.back(); assert.equal(b.exitOpen, false); assert.equal(attempts, 1);
+  });
+}
+test("ordinary browser Exit does not attempt to close a normal tab", () => {
+  let attempts = 0; const b = browser("/", false, () => { attempts += 1; });
+  b.coordinator.leaveApp(); assert.equal(attempts, 0); assert.equal(b.url, "/");
+});
+
 test("standalone exit: Back cancels, another Back reopens, Continue/Escape and Exit keep a single boundary", () => {
   const b = browser("/pedidos", true);
   const state = participant(b, "pedidos:active", { search: "kept", statusFilter: "PARTIAL", selectedOrderId: null });
@@ -305,7 +325,8 @@ test("source integration leaves Workspace v1 and all transactional writers untou
   assert.match(hook, /nk-exit-title/); assert.match(hook, /event.key === "Escape"/); assert.match(hook, /event.key === "Tab"/);
   assert.match(hook, /event.key === "Escape"\) \{ event.preventDefault\(\); onContinue\(\);/);
   assert.match(hook, /onContinue=\{\(\) => coordinator.continueInApp\(\)\}/);
-  assert.doesNotMatch(hook, /window.confirm|window.close|about:blank|router.refresh|\.rpc\(/);
+  assert.doesNotMatch(hook, /window.confirm|about:blank|router.refresh|\.rpc\(/);
+  assert.equal((hook.match(/window.close\(\)/g) ?? []).length, 1, "only the explicit Exit gesture owns best-effort closing");
   assert.equal((hook.match(/addEventListener\("popstate"/g) ?? []).length, 1);
   for (const mode of ["entrada", "saida"]) {
     const flow = read(`app/(authenticated)/${mode}/${mode === "entrada" ? "inbound" : "outbound"}-entry-flow.tsx`);

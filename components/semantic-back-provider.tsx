@@ -64,6 +64,9 @@ export function SemanticBackProvider({ children }: { children: ReactNode }) {
       return previous.origin === window.location.origin && ["/", "/estoque", "/entrada", "/saida", "/pedidos", "/historico", "/estatisticas", "/aplicacoes", "/minha-conta"].some(route => previous.pathname === route || (route !== "/" && previous.pathname.startsWith(`${route}/`)));
     },
     exit: open => setExitOpen(open),
+    // Best effort only: some installed runtimes allow close, others ignore it.
+    // Never substitute Auth sign-out or a blind history traversal for closing.
+    requestExit: () => window.close(),
     beforePop: () => window.dispatchEvent(new Event("nk:semantic:before-pop")),
   }));
   useEffect(() => {

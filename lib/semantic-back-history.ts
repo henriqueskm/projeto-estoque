@@ -19,9 +19,10 @@ export function readSemanticMarker(state: unknown): Marker | null {
   return marker.version === 1 && typeof marker.id === "string" && typeof marker.route === "string"
     && typeof marker.kind === "string" && typeof marker.key === "string" ? marker : null;
 }
-export function createSemanticBackHistory({ history, href, standalone, exit, beforePop, id, internalDocumentNavigation = () => false }: {
+export function createSemanticBackHistory({ history, href, standalone, exit, beforePop, id, requestExit = () => {}, internalDocumentNavigation = () => false }: {
   history: HistoryPort; href: () => string; standalone: () => boolean;
   exit: (open: boolean) => void; beforePop: () => void; id: () => string;
+  requestExit?: () => void;
   internalDocumentNavigation?: () => boolean;
 }) {
   const entries = new Map<string, Entry>();
@@ -175,9 +176,12 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
       released = true;
       exitOpen = false;
       exit(false);
-      // Releasing the guard is not logout or a request to visit an older URL.
-      // PWA runtimes own closing/minimizing: let the next native Back proceed.
-      // A blind traversal here could land on a pre-authentication /login entry.
+      // Attempt closing synchronously in the explicit button gesture. A runtime
+      // can refuse; retain the released guard without traversing an older URL.
+      // In particular, exit must never become a visit to pre-auth /login.
+      if (standalone()) {
+        try { requestExit(); } catch { /* Native Back remains unguarded. */ }
+      }
     },
     dispose() { entries.clear(); participants.clear(); transient.clear(); },
   };

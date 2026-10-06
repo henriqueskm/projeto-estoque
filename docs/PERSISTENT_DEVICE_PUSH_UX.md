@@ -47,11 +47,20 @@ No migration, RPC, queue/dispatcher, stock writer, IA, remote configuration, sub
 
 ## Correction 4 — PWA exit is not logout
 
-`leaveApp()` now only releases the existing guard and closes its dialog. It
-does **not** call `history.go(-2)` or perform any navigation, Auth, push or storage
-cleanup. The next native Back is unguarded; the runtime owns leaving/minimizing
-the PWA. We cannot delete arbitrary older browser history or guarantee physical
-closure from web code. No new sentinel, external destination or close-window hack.
+`leaveApp()` releases the existing guard, closes its dialog and synchronously
+requests `window.close()` through the provider **only in standalone**, inside
+the explicit Sair gesture. This is a best-effort immediate exit attempt, not
+logout. A refusal/exception leaves the guard released for native Back; there is
+no blind `history.go(-2)`, navigation, Auth, push or Workspace cleanup. No new
+sentinel, external destination or repeated exit loop is introduced.
+
+The [HTML close algorithm](https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-close)
+restricts script-closable windows. Chromium Android delegates a permitted close
+to its host through
+[closeContents](https://chromium.googlesource.com/chromium/src/+/aeb90d3b4cea27d4ec96bf849e013d4addacef07/chrome/android/java/src/org/chromium/chrome/browser/tab/TabWebContentsDelegateAndroid.java).
+Neither source guarantees that every installed Android PWA host accepts it.
+No standard web API universally minimizes a PWA. Physical Android remains the
+mandatory gate; a successful simulated close call is not proof of closure.
 
 The successful login Server Action explicitly uses `RedirectType.replace`
 (Next defaults Server Actions to push). The login form's existing Suspense
@@ -89,8 +98,8 @@ Use the new Preview installed/opened as standalone on a physical Android:
 
 1. Login normally; Back at the app boundary opens the exit dialog.
 2. Continue retains page/scroll/state; repeat Back, then Back again to cancel.
-3. Open the exit dialog again and select Sair: no login form, logout or push change.
-4. Use native Back to leave/minimize (record the runtime's actual behavior).
+3. Open the exit dialog again and select Sair: record the immediate close/minimize attempt; no login form, logout or push change.
+4. If the runtime refuses closing, native Back must remain unguarded (record the actual fallback).
 5. Reopen: the existing valid session still opens the authenticated app.
 6. Explicit menu logout alone shows login; enabled notifications remain enabled.
 7. Login again without another permission prompt; direct `/login` returns to Home.
@@ -123,3 +132,54 @@ Instant Navigation, device push, PWA/Auth and UI layout suites: **168 passed,
 0 failed/skipped**. No credentials or browser session were saved to the repository.
 TypeScript, scoped ESLint with zero warnings, diff-check and Webpack production
 build passed with Cache Components and Partial Prefetching still enabled.
+
+## Lead review gates on reviewed HEAD 9745e32
+
+- **Live chat CTA:** a small child reads the actual Safisa alert provider. It
+  enables the canonical #84 action only when `hasConfirmedData && !error &&
+  alertCount > 0`. A positive historical chat snapshot cannot enable it. The
+  action remains mounted with `enabled=false`, so its existing uncertain retry
+  survives a zero/failed read. RPC, preview and idempotency are untouched.
+- **Same-route account:** the footer now reuses `NavigationLink` with its current
+  markers/cancel behavior and original compact appearance. Desktop click is a
+  no-op; mobile consumes only the drawer checkpoint, never an underlying one.
+- **Account runtime gate:** `AccountPage` awaits `connection()` before
+  `requireActiveProfile()`. Parent layout suspension does not serialize child
+  execution; the page's own auth fetch previously remained eligible for runtime
+  prefetch. Auth's React request cache and claims/profile validation are unchanged.
+
+### HANGING_PROMISE_REJECTION investigation
+
+Exact reviewed deployment: `dpl_AevciDZ9aFtrJVMcnmqi8DMfW4os` / HEAD `9745e32`.
+The historical error supplied by the Lead is outside the available Hobby log
+retention (the historical query was rejected, not returned as an empty success).
+Fresh authenticated focus/prefetch → account navigation on that deployment on
+2026-10-06 around 21:06 UTC succeeded; browser errors were empty and a scoped
+recent Vercel query contained no error/fatal, only the separate Supabase warning
+about trusting `getSession().user` on GET `/`.
+
+Installed Next 16.3.8 `server/lib/patch-fetch.js` creates a dynamic hanging promise
+for no-store fetch in `prerender-runtime`; `server/dynamic-rendering-utils.js`
+supplies this exact digest/message when the prerender render signal aborts.
+That identifies the mechanism, **not the particular historical fetch**. We cannot
+prove the old incident was harmless or assign a unique cause without its stack.
+The minimal page gate removes account profile IO from that prefetch context,
+following the existing operational-page pattern and the installed `connection`
+guide. A direct test keeps connection unresolved and proves profile IO has not
+started; resolving it renders the account. Cache Components, Partial Prefetching
+and authorization stay enabled/intact. Controlled new-Preview smoke/log results
+are recorded in the PR; no broader Auth rewrite is part of this correction.
+
+### Focused validation of this delta
+
+Eight added cases: immediate exit attempt and refusing-runtime fallback, ordinary
+browser no-close, real provider zero/positive/error/unknown with old chat, shared
+account links, and account connection/auth sequencing. A local browser fixture
+now uses the actual Safisa provider with sanitized GET responses to test live
+zero → pickup without replacing the hook; simulated close is counted without
+closing the audit window. Existing push cycle and operational confirmation gates
+remain. Standard Next/Turbopack and Webpack builds both pass with CC/PPR enabled.
+
+No migration, RPC, writer, Auth cleanup, remote stock/subscription mutation or
+Workspace schema change. The previous Attention source-contract NOTE remains;
+the physical Android gate and historical-stack limitation are not waived.

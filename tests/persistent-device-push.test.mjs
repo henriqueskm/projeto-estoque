@@ -83,7 +83,9 @@ test("current sidebar section cancels navigation and skips before-navigation cle
 test("Safisa order list in chat reuses fresh canonical bulk action, never pending-stock action", () => {
   const source = read("components/assistant-structured-block.tsx");
   const orders = source.slice(source.indexOf("function AssistantAttentionOrders"), source.indexOf("function InventoryMultiItemSummary"));
-  assert.match(orders, /block.alertKind === "SAFISA_READY_PICKUP"[\s\S]*<SafisaBulkPickupAction/);
-  assert.match(orders, /order.quantity > 0/);
+  assert.match(orders, /block.alertKind === "SAFISA_READY_PICKUP"[\s\S]*<LiveSafisaBulkPickupAction/);
+  assert.match(source, /hasConfirmedData && !error && alertCount > 0/);
+  assert.match(source, /<SafisaBulkPickupAction enabled=\{liveHasPickup\}/);
+  assert.doesNotMatch(orders, /enabled=\{block.orders/);
   assert.match(read("components/safisa-bulk-pickup-dialog.tsx"), /await previewSafisaBulkPickup\(\)/);
 });
