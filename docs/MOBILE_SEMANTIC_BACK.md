@@ -84,3 +84,17 @@ e Saída com a mesma chave; drawer; Histórico GET; Lista/abas; deep link; exit
 guard standalone emulado. Viewports: 320/375/768/1440. Somente drafts locais
 criados pelo smoke podem ser limpos. Nenhuma operação de estoque/Pedido é
 autorizada por esta PR.
+
+### Evidência local e pendências
+
+- 29 testes novos do coordenador semântico; 253 testes combinados de navegação,
+  Workspace, Activity, UI/mobile, Lista e inventory passaram, sem falhas/skips.
+- Mais 19 testes de ações/performance de Pedidos e 7 de stale conflict passaram.
+- TypeScript, ESLint com zero warnings e diff-check passaram. Builds padrão Next
+  e Webpack mantêm Cache Components e Partial Prefetching habilitados.
+- O Preview requer autenticação humana própria. O CLI dedicado encontra primeiro
+  o login da Vercel; o Chrome habitual alcança o login do NK. Nenhuma sessão foi
+  copiada/exportada. Enquanto não houver login, o smoke autenticado real em
+  320/375/768/1440 permanece **pendente**, não aprovado pelos testes do port.
+- Confirmação visual do exit dialog, focus trap e retorno de Activity no browser
+  também exige esse smoke. Fechamento de PWA em Android real não foi comprovado.

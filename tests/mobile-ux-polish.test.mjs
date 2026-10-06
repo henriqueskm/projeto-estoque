@@ -72,9 +72,14 @@ test("actual CompactQuantityControl preserves bounds, callbacks and disabled for
 
 test("History disclosure is collapsed without filters, expanded with filters, desktop form stays available", () => {
   for (const activeCount of [0, 1, 6]) {
-    let open;
+    const state = [];
+    let hookIndex = 0;
     const { HistoryFilterDisclosure } = compile(read("components/history-filter-disclosure.tsx"), [], {
-      useState(initial) { open ??= initial; return [open, next => { open = next(open); }]; },
+      useState(initial) {
+        const index = hookIndex++;
+        state[index] ??= initial;
+        return [state[index], next => { state[index] = typeof next === "function" ? next(state[index]) : next; }];
+      },
     });
     let tree = HistoryFilterDisclosure({ activeCount, children: "server GET form" });
     const [toggle] = elements(tree, "button");
@@ -85,6 +90,7 @@ test("History disclosure is collapsed without filters, expanded with filters, de
     assert.equal(panel.props.id, toggle.props["aria-controls"]);
     assert.equal(panel.props.className, activeCount ? "block" : "hidden md:block");
     toggle.props.onClick();
+    hookIndex = 0;
     tree = HistoryFilterDisclosure({ activeCount, children: "server GET form" });
     assert.equal(elements(tree, "button")[0].props["aria-expanded"], activeCount === 0);
   }
