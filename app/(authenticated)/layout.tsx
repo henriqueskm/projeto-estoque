@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
 import { WorkspaceStateProvider } from "@/components/workspace-state-provider";
+import { SemanticBackProvider } from "@/components/semantic-back-provider";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AssistantConversationProvider } from "@/components/assistant-conversation-provider";
 import { AuthenticatedProfileProvider } from "@/components/authenticated-profile-provider";
@@ -34,6 +35,7 @@ async function AuthenticatedContent({
       <SafisaPickupAlertProvider>
         <PushNotificationProvider>
           <WorkspaceStateProvider key={profile.id} userId={profile.id}>
+          <SemanticBackProvider>
           <AssistantConversationProvider
             key={profile.id}
             userId={profile.id}
@@ -49,6 +51,7 @@ async function AuthenticatedContent({
               {(process.env.NODE_ENV !== "production" || process.env.VERCEL_ENV === "preview") ? <PerformanceAuditPanel /> : null}
             </div>
           </AssistantConversationProvider>
+          </SemanticBackProvider>
           </WorkspaceStateProvider>
         </PushNotificationProvider>
       </SafisaPickupAlertProvider>

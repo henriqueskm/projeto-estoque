@@ -22,6 +22,7 @@ function compile(source, names = [], hooks = {}) {
       useState: value => [value, () => {}], ...hooks,
     };
     if (name === "next/link") return { __esModule: true, default: "a" };
+    if (name === "@/components/semantic-back-provider") return { useSemanticTransient() {}, useSemanticCheckpoint: () => ({ commit() {}, invalidate() {} }) };
     throw new Error(`Unexpected import: ${name}`);
   };
   new Function("require", "module", "exports", output + names.map(name => `\nexports.${name} = ${name};`).join(""))(requireMock, compiledModule, compiledModule.exports);

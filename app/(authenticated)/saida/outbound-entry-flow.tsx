@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouteTransientCleanup } from "@/components/route-transient-state";
+import { useSemanticCheckpoint } from "@/components/semantic-back-provider";
 import { useStockFlowWorkspace } from "@/components/use-stock-flow-workspace";
 import {
   CheckIcon,
@@ -111,7 +112,11 @@ export function OutboundEntryFlow({
   const { lines, setLines } = workspace;
   const [receipt, setReceipt] = useState<OutboundReceipt | null>(null);
   const step: FlowStep = receipt ? "success" : workspace.state.step;
-  const setStep = (value: FlowStep) => { if (value !== "success") workspace.setField("step", value); };
+  const setStep = (value: FlowStep) => {
+    if (value === "success") { reviewHistory.invalidate(); return; }
+    reviewHistory.commit({ step: workspace.state.step, draftIdentity: workspace.state.idempotencyKey }, { step: value, draftIdentity: workspace.state.idempotencyKey });
+    workspace.setField("step", value);
+  };
   const setSearch = (value: string) => workspace.setField("search", value);
   const setDescription = (value: string) => workspace.setField("description", value);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -119,6 +124,10 @@ export function OutboundEntryFlow({
   const [isPending, startTransition] = useTransition();
 
   const submissionInFlight = useRef(false);
+  const reviewHistory = useSemanticCheckpoint("saida:review", { step: workspace.state.step, draftIdentity: workspace.state.idempotencyKey }, value => {
+    if (submissionInFlight.current || value.draftIdentity !== workspace.state.idempotencyKey) return;
+    if (value.step === "editing" || (value.step === "review" && lines.length > 0 && !workspace.needsReconciliation)) workspace.setField("step", value.step);
+  }, workspace.hydrated);
   const visit = useRouteTransientCleanup(() => {
     setReceipt(null);
     setValidationError(null);
@@ -312,6 +321,7 @@ export function OutboundEntryFlow({
           return;
         }
 
+        reviewHistory.invalidate();
         workspace.clear();
         if (!isCurrentVisit()) return;
         workspace.cancelScrollRestore();

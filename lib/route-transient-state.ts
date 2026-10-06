@@ -16,7 +16,7 @@ export function createRouteVisit() {
 export function attachRouteVisit(visit: ReturnType<typeof createRouteVisit>, reset: () => void, target: EventTarget) {
   visit.activate();
   const beforeNavigation = () => { visit.invalidate(); reset(); };
-  const events = ["nk:workspace:before-navigation", "popstate", "pagehide"];
+  const events = ["nk:workspace:before-navigation", "nk:semantic:before-pop", "pagehide"];
   events.forEach(event => target.addEventListener(event, beforeNavigation));
   return () => {
     // React calls this when Activity hides the route, including router navigation.

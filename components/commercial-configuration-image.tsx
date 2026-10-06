@@ -1,4 +1,5 @@
 "use client";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
 
 /* eslint-disable @next/next/no-img-element -- Private, expiring Storage URLs should be loaded directly by the browser. */
 
@@ -92,6 +93,7 @@ export function CommercialConfigurationImage({
     setZoom(minimumZoom);
     window.requestAnimationFrame(() => triggerRef.current?.focus());
   }, []);
+  useSemanticTransient(isOpen, closeModal);
 
   useEffect(() => {
     if (!isOpen) {

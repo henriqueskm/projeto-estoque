@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
-import { useWorkspaceState, useWorkspaceScroll } from "@/components/workspace-state-provider";
+import { useWorkspaceScroll } from "@/components/workspace-state-provider";
+import { useSemanticWorkspaceState } from "@/components/semantic-back-provider";
 import { ArrowLeftIcon, ChevronDownIcon, SearchIcon } from "@/components/icons";
 import {
   filterVehicleApplications,
@@ -36,7 +37,7 @@ export function ApplicationsWorkspace({
   authoritativeSourceKitCodes,
 }: ApplicationsWorkspaceProps) {
   const workspaceKey = `aplicacoes:${brand.slug}`;
-  const workspace = useWorkspaceState(workspaceKey, { query: "", category: "ALL" as VehicleApplicationCategory | "ALL" });
+  const workspace = useSemanticWorkspaceState(workspaceKey, { query: "", category: "ALL" as VehicleApplicationCategory | "ALL" });
   const { query, category } = workspace.state;
   const setQuery = (value: string) => workspace.setState(current => ({ ...current, query: value }));
   const setCategory = (value: VehicleApplicationCategory | "ALL") => workspace.setState(current => ({ ...current, category: value }));

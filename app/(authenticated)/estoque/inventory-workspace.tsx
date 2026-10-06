@@ -1,6 +1,7 @@
 "use client";
 
-import { useWorkspaceState, useWorkspaceScroll } from "@/components/workspace-state-provider";
+import { useWorkspaceScroll } from "@/components/workspace-state-provider";
+import { useSemanticWorkspaceState } from "@/components/semantic-back-provider";
 import { inventoryWorkspaceDefaults } from "@/lib/workspace-state";
 
 import {
@@ -624,7 +625,7 @@ export function InventoryWorkspace({
         targetedConfiguration.servo.description,
       )
     : null;
-  const workspace = useWorkspaceState("estoque", {
+  const workspace = useSemanticWorkspaceState("estoque", {
     ...inventoryWorkspaceDefaults, statusFilter: "all" as InventoryStatusFilter, sort: "code" as InventorySort,
   }, initialTarget ? {
     query: "", statusFilter: initialStatusFilter, areFiltersOpen: initialStatusFilter !== "all",
@@ -900,9 +901,8 @@ export function InventoryWorkspace({
     const plan = inventoryShortcutPlan(shortcut);
     const physicalGroup = plan.physicalGroup;
     if (physicalGroup) {
-      setQuery("");
-      setStatusFilter("all");
-      setOpenPhysicalGroups((current) => new Set([...current, physicalGroup]));
+      // One shortcut click is one semantic action, even when it clears filters.
+      workspace.setState(current => ({ ...current, query: "", statusFilter: "all", openPhysicalGroups: Array.from(new Set([...current.openPhysicalGroups, physicalGroup])) }));
     }
     // Effect runs after the opened/cleared view commits, including repeat clicks.
     cancelScrollRestore();

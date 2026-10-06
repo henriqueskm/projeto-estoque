@@ -13,6 +13,7 @@ import type { InventoryActionTarget } from "@/lib/inventory-action-types";
 import { notifyInventoryDataChanged } from "@/lib/inventory-ui-events";
 import { InventorySaleDialog } from "@/components/inventory-sale-dialog";
 import { useRouteMutationPending, useRouteTransientCleanup } from "@/components/route-transient-state";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
 
 type InventoryRowActionsProps = {
   target: InventoryActionTarget;
@@ -42,6 +43,11 @@ export function InventoryRowActions({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const mutationPending = useRouteMutationPending();
+  useSemanticTransient(isOpen || activeDialog !== null, () => {
+    setIsOpen(false);
+    setActiveDialog(null);
+    triggerRef.current?.focus();
+  }, mutationPending);
   useRouteTransientCleanup(() => {
     setIsOpen(false);
     setActiveDialog(null);
