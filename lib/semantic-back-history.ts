@@ -3,7 +3,7 @@
 export const semanticHistoryKey = "__nkSemanticBack";
 export type SemanticValue = Record<string, string | boolean | null | string[]>;
 type Marker = { version: 1; id: string; route: string; kind: string; key: string; guarded?: boolean };
-type Entry = { marker: Marker; values: Record<string, SemanticValue>; parentId: string | null };
+type Entry = { marker: Marker; values: Record<string, SemanticValue>; parentId: string | null; departing?: boolean };
 type Participant = { route: string; read: () => SemanticValue; restore: (value: SemanticValue) => void };
 type HistoryPort = {
   state: unknown;
@@ -65,6 +65,15 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
   }
   return {
     ensure,
+    beforeNavigation() {
+      // Link navigation can wait for server data while href still names the old
+      // route. Its drawer/dialog cleanup must not issue a competing history Back.
+      // Scope this to existing checkpoints, not a global pending-navigation flag.
+      for (const entryId of transient.keys()) {
+        const entry = entries.get(entryId);
+        if (entry) entry.departing = true;
+      }
+    },
     register(key: string, participant: Participant) {
       participants.set(key, participant);
       const entry = ensure();
@@ -113,7 +122,7 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
     openTransient(key: string, close: () => void, blocked: () => boolean) {
       const entry = ensure();
       // React StrictMode's effect probe must not push another checkpoint.
-      if (entry.marker.kind === "TRANSIENT" && entry.marker.key === key && !transient.has(entry.marker.id)) {
+      if (entry.marker.kind === "TRANSIENT" && entry.marker.key === key && !entry.departing && !transient.has(entry.marker.id)) {
         transient.set(entry.marker.id, { close, blocked });
         return entry.marker.id;
       }
@@ -124,11 +133,11 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
     },
     retireTransient(entryId: string, consume = false) {
       transient.delete(entryId);
-      if (consume && readSemanticMarker(history.state)?.id === entryId) history.go(-1);
+      if (consume && !entries.get(entryId)?.departing && readSemanticMarker(history.state)?.id === entryId) history.go(-1);
     },
     consumeRetiredTransient(entryId: string) {
       const marker = readSemanticMarker(history.state);
-      if (!transient.has(entryId) && marker?.id === entryId && marker.route === href()) history.go(-1);
+      if (!transient.has(entryId) && !entries.get(entryId)?.departing && marker?.id === entryId && marker.route === href()) history.go(-1);
     },
     invalidate(key: string) {
       // Completion/payload changes invalidate old Review identities, never drafts.

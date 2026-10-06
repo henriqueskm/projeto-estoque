@@ -246,6 +246,58 @@ test("standalone reload reuses its boundary instead of accumulating sentinels", 
   reloaded.ensure(); assert.equal(b.stack.length, length);
 });
 
+for (const cleanup of ["manual", "effect"]) {
+  test(`slow Minha Conta navigation: ${cleanup} drawer cleanup cannot cancel the pending route`, () => {
+    const b = browser("/");
+    const state = participant(b, "home", { search: "preserved" });
+    let open = true;
+    const drawer = b.coordinator.openTransient("drawer", () => { open = false; }, () => false);
+    const nextState = structuredClone(b.history.state);
+    b.coordinator.beforeNavigation();
+    assert.equal(b.url, "/", "Next has not committed the destination yet");
+    b.coordinator.retireTransient(drawer, cleanup === "manual");
+    b.coordinator.consumeRetiredTransient(drawer);
+    open = false;
+    assert.deepEqual(b.traversals, [], "cleanup must not call Back while Next is pending");
+    assert.deepEqual(b.history.state, nextState, "Next's history state is untouched");
+    b.history.pushState(nextState, "", "/minha-conta");
+    b.coordinator.ensure();
+    assert.equal(b.url, "/minha-conta");
+    b.back(); assert.equal(b.url, "/"); assert.equal(open, false);
+    assert.equal(state.value.search, "preserved");
+    b.forward(); assert.equal(b.url, "/minha-conta"); assert.equal(open, false);
+  });
+}
+
+test("an abandoned navigation does not suppress closing a newly opened drawer", () => {
+  const b = browser("/");
+  const old = b.coordinator.openTransient("drawer", () => {}, () => false);
+  b.coordinator.beforeNavigation();
+  b.coordinator.retireTransient(old, true);
+  b.coordinator.consumeRetiredTransient(old);
+  assert.deepEqual(b.traversals, []);
+  const fresh = b.coordinator.openTransient("drawer", () => {}, () => false);
+  assert.notEqual(fresh, old, "departure is scoped to the old checkpoint, not a global flag");
+  b.coordinator.retireTransient(fresh, true);
+  assert.deepEqual(b.traversals, [-1]);
+});
+
+test("navigation intent does not weaken the pending mutation Back gate", () => {
+  const b = browser("/pedidos"); let closed = false;
+  b.coordinator.openTransient("pending", () => { closed = true; }, () => true);
+  b.coordinator.beforeNavigation();
+  b.back(); assert.equal(closed, false); assert.equal(b.popCount, 0);
+  assert.deepEqual(b.traversals, [-1, 1]);
+});
+
+test("route departure is registered centrally using the existing Workspace navigation event", () => {
+  const source = readFileSync(new URL("../components/semantic-back-provider.tsx", import.meta.url), "utf8");
+  assert.match(source, /coordinator.beforeNavigation\(\)/);
+  assert.match(source, /addEventListener\("nk:workspace:before-navigation", navigate\)/);
+  assert.match(source, /removeEventListener\("nk:workspace:before-navigation", navigate\)/);
+  assert.equal((source.match(/addEventListener\("popstate"/g) ?? []).length, 1);
+});
+
 test("source integration leaves Workspace v1 and all transactional writers untouched", () => {
   const read = path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
   const hook = read("components/semantic-back-provider.tsx");

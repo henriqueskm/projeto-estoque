@@ -97,3 +97,29 @@ Use the new Preview installed/opened as standalone on a physical Android:
 
 No remote login/logout, push mutation or stock operation was executed by the
 automated validation. This mandatory physical gate remains open for the user.
+
+## Mobile Minha Conta — pending navigation cleanup
+
+An authenticated Preview reproduced a mobile-only race: the drawer closed before
+Next committed `/minha-conta`, and its transient checkpoint cleanup issued
+`history.go(-1)`, cancelling the pending navigation. Desktop and direct account
+navigation worked normally; account authorization was not the cause.
+
+The central Semantic Back coordinator now listens to the existing
+`nk:workspace:before-navigation` event. Only transient checkpoints already open
+at navigation intent are marked as departing **in memory**. Their manual/effect
+cleanup cannot traverse history, even while the URL still names the old route.
+No Next history fields, Workspace State schema, drawer animation, Auth or push
+behavior changed. No global pending flag or second popstate listener was added.
+
+Ordinary manual/Escape/Back closes still consume the drawer checkpoint. A fresh
+drawer after an abandoned navigation gets its own consumable checkpoint. Pending
+mutation Back blocking remains active; Forward cannot resurrect a closed dialog.
+
+Five added regressions cover both cleanup paths during a slow account navigation,
+safe Back/Forward, an abandoned navigation, the pending mutation gate and central
+event registration/cleanup. Focused Semantic Back, Workspace State, Activity,
+Instant Navigation, device push, PWA/Auth and UI layout suites: **168 passed,
+0 failed/skipped**. No credentials or browser session were saved to the repository.
+TypeScript, scoped ESLint with zero warnings, diff-check and Webpack production
+build passed with Cache Components and Partial Prefetching still enabled.

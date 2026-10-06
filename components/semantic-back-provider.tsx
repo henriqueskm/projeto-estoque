@@ -69,8 +69,13 @@ export function SemanticBackProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     coordinator.ensure();
     const pop = (event: PopStateEvent) => coordinator.pop(event.state);
+    const navigate = () => coordinator.beforeNavigation();
     window.addEventListener("popstate", pop);
-    return () => { window.removeEventListener("popstate", pop); };
+    window.addEventListener("nk:workspace:before-navigation", navigate);
+    return () => {
+      window.removeEventListener("popstate", pop);
+      window.removeEventListener("nk:workspace:before-navigation", navigate);
+    };
   }, [coordinator]);
   return <SemanticContext.Provider value={coordinator}>
     <Suspense fallback={null}><HistoryRouteTracker /></Suspense>
@@ -107,7 +112,7 @@ export function useSemanticTransient(enabled: boolean, close: () => void, blocke
       return () => {
         coordinator.retireTransient(entryId);
         // A manual close can unmount the dialog instead of toggling enabled.
-        // Wait for Next/Activity's URL commit; never traverse on route departure.
+        // StrictMode can reattach; route intent also protects a pending URL commit.
         window.requestAnimationFrame(() => coordinator.consumeRetiredTransient(entryId));
       };
     }
