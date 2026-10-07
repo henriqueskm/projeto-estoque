@@ -1,6 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 export type LoginState = {
@@ -62,7 +62,7 @@ export async function login(
     };
   }
 
-  redirect("/");
+  redirect("/", RedirectType.replace);
 }
 
 export async function logout() {

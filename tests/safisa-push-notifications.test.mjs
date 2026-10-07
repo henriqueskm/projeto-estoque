@@ -26,13 +26,17 @@ import {
   readAndMigratePushPreference,
   registerPushInstallationWithConvergence,
   removePotentialPushInstallation,
-  runBoundedLogoutFlow,
   runPushDisableCleanup,
-  runPushLogoutCleanup,
   shouldAutoRegisterPush,
   subscribeToPushDeviceIdentityEvents,
   subscribeToPushOptOutEvents,
 } from "../lib/push-notification-operations.ts";
+
+// Existing cleanup failure coverage now belongs to explicit disable, never logout.
+async function runExplicitPushDisableCleanup(input) {
+  try { input.storeLocalOptOut(); } catch { /* cleanup still drains */ }
+  return runPushDisableCleanup(input);
+}
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260825113000_safisa_fully_ready_push_notifications.sql");
@@ -254,14 +258,15 @@ test("FID rotation is persisted and disable records opt-out before cleanup", () 
     providerSource.indexOf("const enable"),
   );
   assert.match(registrationEffect, /registered\(firebaseInstallationId\)[\s\S]*reconcileInstallation\(\s*firebaseInstallationId/);
-  assert.match(registrationEffect, /unregistered\(firebaseInstallationId\)[\s\S]*persistInstallation\([\s\S]*"DELETE"/);
+  const unregistered = registrationEffect.slice(registrationEffect.indexOf("async unregistered"));
+  assert.doesNotMatch(unregistered, /persistInstallation|"DELETE"|unregisterFirebasePushInstallation\(/);
 
   const disableFlow = providerSource.slice(
     providerSource.indexOf("const disable"),
     providerSource.indexOf("const value"),
   );
   const preferenceIndex = disableFlow.indexOf('persistLocalPushPreference("disabled")');
-  const queueIndex = disableFlow.indexOf("await queuePersistence");
+  const queueIndex = disableFlow.indexOf("const drain = queuePersistence");
   assert.ok(preferenceIndex >= 0);
   assert.ok(queueIndex >= 0);
   assert.ok(preferenceIndex < queueIndex);
@@ -547,7 +552,7 @@ test("dois FIDs são reconciliados independentemente e falha preserva somente o 
   };
   for (const firebaseInstallationId of ["fid-old", "fid-new"]) assert.equal(persistPotentialPushInstallation({ storage, installationSetKey, firebaseInstallationId }), true);
   const readKnown = () => readPotentialPushInstallations({ storage, installationSetKey, legacyInstallationKey });
-  await runPushLogoutCleanup({
+  await runExplicitPushDisableCleanup({
     firebaseInstallationIds: readKnown(),
     async disableInstallation(fid) { if (fid === "fid-old") throw new Error("lost"); return { ok: true }; },
     removeInstallation(fid) { assert.equal(removePotentialPushInstallation({ storage, installationSetKey, legacyInstallationKey, firebaseInstallationId: fid }), true); },
@@ -556,7 +561,7 @@ test("dois FIDs são reconciliados independentemente e falha preserva somente o 
   });
   assert.deepEqual(readKnown(), ["fid-old"]);
   const retries = [];
-  await runPushLogoutCleanup({
+  await runExplicitPushDisableCleanup({
     firebaseInstallationIds: readKnown(),
     async disableInstallation(fid) { retries.push(fid); return { ok: true }; },
     removeInstallation(fid) { assert.equal(removePotentialPushInstallation({ storage, installationSetKey, legacyInstallationKey, firebaseInstallationId: fid }), true); },
@@ -1304,9 +1309,9 @@ test("controle compartilhado cobre estados e denied nunca solicita permissão", 
   assert.match(read("components/safisa-pickup-alerts.tsx"), /<PushNotificationControl/);
 });
 
-test("logout desativa somente o FID armazenado e não toca outro dispositivo", async () => {
+test("desativação explícita afeta somente o FID armazenado e não toca outro dispositivo", async () => {
   const calls = [];
-  await runPushLogoutCleanup({
+  await runExplicitPushDisableCleanup({
     firebaseInstallationIds: ["fid-device-a"],
     async disableInstallation(fid) {
       calls.push(["disable", fid]);
@@ -1325,13 +1330,13 @@ test("logout desativa somente o FID armazenado e não toca outro dispositivo", a
   assert.equal(JSON.stringify(calls).includes("fid-device-b"), false);
 });
 
-test("logout continua unregister e opt-out quando DELETE falha ou não retorna OK", async () => {
+test("desativação explícita continua unregister e opt-out quando DELETE falha ou não retorna OK", async () => {
   for (const disableInstallation of [
     async () => ({ ok: false }),
     async () => { throw new Error("offline"); },
   ]) {
     const calls = [];
-    await runPushLogoutCleanup({
+    await runExplicitPushDisableCleanup({
       firebaseInstallationIds: ["fid-device-a"],
       disableInstallation,
       removeInstallation() { calls.push("remove"); },
@@ -1342,9 +1347,9 @@ test("logout continua unregister e opt-out quando DELETE falha ou não retorna O
   }
 });
 
-test("logout conclui opt-out mesmo quando unregister falha", async () => {
+test("desativação explícita conclui opt-out mesmo quando unregister falha", async () => {
   const calls = [];
-  await runPushLogoutCleanup({
+  await runExplicitPushDisableCleanup({
     firebaseInstallationIds: ["fid-device-a"],
     async disableInstallation() { return { ok: true }; },
     removeInstallation() { calls.push("remove"); },
@@ -1354,9 +1359,9 @@ test("logout conclui opt-out mesmo quando unregister falha", async () => {
   assert.deepEqual(calls, ["opt-out", "remove"]);
 });
 
-test("opt-out lançando não impede DELETE, unregister ou logout", async () => {
+test("opt-out lançando não impede DELETE ou unregister", async () => {
   const calls = [];
-  const result = await runPushLogoutCleanup({
+  const result = await runExplicitPushDisableCleanup({
     firebaseInstallationIds: ["fid-device-a"],
     async disableInstallation(fid) {
       calls.push(["delete", fid]);
@@ -1376,81 +1381,6 @@ test("opt-out lançando não impede DELETE, unregister ou logout", async () => {
     ["remove", "fid-device-a"],
     ["unregister"],
   ]);
-});
-
-test("fluxo limitado sempre submete após sucesso, throw ou timeout", async () => {
-  let submissions = 0;
-  await runBoundedLogoutFlow({
-    cleanup: Promise.resolve(),
-    deadline: new Promise(() => undefined),
-    submit: () => { submissions += 1; },
-  });
-  await runBoundedLogoutFlow({
-    cleanup: Promise.reject(new Error("cleanup failed")),
-    deadline: new Promise(() => undefined),
-    submit: () => { submissions += 1; },
-  });
-  await runBoundedLogoutFlow({
-    cleanup: new Promise(() => undefined),
-    deadline: Promise.resolve(),
-    submit: () => { submissions += 1; },
-  });
-  assert.equal(submissions, 3);
-});
-
-test("logout submete no deadline enquanto o drain real continua até efeito tardio", async () => {
-  const pendingDelete = deferred();
-  let submissions = 0;
-  let drainSettled = false;
-  const drain = runPushLogoutCleanup({
-    firebaseInstallationIds: ["fid-logout"],
-    async disableInstallation() { await pendingDelete.promise; return { ok: true }; },
-    removeInstallation() {},
-    async unregisterInstallation() { return true; },
-    storeLocalOptOut() {},
-  });
-  void drain.then(() => { drainSettled = true; });
-  await runBoundedLogoutFlow({
-    cleanup: drain,
-    deadline: Promise.resolve("1.2s"),
-    submit: () => { submissions += 1; },
-  });
-  assert.equal(submissions, 1);
-  assert.equal(drainSettled, false);
-  pendingDelete.resolve();
-  assert.equal((await drain).synchronized, true);
-});
-
-test("logout invalida enable e libera submit em 1,2s mesmo com fila pendente", async () => {
-  const gate = createPushOperationGate();
-  const queue = createPushPersistenceQueue();
-  const pendingPost = deferred();
-  const enableGeneration = beginPushOperation(gate, "enable");
-  void queue.run(() => pendingPost.promise);
-  let localOptOut = false;
-  let submissions = 0;
-
-  invalidatePushOperations(gate);
-  localOptOut = true;
-  const cleanup = queue.run(() => runPushLogoutCleanup({
-    firebaseInstallationIds: ["fid-device-a"],
-    async disableInstallation() { return { ok: true }; },
-    removeInstallation() {},
-    async unregisterInstallation() { return true; },
-    storeLocalOptOut() { localOptOut = true; },
-  }));
-  await runBoundedLogoutFlow({
-    cleanup,
-    deadline: Promise.resolve("1.2s"),
-    submit: () => { submissions += 1; },
-  });
-
-  assert.equal(isCurrentPushOperation(gate, enableGeneration, "enable"), false);
-  assert.equal(localOptOut, true);
-  assert.equal(submissions, 1);
-  pendingPost.resolve();
-  await cleanup;
-  assert.equal(submissions, 1);
 });
 
 test("service worker displays the approved push and derives an internal Pedido URL", async () => {
@@ -1719,20 +1649,12 @@ test("successful internal cancellation actions drain a possible event without ch
   assert.match(cancellationWorker, /await dispatchSafisaFullyReadyPush\(normalized\.supplier_order_id\);\s*return finishMutation\(data\)/);
 });
 
-test("logout interno usa um único fluxo push-aware, preserva o marcador e encerra só a sessão local", () => {
+test("logout only signs out; device opt-in, subscription and Firebase survive", () => {
   assert.match(sidebarSource, /<PushAwareLogoutForm/);
-  assert.match(accountSource, /<PushAwareLogoutForm/);
-  assert.match(read("components/account-menu.tsx"), /<PushAwareLogoutForm/);
+  assert.match(logoutFormSource, /action=\{logout\}/);
   assert.match(logoutFormSource, /data-assistant-session-logout/);
-  assert.match(logoutFormSource, /cleanup: prepareForLogout\(\)/);
-  assert.match(logoutFormSource, /window\.setTimeout\(resolve, pushCleanupDeadlineMs\)/);
-  assert.match(logoutFormSource, /allowSubmitRef\.current = true;\s*form\.requestSubmit\(\)/);
-  assert.match(providerSource, /runStoredPushDisableCleanup\(true\)/);
-  assert.match(authActionsSource, /export async function logout\(\)[\s\S]*signOut\(\{ scope: "local" \}\)/);
-  const loginFailureCleanup = authActionsSource.slice(
-    authActionsSource.indexOf("if (profileError || !profile)"),
-    authActionsSource.indexOf('redirect("/")'),
-  );
-  assert.match(loginFailureCleanup, /signOut\(\)/);
-  assert.doesNotMatch(loginFailureCleanup, /scope: "local"/);
+  assert.doesNotMatch(logoutFormSource, /prepareForLogout|usePushNotifications|onSubmit|cleanup|unregister/);
+  assert.doesNotMatch(providerSource, /prepareForLogout|disablePushBeforeLogout/);
+  assert.match(authActionsSource, /signOut\(\{ scope: "local" \}\)/);
+  assert.match(authActionsSource, /redirect\("\/login"\)/);
 });

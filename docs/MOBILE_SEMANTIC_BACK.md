@@ -69,9 +69,13 @@ fronteira. Um novo Back pode abrir o dialog novamente. O foco inicial vai a
 Continuar; Tab/Shift+Tab ficam no dialog e
 o foco anterior é restaurado. Não há motion novo nem `window.confirm()`.
 
-Sair libera a proteção e tenta atravessar a fronteira pelo histórico real.
-Se o runtime não conseguir fechar uma janela instalada, o próximo Back fica
-liberado. Não usa `window.close()`, reload, about:blank ou loop de sentinelas.
+Sair somente libera a proteção e fecha o dialog, sem travessia programática
+do histórico. O próximo Back nativo fica liberado para o runtime; fechamento
+ou minimização depende da plataforma e da pilha existente. Não faz logout,
+não altera push/sessão/Workspace, nem navega para `/login`. O sucesso do login
+substitui `/login` por `/`; acesso direto a `/login` com claims válidos e perfil
+interno ativo redireciona para `/`. Perfil inativo não é redirecionado para Home,
+evitando loop. Não usa `window.close()`, reload, about:blank ou loop de sentinelas.
 Um browser comum não recebe exit guard. Emulação não comprova fechamento
 de Chrome Android/PWA real; essa validação exige aparelho humano.
 

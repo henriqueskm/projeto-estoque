@@ -232,6 +232,50 @@ export function shouldAutoRegisterPush(preference: PushPreference) {
   return preference === "enabled";
 }
 
+export type ConfirmedPushRegistration = {
+  version: 1;
+  userId: string;
+  deviceId: string;
+  firebaseInstallationId: string;
+};
+
+// Device-global acknowledgement of a successful canonical POST, not an opt-in
+// per user or an authorization credential. Unknown ownership requires a click.
+export function readConfirmedPushRegistration(
+  storage: Pick<Storage, "getItem">,
+  key: string,
+): ConfirmedPushRegistration | null {
+  try {
+    const value = JSON.parse(storage.getItem(key) ?? "null");
+    return value?.version === 1 &&
+      typeof value.userId === "string" && pushDeviceIdPattern.test(value.userId) &&
+      typeof value.deviceId === "string" && pushDeviceIdPattern.test(value.deviceId) &&
+      isPushInstallationId(value.firebaseInstallationId)
+      ? { version: 1, userId: value.userId, deviceId: value.deviceId, firebaseInstallationId: value.firebaseInstallationId }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getPushRegistrationAction(input: {
+  confirmed: ConfirmedPushRegistration | null;
+  userId: string;
+  deviceId: string | null;
+  firebaseInstallationId: string;
+  explicitActivation: boolean;
+}): "reuse" | "register" | "require_activation" {
+  const { confirmed } = input;
+  // An explicit enable also recovers an independently disabled registration.
+  // The canonical writer upserts the device/FID; this never creates duplicates.
+  if (input.explicitActivation) return "register";
+  if (confirmed?.userId === input.userId &&
+    confirmed.deviceId === input.deviceId &&
+    confirmed.firebaseInstallationId === input.firebaseInstallationId) return "reuse";
+  if (confirmed?.userId === input.userId) return "register";
+  return "require_activation";
+}
+
 type PushRegistrationResponse = { ok: boolean };
 
 export async function registerPushInstallationWithConvergence(input: {
@@ -360,7 +404,7 @@ export function invalidatePushOperations(gate: PushOperationGate) {
 }
 
 // `ok` is the semantic mutation result (`disabled === true`), never HTTP status alone.
-type LogoutCleanupResponse = { ok: boolean };
+type PushCleanupResponse = { ok: boolean };
 
 export function createPushPersistenceQueue() {
   let tail: Promise<void> = Promise.resolve();
@@ -440,7 +484,7 @@ export function subscribeToPushDeviceIdentityEvents(input: {
 
 export async function runPushDisableCleanup(input: {
   firebaseInstallationIds: string[];
-  disableInstallation: (firebaseInstallationId: string) => Promise<LogoutCleanupResponse>;
+  disableInstallation: (firebaseInstallationId: string) => Promise<PushCleanupResponse>;
   removeInstallation: (firebaseInstallationId: string) => void;
   unregisterInstallation: () => Promise<unknown>;
 }) {
@@ -504,34 +548,5 @@ export async function observePushCleanup<T>(
     return await Promise.race([settled, timeout]);
   } finally {
     if (timer !== undefined) globalThis.clearTimeout(timer);
-  }
-}
-
-export async function runPushLogoutCleanup(input: {
-  firebaseInstallationIds: string[];
-  disableInstallation: (firebaseInstallationId: string) => Promise<LogoutCleanupResponse>;
-  removeInstallation: (firebaseInstallationId: string) => void;
-  unregisterInstallation: () => Promise<unknown>;
-  storeLocalOptOut: () => void;
-}) {
-  try {
-    input.storeLocalOptOut();
-  } catch {
-    // Storage is best-effort; remote and Firebase cleanup must still run.
-  }
-  return runPushDisableCleanup(input);
-}
-
-export async function runBoundedLogoutFlow(input: {
-  cleanup: Promise<unknown>;
-  deadline: Promise<unknown>;
-  submit: () => void;
-}) {
-  try {
-    await Promise.race([input.cleanup, input.deadline]);
-  } catch {
-    // Cleanup is best-effort; submission is the authoritative logout path.
-  } finally {
-    input.submit();
   }
 }

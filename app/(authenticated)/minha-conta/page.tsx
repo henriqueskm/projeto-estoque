@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { ArrowLeftIcon, LogoutIcon } from "@/components/icons";
 import { PushAwareLogoutForm } from "@/components/push-aware-logout-form";
 import { PushNotificationControl } from "@/components/push-notification-control";
@@ -10,6 +11,8 @@ export const metadata: Metadata = {
 };
 
 export default async function AccountPage() {
+  // Account identity is request-only, not a runtime-prefetch payload.
+  await connection();
   const profile = await requireActiveProfile();
 
   return (

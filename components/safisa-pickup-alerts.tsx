@@ -140,7 +140,7 @@ export function SafisaPickupAlertBell({
             </button>
           </div>
 
-          <PushNotificationControl />
+            <PushNotificationControl mode="activate-only" />
 
           {!hasConfirmedData && !error ? (
             <div

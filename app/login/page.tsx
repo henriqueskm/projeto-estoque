@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { BrandMark } from "@/components/brand-mark";
 import { LoginForm } from "./login-form";
 
@@ -13,6 +15,24 @@ async function InactiveProfileNotice({ searchParams }: LoginPageProps) {
       Seu perfil não está ativo. Procure o responsável pelo sistema.
     </div>
   ) : null;
+}
+
+async function LoginAccess({ searchParams }: LoginPageProps) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (!error && userId) {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .eq("is_active", true)
+      .maybeSingle();
+    // Claims alone are not internal authorization. Inactive/missing profiles
+    // must still see login, otherwise / and /login would redirect in a loop.
+    if (!profileError && profile) redirect("/");
+  }
+  return <><InactiveProfileNotice searchParams={searchParams} /><LoginForm /></>;
 }
 
 export default function LoginPage({ searchParams }: LoginPageProps) {
@@ -50,9 +70,9 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
             </p>
           </div>
 
-          <Suspense fallback={null}><InactiveProfileNotice searchParams={searchParams} /></Suspense>
-
-          <LoginForm />
+          <Suspense fallback={<p role="status" className="mt-6 text-sm text-text-muted">Verificando acesso…</p>}>
+            <LoginAccess searchParams={searchParams} />
+          </Suspense>
 
           <div className="mt-7 border-t border-border-neutral pt-5 text-center">
             <p className="text-sm font-bold text-brand-charcoal">

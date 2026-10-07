@@ -3,7 +3,7 @@
 export const semanticHistoryKey = "__nkSemanticBack";
 export type SemanticValue = Record<string, string | boolean | null | string[]>;
 type Marker = { version: 1; id: string; route: string; kind: string; key: string; guarded?: boolean };
-type Entry = { marker: Marker; values: Record<string, SemanticValue>; parentId: string | null };
+type Entry = { marker: Marker; values: Record<string, SemanticValue>; parentId: string | null; departing?: boolean; consumptionRequested?: boolean };
 type Participant = { route: string; read: () => SemanticValue; restore: (value: SemanticValue) => void };
 type HistoryPort = {
   state: unknown;
@@ -19,9 +19,10 @@ export function readSemanticMarker(state: unknown): Marker | null {
   return marker.version === 1 && typeof marker.id === "string" && typeof marker.route === "string"
     && typeof marker.kind === "string" && typeof marker.key === "string" ? marker : null;
 }
-export function createSemanticBackHistory({ history, href, standalone, exit, beforePop, id, internalDocumentNavigation = () => false }: {
+export function createSemanticBackHistory({ history, href, standalone, exit, beforePop, id, requestExit = () => {}, internalDocumentNavigation = () => false }: {
   history: HistoryPort; href: () => string; standalone: () => boolean;
   exit: (open: boolean) => void; beforePop: () => void; id: () => string;
+  requestExit?: () => void;
   internalDocumentNavigation?: () => boolean;
 }) {
   const entries = new Map<string, Entry>();
@@ -63,8 +64,27 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
       if (participant.route === pathname() && entry.values[key]) participant.restore(entry.values[key]);
     }
   }
+  function consumeTransient(entryId: string) {
+    const entry = entries.get(entryId);
+    const marker = readSemanticMarker(history.state);
+    if (!entry || transient.has(entryId) || entry.departing || entry.consumptionRequested
+      || marker?.id !== entryId || marker.route !== href()) return;
+    // history.go is asynchronous. Toggle cleanup and the queued effect cleanup
+    // can both run before popstate; reserve consumption before requesting Back.
+    entry.consumptionRequested = true;
+    history.go(-1);
+  }
   return {
     ensure,
+    beforeNavigation() {
+      // Link navigation can wait for server data while href still names the old
+      // route. Its drawer/dialog cleanup must not issue a competing history Back.
+      // Scope this to existing checkpoints, not a global pending-navigation flag.
+      for (const entryId of transient.keys()) {
+        const entry = entries.get(entryId);
+        if (entry) entry.departing = true;
+      }
+    },
     register(key: string, participant: Participant) {
       participants.set(key, participant);
       const entry = ensure();
@@ -113,7 +133,7 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
     openTransient(key: string, close: () => void, blocked: () => boolean) {
       const entry = ensure();
       // React StrictMode's effect probe must not push another checkpoint.
-      if (entry.marker.kind === "TRANSIENT" && entry.marker.key === key && !transient.has(entry.marker.id)) {
+      if (entry.marker.kind === "TRANSIENT" && entry.marker.key === key && !entry.departing && !entry.consumptionRequested && !transient.has(entry.marker.id)) {
         transient.set(entry.marker.id, { close, blocked });
         return entry.marker.id;
       }
@@ -124,11 +144,10 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
     },
     retireTransient(entryId: string, consume = false) {
       transient.delete(entryId);
-      if (consume && readSemanticMarker(history.state)?.id === entryId) history.go(-1);
+      if (consume) consumeTransient(entryId);
     },
     consumeRetiredTransient(entryId: string) {
-      const marker = readSemanticMarker(history.state);
-      if (!transient.has(entryId) && marker?.id === entryId && marker.route === href()) history.go(-1);
+      consumeTransient(entryId);
     },
     invalidate(key: string) {
       // Completion/payload changes invalidate old Review identities, never drafts.
@@ -162,7 +181,17 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
       if (current) restore(current); // TRANSIENT forward restores only safe state.
     },
     continueInApp() { released = false; exitOpen = false; exit(false); },
-    leaveApp() { released = true; exitOpen = false; exit(false); history.go(-2); },
+    leaveApp() {
+      released = true;
+      exitOpen = false;
+      exit(false);
+      // Attempt closing synchronously in the explicit button gesture. A runtime
+      // can refuse; retain the released guard without traversing an older URL.
+      // In particular, exit must never become a visit to pre-auth /login.
+      if (standalone()) {
+        try { requestExit(); } catch { /* Native Back remains unguarded. */ }
+      }
+    },
     dispose() { entries.clear(); participants.clear(); transient.clear(); },
   };
 }

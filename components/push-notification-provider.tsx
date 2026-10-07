@@ -27,6 +27,7 @@ import {
   createPushPersistenceQueue,
   createPushOperationGate,
   finishPushOperation,
+  getPushRegistrationAction,
   invalidatePushOperations,
   isPushMutationConfirmed,
   isCurrentPushOperation,
@@ -34,6 +35,7 @@ import {
   persistPotentialPushInstallation,
   persistPushPreference,
   readPotentialPushInstallations,
+  readConfirmedPushRegistration,
   readAndMigratePushPreference,
   registerPushInstallationWithConvergence,
   removePotentialPushInstallation,
@@ -61,7 +63,6 @@ type PushNotificationContextValue = {
   errorOperation: PushOperationKind | null;
   enable: () => Promise<void>;
   disable: () => Promise<void>;
-  prepareForLogout: () => Promise<void>;
 };
 
 const PushNotificationContext =
@@ -207,12 +208,7 @@ async function runStoredPushDisableCleanup(keepalive = false) {
   return result!;
 }
 
-export async function disablePushBeforeLogout() {
-  persistLocalPushPreference("disabled");
-  await runStoredPushDisableCleanup(true);
-}
-
-export function PushNotificationProvider({ children }: { children: ReactNode }) {
+export function PushNotificationProvider({ children, userId }: { children: ReactNode; userId: string }) {
   const { refreshAlerts } = useSafisaPickupAlerts();
   const [state, setState] = useState<PushNotificationState>("checking");
   const [isWorking, setIsWorking] = useState(false);
@@ -228,14 +224,30 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
 
   const reconcileInstallation = useCallback(async (
     firebaseInstallationId: string,
+    explicitActivation = false,
   ) => {
     const canPersist = () =>
       desiredEnabledRef.current === true &&
-      hasPersistedPushOptIn();
+      hasPersistedPushOptIn() &&
+      (explicitActivation || readConfirmedPushRegistration(
+        window.localStorage, localConfirmedPushRegistrationKey,
+      )?.userId === userId);
 
     return queuePersistence(() => withPushRegistrationLock(async () => {
         if (!canPersist()) return null;
-        return registerPushInstallationWithConvergence({
+        const action = getPushRegistrationAction({
+          confirmed: readConfirmedPushRegistration(window.localStorage, localConfirmedPushRegistrationKey),
+          userId, deviceId: getStoredDeviceId(), firebaseInstallationId, explicitActivation,
+        });
+        if (action === "require_activation") return null;
+        if (action === "reuse") return { deviceId: getStoredDeviceId()!, firebaseInstallationId };
+        if (explicitActivation) {
+          // If reassociation commits but its response is lost, an older owner's
+          // acknowledgement must not authorize automatic renewal on next login.
+          window.localStorage.removeItem(localConfirmedPushRegistrationKey);
+          if (readConfirmedPushRegistration(window.localStorage, localConfirmedPushRegistrationKey)) return null;
+        }
+        const registration = await registerPushInstallationWithConvergence({
           firebaseInstallationId,
           getOrCreateDeviceId: getDeviceId,
           readDeviceId: getStoredDeviceId,
@@ -245,17 +257,23 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
           canRegister: canPersist,
           maxAttempts: 3,
         });
+        if (registration) {
+          window.localStorage.setItem(localConfirmedPushRegistrationKey, JSON.stringify({
+            version: 1, userId, ...registration,
+          }));
+        }
+        return registration;
       }, true));
-  }, [queuePersistence]);
+  }, [queuePersistence, userId]);
 
-  const registerAndPersistInstallation = useCallback(async () => {
+  const registerAndPersistInstallation = useCallback(async (explicitActivation = false) => {
     if (
       desiredEnabledRef.current !== true ||
       !hasPersistedPushOptIn()
     ) return null;
     const firebaseInstallationId = await waitForFirebasePushInstallation();
     if (!firebaseInstallationId) return null;
-    return reconcileInstallation(firebaseInstallationId);
+    return reconcileInstallation(firebaseInstallationId, explicitActivation);
   }, [reconcileInstallation]);
 
   const beginOperation = useCallback((operation: PushOperationKind) => {
@@ -299,6 +317,13 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
           queuePersistence(() => runStoredPushDisableCleanup()),
         );
         await observePushCleanup(drain);
+        return;
+      }
+
+      // Login is not consent to change the device's existing subscription owner.
+      if (readConfirmedPushRegistration(window.localStorage, localConfirmedPushRegistrationKey)?.userId !== userId) {
+        desiredEnabledRef.current = false;
+        if (active) setState("default");
         return;
       }
 
@@ -356,7 +381,7 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     return () => {
       active = false;
     };
-  }, [optOutReconciler, queuePersistence, registerAndPersistInstallation]);
+  }, [optOutReconciler, queuePersistence, registerAndPersistInstallation, userId]);
 
   useEffect(() => {
     let storage: Storage;
@@ -481,42 +506,17 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
           registrationGeneration !== registrationGenerationRef.current ||
           desiredEnabledRef.current !== true
         ) return;
+        // An SDK event is not the user's opt-out. Preserve the remote record
+        // (including uncertain POSTs) for explicit disable/recovery only.
         try {
-          const response = await queuePersistence(() =>
-            withPushRegistrationLock(async () => {
-              if (!getPotentialPushInstallations().includes(firebaseInstallationId)) {
-                return { ok: true };
-              }
-              const deletion = await persistInstallation(
-                firebaseInstallationId,
-                "DELETE",
-              );
-              if (deletion.ok) {
-                removeStoredPotentialPushInstallation(firebaseInstallationId);
-              }
-              return deletion;
-            }));
-          if (
-            !active ||
-            registrationGeneration !== registrationGenerationRef.current ||
-            desiredEnabledRef.current !== true
-          ) return;
-          if (!response?.ok) {
-            setErrorOperation("enable");
-            setState("error");
-            return;
+          const confirmed = readConfirmedPushRegistration(window.localStorage, localConfirmedPushRegistrationKey);
+          if (confirmed?.firebaseInstallationId === firebaseInstallationId) {
+            window.localStorage.removeItem(localConfirmedPushRegistrationKey);
           }
-          setState("default");
-        } catch {
-          if (
-            active &&
-            registrationGeneration === registrationGenerationRef.current &&
-            desiredEnabledRef.current === true
-          ) {
-            setErrorOperation("enable");
-            setState("error");
-          }
-        }
+        } catch { /* Storage failures never trigger an automatic remote delete. */ }
+        desiredEnabledRef.current = false;
+        setErrorOperation("enable");
+        setState("error");
       },
     }).then((unsubscribe) => {
       if (active) stopRegistration = unsubscribe;
@@ -599,7 +599,7 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
         return;
       }
 
-      const registration = await registerAndPersistInstallation();
+      const registration = await registerAndPersistInstallation(true);
       if (!operationIsCurrent(operationGeneration, operation)) return;
       if (!registration) {
         desiredEnabledRef.current = false;
@@ -656,16 +656,6 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
     }
   }, [beginOperation, finishOperation, operationIsCurrent, queuePersistence]);
 
-  const prepareForLogout = useCallback(async () => {
-    desiredEnabledRef.current = false;
-    registrationGenerationRef.current += 1;
-    invalidatePushOperations(operationGateRef.current);
-    persistLocalPushPreference("disabled");
-    setIsWorking(false);
-    setOperation(null);
-    await queuePersistence(disablePushBeforeLogout);
-  }, [queuePersistence]);
-
   const value = useMemo(
     () => ({
       state,
@@ -674,7 +664,6 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
       errorOperation,
       enable,
       disable,
-      prepareForLogout,
     }),
     [
       disable,
@@ -682,7 +671,6 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
       errorOperation,
       isWorking,
       operation,
-      prepareForLogout,
       state,
     ],
   );

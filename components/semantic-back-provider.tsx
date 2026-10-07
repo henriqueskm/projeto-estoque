@@ -64,13 +64,21 @@ export function SemanticBackProvider({ children }: { children: ReactNode }) {
       return previous.origin === window.location.origin && ["/", "/estoque", "/entrada", "/saida", "/pedidos", "/historico", "/estatisticas", "/aplicacoes", "/minha-conta"].some(route => previous.pathname === route || (route !== "/" && previous.pathname.startsWith(`${route}/`)));
     },
     exit: open => setExitOpen(open),
+    // Best effort only: some installed runtimes allow close, others ignore it.
+    // Never substitute Auth sign-out or a blind history traversal for closing.
+    requestExit: () => window.close(),
     beforePop: () => window.dispatchEvent(new Event("nk:semantic:before-pop")),
   }));
   useEffect(() => {
     coordinator.ensure();
     const pop = (event: PopStateEvent) => coordinator.pop(event.state);
+    const navigate = () => coordinator.beforeNavigation();
     window.addEventListener("popstate", pop);
-    return () => { window.removeEventListener("popstate", pop); };
+    window.addEventListener("nk:workspace:before-navigation", navigate);
+    return () => {
+      window.removeEventListener("popstate", pop);
+      window.removeEventListener("nk:workspace:before-navigation", navigate);
+    };
   }, [coordinator]);
   return <SemanticContext.Provider value={coordinator}>
     <Suspense fallback={null}><HistoryRouteTracker /></Suspense>
@@ -107,7 +115,7 @@ export function useSemanticTransient(enabled: boolean, close: () => void, blocke
       return () => {
         coordinator.retireTransient(entryId);
         // A manual close can unmount the dialog instead of toggling enabled.
-        // Wait for Next/Activity's URL commit; never traverse on route departure.
+        // StrictMode can reattach; route intent also protects a pending URL commit.
         window.requestAnimationFrame(() => coordinator.consumeRetiredTransient(entryId));
       };
     }
