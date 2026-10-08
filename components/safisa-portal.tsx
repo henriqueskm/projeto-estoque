@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -10,7 +9,8 @@ import {
   markSafisaRemainingReady,
   safisaLogout,
 } from "@/app/safisa/actions";
-import { maximumReadyQuantity, readinessLabel } from "@/lib/safisa-portal-readiness";
+import { SafisaPortalDialog } from "@/components/safisa-portal-dialog";
+import { maximumReadyQuantity } from "@/lib/safisa-portal-readiness";
 import {
   markSafisaAttemptResultUnknown,
   prepareSafisaLogicalAttempt,
@@ -63,7 +63,10 @@ function formatDate(value: string) {
 function closureLabel(order: SafisaOrderSummary | SafisaOrderDetail) {
   if (order.closureKind === "FINALIZED") return "Finalizado";
   if (order.closureKind === "CANCELLED") return "Cancelado";
-  return readinessLabel(order.readinessStatus, order.readyQuantity, order.pickedQuantity);
+  // Portal status describes production. Pickup remains secondary information.
+  if (order.readinessStatus === "COMPLETELY_READY") return "Completamente pronto";
+  if (order.readinessStatus === "PARTIALLY_READY") return "Parcialmente pronto";
+  return "Em preparação";
 }
 
 function statusClass(order: StatusSource) {
@@ -123,34 +126,26 @@ function executeSafisaAttempt(
   }
 }
 
-function Metric({
-  label,
-  value,
-  tone = "neutral",
-  compact = false,
-}: {
-  label: string;
-  value: number;
-  tone?: "neutral" | "blue" | "green" | "amber";
+function ProductionProgress({ order, compact = false }: {
+  order: SafisaOrderSummary | SafisaOrderDetail;
   compact?: boolean;
 }) {
-  const toneClass =
-    tone === "green"
-      ? "border-emerald-200 bg-emerald-50"
-      : tone === "blue"
-        ? "border-blue-200 bg-blue-50"
-        : tone === "amber"
-          ? "border-amber-200 bg-amber-50"
-          : "border-slate-200 bg-slate-50";
-
+  const progress = order.orderedQuantity > 0
+    ? Math.min(100, (order.readyQuantity / order.orderedQuantity) * 100) : 0;
   return (
-    <div className={classNames("min-w-0 border", compact ? "rounded-xl px-2.5 py-2" : "rounded-2xl px-3 py-3", toneClass)}>
-      <dt className={classNames(compact ? "text-[0.62rem]" : "text-[0.67rem] tracking-[0.08em]", "font-black text-slate-600 uppercase")}>
-        {label}
-      </dt>
-      <dd className={classNames(compact ? "mt-0.5 text-lg leading-5" : "mt-1 text-2xl leading-7", "font-black tabular-nums text-slate-950")}>
-        {numberFormatter.format(value)}
-      </dd>
+    <div className="min-w-0">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className={compact ? "text-[0.65rem] font-semibold tabular-nums sm:text-xs" : "text-sm font-bold tabular-nums sm:text-base"}>
+          {numberFormatter.format(order.readyQuantity)} {compact ? "/" : "de"} {numberFormatter.format(order.orderedQuantity)}
+          <span className={compact ? "hidden lg:inline" : ""}>{compact ? " prontos" : " unidades prontas"}</span>
+        </p>
+        <span className={compact ? "hidden font-mono text-xs font-bold sm:inline" : "font-mono text-xl font-black"}>{Math.round(progress)}%</span>
+      </div>
+      <div role="progressbar" aria-label="Progresso da produção"
+        aria-valuemin={0} aria-valuemax={order.orderedQuantity} aria-valuenow={order.readyQuantity}
+        className={`mt-1.5 overflow-hidden rounded-full bg-slate-200 ${compact ? "h-1.5" : "h-2"}`}>
+        <div className={`h-full rounded-full ${order.readinessStatus === "COMPLETELY_READY" ? "bg-emerald-600" : "bg-blue-700"}`} style={{ width: progress + "%" }} />
+      </div>
     </div>
   );
 }
@@ -173,6 +168,7 @@ export function SafisaPortal({
   const [selectedList, setSelectedList] = useState<"ACTIVE" | "COMPLETED">(
     selectedOrder?.portalState ?? "ACTIVE",
   );
+  const openedFromList = useRef(false);
   const operationLock = useRef(false);
   const logicalAttempt = useRef<SafisaLogicalAttempt | null>(null);
   const [unknownAttempt, setUnknownAttempt] = useState<SafisaLogicalAttempt | null>(null);
@@ -182,6 +178,12 @@ export function SafisaPortal({
     selectedOrder?.lines.filter((line) => line.waitingReadyQuantity > 0).length ?? 0;
   const mutationControlsBlocked =
     isAttemptRestoring || isPending || unknownAttempt !== null;
+
+  // A URL change / Activity hide must not resurrect a mutation confirmation.
+  // The operation ref and persisted logical attempt remain untouched.
+  useEffect(() => () => {
+    if (!operationLock.current) setConfirmation(null);
+  }, [selectedOrder?.supplierOrderId]);
 
   useEffect(() => {
     let restored: SafisaLogicalAttempt | null = null;
@@ -321,6 +323,9 @@ export function SafisaPortal({
   }
 
   function openOrder(order: SafisaOrderSummary) {
+    if (isPending || operationLock.current) return;
+    openedFromList.current = true;
+    router.push(orderHref(order.supplierOrderId), { scroll: false });
     setSelectedList(order.portalState);
     setOpeningOrderId(order.supplierOrderId);
     window.setTimeout(() => {
@@ -330,9 +335,16 @@ export function SafisaPortal({
     }, 5_000);
   }
 
+  function closeOrder() {
+    if (isPending || operationLock.current || confirmation) return;
+    setOpeningOrderId(null);
+    if (openedFromList.current) router.back();
+    else router.replace("/safisa", { scroll: false });
+  }
+
   return (
     <div className="min-h-dvh bg-[#f4f7fb] text-slate-950">
-      <header className="sticky top-0 z-30 border-b border-slate-200/90 bg-white/95 shadow-sm backdrop-blur">
+      <header inert={selectedOrder ? true : undefined} className="sticky top-0 z-30 border-b border-slate-200/90 bg-white/95 shadow-sm backdrop-blur">
         <div className="mx-auto flex min-h-[4.5rem] max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <div className="min-w-0">
             <p className="text-[0.68rem] font-black tracking-[0.16em] text-blue-800 uppercase">Central operacional</p>
@@ -349,113 +361,24 @@ export function SafisaPortal({
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:grid-cols-[22rem_minmax(0,1fr)] lg:items-start lg:gap-6 lg:px-8">
-        <section
-          aria-labelledby="orders-title"
-          className={classNames(
-            selectedOrder && "hidden lg:block",
-            "min-w-0 rounded-3xl border border-slate-200 bg-white p-3 shadow-[0_10px_30px_rgba(15,23,42,0.06)] sm:p-4 lg:sticky lg:top-[5.5rem]",
-          )}
-        >
-          <div className="flex items-end justify-between gap-3 px-1 pt-1">
-            <div>
-              <p className="text-[0.66rem] font-black tracking-[0.14em] text-blue-800 uppercase">Fila de produção</p>
-              <h1 id="orders-title" className="mt-1 text-2xl font-black tracking-tight text-slate-950">Pedidos</h1>
-            </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black tabular-nums text-slate-700">{orders.length}</span>
+      <div inert={selectedOrder ? true : undefined}>
+      <main className="mx-auto max-w-7xl px-3 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-8">
+        <section aria-labelledby="orders-title" className="min-w-0">
+          <div className="flex items-center justify-between gap-3">
+            <h1 id="orders-title" className="text-2xl font-black tracking-tight">Pedidos</h1>
+            <span className="text-sm font-bold tabular-nums text-slate-500">{orders.length} {orders.length === 1 ? "pedido" : "pedidos"}</span>
           </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1" role="tablist" aria-label="Situação dos pedidos">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={selectedList === "ACTIVE"}
-              onClick={() => setSelectedList("ACTIVE")}
-              className={classNames(
-                "min-h-11 rounded-xl px-3 text-sm font-black transition focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue-700",
-                selectedList === "ACTIVE" ? "bg-white text-blue-950 shadow-sm" : "text-slate-600 hover:text-slate-950",
-              )}
-            >
-              Em andamento
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={selectedList === "COMPLETED"}
-              onClick={() => setSelectedList("COMPLETED")}
-              className={classNames(
-                "min-h-11 rounded-xl px-3 text-sm font-black transition focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue-700",
-                selectedList === "COMPLETED" ? "bg-white text-blue-950 shadow-sm" : "text-slate-600 hover:text-slate-950",
-              )}
-            >
-              Histórico
-            </button>
+          <div className="mt-4 flex gap-1 rounded-xl bg-slate-200/60 p-1 sm:w-fit" role="tablist" aria-label="Situação dos pedidos">
+            {(["ACTIVE", "COMPLETED"] as const).map(view => (
+              <button key={view} type="button" role="tab" aria-selected={selectedList === view}
+                onClick={() => setSelectedList(view)}
+                className={classNames("min-h-11 flex-1 rounded-lg px-4 text-sm font-bold whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:flex-none",
+                  selectedList === view ? "bg-white text-blue-950 shadow-sm" : "text-slate-600 hover:bg-white/50")}>
+                {view === "ACTIVE" ? "Em andamento" : "Histórico"}
+              </button>
+            ))}
           </div>
-
-          {orders.length === 0 ? (
-            <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm font-semibold leading-6 text-slate-600">
-              {selectedList === "ACTIVE" ? "Nenhum pedido em andamento no momento." : "Nenhum pedido concluído no momento."}
-            </div>
-          ) : (
-            <div className="mt-3 space-y-2.5">
-              {orders.map((order) => {
-                const active = selectedOrder?.supplierOrderId === order.supplierOrderId;
-                const opening =
-                  !selectedOrder &&
-                  !loadMessage &&
-                  openingOrderId === order.supplierOrderId;
-                const progress = order.orderedQuantity > 0
-                  ? Math.min(100, (order.readyQuantity / order.orderedQuantity) * 100)
-                  : 0;
-
-                return (
-                  <Link
-                    key={order.supplierOrderId}
-                    href={orderHref(order.supplierOrderId)}
-                    aria-current={active ? "page" : undefined}
-                    aria-busy={opening || undefined}
-                    onPointerEnter={() => warmOrder(order.supplierOrderId)}
-                    onFocus={() => warmOrder(order.supplierOrderId)}
-                    onTouchStart={() => warmOrder(order.supplierOrderId)}
-                    onClick={() => openOrder(order)}
-                    className={classNames(
-                      "block rounded-2xl border p-3.5 transition focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue-700",
-                      active ? "border-blue-600 bg-blue-50 shadow-sm" : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-base font-black tracking-tight text-slate-950">Pedido {order.negotiationNumber}</p>
-                        <p className="mt-1 text-xs font-semibold text-slate-500">
-                          {formatDate(order.orderDate)} · {order.lineCount} {order.lineCount === 1 ? "item" : "itens"}
-                        </p>
-                      </div>
-                      <span className={classNames("shrink-0 rounded-full border px-2.5 py-1 text-center text-[0.62rem] font-black leading-4", statusClass(order))}>
-                        {opening ? "Abrindo…" : closureLabel(order)}
-                      </span>
-                    </div>
-                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full rounded-full bg-blue-700 transition-[width] duration-300" style={{ width: progress + "%" }} />
-                    </div>
-                    <dl className="mt-2.5 grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <dt className="font-semibold text-slate-500">Em preparação</dt>
-                        <dd className="mt-0.5 font-black tabular-nums text-slate-950">{order.waitingReadyQuantity}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-slate-500">Pronto p/ retirada</dt>
-                        <dd className="mt-0.5 font-black tabular-nums text-emerald-800">{order.readyWaitingPickupQuantity}</dd>
-                      </div>
-                    </dl>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section aria-live="polite" className="min-w-0">
-          {feedback ? (
+          {!selectedOrder ? <div aria-live="polite" className="mt-3">          {feedback ? (
             <div
               role={feedback.status === "success" ? "status" : "alert"}
               className={classNames(
@@ -491,50 +414,59 @@ export function SafisaPortal({
             </div>
           ) : null}
 
-          {!selectedOrder ? (
-            <div className="hidden min-h-80 items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm lg:flex">
-              <div>
-                <div aria-hidden="true" className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-blue-100 text-2xl font-black text-blue-800">✓</div>
-                <h2 className="mt-4 text-2xl font-black tracking-tight text-slate-950">Selecione um pedido</h2>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">Abra um pedido para informar a produção concluída item a item.</p>
-              </div>
-            </div>
+</div> : null}
+          {orders.length === 0 ? (
+            <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-600">
+              {selectedList === "ACTIVE" ? "Nenhum pedido em andamento no momento." : "Nenhum pedido concluído no momento."}
+            </p>
           ) : (
-            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.07)]">
-              <div className="border-b border-slate-200 bg-gradient-to-br from-white via-white to-blue-50/70 p-4 sm:p-6">
-                <Link
-                  href="/safisa"
-                  onClick={() => setOpeningOrderId(null)}
-                  className="inline-flex min-h-10 items-center rounded-xl px-2 text-sm font-black text-blue-900 transition hover:bg-blue-100 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue-700 lg:hidden"
-                >
-                  ← Todos os pedidos
-                </Link>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[0.66rem] font-black tracking-[0.14em] text-blue-800 uppercase">Ordem de produção</p>
-                    <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Pedido {selectedOrder.negotiationNumber}</h2>
-                    <p className="mt-1 text-sm font-semibold text-slate-500">
-                      {formatDate(selectedOrder.orderDate)} · {selectedOrder.lines.length} {selectedOrder.lines.length === 1 ? "item" : "itens"}
-                    </p>
-                  </div>
-                  <span className={classNames("rounded-full border px-3 py-1.5 text-xs font-black", statusClass(selectedOrder))}>
-                    {closureLabel(selectedOrder)}
-                  </span>
-                </div>
-                <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <Metric label="Pedido" value={selectedOrder.orderedQuantity} />
-                  <Metric label="Já pronto" value={selectedOrder.readyQuantity} tone="blue" />
-                  <Metric label="A preparar" value={selectedOrder.waitingReadyQuantity} tone="amber" />
-                  <Metric label="Para retirada" value={selectedOrder.readyWaitingPickupQuantity} tone="green" />
-                </dl>
-                {!selectedOrder.isReadOnly && selectedOrder.waitingReadyQuantity > 0 ? (
-                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-black text-blue-950">Concluir todo o Pedido</p>
-                      <p className="mt-0.5 text-sm font-semibold text-blue-900">
-                        {selectedOrder.waitingReadyQuantity} unidade(s) em {remainingLineCount} {remainingLineCount === 1 ? "item" : "itens"} ainda aguardam preparação.
-                      </p>
-                    </div>
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <table className="w-full table-fixed text-left">
+                <caption className="sr-only">Pedidos Safisa {selectedList === "ACTIVE" ? "em andamento" : "no histórico"}. Selecione uma linha para abrir o pedido.</caption>
+                <thead className="border-b border-slate-200 bg-slate-100 text-[0.65rem] font-black uppercase sm:text-xs">
+                  <tr>
+                    <th scope="col" className="w-[19%] px-2 py-3 sm:w-[16%] sm:px-4">Data</th>
+                    <th scope="col" className="w-[22%] px-1 py-3 sm:w-[19%] sm:px-4"><span className="sm:hidden">Pedido</span><span className="hidden sm:inline">Nº do pedido</span></th>
+                    <th scope="col" className="w-[22%] px-1 py-3 sm:w-[18%] sm:px-4"><span className="sm:hidden">Itens</span><span className="hidden sm:inline">Total de itens</span></th>
+                    <th scope="col" className="px-2 py-3 sm:w-[23%] sm:px-4"><span className="sm:hidden">Situação</span><span className="hidden sm:inline">Status</span></th>
+                    <th scope="col" className="hidden w-[24%] px-4 py-3 sm:table-cell">Progresso</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {orders.map(order => {
+                    const opening = !selectedOrder && !loadMessage && openingOrderId === order.supplierOrderId;
+                    return (
+                      <tr key={order.supplierOrderId} role="button" tabIndex={0}
+                        aria-label={`Abrir Pedido ${order.negotiationNumber}, ${closureLabel(order)}`}
+                        aria-busy={opening || undefined}
+                        onPointerEnter={() => warmOrder(order.supplierOrderId)}
+                        onFocus={() => warmOrder(order.supplierOrderId)}
+                        onTouchStart={() => warmOrder(order.supplierOrderId)}
+                        onClick={event => { event.currentTarget.focus(); openOrder(order); }}
+                        onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openOrder(order); } }}
+                        className="cursor-pointer text-xs outline-offset-[-3px] focus-visible:outline-2 focus-visible:outline-blue-700 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-blue-50/60 sm:text-sm">
+                        <td className="px-2 py-3 align-middle font-semibold text-slate-600 sm:px-4"><span className="sm:hidden">{formatDate(order.orderDate).slice(0, 5)}</span><span className="hidden sm:inline">{formatDate(order.orderDate)}</span></td>
+                        <td className="px-1 py-3 align-middle font-mono font-black break-all sm:px-4 sm:text-base">{order.negotiationNumber}</td>
+                        <td className="px-1 py-3 align-middle sm:px-4"><p className="font-bold tabular-nums">{numberFormatter.format(order.orderedQuantity)} un.</p><p className="mt-0.5 text-[0.65rem] text-slate-500 sm:text-xs">{order.lineCount} {order.lineCount === 1 ? "item" : "itens"}</p></td>
+                        <td className="px-2 py-3 align-middle sm:px-4"><span className={classNames("inline-block max-w-full rounded-lg border px-1.5 py-1 text-[0.6rem] leading-tight font-bold break-words sm:text-xs", statusClass(order))}>{opening ? "Abrindo…" : closureLabel(order)}</span><div className="mt-1.5 sm:hidden"><ProductionProgress order={order} compact /></div></td>
+                        <td className="hidden px-4 py-3 align-middle sm:table-cell"><ProductionProgress order={order} compact /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </main>
+      </div>
+
+      {selectedOrder ? (
+        <SafisaPortalDialog titleId="safisa-order-title" descriptionId="safisa-order-description"
+          title={`Pedido ${selectedOrder.negotiationNumber}`} onClose={closeOrder}
+          pending={isPending} covered={confirmation !== null}
+          footer={!selectedOrder.isReadOnly && selectedOrder.waitingReadyQuantity > 0 ? (
+                  <div className="flex flex-col gap-2 border-t border-slate-200 bg-white px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end sm:px-5">
                     <button
                       type="button"
                       disabled={mutationControlsBlocked}
@@ -550,48 +482,82 @@ export function SafisaPortal({
                       Dar todo o Pedido como pronto
                     </button>
                   </div>
-                ) : null}
-                {selectedOrder.isReadOnly ? (
-                  <p className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
-                    Pedido encerrado: informações disponíveis somente para consulta.
+                ) : null}>
+          <div id="safisa-order-description" className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 sm:px-5">
+            <p className="text-xs font-semibold text-slate-600 sm:text-sm">{formatDate(selectedOrder.orderDate)}</p>
+            <span className={classNames("rounded-full border px-2.5 py-1 text-[0.65rem] font-bold sm:text-xs", statusClass(selectedOrder))}>{closureLabel(selectedOrder)}</span>
+          </div>
+          <div aria-live="polite" className="px-3 pt-3 sm:px-5">          {feedback ? (
+            <div
+              role={feedback.status === "success" ? "status" : "alert"}
+              className={classNames(
+                "mb-4 rounded-2xl border px-4 py-3 text-sm font-bold shadow-sm",
+                feedback.status === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : feedback.status === "conflict" || feedback.status === "unknown"
+                    ? "border-amber-200 bg-amber-50 text-amber-950"
+                    : "border-red-200 bg-red-50 text-red-800",
+              )}
+            >
+              <p>{feedback.message}</p>
+              {feedback.status === "unknown" && unknownAttempt ? (
+                <>
+                  <p className="mt-1 font-semibold">
+                    Confirme o resultado da operação anterior antes de realizar outra ação.
                   </p>
-                ) : null}
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={retryUnknownAction}
+                    className="mt-3 min-h-11 rounded-xl border border-amber-400 bg-white px-4 text-sm font-black text-amber-950 transition hover:bg-amber-100 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {isPending ? "Verificando…" : "Tentar verificar novamente"}
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {loadMessage ? (
+            <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950 shadow-sm">
+              {loadMessage}
+            </div>
+          ) : null}
+
+</div>
+          <section aria-labelledby="safisa-production-title" className="border-b border-slate-200 px-3 pb-3 sm:px-5">
+            <h3 id="safisa-production-title" className="mb-2 text-[0.68rem] font-black tracking-wider text-slate-600 uppercase">Progresso da produção</h3>
+            <ProductionProgress order={selectedOrder} />
+            <div className="mt-2 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs font-semibold text-slate-600">
+              <p>Faltam {numberFormatter.format(selectedOrder.waitingReadyQuantity)} unidades.</p>
+              <p>Pronto aguardando retirada: {numberFormatter.format(selectedOrder.readyWaitingPickupQuantity)}</p>
+            </div>
+            {selectedOrder.isReadOnly ? <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">Pedido encerrado: informações disponíveis somente para consulta.</p> : null}
+          </section>
+          <section aria-labelledby="safisa-products-title">
+            <div className="px-3 py-3 sm:px-5"><p className="text-[0.65rem] font-black tracking-wider text-blue-800 uppercase">Ordem de produção</p><h3 id="safisa-products-title" className="mt-0.5 text-sm font-black sm:text-base">Descrição dos Produtos</h3></div>
+            <div role="table" aria-label="Itens da ordem de produção">
+              <div role="row" className="grid grid-cols-[minmax(2.5rem,0.7fr)_minmax(0,2.5fr)_minmax(3rem,0.5fr)_minmax(3rem,0.6fr)] gap-2 bg-blue-950 px-3 py-2.5 text-[0.6rem] font-black text-white uppercase sm:px-5 sm:text-xs">
+                <span role="columnheader">Cód.</span><span role="columnheader">Descrição dos Produtos</span><span role="columnheader" className="text-right">Qtde.</span><span role="columnheader" className="text-right">Pronto</span>
               </div>
-
-              <div className="space-y-3 bg-slate-50/70 p-3 sm:p-5">
-                <div className="px-1 pb-1">
-                  <h3 className="text-lg font-black tracking-tight text-slate-950">Itens para preparar</h3>
-                  <p className="mt-0.5 text-sm font-semibold text-slate-600">Informe a quantidade concluída ou marque todo o restante do item.</p>
-                </div>
-                {selectedOrder.lines.map((line, index) => {
-                  const canMarkReady = !selectedOrder.isReadOnly && line.waitingReadyQuantity > 0;
-                  const itemLabel = readinessLabel(line.readinessStatus, line.readyQuantity, line.pickedQuantity);
-                  const inputId = "quantity-" + line.supplierOrderItemId;
-
-                  return (
-                    <article key={line.supplierOrderItemId} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                      <div className="flex items-start gap-3 p-3.5 sm:p-4">
-                        <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-black tabular-nums text-slate-600">{index + 1}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-[0.68rem] font-black tracking-[0.08em] text-blue-800 uppercase">Cód. {line.code}</p>
-                              <h4 className="mt-1 text-base font-black leading-5 text-slate-950 sm:text-lg">{line.description}</h4>
-                              {line.model ? <p className="mt-1 text-sm leading-5 font-semibold text-slate-600">{line.model}</p> : null}
-                            </div>
-                            <span className={classNames("shrink-0 rounded-full border px-2.5 py-1 text-[0.62rem] font-black leading-4", statusClass(line))}>{itemLabel}</span>
-                          </div>
-                          <dl className="mt-4 grid grid-cols-2 gap-2 min-[480px]:grid-cols-4">
-                            <Metric compact label="Pedido" value={line.orderedQuantity} />
-                            <Metric compact label="Pronto" value={line.readyQuantity} tone="blue" />
-                            <Metric compact label="Retirado" value={line.pickedQuantity} tone="green" />
-                            <Metric compact label="Faltam" value={line.waitingReadyQuantity} tone="amber" />
-                          </dl>
+              {selectedOrder.lines.map(line => {
+                const canMarkReady = !selectedOrder.isReadOnly && line.waitingReadyQuantity > 0;
+                const inputId = "quantity-" + line.supplierOrderItemId;
+                return (
+                  <div key={line.supplierOrderItemId} className="border-b border-slate-200 last:border-b-0">
+                    <div role="row" className={classNames("grid grid-cols-[minmax(2.5rem,0.7fr)_minmax(0,2.5fr)_minmax(3rem,0.5fr)_minmax(3rem,0.6fr)] items-start gap-2 px-3 py-3 sm:px-5", line.readinessStatus === "COMPLETELY_READY" ? "bg-emerald-50/70" : "bg-white")}>
+                      <span role="cell" className="font-mono text-sm leading-5 font-black break-all sm:text-base">{line.code}</span>
+                      <div role="cell" className="min-w-0"><p className="text-xs leading-5 font-bold break-words sm:text-sm">{line.description}</p>{line.model ? <p className="mt-0.5 text-[0.65rem] break-words text-slate-500 sm:text-xs">{line.model}</p> : null}
+                        <div className="mt-1 space-y-0.5 text-[0.65rem] font-semibold text-slate-600 sm:text-xs">
+                          {line.waitingReadyQuantity > 0 ? <p>Faltam preparar: {numberFormatter.format(line.waitingReadyQuantity)}</p> : <p className="text-emerald-800">Completamente pronto</p>}
+                          {line.pickedQuantity > 0 ? <p>Retirado: {numberFormatter.format(line.pickedQuantity)}</p> : null}
+                          {line.readyWaitingPickupQuantity > 0 ? <p>Pronto para retirar: {numberFormatter.format(line.readyWaitingPickupQuantity)}</p> : null}
                         </div>
                       </div>
-
+                      <span role="cell" className="text-right font-mono text-sm font-extrabold tabular-nums sm:text-base">{numberFormatter.format(line.orderedQuantity)}</span>
+                      <span role="cell" className="text-right font-mono text-sm font-black tabular-nums text-emerald-800 sm:text-base">{numberFormatter.format(line.readyQuantity)}</span>
+                    </div>
                       {canMarkReady ? (
-                        <div className="border-t border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4">
+                        <div className="border-t border-slate-200 bg-slate-50 px-3 py-3 sm:px-5">
                           <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
                             <form
                               className="flex flex-wrap items-end gap-2"
@@ -607,7 +573,7 @@ export function SafisaPortal({
                                 completeAction(payload);
                               }}
                             >
-                              <div className="w-[6.5rem] shrink-0">
+                              <div className="w-20 shrink-0 sm:w-[6.5rem]">
                                 <label htmlFor={inputId} className="mb-1 block text-xs font-black text-slate-700">Quantidade</label>
                                 <input
                                   id={inputId}
@@ -646,7 +612,7 @@ export function SafisaPortal({
                                 if (mutationControlsBlocked) event.preventDefault();
                               }}
                               className={classNames(
-                                "inline-flex min-h-10 items-center rounded-lg px-1 text-xs font-bold transition focus-visible:outline-3 focus-visible:outline-blue-700 sm:text-sm",
+                                "inline-flex min-h-11 items-center rounded-lg px-1 text-xs font-bold transition focus-visible:outline-3 focus-visible:outline-blue-700 sm:text-sm",
                                 mutationControlsBlocked
                                   ? "cursor-not-allowed text-slate-400"
                                   : "cursor-pointer text-slate-600 hover:text-slate-950",
@@ -706,32 +672,21 @@ export function SafisaPortal({
                           </details>
                         </div>
                       ) : null}
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </section>
-      </main>
 
-      {confirmation ? (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:items-center"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !isPending) setConfirmation(null);
-          }}
-        >
-          <section role="dialog" aria-modal="true" aria-labelledby="safisa-confirm-title" className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
-            <p className="text-[0.66rem] font-black tracking-[0.14em] text-blue-800 uppercase">Confirmação necessária</p>
-            <h2 id="safisa-confirm-title" className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-              {confirmation.kind === "order"
-                ? "Dar todo o Pedido como pronto?"
-                : confirmation.kind === "remaining"
-                  ? "Concluir este item?"
-                  : "Confirmar correção?"}
-            </h2>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </SafisaPortalDialog>
+      ) : null}
+
+      {confirmation && selectedOrder ? (
+        <SafisaPortalDialog compact titleId="safisa-confirm-title" descriptionId="safisa-confirm-description"
+          pending={isPending} onClose={() => { if (!isPending) setConfirmation(null); }}
+          title={confirmation.kind === "order" ? "Dar todo o Pedido como pronto?" : confirmation.kind === "remaining" ? "Concluir este item?" : "Confirmar correção?"}>
+          <div className="p-4 sm:p-5">
+            <p id="safisa-confirm-description" className="text-xs font-bold text-slate-500">Revise as quantidades antes de confirmar.</p>
             {confirmation.kind === "order" ? (
               <>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -761,8 +716,7 @@ export function SafisaPortal({
               <button
                 type="button"
                 disabled={isPending}
-                autoFocus
-                onClick={() => setConfirmation(null)}
+                                onClick={() => setConfirmation(null)}
                 className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-black text-slate-800 transition hover:bg-slate-50 focus-visible:outline-3 focus-visible:outline-blue-700 disabled:opacity-50"
               >
                 Voltar
@@ -807,8 +761,9 @@ export function SafisaPortal({
                 {isPending ? "Confirmando…" : "Confirmar"}
               </button>
             </div>
-          </section>
-        </div>
+
+          </div>
+        </SafisaPortalDialog>
       ) : null}
     </div>
   );
