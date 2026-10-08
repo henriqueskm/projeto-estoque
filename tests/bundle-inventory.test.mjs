@@ -203,6 +203,15 @@ beforeEach(() => {
   globalThis.__NK72_MENU_OPEN__ = false;
 });
 
+test("inventory report opt-in includes retired physical balances without changing workspace visibility", async () => {
+  tables.items[0].is_active = false;
+  const workspace = await loadInventoryData();
+  assert.ok(workspace.data);
+  assert.ok(!workspace.data.physicalItems.some(item => item.id === id(1)));
+  const report = await loadInventoryData({ includeInactivePhysical: true });
+  assert.equal(report.data.physicalItems.find(item => item.id === id(1)).looseQuantity, 5);
+});
+
 for (const [label, loader, Component, prop] of [
   ["Estoque", loadInventoryData, InventoryWorkspace, "inventory"],
   ["Entrada", getInboundCatalog, InboundEntryFlow, "catalog"],

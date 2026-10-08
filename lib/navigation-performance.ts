@@ -8,7 +8,7 @@ export type NavigationSample = {
 
 export type PendingNavigation = NavigationSample & { startedAt: number };
 
-const routes = new Set(["/", "/estoque", "/entrada", "/saida", "/pedidos", "/aplicacoes", "/estatisticas", "/historico"]);
+const routes = new Set(["/", "/estoque", "/relatorio-estoque", "/entrada", "/saida", "/pedidos", "/aplicacoes", "/estatisticas", "/historico"]);
 
 // Store only an allowlisted section, never URL parameters or business identities.
 export function performanceRoute(pathname: string): string | null {

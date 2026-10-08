@@ -110,7 +110,7 @@ function getStockState(looseQuantity: number, minimumStock: number): StockState 
   return "AVAILABLE";
 }
 
-export async function loadInventoryData(): Promise<InventoryDataResult> {
+export async function loadInventoryData(options: { includeInactivePhysical?: boolean } = {}): Promise<InventoryDataResult> {
   const startedAt = performance.now();
   try {
     const supabase = await createClient();
@@ -162,7 +162,9 @@ export async function loadInventoryData(): Promise<InventoryDataResult> {
       snapshot.commercialCodes as CommercialConfigurationCodeRow[];
     const configurationBalances = (configurationBalancesResult.data ??
       []) as ConfigurationBalanceRow[];
-    const activeItems = items.filter((item) => item.is_active);
+    // Reports must not hide a remaining physical balance after metadata is retired.
+    // The operational workspace keeps its existing active-only visibility.
+    const activeItems = items.filter((item) => item.is_active || options.includeInactivePhysical);
     const itemById = new Map(items.map((item) => [item.id, item]));
     const configurationIdsWithActiveCodes = new Set(
       configurationCodes
