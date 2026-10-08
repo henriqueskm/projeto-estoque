@@ -21,6 +21,9 @@
   .sheet { max-width: 32rem; border-radius: 1rem; padding: 1.5rem; }
   .category { scroll-margin-top: 2rem; }
 }
+@media screen and (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .table tbody tr:hover { background-color: color-mix(in srgb, var(--brand-charcoal) 5%, transparent); }
+}
 @page { size: A4; margin: 16mm; }
 @media print {
   /* The full report is a direct body portal. Hidden Activity pages and app chrome

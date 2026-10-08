@@ -150,6 +150,12 @@ test("print is full dataset portal, body chrome hidden, A4 and break safety", ()
   assert.match(css, /:global\(body\):has\(\.printReport:not\(\[style\*="display: none"\]\)\) > :not\(\.printReport\)/);
   assert.match(css, /size: A4/); assert.match(css, /break-after: avoid/); assert.match(css, /break-inside: avoid/);
 });
+test("row highlight is desktop mouse-only, covers code and quantity, and excludes print", () => {
+  const css = read("app/(authenticated)/relatorio-estoque/report.module.css");
+  assert.match(css, /@media screen and \(min-width: 768px\) and \(hover: hover\) and \(pointer: fine\)\s*\{\s*\.table tbody tr:hover\s*\{ background-color: color-mix\(in srgb, var\(--brand-charcoal\) 5%, transparent\); \}\s*\}/);
+  assert.equal((css.match(/tr:hover/g) ?? []).length, 1);
+});
+
 test("organization uses semantic transient/pending and Activity cleanup, no history listener", () => {
   const source = read("app/(authenticated)/relatorio-estoque/report-workspace.tsx");
   assert.match(source, /useSemanticTransient\(true, onClose, pending\)/); assert.match(source, /useRouteTransientCleanup/);
