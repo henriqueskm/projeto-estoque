@@ -37,7 +37,7 @@ export const stockFlowWorkspaceDefaults: StockFlowDraft = {
 };
 
 export function isWorkspaceKey(key: string) {
-  return ["estoque", "entrada", "saida", "pedidos:active", "pedidos:history", "estatisticas", "historico", "minha-conta", "aplicacoes"].includes(key)
+  return ["estoque", "relatorio-estoque", "entrada", "saida", "pedidos:active", "pedidos:history", "estatisticas", "historico", "minha-conta", "aplicacoes"].includes(key)
     || applicationWorkspaceSlugs.some(slug => key === `aplicacoes:${slug}`);
 }
 function record(value: unknown): value is Record<string, unknown> {
@@ -92,6 +92,7 @@ export function normalizeWorkspaceData(key: string, value: unknown): WorkspaceDa
     sort: choice(value.sort, key === "pedidos:history" ? ["CLOSED_RECENT", "CLOSED_OLDEST", "ORDER_RECENT", "NUMBER"] : ["RECENT", "OLDEST", "NUMBER"]),
     filtersOpen: typeof value.filtersOpen === "boolean" ? value.filtersOpen : undefined, selectedOrderId: nullableUuid(value.selectedOrderId),
   };
+  else if (key === "relatorio-estoque") clean = { query: text(value.query) };
   else if (key.startsWith("aplicacoes:")) clean = { query: text(value.query, 200), category: choice(value.category, ["ALL", "TRUCK", "BUS", "MICROBUS"]) };
   else clean = {};
   return Object.values(clean).some(x => x === undefined) ? null : clean;

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useWorkspaceScroll } from "@/components/workspace-state-provider";
 import { useSemanticWorkspaceState } from "@/components/semantic-back-provider";
 import { inventoryWorkspaceDefaults } from "@/lib/workspace-state";
@@ -921,6 +923,7 @@ export function InventoryWorkspace({
           </h1>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link href="/relatorio-estoque" prefetch={false} className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-border-neutral bg-surface px-3 text-sm font-bold text-text-primary hover:bg-app-background">Relatório</Link>
           <PurchaseRecommendationLauncher
             initiallyOpen={isPurchaseRecommendationsInitiallyOpen}
           />

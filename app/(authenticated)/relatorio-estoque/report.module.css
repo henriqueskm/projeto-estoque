@@ -1,0 +1,44 @@
+.workspace { min-width: 0; }
+.category { margin-bottom: 2rem; scroll-margin-top: 5rem; }
+.code { overflow-wrap: anywhere; }
+.table { display: none; }
+.mobileRows { display: block; }
+.printReport { display: none; }
+.overlay {
+  position: fixed; inset: 0; z-index: 110; display: flex; align-items: flex-end;
+  justify-content: center; background: rgb(0 0 0 / 65%);
+}
+.sheet {
+  width: 100%; max-height: calc(100dvh - max(1rem, env(safe-area-inset-top)));
+  overflow-y: auto; overscroll-behavior: contain; background: var(--surface);
+  border-radius: 1rem 1rem 0 0;
+  padding: 1rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+@media (min-width: 768px) {
+  .table { display: table; }
+  .mobileRows { display: none; }
+  .overlay { align-items: center; padding: 1rem; }
+  .sheet { max-width: 32rem; border-radius: 1rem; padding: 1.5rem; }
+  .category { scroll-margin-top: 2rem; }
+}
+@media screen and (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .table tbody tr:hover { background-color: color-mix(in srgb, var(--brand-charcoal) 5%, transparent); }
+}
+@page { size: A4; margin: 16mm; }
+@media print {
+  /* The full report is a direct body portal. Hidden Activity pages and app chrome
+     cannot leak into print or occupy blank pages. No global product styles change. */
+  :global(body):has(.printReport:not([style*="display: none"])) > :not(.printReport) { display: none !important; }
+  :global(body):has(.printReport:not([style*="display: none"])) { background: white; color: black; }
+  .printReport { display: block; font: 11pt Arial, sans-serif; }
+  .printReport header { margin-bottom: 8mm; }
+  .printReport header p { margin: 2mm 0; }
+  .printReport h1 { font-size: 18pt; font-weight: 800; margin: 2mm 0; }
+  .printReport h2 { break-after: avoid; font-size: 13pt; color: black; margin-bottom: 2mm; }
+  .printReport .category { margin-bottom: 7mm; }
+  .printReport .table { display: table; width: 100%; }
+  .printReport thead { display: table-header-group; }
+  .printReport tr { break-inside: avoid; }
+  .printReport th, .printReport td { color: black; font-size: 11pt; padding-top: 1.5mm; padding-bottom: 1.5mm; }
+  .printReport footer { border-top: 1px solid #aaa; padding-top: 4mm; font-weight: bold; }
+}

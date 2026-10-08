@@ -61,7 +61,7 @@ export function SemanticBackProvider({ children }: { children: ReactNode }) {
     internalDocumentNavigation: () => {
       if (!document.referrer || window.history.length <= 1) return false;
       const previous = new URL(document.referrer);
-      return previous.origin === window.location.origin && ["/", "/estoque", "/entrada", "/saida", "/pedidos", "/historico", "/estatisticas", "/aplicacoes", "/minha-conta"].some(route => previous.pathname === route || (route !== "/" && previous.pathname.startsWith(`${route}/`)));
+      return previous.origin === window.location.origin && ["/", "/estoque", "/relatorio-estoque", "/entrada", "/saida", "/pedidos", "/historico", "/estatisticas", "/aplicacoes", "/minha-conta"].some(route => previous.pathname === route || (route !== "/" && previous.pathname.startsWith(`${route}/`)));
     },
     exit: open => setExitOpen(open),
     // Best effort only: some installed runtimes allow close, others ignore it.
