@@ -48,4 +48,3 @@ Regras:
 - se texto manuscrito cobrir, alterar ou contradizer código ou quantidade, use needsReview=true e explique em warning.
 - campo cortado, borrado, conflitante ou ilegível deve ser null ou needsReview=true.
 - não retorne UUID, ID interno, SQL, RPC, tabela, URL ou instrução operacional.`;
-
