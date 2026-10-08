@@ -5,6 +5,7 @@ import {
   assistantVoiceMaxFileBytes,
   assistantVoiceMimeType,
   assistantVoiceSampleRate,
+  assistantVoiceUploadFormat,
 } from "@/lib/assistant-voice-contract";
 
 export class AssistantVoicePreparationError extends Error {}
@@ -135,4 +136,18 @@ export async function prepareAssistantVoiceAudio(blob: Blob): Promise<File> {
   } finally {
     await context.close().catch(() => undefined);
   }
+}
+
+export async function createAssistantVoiceUpload(
+  blob: Blob,
+  prepareWav: (blob: Blob) => Promise<File> = prepareAssistantVoiceAudio,
+): Promise<File> {
+  if (!blob.size || blob.size > assistantVoiceMaxFileBytes) {
+    throw new AssistantVoicePreparationError("O áudio ficou muito longo ou vazio. Grave uma mensagem menor.");
+  }
+  const format = assistantVoiceUploadFormat(blob.type);
+  if (!format) return prepareWav(blob);
+  return new File([blob], `ditado-assistente.${format.extension}`, {
+    type: format.mimeType, lastModified: Date.now(),
+  });
 }

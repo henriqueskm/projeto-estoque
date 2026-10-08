@@ -11,19 +11,16 @@ import {
   interpretSupplierOrderPhoto,
 } from "@/lib/assistant-supplier-order-photo";
 import {
-  extractSupplierOrderPhotoWithGemini,
-  resolveSupplierOrderPhotoModel,
-  SupplierOrderPhotoProviderError,
-  type SupplierOrderPhotoProviderTrace,
-  type SupplierOrderPhotoProviderInternalCode,
-} from "@/lib/ai/supplier-order-photo-gemini";
+  extractSupplierOrderPhoto,
+  SupplierOrderPhotoMediaError,
+  type PhotoMediaTrace,
+} from "@/lib/ai/supplier-order-photo-media";
 import { loadSupplierOrderPhotoCatalog, SupplierOrderPhotoCatalogError } from "@/lib/assistant-supplier-order-photo-catalog";
 import { createClient } from "@/lib/supabase/server";
 
 const multipartOverheadAllowance = 64 * 1024;
 
 type SupplierOrderPhotoRouteInternalCode =
-  | SupplierOrderPhotoProviderInternalCode
   | "CATALOG_READ_FAILED"
   | "ORDER_LOOKUP_FAILED"
   | "UNEXPECTED";
@@ -106,14 +103,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    let providerTrace: SupplierOrderPhotoProviderTrace = {
-      providerPath: "interactions",
-      fallbackUsed: false,
-      providerAttempts: [],
-    };
+    let providerTrace: PhotoMediaTrace | undefined;
     const block = await interpretSupplierOrderPhoto({
       extract: async () => {
-        return extractSupplierOrderPhotoWithGemini({
+        return extractSupplierOrderPhoto({
           bytes,
           mimeType: validation.mimeType,
           onProviderTrace: (trace) => { providerTrace = trace; },
@@ -151,34 +144,25 @@ export async function POST(request: Request) {
     });
     console.info("assistant_order_photo", {
       outcome: block.state,
-      providerPath: providerTrace.providerPath,
-      fallbackUsed: providerTrace.fallbackUsed,
-      providerAttempts: providerTrace.providerAttempts,
+      ...providerTrace,
       mimeType: validation.mimeType,
       sizeBytes: file.size,
       durationMs: Date.now() - startedAt,
     });
     return response({ message: "Foto de Pedido analisada", structuredBlock: block }, 200);
   } catch (error) {
-    const providerError = error instanceof SupplierOrderPhotoProviderError ? error : null;
+    const providerError = error instanceof SupplierOrderPhotoMediaError ? error : null;
     const routeError = error instanceof SupplierOrderPhotoRouteError ? error : null;
     console.warn("assistant_order_photo", {
       outcome: "ERROR",
       stage: providerError ? "provider" : routeError?.stage ?? "interpretation",
       internalCode: providerError?.internalCode ?? routeError?.internalCode ?? "UNEXPECTED",
       providerStatus: providerError?.providerStatus ?? null,
-      providerErrorName: providerError?.providerErrorName ?? null,
-      providerErrorCode: providerError?.providerErrorCode ?? null,
-      providerErrorType: providerError?.providerErrorType ?? null,
-      providerMessage: providerError?.providerMessage ?? null,
-      providerPath: providerError?.providerPath ?? "interactions",
-      fallbackUsed: providerError?.fallbackUsed ?? false,
-      providerAttempts: providerError?.providerAttempts ?? [],
-      model: providerError?.model ?? resolveSupplierOrderPhotoModel(),
+      ...providerError?.trace,
       mimeType: validation.mimeType,
       sizeBytes: file.size,
       durationMs: Date.now() - startedAt,
     });
-    return response({ error: "Não foi possível analisar este Pedido agora. Tente novamente." }, 502);
+    return response({ error: "Não foi possível analisar este Pedido agora. Tente novamente em alguns instantes." }, 502);
   }
 }

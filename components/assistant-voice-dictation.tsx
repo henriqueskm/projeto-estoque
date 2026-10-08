@@ -5,9 +5,9 @@ import { MicrophoneIcon } from "@/components/icons";
 import {
   AssistantVoicePreparationError,
   preferredAssistantVoiceRecorderMimeType,
-  prepareAssistantVoiceAudio,
+  createAssistantVoiceUpload,
 } from "@/lib/assistant-voice-audio";
-import { assistantVoiceMaxDurationSeconds } from "@/lib/assistant-voice-contract";
+import { assistantVoiceClientTimeoutMs, assistantVoiceMaxDurationSeconds, assistantVoiceUploadFormat } from "@/lib/assistant-voice-contract";
 import { discardAssistantVoicePermissionResult } from "@/lib/assistant-voice-permission-guard";
 
 type AssistantVoiceDictationState =
@@ -111,10 +111,13 @@ export function AssistantVoiceDictation({
   }, [clearPendingWork, stopTracks, transition]);
 
   const finishTranscription = useCallback(async (blob: Blob, processingId: number) => {
-    transition("preparing_audio");
-    setMessage("Preparando áudio...");
+    const preparationStartedAt = performance.now();
+    const originalFormat = assistantVoiceUploadFormat(blob.type);
+    transition(originalFormat ? "transcribing" : "preparing_audio");
+    setMessage(originalFormat ? "Transcrevendo..." : "Preparando áudio...");
     try {
-      const audio = await prepareAssistantVoiceAudio(blob);
+      const audio = await createAssistantVoiceUpload(blob);
+      const clientPreparationMs = performance.now() - preparationStartedAt;
       if (processingId !== processingIdRef.current) return;
       transition("transcribing");
       setMessage("Transcrevendo...");
@@ -122,17 +125,20 @@ export function AssistantVoiceDictation({
       requestAbortRef.current = abortController;
       const requestTimeout = window.setTimeout(
         () => abortController.abort(),
-        55_000,
+        assistantVoiceClientTimeoutMs,
       );
       const formData = new FormData();
       formData.append("audio", audio);
       let response: Response;
+      let body: unknown;
+      const uploadStartedAt = performance.now();
       try {
         response = await fetch("/api/assistant/transcribe", {
           method: "POST",
           body: formData,
           signal: abortController.signal,
         });
+        body = await response.json().catch(() => null);
       } finally {
         window.clearTimeout(requestTimeout);
         if (requestAbortRef.current === abortController) {
@@ -140,7 +146,11 @@ export function AssistantVoiceDictation({
         }
       }
       if (processingId !== processingIdRef.current) return;
-      const body: unknown = await response.json().catch(() => null);
+      if (process.env.NODE_ENV !== "production") console.info("assistant_voice_client", {
+        preparation: originalFormat ? "original" : "wav_fallback",
+        clientPreparationMs, uploadAndProviderMs: performance.now() - uploadStartedAt,
+        totalMs: performance.now() - preparationStartedAt,
+      });
       const transcript = body && typeof body === "object" && !Array.isArray(body)
         ? (body as { transcript?: unknown }).transcript
         : null;
@@ -151,7 +161,7 @@ export function AssistantVoiceDictation({
         throw new Error(
           typeof safeError === "string" && safeError.trim()
             ? safeError
-            : "Não foi possível transcrever agora. Tente novamente.",
+            : "Não foi possível transcrever agora. Tente novamente em alguns instantes.",
         );
       }
       if (!onTranscript(transcript)) {
@@ -186,8 +196,9 @@ export function AssistantVoiceDictation({
       return;
     }
     if (shouldTranscribe) {
-      transition("preparing_audio");
-      setMessage("Preparando áudio...");
+      const direct = assistantVoiceUploadFormat(recorder.mimeType || "audio/webm");
+      transition(direct ? "transcribing" : "preparing_audio");
+      setMessage(direct ? "Transcrevendo..." : "Preparando áudio...");
     } else {
       stopTracks();
       transition("idle");
@@ -248,8 +259,8 @@ export function AssistantVoiceDictation({
         )
         : null;
       const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64_000 })
+        : new MediaRecorder(stream, { audioBitsPerSecond: 64_000 });
       recorderRef.current = recorder;
       recorder.ondataavailable = (event) => {
         if (event.data.size) chunksRef.current.push(event.data);
@@ -300,7 +311,7 @@ export function AssistantVoiceDictation({
       stopTracks();
       showError(voiceMessage(error));
     }
-  }, [cameraOpen, disabled, finishTranscription, onRequestStart, showError, stopRecording, stopTracks, transition]);
+  }, [cameraOpen, disabled, finishTranscription, onBusyChange, onRequestStart, showError, stopRecording, stopTracks, transition]);
 
   useEffect(() => {
     const isBusy = state !== "idle" && state !== "error";
