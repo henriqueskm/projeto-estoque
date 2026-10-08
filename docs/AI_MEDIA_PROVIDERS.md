@@ -146,7 +146,7 @@ Sem migration, RPC, saldo, writer, Pedido, Safisa, push ou env remota alterados.
 Regressões executadas: mídia/providers/rotas, foto/Pedidos, ditado, câmera,
 conversa contextual, ações de estoque existentes, Pedidos, Attention UI,
 Workspace State, Activity/estado transitório, Semantic Back, Instant Navigation
-e layouts. 477 testes passaram, incluindo 66 novos. TypeScript, ESLint com
+e layouts. 477 testes passaram, incluindo 67 novos. TypeScript, ESLint com
 zero warnings, diff-check, Webpack e build padrão Next passaram.
 
 NOTE preexistente: `tests/assistant-attention.test.mjs:646` espera
@@ -161,3 +161,14 @@ Provider real OpenAI e latência real permanecem pendentes de configuração
 humana e teste sanitizado. Sessão/perfil, CONFIGURATION seguro e respostas de
 erro foram exercitados executando as rotas reais com mocks isolados, sem
 contornar autenticação do app nem usar service_role.
+
+Smoke autenticado read-only no Preview: Assistente/composer, controles de
+foto/voz e abrir/fechar menu de imagem; viewports 320×800, 375×812, 768×1024 e
+1440×900. scrollWidth igual à largura em todos; zero errors/warnings no console
+durante o smoke. Nenhuma gravação privada, upload, envio de mensagem ou
+confirmação operacional. O browser permitido do ambiente usa locators
+Playwright via CUA; o CLI não foi usado em paralelo para controlar a sessão
+humana. Teste de teclado físico/mobile real e latência de provider não são
+inferidos da emulação. A skill mobile-native orientou o caminho direto para
+“Transcrevendo...”; emil-design-eng foi usada somente para feedback/craft,
+sem redesenho.
