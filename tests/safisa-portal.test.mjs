@@ -14,6 +14,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const actions = read("app/safisa/actions.ts");
 const proxy = read("lib/supabase/proxy.ts");
 const portal = read("components/safisa-portal.tsx");
+const dialog = read("components/safisa-portal-dialog.tsx");
 const auth = read("lib/safisa-auth.ts");
 const page = read("app/safisa/page.tsx");
 const markAllReadyMigration = read(
@@ -67,18 +68,20 @@ test("client prevents double submit and exposes accessible states", () => {
   assert.match(portal, /operationLock\.current/);
   assert.match(portal, /disabled=\{isPending\}/);
   assert.match(portal, /aria-live="polite"/);
-  assert.match(portal, /role="dialog"/);
-  assert.match(portal, /aria-modal="true"/);
+  assert.match(dialog, /role="dialog"/);
+  assert.match(dialog, /aria-modal="true"/);
   assert.match(portal, /Informar quantidade/);
   assert.match(portal, /Dar todo o Pedido como pronto/);
   assert.match(portal, /Concluir este item/);
   assert.match(portal, /Corrigir quantidade pronta/);
 });
 
-test("mobile turns a selected order into a focused operational view", () => {
-  assert.match(portal, /selectedOrder && "hidden lg:block"/);
-  assert.match(portal, /← Todos os pedidos/);
-  assert.match(portal, /lg:grid-cols-\[22rem_minmax\(0,1fr\)\]/);
+test("mobile and desktop open the same URL-owned order dialog above a full-width list", () => {
+  assert.match(portal, /<SafisaPortalDialog titleId="safisa-order-title"/);
+  assert.match(portal, /router\.push\(orderHref\(order\.supplierOrderId\), \{ scroll: false \}\)/);
+  assert.match(portal, /router\.replace\("\/safisa", \{ scroll: false \}\)/);
+  assert.match(portal, /w-full table-fixed/);
+  assert.doesNotMatch(portal, /22rem_minmax|<Metric/);
 });
 
 test("order navigation provides immediate feedback and warms the selected detail", () => {
@@ -95,15 +98,13 @@ test("opening a selected order overlaps its detail read with completed-list load
   assert.match(page, /events: \[\]/);
 });
 
-test("mark all ready is a confirmed order-level action above the line controls", () => {
+test("mark all ready is a confirmed order-level action in the bottom dock", () => {
   assert.match(portal, /kind: "MARK_ORDER_REMAINING_READY"/);
   assert.match(portal, /Dar todo o Pedido como pronto/);
   assert.match(portal, /Dar todo o Pedido como pronto\?/);
   assert.match(portal, /pendingLineCount/);
-  assert.ok(
-    portal.indexOf("Dar todo o Pedido como pronto") <
-      portal.indexOf("Concluir este item"),
-  );
+  assert.match(portal, /footer=\{!selectedOrder\.isReadOnly && selectedOrder\.waitingReadyQuantity > 0/);
+  assert.ok(dialog.indexOf("{children}") < dialog.indexOf("{footer ?"));
   assert.match(portal, /pendingQuantity: selectedOrder\.waitingReadyQuantity/);
   assert.match(actions, /markSafisaOrderRemainingReady/);
   assert.match(actions, /mark_safisa_order_remaining_ready/);
