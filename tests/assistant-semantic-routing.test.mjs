@@ -37,17 +37,16 @@ const emptyContext = {
   statisticsCode: null,
 };
 
-function fakeClientFor(routes, requests = []) {
-  return {
-    interactions: {
-      async create(request, options) {
-        requests.push({ request, options });
-        const prompt = JSON.parse(request.input[0].content[0].text);
-        const output = routes.get(prompt.currentMessage);
-        if (output instanceof Error) throw output;
-        return { output_text: typeof output === "string" ? output : JSON.stringify(output) };
-      },
-    },
+function fakeFetcherFor(routes, requests = []) {
+  return async (url, options) => {
+    assert.equal(url, "https://api.openai.com/v1/responses");
+    const request = JSON.parse(options.body);
+    requests.push({ request, options });
+    const prompt = JSON.parse(request.input[0].content[0].text);
+    const output = routes.get(prompt.currentMessage);
+    if (output instanceof Error) throw output;
+    return new Response(JSON.stringify({ status: "completed", output: [{ type: "message", role: "assistant",
+      content: [{ type: "output_text", text: typeof output === "string" ? output : JSON.stringify({ result: output }) }] }] }));
   };
 }
 
@@ -59,7 +58,7 @@ async function classifyWithFake(message, output, options = {}) {
       recentConversation: options.recentConversation ?? [],
       conversationContext: options.conversationContext ?? emptyContext,
     },
-    { client: fakeClientFor(new Map([[message, output]]), requests), timeoutMs: options.timeoutMs },
+    { apiKey: "mock-only", fetcher: fakeFetcherFor(new Map([[message, output]]), requests), timeoutMs: options.timeoutMs },
   );
   return { outcome, requests };
 }
@@ -726,19 +725,22 @@ test("provider usa structured output, store false, nenhuma ferramenta e zero ret
       conversationContext: { ...emptyContext, supplierOrderId: "11111111-1111-4111-8111-111111111111" },
     },
     {
-      client: fakeClientFor(new Map([[message, { intent: "HELP", capabilityIds: ["MANUAL_STOCK_OUTPUT"] }]]), requests),
+      apiKey: "mock-only", fetcher: fakeFetcherFor(new Map([[message, { intent: "HELP", capabilityIds: ["MANUAL_STOCK_OUTPUT"] }]]), requests),
     },
   );
   assert.equal(outcome.status, "ROUTED");
   assert.equal(requests.length, 1);
   const [{ request, options }] = requests;
   assert.equal(request.store, false);
-  assert.equal(request.generation_config.tool_choice, "none");
+  assert.deepEqual(request.reasoning, { effort: "none" });
   assert.equal("tools" in request, false);
-  assert.equal(request.response_format.mime_type, "application/json");
-  assert.ok(request.response_format.schema.oneOf.length > 5);
-  assert.equal(options.maxRetries, 0);
-  assert.equal(options.timeout, assistantSemanticRouterTimeoutMs);
+  assert.equal(request.text.format.type, "json_schema");
+  assert.equal(request.text.format.strict, true);
+  assert.equal(request.text.format.schema.type, "object");
+  assert.ok(request.text.format.schema.properties.result.anyOf.length > 5);
+  assert.equal(options.cache, "no-store");
+  assert.ok(options.signal instanceof AbortSignal);
+  assert.equal(assistantSemanticRouterTimeoutMs, 12_000);
   const serialized = JSON.stringify(request);
   assert.doesNotMatch(serialized, /11111111-1111-4111-8111-111111111111/);
   assert.doesNotMatch(serialized, /eyJabcdefghijklmnopqrstuvwxyz123456/);
@@ -751,7 +753,7 @@ test("timeout, JSON inválido e schema inválido fazem fallback determinístico 
   try {
     const timeout = await routeAssistantMessageSemantically(
       { message: "teste timeout", recentConversation: [], conversationContext: emptyContext },
-      { client: { interactions: { create: () => new Promise(() => {}) } }, timeoutMs: 5 },
+      { apiKey: "mock-only", fetcher: () => new Promise(() => {}), timeoutMs: 5 },
     );
     assert.deepEqual(timeout.status, "FALLBACK");
     assert.equal(timeout.reason, "TIMEOUT");
@@ -769,21 +771,21 @@ test("timeout, JSON inválido e schema inválido fazem fallback determinístico 
 });
 
 test("modelo possui fallback de variável e default sem tornar variável nova obrigatória", () => {
-  const previousRouter = process.env.GEMINI_ASSISTANT_ROUTER_MODEL;
-  const previousAssistant = process.env.GEMINI_ASSISTANT_MODEL;
+  const previousRouter = process.env.OPENAI_ASSISTANT_ROUTER_MODEL;
+  const previousAssistant = process.env.OPENAI_ASSISTANT_MODEL;
   try {
-    process.env.GEMINI_ASSISTANT_ROUTER_MODEL = "router-test";
-    process.env.GEMINI_ASSISTANT_MODEL = "assistant-test";
+    process.env.OPENAI_ASSISTANT_ROUTER_MODEL = "router-test";
+    process.env.OPENAI_ASSISTANT_MODEL = "assistant-test";
     assert.equal(resolveAssistantSemanticRouterModel(), "router-test");
-    delete process.env.GEMINI_ASSISTANT_ROUTER_MODEL;
+    delete process.env.OPENAI_ASSISTANT_ROUTER_MODEL;
     assert.equal(resolveAssistantSemanticRouterModel(), "assistant-test");
-    delete process.env.GEMINI_ASSISTANT_MODEL;
-    assert.equal(resolveAssistantSemanticRouterModel(), "gemini-3.7-flash");
+    delete process.env.OPENAI_ASSISTANT_MODEL;
+    assert.equal(resolveAssistantSemanticRouterModel(), "gpt-6-luna");
   } finally {
-    if (previousRouter === undefined) delete process.env.GEMINI_ASSISTANT_ROUTER_MODEL;
-    else process.env.GEMINI_ASSISTANT_ROUTER_MODEL = previousRouter;
-    if (previousAssistant === undefined) delete process.env.GEMINI_ASSISTANT_MODEL;
-    else process.env.GEMINI_ASSISTANT_MODEL = previousAssistant;
+    if (previousRouter === undefined) delete process.env.OPENAI_ASSISTANT_ROUTER_MODEL;
+    else process.env.OPENAI_ASSISTANT_ROUTER_MODEL = previousRouter;
+    if (previousAssistant === undefined) delete process.env.OPENAI_ASSISTANT_MODEL;
+    else process.env.OPENAI_ASSISTANT_MODEL = previousAssistant;
   }
 });
 

@@ -1,83 +1,178 @@
-# Assistente NK — providers de mídia (PR #88)
+# Assistente NK — providers OpenAI (NK-AI-OPENAI-001)
 
-Somente interpretação/transcrição. Nenhum writer, Pedido, estoque, catálogo,
-push ou contrato de operação foi alterado. Nenhuma dependência adicionada.
+Base: main `6379bcafb937653fdfc4cd8c5151367786a957a2`, após merge #88.
+Somente troca dos providers. Catálogo, matching, propostas, confirmações, writers,
+Supabase, Safisa e push não mudam. Nenhuma alteração remota de ambiente.
 
 ## Configuração server-side
 
-| Variável | Default de código | Uso |
+| Variável | Default | Uso |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | nenhum | Foto principal |
-| `GEMINI_PHOTO_MODEL` | `gemini-3.7-flash` | Override da foto principal |
-| `OPENAI_API_KEY` | nenhum | Foto fallback e voz |
-| `OPENAI_TRANSCRIPTION_MODEL` | `gpt-transcribe` | Voz exclusiva OpenAI |
-| `OPENAI_PHOTO_FALLBACK_MODEL` | `gpt-6-luna` | Responses vision fallback |
+| `OPENAI_API_KEY` | nenhum | texto, router, foto e voz |
+| `OPENAI_ASSISTANT_MODEL` | `gpt-6-luna` | conversa textual |
+| `OPENAI_ASSISTANT_ROUTER_MODEL` | modelo textual, depois `gpt-6-luna` | classificação semântica |
+| `OPENAI_PHOTO_MODEL` | override legado abaixo, depois `gpt-6-luna` | foto principal |
+| `OPENAI_PHOTO_FALLBACK_MODEL` | `gpt-6-luna` | compatibilidade com configuração já existente; não é outro provider |
+| `OPENAI_TRANSCRIPTION_MODEL` | `gpt-transcribe` | transcrição, sem mudança nesta tarefa |
 
-Todas as chaves são privadas; nunca usar `NEXT_PUBLIC_`. Não registrar valores
-de secrets nem enviar ao browser. Sem chave OpenAI, build permanece válido e a
-foto Gemini continua normal. Voz retorna 503 com classificação interna
-`CONFIGURATION` e mensagem amigável, sem nome do provider na resposta.
+Precedência foto: `OPENAI_PHOTO_MODEL` → `OPENAI_PHOTO_FALLBACK_MODEL` → default.
+Os nomes novos são opcionais. Sem chave, o build funciona; a resposta de runtime
+é segura e não inclui nomes de provider/model, chave ou corpo bruto upstream.
+Não usar secrets `NEXT_PUBLIC_`. Não registrar prompt, texto do usuário,
+resposta bruta, IDs privados, imagem/base64, áudio, Authorization ou valores de env.
 
-### Modelo efetivo observado em produção
+`GEMINI_*` não é mais consumido por runtime/evals. Não removemos essas variáveis
+remotas. O diagnóstico histórico da #88 observou `gemini-3.6-flash` e HTTP 429
+por override de ambiente; não era falha da câmera/microfone. A limpeza remota
+fica para autorização separada depois de merge e validação de produção.
 
-O diagnóstico de produção fornecido para esta PR registrou foto e voz com
-`gemini-3.6-flash`, HTTP 429, em aproximadamente 733/796 ms respectivamente.
-Isso não indica defeito de câmera/microfone. O resolver antigo prioriza
-`GEMINI_PHOTO_MODEL` / `GEMINI_TRANSCRIPTION_MODEL` sobre os defaults.
+## Texto e router
 
-Inspeção read-only da Management API Vercel em 08/10/2026 confirmou ambas as
-variáveis específicas em Production e Preview, além de overrides de uma branch
-antiga. Elas estão classificadas como sensitive; seus valores não foram
-disponibilizados pela leitura. Logo, a precedência + os logs explicam o modelo
-efetivo; não afirmamos ter lido/decriptado o valor remoto. Esta PR não altera
-variáveis remotas. `GEMINI_TRANSCRIPTION_MODEL` deixa de ser consumida pela voz.
+Responses API server-only, `store:false`, `reasoning.effort:none`, sem tools.
+Texto preserva instruções, firstName confirmado, janela recente curta, contextos
+canônicos e limite 300/700 tokens. Router: 1.200 tokens, deadline de 12 s, uma
+chamada; resposta é envelope estrito `{ result: ... }` com raiz object e anyOf
+somente dentro de result. Todos os objetos exigem required e
+additionalProperties:false. Keywords de comprimento/uniqueItems são omitidas
+no schema de transporte; o parser canônico continua exigindo limites,
+unicidade, tipos/quantidades e até 12 linhas. Isso não relaxa as validações.
+HELP/QUERY/ACTION/CHAT/CLARIFY preservados; negação, passado, hipótese e referência
+insegura não autorizam operação. Falha do router volta ao caminho determinístico.
+Consultas determinísticas continuam sem chamada ao provider quando resolvidas.
+IA prepara proposta; nunca executa writer, SQL/RPC ou confirmação.
 
-Na primeira validação (08/10/2026), a listagem não continha a chave OpenAI
-para Preview e o provider real não foi testado naquele momento. Isso é
-histórico, não o estado atual: o comentário do Lead de 09/10/2026 registra
-testes reais bem-sucedidos de foto `gpt-6-luna` e voz `gpt-transcribe`.
-Não lemos nem configuramos chaves nesta continuação. Os testes automatizados
-continuam isolados, incluindo ausência de chave, HTTP 429/5xx e deadlines.
+Parser REST lê status e output[].content[].output_text, não a conveniência
+output_text de SDK. Refusal, incomplete, vazio, JSON/schema inválidos e HTTP
+400/401/403/404/429/5xx têm classificação segura. Deadline cobre fetch e body,
+mesmo transporte que ignore AbortSignal. Não há retry automático no runtime.
+Telemetry: provider/model/tipo/duração/outcome e contadores de tokens numéricos.
 
-## Foto: um contrato, dois providers
+## Foto: OpenAI primário, contrato único
 
-Imagem validada + sessão/perfil ativo → Gemini Interactions → generateContent
-somente nos casos já admitidos → OpenAI se o fluxo Gemini terminar em falha
-operacional elegível. O sucesso de qualquer provider passa pelo mesmo
-`parseSupplierOrderPhotoExtraction()` e `interpretSupplierOrderPhoto()`.
-Matching, detecção de Pedido duplicado e structured block permanecem iguais.
+JPEG/PNG/WebP validados → Responses OpenAI diretamente →
+`parseSupplierOrderPhotoExtraction()` → `interpretSupplierOrderPhoto()` existente.
+Uma tentativa, 12 s de provider (20 s globais incluindo conversão); não existe tentativa Gemini silenciosa ou loop entre
+providers. Logs: primaryProvider/finalProvider=openai, fallbackUsed=false,
+fallbackReason=null e providerAttempts reais. Schema/prompt compartilhados,
+frete fora de lines, zeros preservados, códigos exatos, revisão de manuscrito,
+duplicate negotiation e conflito de descrição permanecem canônicos.
+Foto só cria preview estruturado. Nenhum Pedido/estoque é criado pela rota.
 
-| Resultado final Gemini | Fallback externo OpenAI |
-| --- | --- |
-| Sucesso | Nunca |
-| Rate limit, server, timeout, model, auth/configuration | Uma vez, se chave e formato suportados |
-| HTTP 400 genérico, schema/JSON inválido final, saída vazia | Não |
-| Origem/sessão/perfil/arquivo inválido, catálogo ou lookup falhou | Não |
+### HEIC/HEIF — conversão server-only autorizada
 
-O fallback interno Interactions → generateContent continua preservado,
-inclusive para JSON inválido no primeiro caminho. Não há loop entre providers.
-429 encerra imediatamente, sem retry nem espera pelo budget. Budget Gemini
-12 s (Interactions até 7 s); OpenAI até 12 s, limitado pelo tempo restante;
-deadline global dos providers 24 s. O deadline cobre resposta/body e transportes
-que ignoram AbortSignal. Upload, autenticação e leituras posteriores não estão
-incluídos nesse budget de extração.
+OpenAI não recebe HEIC com MIME falsificado: o servidor decodifica HEVC em worker
+Node terminável e produz JPEG real. JPEG/PNG/WebP válidos passam intactos.
+O usuário autorizou expressamente a dependência server-only, os avisos de licença
+e os testes reais. Sharp já disponível só comprovava AVIF; não foi usado como
+decoder HEVC. Versões exatas: heic-decode 2.1.0 (ISC), libheif-js 1.19.8
+(LGPL-3.0, ~6,4 MB) e sharp 0.35.5 (Apache-2.0, já instalado via Next).
+Instalação com --ignore-scripts; decoder/libheif não têm lifecycle de instalação.
+Licenças e fontes upstream permanecem nos pacotes distribuídos, sem modificar o
+decoder. Atualizações requerem PR revisável; não há updater automático.
 
-Responses API: `store: false`, reasoning `none`, schema estrito compartilhado,
-sem tools/web/file search/code interpreter. A imagem é dado não confiável,
-nunca instrução executável. Parser rejeita campos extras, quantidades inválidas,
-resposta vazia, refusal e resposta incompleta. Não devolve IDs/SQL/RPC/URLs
-escolhidos pelo modelo. Regras de frete, zeros à esquerda, manuscrito e revisão
-continuam na fonte compartilhada de instruções.
+O código fixo do worker nunca executa instruções da mídia. Caps exclusivos de
+HEIC/HEIF: arquivo 3.900.000 bytes, 6.000 px por lado, **16 MP**, **8 s** para
+conversão; worker encerrado também em falha. JPEG/PNG/WebP permanecem intactos,
+com seus limites anteriores. Uma foto usual 4032×3024 cabe no limite de admissão;
+isso não comprova decode de toda foto desse tamanho ou de todo encoder.
+Validação de assinatura e dimensões antes/depois, recursos do decoder liberados,
+JPEG com teto 3,5 MB e qualidade 95/92/86 antes de reduzir dimensões. Metadados
+EXIF/XMP são removidos do JPEG. libheif aplica irot/imir do container; rotação de
+90° comprovada por comparação de pixels, sem aplicar EXIF novamente e duplicar
+a transformação HEIF. Arquivos multi-imagem/sequências são rejeitados por
+ambiguidade; orientação não padrão EXIF-only em HEIF requer amostra sanitizada
+para comprovação específica. Não alegamos compatibilidade com todo encoder.
+Falha/ambiguidade/timeout retorna 415 amigável pedindo JPEG/PNG/WebP; não envia
+imagem parcialmente convertida ao provider. Nada é persistido.
 
-JPEG/PNG/WEBP têm fallback. HEIC/HEIF permanecem aceitos e processados no Gemini;
-não há conversor novo. Se Gemini falhar nesses formatos, solicitar nova
-tentativa ou JPEG/PNG/WEBP; não remover suporte existente.
+**Concorrência e memória:** uma conversão HEIC ativa por instância/módulo, sem
+fila; outra tentativa falha imediatamente com 503 amigável. O slot só libera
+depois de `worker.terminate()` concluído (inclusive timeout/erro). Falha em
+confirmar término mantém a instância fechada para novos decodes. Spawn failure
+libera o slot. JPEG/PNG/WebP não usam esse gate.
 
-Logs `assistant_order_photo`: primaryProvider, finalProvider, fallbackUsed
-(externo), fallbackReason, model, providerPath, providerAttempts,
-providerDurationMs e durationMs. Tentativas registram somente provider/path,
-classificação e status. Nenhuma resposta bruta, prompt, imagem/base64, header,
-secret ou descrição do Pedido é registrada.
+60 MP demandariam ~240 MB só para um RGBA; 16 MP demandam até 64 MB (~61 MiB)
+por RGBA. Isso ainda NÃO é teto de RSS: decoder, cópias, Sharp e WASM também
+consomem memória. `maxOldGenerationSizeMb:128` limita somente heap V8, não
+memória native/external/WASM. O gate não é distribuído entre instâncias; não
+alegamos garantia global de memória/disponibilidade. Caps antes da decodificação
+dos pixels usam tanto o header quanto os metadados do decoder; saída JPEG passa
+pelos mesmos caps HEIC e teto 3.500.000 bytes. Limite de arquivo e deadline são
+defesas adicionais, não substitutos de um sandbox de memória nativa.
+
+Next externaliza decoder/libheif e inclui decoder/WASM/sharp/@img no trace da
+rota de foto. Cache Components/Partial Prefetching continuam ativos.
+Fixture pública, não comercial: [rainbow-451x461.heic](https://github.com/strukturag/libheif/blob/master/tests/data/rainbow-451x461.heic),
+LGPL-3.0, SHA-256 `4b2ce727f093944975f143ba2b39c4c64511b766d94552f8d51a755916e7f983`.
+Testes locais usam HEVC real em HEIC/HEIF, rotação, ausência de metadata, deadline
+e rota autenticada simulada → REST JPEG → parser canônico. Também comprovam
+três conversões reais simultâneas → um worker/duas rejeições BUSY, reutilização
+após término, worker real travado encerrado em 8 s e rejeição de duas imagens
+reais derivadas da mesma fixture pública. Nenhuma foto privada é necessária.
+Runtime autenticado do Preview no HEAD exato é um gate separado: consultar a
+evidência atual na PR #90; READY/trace/teste local não o substituem. Sem acesso
+autorizado, registrar `HEIC_RUNTIME_VERCEL_NOT_VERIFIED`, sem endpoint público,
+bypass de auth, cópia de cookies ou leitura de secrets.
+
+### Complemento HEIC do Lead — evidência local em 09/10/2026
+
+- Node **v24.15.0 / Windows**, não Linux/Vercel. Fixture 7.080 bytes → JPEG
+  19.149 bytes, 451×461; rotação 90° → 461×451 com comparação de pixels.
+- Medição isolada pequena: **431 ms**, RSS inicial 78.598.144 bytes, final
+  107.257.856 bytes, pico do processo **124.923.904 bytes** (~119 MiB).
+  Não é benchmark de 16 MP, produção ou limite máximo de RSS.
+- Reproduzir sem rede/segredos/mídia privada:
+  `node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs scripts/measure-heic-conversion.mjs`.
+- 13 testes HEIC (sete novos) + 11 rota de foto (três novos): bytes reais,
+  orientação, oversized/header enganoso, HEVC corrompido, multi-image, erro/exit,
+  timeout real de 8 s, cleanup/fail-closed e três uploads simultâneos → um REST.
+- Providers/foto/voz e demais regressões reexecutadas no complemento: **356
+  passed**, **1 falha preexistente Attention**, sem skips. A execução inicial de
+  Workspace sem loader TSX correto foi substituída pela execução válida com
+  `tests/bulk-safisa-pickup-loader.mjs` (59/59); não é regressão do produto.
+- Lead já comprovou no Preview chamadas reais SUCCESS de texto/router/JPEG
+  `gpt-6-luna` e JPEG 2,79 MB ~3,9 s. São evidências do Lead no comentário
+  6084440040, não métricas novas produzidas pelo Builder neste complemento.
+
+Fontes oficiais consultadas em 09/10/2026:
+
+- [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)
+- [Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create)
+- [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+- [Images/vision e formatos](https://developers.openai.com/api/docs/guides/images-vision)
+- [heic-decode](https://github.com/catdad-experiments/heic-decode)
+- [libheif-js, licença e fonte WASM](https://github.com/catdad-experiments/libheif-js)
+- [sharp](https://github.com/lovell/sharp)
+
+## Validação original — Issue #89 (antes do complemento HEIC)
+
+- 351 testes focados de providers/HEIC/router/foto/voz/contratos/contextos/Pedidos;
+  159 Workspace State/Activity/Semantic Back/Instant Navigation/UI; 23 rotas.
+- Attention: 23 passam, 1 falha preexistente em `assistant-attention.test.mjs:646`
+  (contrato antigo da Home versus `loadAttentionOnNavigation()`/connection()).
+  Home e teste idênticos à main; não corrigido fora do escopo. Total: 556 passam,
+  1 falha preexistente, sem skips. Reexecuções focadas não somadas duas vezes.
+- Evals determinísticos: 157/157 + held-out 40/40, sem chamadas reais; não são
+  prova de qualidade semântica de provider. Negação/passado/hipótese preservados.
+- TypeScript, ESLint dos arquivos alterados (zero warnings), diff-check,
+  Webpack e build padrão Next passam. Trace Webpack: 7 arquivos heic-decode,
+  18 libheif-js e WASM; Turbopack: 8/18 e WASM. Sem warnings de build.
+- Conversão sintética local (fixture pública pequena): cerca de 262 ms numa
+  execução; não representa latência de foto de câmera nem de produção.
+- npm registra 23 vulnerabilidades na árvore (8 moderadas/15 altas); não foi
+  executado audit fix nem atualização ampla fora do escopo.
+- PR Draft #90 publicada. Deployment do commit de implementação
+  `ad2d0d318c1da78e93fbdf0c1a65e62d838fa163` READY:
+  [Preview](https://projeto-estoque-sp4o-d48rdhxhg-henrqueskms-projects.vercel.app/).
+  Essa era a pendência na entrega original; texto/router/JPEG foram depois
+  validados pelo Lead conforme seção do complemento acima. Para o gate HEIC e
+  smoke do novo HEAD, usar o relatório atualizado da mesma PR, nunca deduzir
+  sucesso de runtime somente por READY. Sem exportar sessão/chaves ou alterar
+  env para o teste.
+
+Preço oficial consultado para estimativa (não fatura): gpt-6-luna US$ 0,10/M
+tokens de entrada e US$ 0,50/M de saída; usar contadores reais de usage. Não
+atribuir custo/latência de produção a mocks ou evals locais.
 
 ## Voz: caminho curto
 
@@ -143,7 +238,7 @@ frágil. Não foram usadas gravações privadas nem Pedidos reais.
 
 Sem migration, RPC, saldo, writer, Pedido, Safisa, push ou env remota alterados.
 
-## Gate local / pendências
+## Histórico #88 — gate local / pendências naquela entrega
 
 Regressões executadas: mídia/providers/rotas, foto/Pedidos, ditado, câmera,
 conversa contextual, ações de estoque existentes, Pedidos, Attention UI,
@@ -175,7 +270,7 @@ inferidos da emulação. A skill mobile-native orientou o caminho direto para
 “Transcrevendo...”; emil-design-eng foi usada somente para feedback/craft,
 sem redesenho.
 
-## Continuação — qualidade da câmera integrada (comentário do Lead)
+## Histórico #88 — qualidade da câmera integrada (comentário do Lead)
 
 Base revisada: `d84b0d68356263a28cc75f301284c39424bd24df`.
 Nenhum modelo, resolver de environment ou fallback de providers mudou.

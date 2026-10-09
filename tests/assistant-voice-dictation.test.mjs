@@ -16,10 +16,7 @@ import {
   takeAssistantVoiceTranscriptionSlot,
 } from "../lib/assistant-voice-rate-limit.ts";
 import { discardAssistantVoicePermissionResult } from "../lib/assistant-voice-permission-guard.ts";
-import {
-  diagnoseGeminiProviderError,
-  sanitizeGeminiProviderMessage,
-} from "../lib/ai/gemini-provider-diagnostics.ts";
+import { requestOpenAIMedia } from "../lib/ai/openai-media-provider.ts";
 
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -232,48 +229,11 @@ test("o provider é OpenAI server-side sem Gemini, ferramentas ou retry", () => 
   assert.doesNotMatch(provider, /Gemini|GEMINI_|GoogleGenAI|Interactions|base64|tools|NEXT_PUBLIC_/);
 });
 
-test("classifica erros Gemini 400, 429 e 500 sem depender do texto bruto", () => {
-  const badRequest = diagnoseGeminiProviderError({
-    status: 400,
-    name: "BadRequestError",
-    code: "INVALID_ARGUMENT",
-    message: "Invalid response_format schema at transcript.maxLength",
-  });
-  assert.equal(badRequest.internalCode, "PROVIDER_HTTP_400");
-  assert.deepEqual(badRequest.diagnostics, {
-    providerStatus: 400,
-    providerErrorName: "BadRequestError",
-    providerErrorCode: "INVALID_ARGUMENT",
-    providerErrorType: "Object",
-    providerMessage: "Provider rejected the request as invalid. Fields: response_format.",
-  });
-
-  assert.equal(diagnoseGeminiProviderError({ status: 429 }).internalCode, "PROVIDER_RATE_LIMIT");
-  assert.equal(diagnoseGeminiProviderError({ status: 500 }).internalCode, "PROVIDER_SERVER");
-  assert.equal(
-    diagnoseGeminiProviderError(Object.assign(new Error("request timed out"), { status: 500 })).internalCode,
-    "PROVIDER_TIMEOUT",
-  );
-});
-
-test("diagnóstico Gemini não registra segredos, mídia ou conteúdo arbitrário", () => {
-  const secretApiKey = "AIzaSySecretKeyThatMustNeverAppear";
-  const secretBearer = "Bearer super-secret-token";
-  const secretBase64 = "cGVkaWRvIHNlY3JldG8gZG8gY2xpZW50ZQ==";
-  const secretUserText = "Pedido secreto do cliente ACME";
-  const diagnosed = diagnoseGeminiProviderError({
-    status: 400,
-    name: "BadRequestError",
-    code: "INVALID_ARGUMENT",
-    message: `Invalid schema. ${secretApiKey} ${secretBearer} ${secretBase64} ${secretUserText}`,
-    body: { image: secretBase64 },
-    details: { authorization: secretBearer },
-    cause: { message: secretUserText },
-  });
-  const serialized = JSON.stringify(diagnosed.diagnostics);
-
-  assert.equal(sanitizeGeminiProviderMessage(secretUserText), "Provider returned an unclassified error.");
-  for (const secret of [secretApiKey, secretBearer, secretBase64, secretUserText, "authorization"]) {
-    assert.doesNotMatch(serialized, new RegExp(secret, "i"));
+test("OpenAI HTTP 400/429/500 classificados sem inspecionar conteúdo bruto", async () => {
+  for (const [status, code] of [[400, "PROVIDER_HTTP_400"], [429, "PROVIDER_RATE_LIMIT"], [500, "PROVIDER_SERVER"]]) {
+    await assert.rejects(requestOpenAIMedia({ endpoint: "audio/transcriptions", model: "gpt-transcribe", body: new FormData(), budgetMs: 50, apiKey: "mock-only", fetcher: async () => new Response("PRIVATE_SENTINEL", { status }) }), error => error.internalCode === code && !JSON.stringify(error).includes("PRIVATE_SENTINEL"));
   }
+});
+test("diagnóstico de transporte OpenAI nunca incorpora segredo/mídia/mensagem arbitrária", async () => {
+  await assert.rejects(requestOpenAIMedia({ endpoint: "audio/transcriptions", model: "gpt-transcribe", body: new FormData(), budgetMs: 50, apiKey: "mock-only", fetcher: async () => { throw Error("PRIVATE_SENTINEL Bearer forbidden"); } }), error => !JSON.stringify(error).includes("PRIVATE_SENTINEL") && !error.message.includes("Bearer"));
 });

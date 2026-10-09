@@ -149,8 +149,8 @@ test("oversized JPEG compresses only when necessary with EXIF orientation, full 
 });
 
 const codes = ["1", "1H", "2", "9", "10RB", "10", "6"];
-const descriptions = ["SERVO MBF-015 SEM KIT", "SERVO MBF-015 + KT-18", "SERVO MBF-025 SEM KIT",
-  "SERVO MBF-100 SEM KIT", "SERVO MC-040 REBAIXADO", "SERVO MC-040 SEM KIT", "SERVO VF-040 SEM KIT"];
+const descriptions = ["SERVO MBF-015 SEM KIT", "SERVO MBF-015 DESLOCADO + KT-29", "SERVO MBF-025 SEM KIT",
+  "SERVO MBF-032 SEM KIT", "SERVO MC-040 REBAIXADO", "SERVO MC-040 SEM KIT", "SERVO VF-040 SEM KIT"];
 const catalog = codes.map((code, i) => ({ code, description: descriptions[i], identity: `ITEM:${code}`, codeIdentity: code }));
 const extraction = { documentType: "supplier_order", negotiationNumber: "000123", orderDate: "2026-10-09",
   lines: codes.map((rawCode, i) => ({ rawCode, rawDescription: descriptions[i].replace("SEM KIT", "S/KIT").replace("REBAIXADO", "REBAIX"),

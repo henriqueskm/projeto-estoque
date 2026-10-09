@@ -1,4 +1,4 @@
-import { GoogleGenAI, type Interactions } from "@google/genai";
+import { requestAssistantResponse } from "../../lib/ai/openai-responses";
 
 import { assistantLiveEvalCases } from "./live-cases";
 import type {
@@ -9,7 +9,7 @@ import type {
   AssistantProviderSemanticScore,
 } from "./contracts";
 
-const liveModel = "gemini-3.7-flash";
+const liveModel = "gpt-6-luna";
 const defaultLiveTimeoutMs = 45_000;
 const defaultMinimumIntervalMs = 5_000;
 const maxRetries = 2;
@@ -155,9 +155,9 @@ function parseTiming(
 }
 
 export function resolveAssistantLiveEvalConfig(input: LiveEvalConfigInput = {}): AssistantLiveEvalConfig {
-  const apiKey = trimOrNull(input.apiKey ?? process.env.GEMINI_API_KEY);
+  const apiKey = trimOrNull(input.apiKey ?? process.env.OPENAI_API_KEY);
   const enabled = input.enabled ?? process.env.NK_ASSISTANT_EVAL_LIVE === "1";
-  const model = trimOrNull(input.model ?? process.env.GEMINI_ASSISTANT_MODEL) ?? liveModel;
+  const model = trimOrNull(input.model ?? process.env.OPENAI_ASSISTANT_MODEL) ?? liveModel;
   const limit = parseOptionalLimit(input.limit ?? process.env.NK_ASSISTANT_EVAL_LIMIT);
   const minimumIntervalMs = parseTiming(
     input.minimumIntervalMs ?? process.env.NK_ASSISTANT_EVAL_MIN_INTERVAL_MS,
@@ -317,7 +317,7 @@ function asRecord(value: unknown) {
 }
 
 function extractStatus(error: unknown) {
-  const status = asRecord(error)?.status;
+  const status = asRecord(error)?.providerStatus ?? asRecord(error)?.status;
   return typeof status === "number" && Number.isInteger(status) ? status : null;
 }
 
@@ -356,7 +356,7 @@ function classifyProviderError(error: unknown): ClassifiedProviderError {
   const status = extractStatus(error);
   const errorText = `${extractStructuredErrorCode(error)} ${extractErrorText(error).toLowerCase()}`;
   const retryAfterSeconds = extractRetryAfterSeconds(error);
-  const hasTimeoutSignal = asRecord(error)?.name === "AbortError" || /\b(?:timeout|timed out|abort(?:ed)?)\b/.test(errorText);
+  const hasTimeoutSignal = asRecord(error)?.internalCode === "PROVIDER_TIMEOUT" || asRecord(error)?.name === "AbortError" || /\b(?:timeout|timed out|abort(?:ed)?)\b/.test(errorText);
   const hasQuotaSignal = /\b(?:quota|resource[_ -]?exhausted)\b/.test(errorText);
   const providerError = (code: string): SanitizedProviderError => ({
     ...(status !== null ? { httpStatus: status } : {}),
@@ -451,30 +451,16 @@ async function callProviderWithResilience<T>(
   }
 }
 
-function createGeminiAssistantLiveProvider(config: AssistantLiveEvalConfig): AssistantLiveProvider {
+function createOpenAIAssistantLiveProvider(config: AssistantLiveEvalConfig): AssistantLiveProvider {
   if (!config.apiKey || config.reason !== "ready") throw new Error("Live provider is not configured.");
-  const client = new GoogleGenAI({ apiKey: config.apiKey });
+
 
   async function runInteraction(instruction: string, prompt: string, schema: object) {
-    const abortController = new AbortController();
-    const timeout = setTimeout(() => abortController.abort(), config.timeoutMs);
-    const input: Interactions.Step[] = [{ type: "user_input", content: [{ type: "text", text: prompt }] }];
-    try {
-      const response = await client.interactions.create(
-        {
-          model: config.model,
-          store: false,
-          system_instruction: instruction,
-          input,
-          response_format: { type: "text", mime_type: "application/json", schema },
-          generation_config: { max_output_tokens: 650, tool_choice: "none" },
-        },
-        { timeout: config.timeoutMs, maxRetries: 0, fetchOptions: { signal: abortController.signal } },
-      );
-      return response.output_text?.trim() ?? "";
-    } finally {
-      clearTimeout(timeout);
-    }
+    return requestAssistantResponse({
+      model: config.model, apiKey: config.apiKey!, budgetMs: config.timeoutMs,
+      instructions: instruction, input: prompt, maxOutputTokens: 650,
+      format: { type: "json_schema", name: "assistant_eval", strict: true, schema },
+    });
   }
 
   return {
@@ -535,7 +521,7 @@ export async function runAssistantLiveEvaluation(input: {
 } = {}): Promise<AssistantProviderLiveReport> {
   const config = input.config ?? resolveAssistantLiveEvalConfig();
   if (config.reason !== "ready") return createNotConfiguredReport();
-  const provider = input.provider ?? createGeminiAssistantLiveProvider(config);
+  const provider = input.provider ?? createOpenAIAssistantLiveProvider(config);
   const runtime: Required<LiveEvalRuntime> = {
     now: input.runtime?.now ?? Date.now,
     random: input.runtime?.random ?? Math.random,

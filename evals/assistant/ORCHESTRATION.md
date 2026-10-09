@@ -23,7 +23,7 @@ O laboratório combina duas camadas diferentes. O **harness** é código local e
 
 O comando só pode alcançar o provider quando **ambos** estiverem presentes:
 
-- `GEMINI_API_KEY`;
+- `OPENAI_API_KEY`;
 - `NK_ASSISTANT_EVAL_LIVE=1`.
 
 Sem isso, retorna `not_configured` sem erro e sem chamada externa. A execução humana começa com `npm run eval:assistant:live -- --limit=3`, segue para dez casos somente se todos completarem e só então roda os 37. O runner usa intervalo mínimo configurável de 5 segundos por interação, timeout de 45 segundos e no máximo dois retries para 429, timeout/rede e 5xx; 400, 401, 403 e 404 não recebem retry. O relatório sanitizado diferencia rate limit, quota, timeout, indisponibilidade, autenticação, permissão e request inválido, sem imprimir prompt, resposta crua, cabeçalhos ou credenciais.

@@ -1,6 +1,7 @@
 import "server-only";
 
-import { ApiError, GoogleGenAI, type Interactions } from "@google/genai";
+import { requestAssistantResponse, resolveAssistantModel } from "@/lib/ai/openai-responses";
+import { OpenAIMediaProviderError } from "@/lib/ai/openai-media-provider";
 import {
   AssistantDataError,
   consultAssistantCatalogMedia,
@@ -160,7 +161,6 @@ export class AssistantServiceError extends Error {
   }
 }
 
-const defaultGeminiModel = "gemini-3.7-flash";
 const providerTimeoutMs = 20_000;
 const requestTimeoutMs = 30_000;
 const unsupportedWriteResponse =
@@ -417,28 +417,21 @@ async function createCatalogCodeClarificationBlock(
   };
 }
 
-function getGeminiConfiguration() {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
 
-  if (!apiKey) {
-    throw new AssistantServiceError("CONFIGURATION");
-  }
-
-  return {
-    apiKey,
-    model:
-      process.env.GEMINI_ASSISTANT_MODEL?.trim() || defaultGeminiModel,
-  };
-}
 
 function mapProviderError(error: unknown): AssistantServiceError {
   if (error instanceof AssistantServiceError) {
     return error;
   }
 
+  if (error instanceof OpenAIMediaProviderError) {
+    if (error.internalCode === "CONFIGURATION") return new AssistantServiceError("CONFIGURATION");
+    if (error.internalCode === "PROVIDER_TIMEOUT") return new AssistantServiceError("TIMEOUT");
+    if (error.internalCode === "PROVIDER_EMPTY_OUTPUT") return new AssistantServiceError("EMPTY_RESPONSE");
+  }
   const providerStatus =
-    error instanceof ApiError
-      ? error.status
+    error instanceof OpenAIMediaProviderError
+      ? error.providerStatus
       : error &&
           typeof error === "object" &&
           "statusCode" in error &&
@@ -509,7 +502,7 @@ function buildRequestInstructions(firstName: string | null) {
   return `${assistantInstructions}\n\n${nameInstruction}`;
 }
 
-async function callGemini({
+async function callOpenAI({
   conversationContext,
   firstName,
   itemContext,
@@ -522,42 +515,19 @@ async function callGemini({
   message: string;
   recentConversation: AssistantRecentConversationMessage[];
 }) {
-  const { apiKey, model } = getGeminiConfiguration();
-  const client = new GoogleGenAI({ apiKey });
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), requestTimeoutMs);
+  const model = resolveAssistantModel();
   const untrustedContext = `Contexto estruturado não confiável (somente pista):\n${JSON.stringify(conversationContext)}\n\nJanela recente não confiável (somente pista):\n${JSON.stringify(recentConversation)}`;
   const inputText = `${untrustedContext}\n\nMensagem atual:\n${message}${
     itemContext === undefined
       ? ""
       : `\n\nDados atuais autorizados do item:\n${JSON.stringify(itemContext)}`
   }`;
-  const input: Interactions.Step[] = [
-    {
-      type: "user_input",
-      content: [{ type: "text", text: inputText }],
-    },
-  ];
-
   try {
-    const response = await client.interactions.create(
-      {
-        model,
-        store: false,
-        system_instruction: buildRequestInstructions(firstName),
-        input,
-        generation_config: {
-          max_output_tokens: itemContext === undefined ? 300 : 700,
-          tool_choice: "none",
-        },
-      },
-      {
-        timeout: providerTimeoutMs,
-        maxRetries: 0,
-        fetchOptions: { signal: abortController.signal },
-      },
-    );
-    const answer = response.output_text?.trim() ?? "";
+    const answer = await requestAssistantResponse({
+      model, instructions: buildRequestInstructions(firstName), input: inputText,
+      maxOutputTokens: itemContext === undefined ? 300 : 700,
+      budgetMs: Math.min(requestTimeoutMs, providerTimeoutMs),
+    });
 
     if (!answer) {
       throw new AssistantServiceError("EMPTY_RESPONSE");
@@ -566,8 +536,6 @@ async function callGemini({
     return ensureExplicitGreeting(answer, message, firstName);
   } catch (error) {
     throw mapProviderError(error);
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -1785,7 +1753,7 @@ export async function answerAssistantQuestion(
 
     if (semanticResult.intent === "CHAT") {
       return {
-        message: await callGemini({
+        message: await callOpenAI({
           conversationContext,
           firstName,
           message,
@@ -2312,7 +2280,7 @@ export async function answerAssistantQuestion(
 
   if (intent === "GENERAL_CONVERSATION") {
     return {
-      message: await callGemini({
+      message: await callOpenAI({
         conversationContext,
         firstName,
         message,
@@ -2451,7 +2419,7 @@ export async function answerAssistantQuestion(
   }
 
   return {
-    message: await callGemini({
+    message: await callOpenAI({
       conversationContext,
       firstName,
       itemContext: compactItemLookup(lookup),

@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { extractSupplierOrderPhoto, SupplierOrderPhotoMediaError } from "../lib/ai/supplier-order-photo-media.ts";
-import { SupplierOrderPhotoProviderError, extractSupplierOrderPhotoWithProvider } from "../lib/ai/supplier-order-photo-gemini.ts";
 import { interpretSupplierOrderPhoto } from "../lib/assistant-supplier-order-photo.ts";
 import { extractSupplierOrderPhotoWithOpenAI } from "../lib/ai/supplier-order-photo-openai.ts";
+import { toOpenAIStrictSchema } from "../lib/ai/openai-responses.ts";
 import { extractionSchema, systemInstruction } from "../lib/ai/supplier-order-photo-instructions.ts";
 import { OpenAIMediaProviderError } from "../lib/ai/openai-media-provider.ts";
+import { SupplierOrderPhotoConversionError } from "../lib/ai/supplier-order-photo-heic.ts";
 import { transcribeAssistantVoiceWithOpenAI, assistantVoiceTranscriptionKeywords } from "../lib/ai/assistant-voice-transcription.ts";
 import { createAssistantVoiceUpload, encodeAssistantVoiceWav } from "../lib/assistant-voice-audio.ts";
 import { assistantVoiceMaxFileBytes, assistantVoiceUploadFormat, validateAssistantVoiceAudio } from "../lib/assistant-voice-contract.ts";
@@ -18,110 +19,34 @@ const extraction = {
 };
 const image = { bytes: new Uint8Array([1, 2, 3]), mimeType: "image/jpeg" };
 const json = value => new Response(JSON.stringify(value), { status: 200 });
-const completed = value => ({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(value) }] }] });
-const primaryFailure = code => new SupplierOrderPhotoProviderError({ internalCode: code, model: "test-model", providerStatus: code === "PROVIDER_RATE_LIMIT" ? 429 : null });
+const completed = value => ({ status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: JSON.stringify(value) }] }] });
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("foto: sucesso Gemini nunca chama OpenAI", async () => {
-  let calls = 0;
-  let trace;
-  assert.deepEqual(await extractSupplierOrderPhoto({ ...image, onProviderTrace: value => { trace = value; } }, {
-    gemini: async () => extraction, openAIConfigured: true, openai: async () => { calls++; return extraction; },
-  }), extraction);
-  assert.equal(calls, 0);
-  assert.equal(trace.finalProvider, "gemini");
-  assert.equal(trace.fallbackUsed, false);
+test("foto: OpenAI primário, uma tentativa e mesmo contrato canônico", async () => {
+  let calls = 0; let trace;
+  const media = () => extractSupplierOrderPhoto({ ...image, onProviderTrace: value => { trace = value; } }, {
+    openai: async () => { calls++; return extraction; },
+  });
+  const readers = { loadCatalog: async () => [{ identity: "CONFIGURATION:test", codeIdentity: "code-test", code: "1H", description: "SERVO MBF-025" }], findExistingOrder: async () => null };
+  assert.deepEqual(await interpretSupplierOrderPhoto({ ...readers, extract: media }), await interpretSupplierOrderPhoto({ ...readers, extract: async () => extraction }));
+  assert.equal(calls, 1); assert.equal(trace.primaryProvider, "openai");
+  assert.equal(trace.fallbackUsed, false); assert.equal(trace.providerAttempts.length, 1);
 });
-
-for (const code of ["PROVIDER_RATE_LIMIT", "PROVIDER_SERVER", "PROVIDER_TIMEOUT", "PROVIDER_MODEL", "CONFIGURATION", "PROVIDER_AUTH"]) {
-  test(`foto: ${code} termina Gemini e chama OpenAI uma única vez`, async () => {
-    let primaryCalls = 0;
-    let fallbackCalls = 0;
-    let trace;
-    const start = performance.now();
-    assert.deepEqual(await extractSupplierOrderPhoto({ ...image, onProviderTrace: value => { trace = value; } }, {
-      gemini: async () => { primaryCalls++; throw primaryFailure(code); }, openAIConfigured: true,
-      openai: async () => { fallbackCalls++; return extraction; },
-    }), extraction);
-    assert.equal(primaryCalls, 1); assert.equal(fallbackCalls, 1);
-    assert.equal(trace.finalProvider, "openai"); assert.equal(trace.fallbackReason, code);
-    assert.equal(trace.providerAttempts.length, 2);
-    assert.ok(performance.now() - start < 1_000, "429/erro imediato não espera budget");
+for (const code of ["PROVIDER_RATE_LIMIT", "PROVIDER_SERVER", "PROVIDER_TIMEOUT", "PROVIDER_MODEL", "CONFIGURATION", "PROVIDER_AUTH", "PROVIDER_SCHEMA_INVALID", "PROVIDER_EMPTY_OUTPUT", "PROVIDER_INVALID_JSON"]) {
+  test(`foto: ${code} falha sem retry/outro provider`, async () => {
+    let calls = 0;
+    await assert.rejects(extractSupplierOrderPhoto(image, { openai: async () => { calls++; throw new OpenAIMediaProviderError(code, "test"); } }), error => error instanceof SupplierOrderPhotoMediaError && error.internalCode === code);
+    assert.equal(calls, 1);
   });
 }
-
-for (const code of ["PROVIDER_HTTP_400", "PROVIDER_SCHEMA_INVALID", "PROVIDER_EMPTY_OUTPUT", "PROVIDER_INVALID_JSON"]) {
-  test(`foto: ${code} não dispara fallback externo`, async () => {
-    await assert.rejects(extractSupplierOrderPhoto(image, {
-      gemini: async () => { throw primaryFailure(code); }, openAIConfigured: true,
-      openai: async () => assert.fail("fallback indevido"),
-    }), error => error instanceof SupplierOrderPhotoMediaError && error.internalCode === code);
-  });
-}
-
 for (const mimeType of ["image/heic", "image/heif"]) {
-  test(`foto: ${mimeType} permanece no Gemini`, async () => {
-    assert.deepEqual(await extractSupplierOrderPhoto({ ...image, mimeType }, { gemini: async input => {
-      assert.equal(input.mimeType, mimeType); return extraction;
-    } }), extraction);
-    await assert.rejects(extractSupplierOrderPhoto({ ...image, mimeType }, {
-      gemini: async () => { throw primaryFailure("PROVIDER_RATE_LIMIT"); }, openAIConfigured: true,
-      openai: async () => assert.fail("HEIC não suportado pelo fallback"),
-    }), SupplierOrderPhotoMediaError);
+  test(`foto: ${mimeType} falha explicitamente antes de enviar ao provider`, async () => {
+    await assert.rejects(extractSupplierOrderPhoto({ ...image, mimeType }, { openai: async () => assert.fail("formato incompatível") }), SupplierOrderPhotoConversionError);
   });
 }
-
-test("foto: chave ausente não prejudica Gemini nem tenta fallback", async () => {
-  assert.deepEqual(await extractSupplierOrderPhoto(image, { gemini: async () => extraction, openAIConfigured: false }), extraction);
-  await assert.rejects(extractSupplierOrderPhoto(image, {
-    gemini: async () => { throw primaryFailure("PROVIDER_RATE_LIMIT"); }, openAIConfigured: false,
-    openai: async () => assert.fail("não configurado"),
-  }), SupplierOrderPhotoMediaError);
-});
-
-test("foto: generateContent existente termina antes de OpenAI; mesma interpretação canônica", async () => {
-  const calls = [];
-  const media = () => extractSupplierOrderPhoto(image, {
-    openAIConfigured: true,
-    gemini: async input => (await extractSupplierOrderPhotoWithProvider({ ...input, model: "gemini-test", client: {
-      interactions: { create: async () => { calls.push("interactions"); throw Object.assign(new Error("synthetic"), { status: 500 }); } },
-      models: { generateContent: async () => { calls.push("generateContent"); throw Object.assign(new Error("synthetic"), { status: 500 }); } },
-    } })).extraction,
-    openai: async () => { calls.push("openai"); return extractSupplierOrderPhotoWithOpenAI({ ...image, apiKey: "mock-only", fetcher: async () => json(completed(extraction)) }); },
-  });
-  const readers = {
-    loadCatalog: async () => [{ identity: "CONFIGURATION:test", codeIdentity: "code-test", code: "1H", description: "SERVO MBF-025" }],
-    findExistingOrder: async () => null,
-  };
-  const fallbackBlock = await interpretSupplierOrderPhoto({ ...readers, extract: media });
-  const directBlock = await interpretSupplierOrderPhoto({ ...readers, extract: async () => extraction });
-  assert.deepEqual(fallbackBlock, directBlock);
-  assert.deepEqual(calls, ["interactions", "generateContent", "openai"]);
-});
-
-test("foto: dois providers falham sem conteúdo privado nos diagnostics", async () => {
-  const privateText = "PRIVATE_TEST_SENTINEL";
-  const primary = primaryFailure("PROVIDER_RATE_LIMIT");
-  primary.providerMessage = privateText;
-  await assert.rejects(extractSupplierOrderPhoto(image, {
-    gemini: async () => { throw primary; }, openAIConfigured: true,
-    openai: async () => { throw new Error(privateText); },
-  }), error => {
-    assert.equal(error.trace.fallbackReason, "PROVIDER_RATE_LIMIT");
-    assert.doesNotMatch(JSON.stringify(error), /PRIVATE_TEST_SENTINEL|base64|Authorization/);
-    assert.doesNotMatch(error.message, /PRIVATE_TEST_SENTINEL/);
-    return true;
-  });
-});
-
-test("foto: deadline global termina transportes que ignoram abort, sem loop", async () => {
-  let calls = 0;
-  const start = performance.now();
-  await assert.rejects(extractSupplierOrderPhoto(image, {
-    globalBudgetMs: 60, primaryBudgetMs: 15, openAIConfigured: true,
-    gemini: async () => new Promise(() => {}),
-    openai: async () => { calls++; return new Promise(() => {}); },
-  }), error => error.internalCode === "PROVIDER_TIMEOUT");
+test("foto: hard deadline cobre transporte que ignora AbortSignal", async () => {
+  const start = performance.now(); let calls = 0;
+  await assert.rejects(extractSupplierOrderPhoto(image, { globalBudgetMs: 20, openai: async () => { calls++; return new Promise(() => {}); } }), error => error.internalCode === "PROVIDER_TIMEOUT");
   assert.equal(calls, 1); assert.ok(performance.now() - start < 500);
 });
 
@@ -133,7 +58,7 @@ for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
       assert.equal(body.model, "gpt-6-luna"); assert.equal(body.store, false);
       assert.deepEqual(body.reasoning, { effort: "none" });
       assert.equal(body.instructions, systemInstruction);
-      assert.deepEqual(body.text.format.schema, extractionSchema);
+      assert.deepEqual(body.text.format.schema, toOpenAIStrictSchema(extractionSchema));
       assert.equal(body.text.format.strict, true); assert.equal(body.tools, undefined);
       assert.equal(init.redirect, "error");
       assert.match(body.input[0].content[1].image_url, new RegExp(`^data:${mimeType};base64,`));
@@ -147,9 +72,9 @@ for (const [label, value, code] of [
   ["extra field", completed({ ...extraction, sql: "untrusted" }), "PROVIDER_SCHEMA_INVALID"],
   ["quantity zero", completed({ ...extraction, lines: [{ ...extraction.lines[0], quantity: 0 }] }), "PROVIDER_SCHEMA_INVALID"],
   ["empty", { status: "completed", output: [] }, "PROVIDER_EMPTY_OUTPUT"],
-  ["refusal", { status: "completed", output: [{ type: "message", content: [{ type: "refusal", refusal: "no" }] }] }, "PROVIDER_SCHEMA_INVALID"],
+  ["refusal", { status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "refusal", refusal: "no" }] }] }, "PROVIDER_SCHEMA_INVALID"],
   ["incomplete", { status: "incomplete", output: [] }, "PROVIDER_SCHEMA_INVALID"],
-  ["invalid JSON", { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "not JSON" }] }] }, "PROVIDER_INVALID_JSON"],
+  ["invalid JSON", { status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "not JSON" }] }] }, "PROVIDER_INVALID_JSON"],
 ]) {
   test(`OpenAI vision rejeita ${label}`, async () => {
     await assert.rejects(extractSupplierOrderPhotoWithOpenAI({ ...image, apiKey: "mock-only", fetcher: async () => json(value) }), error => error.internalCode === code);
