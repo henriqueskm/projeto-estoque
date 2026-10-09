@@ -6,7 +6,8 @@ Migração server-only de texto/router/foto para OpenAI, mantendo voz e contrato
 operacionais. Base `6379bcafb937653fdfc4cd8c5151367786a957a2`; branch
 `codex/nk-openai-migration`. Draft, sem merge nem alteração remota de banco/env.
 Conversão HEIC/HEIF em worker autorizada pelo usuário; prova local com HEVC real
-e orientação concluída. Gate restante: Preview real no HEAD entregue.
+e orientação concluída. PR Draft #90, Preview de implementação READY; gate
+restante: login humano e testes reais/smoke autenticado no HEAD entregue.
 Detalhes e limitações em [AI_MEDIA_PROVIDERS.md](./AI_MEDIA_PROVIDERS.md).
 
 ## Registro anterior — NK-WEB-002A

@@ -117,8 +117,13 @@ Fontes oficiais consultadas em 09/10/2026:
   execução; não representa latência de foto de câmera nem de produção.
 - npm registra 23 vulnerabilidades na árvore (8 moderadas/15 altas); não foi
   executado audit fix nem atualização ampla fora do escopo.
-- Preview/provider real, latência/custo e HEIC no deployment: gate posterior à
-  publicação da Draft. Sem exportar sessão/chaves ou alterar env para o teste.
+- PR Draft #90 publicada. Deployment do commit de implementação
+  `ad2d0d318c1da78e93fbdf0c1a65e62d838fa163` READY:
+  [Preview](https://projeto-estoque-sp4o-d48rdhxhg-henrqueskms-projects.vercel.app/).
+  A nova aba precisa de login humano; testes reais de texto/router/foto/HEIC,
+  latência/custo e smoke autenticado 320/375/768/1440 ainda não foram executados
+  neste deployment. Não declarar migração integralmente validada antes desse
+  gate. Sem exportar sessão/chaves ou alterar env para o teste.
 
 Preço oficial consultado para estimativa (não fatura): gpt-6-luna US$ 0,10/M
 tokens de entrada e US$ 0,50/M de saída; usar contadores reais de usage. Não
@@ -188,7 +193,7 @@ frágil. Não foram usadas gravações privadas nem Pedidos reais.
 
 Sem migration, RPC, saldo, writer, Pedido, Safisa, push ou env remota alterados.
 
-## Gate local / pendências
+## Histórico #88 — gate local / pendências naquela entrega
 
 Regressões executadas: mídia/providers/rotas, foto/Pedidos, ditado, câmera,
 conversa contextual, ações de estoque existentes, Pedidos, Attention UI,
@@ -220,7 +225,7 @@ inferidos da emulação. A skill mobile-native orientou o caminho direto para
 “Transcrevendo...”; emil-design-eng foi usada somente para feedback/craft,
 sem redesenho.
 
-## Continuação — qualidade da câmera integrada (comentário do Lead)
+## Histórico #88 — qualidade da câmera integrada (comentário do Lead)
 
 Base revisada: `d84b0d68356263a28cc75f301284c39424bd24df`.
 Nenhum modelo, resolver de environment ou fallback de providers mudou.
