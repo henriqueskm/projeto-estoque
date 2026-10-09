@@ -152,7 +152,7 @@ export async function POST(request: Request) {
     });
     return response({ message: "Foto de Pedido analisada", structuredBlock: block }, 200);
   } catch (error) {
-    if (error instanceof SupplierOrderPhotoConversionError) return response({ error: error.message }, 415);
+    if (error instanceof SupplierOrderPhotoConversionError) return response({ error: error.message }, error.reason === "BUSY" ? 503 : 415);
     const providerError = error instanceof SupplierOrderPhotoMediaError ? error : null;
     const routeError = error instanceof SupplierOrderPhotoRouteError ? error : null;
     console.warn("assistant_order_photo", {

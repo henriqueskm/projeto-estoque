@@ -48,6 +48,13 @@ function request({ invalid = false, origin = "https://nk.test" } = {}) {
   const body = new FormData(); body.append("image", new File([invalid ? new Uint8Array(32) : bytes], "sanitized.png", { type: "image/png" }));
   return new Request("https://nk.test/api/assistant/order-photo/interpret", { method: "POST", body, headers: { origin } });
 }
+function heicRequest(bytes = rainbowHEIC) {
+  const body = new FormData();
+  body.append("image", new File([bytes], "public-fixture.heic", { type: "image/heic" }));
+  return new Request("https://nk.test/api/assistant/order-photo/interpret", {
+    method: "POST", body, headers: { origin: "https://nk.test" },
+  });
+}
 test("foto rota: OpenAI primário e retorna preview canônico sem writer", async () => {
   const response = await POST(request());
   assert.equal(response.status, 200); assert.equal(calls, 1);
@@ -72,6 +79,32 @@ test("foto rota: HEIC real vira JPEG em worker antes do REST e mantém preview",
   }));
   assert.equal(response.status, 200); assert.equal(calls, 1);
   assert.equal((await response.json()).structuredBlock.totalQuantity, 3);
+});
+test("foto rota: 3 uploads HEIC simultâneos iniciam somente 1 conversão/provider; ocupados retornam 503 seguro", async () => {
+  const responses = await Promise.all(Array.from({ length: 3 }, () => POST(heicRequest())));
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 503, 503]);
+  assert.equal(calls, 1);
+  for (const response of responses.filter(response => response.status === 503)) {
+    assert.match((await response.json()).error, /Outra foto está sendo preparada/);
+  }
+  assert.equal((await POST(heicRequest())).status, 200, "slot liberado após término do worker");
+  assert.equal(calls, 2);
+});
+test("foto rota: HEIC acima de 16 MP/6000 px rejeitado antes do REST; JPEG/PNG não mudam", async () => {
+  for (const [width, height] of [[4001, 4000], [6001, 1], [10000, 6000]]) {
+    const bytes = Buffer.from(rainbowHEIC); const ispe = bytes.indexOf("ispe");
+    bytes.writeUInt32BE(width, ispe + 8); bytes.writeUInt32BE(height, ispe + 12);
+    const response = await POST(heicRequest(bytes));
+    assert.equal(response.status, 415); assert.equal(calls, 0);
+    assert.doesNotMatch(JSON.stringify(await response.json()), /private|API|provider|OpenAI|Gemini|base64/);
+  }
+  assert.equal((await POST(request())).status, 200); assert.equal(calls, 1);
+});
+test("foto rota: falha real de decode HEVC não chama OpenAI nem persiste imagem", async () => {
+  const bytes = Buffer.from(rainbowHEIC); bytes.fill(0, 1166, 3540);
+  const response = await POST(heicRequest(bytes));
+  assert.equal(response.status, 415); assert.equal(calls, 0);
+  assert.doesNotMatch(JSON.stringify(logs), /private|mock-only|Authorization|base64/);
 });
 for (const [label, setup, options, status] of [
   ["sessão", () => { user = null; }, {}, 401],

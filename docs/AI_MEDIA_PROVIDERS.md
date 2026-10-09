@@ -70,8 +70,11 @@ Instalação com --ignore-scripts; decoder/libheif não têm lifecycle de instal
 Licenças e fontes upstream permanecem nos pacotes distribuídos, sem modificar o
 decoder. Atualizações requerem PR revisável; não há updater automático.
 
-O código fixo do worker nunca executa instruções da mídia. Caps: arquivo 3,9 MB,
-12.000 px por lado, 60 MP, 8 s para conversão; worker encerrado também em falha.
+O código fixo do worker nunca executa instruções da mídia. Caps exclusivos de
+HEIC/HEIF: arquivo 3.900.000 bytes, 6.000 px por lado, **16 MP**, **8 s** para
+conversão; worker encerrado também em falha. JPEG/PNG/WebP permanecem intactos,
+com seus limites anteriores. Uma foto usual 4032×3024 cabe no limite de admissão;
+isso não comprova decode de toda foto desse tamanho ou de todo encoder.
 Validação de assinatura e dimensões antes/depois, recursos do decoder liberados,
 JPEG com teto 3,5 MB e qualidade 95/92/86 antes de reduzir dimensões. Metadados
 EXIF/XMP são removidos do JPEG. libheif aplica irot/imir do container; rotação de
@@ -82,13 +85,54 @@ para comprovação específica. Não alegamos compatibilidade com todo encoder.
 Falha/ambiguidade/timeout retorna 415 amigável pedindo JPEG/PNG/WebP; não envia
 imagem parcialmente convertida ao provider. Nada é persistido.
 
+**Concorrência e memória:** uma conversão HEIC ativa por instância/módulo, sem
+fila; outra tentativa falha imediatamente com 503 amigável. O slot só libera
+depois de `worker.terminate()` concluído (inclusive timeout/erro). Falha em
+confirmar término mantém a instância fechada para novos decodes. Spawn failure
+libera o slot. JPEG/PNG/WebP não usam esse gate.
+
+60 MP demandariam ~240 MB só para um RGBA; 16 MP demandam até 64 MB (~61 MiB)
+por RGBA. Isso ainda NÃO é teto de RSS: decoder, cópias, Sharp e WASM também
+consomem memória. `maxOldGenerationSizeMb:128` limita somente heap V8, não
+memória native/external/WASM. O gate não é distribuído entre instâncias; não
+alegamos garantia global de memória/disponibilidade. Caps antes da decodificação
+dos pixels usam tanto o header quanto os metadados do decoder; saída JPEG passa
+pelos mesmos caps HEIC e teto 3.500.000 bytes. Limite de arquivo e deadline são
+defesas adicionais, não substitutos de um sandbox de memória nativa.
+
 Next externaliza decoder/libheif e inclui decoder/WASM/sharp/@img no trace da
 rota de foto. Cache Components/Partial Prefetching continuam ativos.
 Fixture pública, não comercial: [rainbow-451x461.heic](https://github.com/strukturag/libheif/blob/master/tests/data/rainbow-451x461.heic),
 LGPL-3.0, SHA-256 `4b2ce727f093944975f143ba2b39c4c64511b766d94552f8d51a755916e7f983`.
 Testes locais usam HEVC real em HEIC/HEIF, rotação, ausência de metadata, deadline
-e rota autenticada simulada → REST JPEG → parser canônico. Preview real ainda
-deve comprovar empacotamento/worker no ambiente alvo antes de fechar o gate.
+e rota autenticada simulada → REST JPEG → parser canônico. Também comprovam
+três conversões reais simultâneas → um worker/duas rejeições BUSY, reutilização
+após término, worker real travado encerrado em 8 s e rejeição de duas imagens
+reais derivadas da mesma fixture pública. Nenhuma foto privada é necessária.
+Runtime autenticado do Preview no HEAD exato é um gate separado: consultar a
+evidência atual na PR #90; READY/trace/teste local não o substituem. Sem acesso
+autorizado, registrar `HEIC_RUNTIME_VERCEL_NOT_VERIFIED`, sem endpoint público,
+bypass de auth, cópia de cookies ou leitura de secrets.
+
+### Complemento HEIC do Lead — evidência local em 09/10/2026
+
+- Node **v24.15.0 / Windows**, não Linux/Vercel. Fixture 7.080 bytes → JPEG
+  19.149 bytes, 451×461; rotação 90° → 461×451 com comparação de pixels.
+- Medição isolada pequena: **431 ms**, RSS inicial 78.598.144 bytes, final
+  107.257.856 bytes, pico do processo **124.923.904 bytes** (~119 MiB).
+  Não é benchmark de 16 MP, produção ou limite máximo de RSS.
+- Reproduzir sem rede/segredos/mídia privada:
+  `node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs scripts/measure-heic-conversion.mjs`.
+- 13 testes HEIC (sete novos) + 11 rota de foto (três novos): bytes reais,
+  orientação, oversized/header enganoso, HEVC corrompido, multi-image, erro/exit,
+  timeout real de 8 s, cleanup/fail-closed e três uploads simultâneos → um REST.
+- Providers/foto/voz e demais regressões reexecutadas no complemento: **356
+  passed**, **1 falha preexistente Attention**, sem skips. A execução inicial de
+  Workspace sem loader TSX correto foi substituída pela execução válida com
+  `tests/bulk-safisa-pickup-loader.mjs` (59/59); não é regressão do produto.
+- Lead já comprovou no Preview chamadas reais SUCCESS de texto/router/JPEG
+  `gpt-6-luna` e JPEG 2,79 MB ~3,9 s. São evidências do Lead no comentário
+  6084440040, não métricas novas produzidas pelo Builder neste complemento.
 
 Fontes oficiais consultadas em 09/10/2026:
 
@@ -100,7 +144,7 @@ Fontes oficiais consultadas em 09/10/2026:
 - [libheif-js, licença e fonte WASM](https://github.com/catdad-experiments/libheif-js)
 - [sharp](https://github.com/lovell/sharp)
 
-## Validação local — Issue #89
+## Validação original — Issue #89 (antes do complemento HEIC)
 
 - 351 testes focados de providers/HEIC/router/foto/voz/contratos/contextos/Pedidos;
   159 Workspace State/Activity/Semantic Back/Instant Navigation/UI; 23 rotas.
@@ -120,10 +164,11 @@ Fontes oficiais consultadas em 09/10/2026:
 - PR Draft #90 publicada. Deployment do commit de implementação
   `ad2d0d318c1da78e93fbdf0c1a65e62d838fa163` READY:
   [Preview](https://projeto-estoque-sp4o-d48rdhxhg-henrqueskms-projects.vercel.app/).
-  A nova aba precisa de login humano; testes reais de texto/router/foto/HEIC,
-  latência/custo e smoke autenticado 320/375/768/1440 ainda não foram executados
-  neste deployment. Não declarar migração integralmente validada antes desse
-  gate. Sem exportar sessão/chaves ou alterar env para o teste.
+  Essa era a pendência na entrega original; texto/router/JPEG foram depois
+  validados pelo Lead conforme seção do complemento acima. Para o gate HEIC e
+  smoke do novo HEAD, usar o relatório atualizado da mesma PR, nunca deduzir
+  sucesso de runtime somente por READY. Sem exportar sessão/chaves ou alterar
+  env para o teste.
 
 Preço oficial consultado para estimativa (não fatura): gpt-6-luna US$ 0,10/M
 tokens de entrada e US$ 0,50/M de saída; usar contadores reais de usage. Não
