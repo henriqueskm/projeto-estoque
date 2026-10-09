@@ -14,8 +14,11 @@ import {
   isAssistantCameraRequestCurrent,
   runAssistantCameraRequest,
 } from "@/lib/assistant-camera-lifecycle";
+import { captureAssistantCameraPhoto } from "@/lib/assistant-camera-photo";
 
-type CameraState = "starting" | "live" | "preview" | "paused" | "fallback";
+type CameraState = "starting" | "live" | "capturing" | "preview" | "paused" | "fallback";
+
+type PhotoCaptureConstructor = new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> };
 
 type AssistantCameraCaptureProps = {
   isOpen: boolean;
@@ -56,6 +59,7 @@ export function AssistantCameraCapture({
   const streamRef = useRef<MediaStream | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const requestGenerationRef = useRef(0);
+  const captureControllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(false);
   const isOpenRef = useRef(false);
   const [previewStore] = useState(() =>
@@ -66,6 +70,9 @@ export function AssistantCameraCapture({
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [hasVideoDimensions, setHasVideoDimensions] = useState(false);
+  const [captureMetadata, setCaptureMetadata] = useState<{
+    source: string; videoWidth: number; videoHeight: number; width: number; height: number; bytes: number;
+  } | null>(null);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -77,6 +84,8 @@ export function AssistantCameraCapture({
 
   const invalidateCameraWork = useCallback(() => {
     requestGenerationRef.current += 1;
+    captureControllerRef.current?.abort();
+    captureControllerRef.current = null;
     stopStream();
   }, [stopStream]);
 
@@ -91,6 +100,7 @@ export function AssistantCameraCapture({
     previewStore.clear();
     setPreviewUrl(null);
     setCapturedFile(null);
+    setCaptureMetadata(null);
   }, [previewStore]);
 
   const startCamera = useCallback(async () => {
@@ -111,6 +121,8 @@ export function AssistantCameraCapture({
       acquire: () => navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: "environment" },
+          width: { ideal: 3_840 },
+          height: { ideal: 2_160 },
         },
         audio: false,
       }),
@@ -227,28 +239,43 @@ export function AssistantCameraCapture({
 
   if (!isOpen) return null;
 
-  function capturePhoto() {
+  async function capturePhoto() {
     const video = videoRef.current;
-    if (!video || video.videoWidth === 0 || video.videoHeight === 0) return;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext("2d");
-    if (!context) {
-      invalidateCameraWork();
-      setState("fallback");
-      setMessage("Não foi possível preparar esta foto. Tente novamente ou escolha uma imagem da galeria.");
-      return;
-    }
-
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (!video || !video.videoWidth || !video.videoHeight || captureControllerRef.current) return;
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    const track = streamRef.current?.getVideoTracks()[0];
+    const ImageCaptureClass = (window as Window & { ImageCapture?: PhotoCaptureConstructor }).ImageCapture;
+    let takePhoto: (() => Promise<Blob>) | undefined;
+    try {
+      if (track && track.readyState === "live" && typeof ImageCaptureClass === "function") {
+        const capture = new ImageCaptureClass(track);
+        if (typeof capture.takePhoto === "function") takePhoto = () => capture.takePhoto();
+      }
+    } catch { /* Unsupported track: use canvas. */ }
+    const controller = new AbortController();
+    captureControllerRef.current = controller;
     requestGenerationRef.current += 1;
     const captureGeneration = requestGenerationRef.current;
-    stopStream();
-    canvas.toBlob((blob) => {
+    setState("capturing");
+    setMessage("Capturando foto...");
+    try {
+      const result = await captureAssistantCameraPhoto({
+        takePhoto,
+        signal: controller.signal,
+        isCurrent: () => isAssistantCameraRequestCurrent(requestStatus(captureGeneration)),
+        captureCanvas: () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const context = canvas.getContext("2d");
+          if (!context) return Promise.resolve(null);
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+        },
+      });
       completeAssistantCameraCapture({
-        blob,
+        blob: result?.blob ?? null,
         isCurrent: () =>
           isAssistantCameraRequestCurrent(requestStatus(captureGeneration)),
         onMissing() {
@@ -258,19 +285,27 @@ export function AssistantCameraCapture({
         onCaptured(capturedBlob) {
           clearPreview();
           const timestamp = Date.now();
-          const file = new File([capturedBlob], `pedido-${timestamp}.jpg`, {
-            type: "image/jpeg",
+          const extension = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic", "image/heif": "heif" }[capturedBlob.type] ?? "jpg";
+          const file = new File([capturedBlob], `pedido-${timestamp}.${extension}`, {
+            type: capturedBlob.type,
             lastModified: timestamp,
           });
           const url = URL.createObjectURL(file);
           previewStore.replace(url);
           setCapturedFile(file);
           setPreviewUrl(url);
+          if (result) setCaptureMetadata({ source: result.source, videoWidth, videoHeight,
+            width: result.dimensions.width, height: result.dimensions.height, bytes: file.size });
           setState("preview");
           setMessage("Confira a foto antes de usar.");
         },
       });
-    }, "image/jpeg", 0.92);
+    } finally {
+      if (captureControllerRef.current === controller) {
+        captureControllerRef.current = null;
+        stopStream();
+      }
+    }
   }
 
   function retakePhoto() {
@@ -307,6 +342,12 @@ export function AssistantCameraCapture({
       role="dialog"
       aria-modal="true"
       aria-labelledby="assistant-camera-title"
+      data-capture-source={captureMetadata?.source}
+      data-video-width={captureMetadata?.videoWidth}
+      data-video-height={captureMetadata?.videoHeight}
+      data-photo-width={captureMetadata?.width}
+      data-photo-height={captureMetadata?.height}
+      data-photo-bytes={captureMetadata?.bytes}
     >
       <section className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl border border-white/15 bg-brand-charcoal text-white shadow-2xl sm:max-h-[min(48rem,calc(100dvh-2rem))] sm:max-w-2xl sm:flex-none">
         <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
@@ -328,6 +369,8 @@ export function AssistantCameraCapture({
         <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-5">
           <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-black">
             {isPreview ? (
+              // Local object URL: display original bytes, never request image optimization.
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="Prévia da foto capturada" className="max-h-full max-w-full object-contain" />
             ) : (
               <>
@@ -393,11 +436,11 @@ export function AssistantCameraCapture({
             <button
               type="button"
               disabled={state !== "live" || !hasVideoDimensions}
-              onClick={capturePhoto}
+              onClick={() => void capturePhoto()}
               className="nk-focus mx-auto inline-flex min-h-12 w-full max-w-sm items-center justify-center gap-2 rounded-xl bg-brand-gold px-5 text-sm font-black text-brand-charcoal transition hover:bg-[#e8ad55] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CameraIcon className="size-5" />
-              Capturar foto
+              {state === "capturing" ? "Capturando..." : "Capturar foto"}
             </button>
           )}
         </footer>

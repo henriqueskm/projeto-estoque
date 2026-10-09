@@ -32,10 +32,12 @@ disponibilizados pela leitura. Logo, a precedência + os logs explicam o modelo
 efetivo; não afirmamos ter lido/decriptado o valor remoto. Esta PR não altera
 variáveis remotas. `GEMINI_TRANSCRIPTION_MODEL` deixa de ser consumida pela voz.
 
-A listagem do projeto não contém `OPENAI_API_KEY` para Preview. Portanto:
-**Provider OpenAI real não testado no Preview por ausência de OPENAI_API_KEY.**
-Ausência, HTTP 429/5xx, schema e deadlines são testados com mocks locais;
-nenhuma chave é criada/configurada por esta PR.
+Na primeira validação (08/10/2026), a listagem não continha a chave OpenAI
+para Preview e o provider real não foi testado naquele momento. Isso é
+histórico, não o estado atual: o comentário do Lead de 09/10/2026 registra
+testes reais bem-sucedidos de foto `gpt-6-luna` e voz `gpt-transcribe`.
+Não lemos nem configuramos chaves nesta continuação. Os testes automatizados
+continuam isolados, incluindo ausência de chave, HTTP 429/5xx e deadlines.
 
 ## Foto: um contrato, dois providers
 
@@ -157,10 +159,10 @@ comprovado por `git diff --exit-code origin/main --` para os dois arquivos.
 Não ajustamos esse contrato fora do escopo. Assim, não declaramos o gate
 “todos os testes passam” integralmente aprovado nem a PR pronta para merge.
 
-Provider real OpenAI e latência real permanecem pendentes de configuração
-humana e teste sanitizado. Sessão/perfil, CONFIGURATION seguro e respostas de
-erro foram exercitados executando as rotas reais com mocks isolados, sem
-contornar autenticação do app nem usar service_role.
+Provider real OpenAI foi validado pelo usuário/Lead posteriormente, conforme
+registrado acima; não afirmamos uma medição independente de sua latência nesta
+continuação. Sessão/perfil, CONFIGURATION seguro e respostas de erro foram
+exercitados com rotas reais e mocks isolados, sem contornar auth/service_role.
 
 Smoke autenticado read-only no Preview: Assistente/composer, controles de
 foto/voz e abrir/fechar menu de imagem; viewports 320×800, 375×812, 768×1024 e
@@ -172,3 +174,77 @@ humana. Teste de teclado físico/mobile real e latência de provider não são
 inferidos da emulação. A skill mobile-native orientou o caminho direto para
 “Transcrevendo...”; emil-design-eng foi usada somente para feedback/craft,
 sem redesenho.
+
+## Continuação — qualidade da câmera integrada (comentário do Lead)
+
+Base revisada: `d84b0d68356263a28cc75f301284c39424bd24df`.
+Nenhum modelo, resolver de environment ou fallback de providers mudou.
+
+- A câmera integrada permanece o padrão. `getUserMedia` solicita câmera
+  traseira e **ideal** 3840×2160, nunca exact/min obrigatório.
+- Feature detection verifica `ImageCapture`, track live e método `takePhoto`.
+  Uma captura fotográfica real é tentada; rejeição/ausência/timeout usa o canvas
+  atual automaticamente, sem abrir outro app. Sucesso não captura um segundo
+  frame. Cada caminho tem limite de 5 s, incluindo validação do Blob.
+- API nativa não aceita AbortSignal: close, retake, Activity/unmount,
+  visibilitychange hidden e pagehide abortam a espera e invalidam a geração;
+  resultados tardios não criam preview/URL nem iniciam fallback obsoleto.
+  Tracks são encerrados e URLs revogadas. Um ref síncrono impede double capture.
+- Arquivos válidos JPEG/PNG/WebP/HEIC/HEIF de até 3.900.000 bytes, dimensões
+  até 12000 por lado e 60 milhões de pixels mantêm **os mesmos bytes/MIME**.
+  O EXIF original fica intacto, sem recompressão da foto da galeria/câmera.
+  Magic bytes/dimensões são validados antes de decodificar. Dimensões inseguras
+  são rejeitadas; leitura local limitada a 40 MB. HEIC/HEIF oversized pede outra
+  foto, sem converter ou retirar suporte. O servidor repete seus guards.
+- JPEG/PNG/WebP oversized são decodificados com orientação EXIF, fundo branco
+  para alpha/contraste e resolução inteira antes de tentar qualidade .95/.92/
+  .86. Só depois, se necessário, reduzir dimensões (.8/.65) com qualidade .92
+  para o alvo existente de 3.5 MB. Nunca reduzir toda foto para 2800 px.
+- Telemetria **somente DOM local**, no dialog: `data-capture-source`,
+  `data-video-width/height`, `data-photo-width/height/bytes`. Valores vêm das
+  dimensões reais do vídeo e dos bytes do arquivo, não das constraints.
+  Nenhuma imagem, descrição, nome de arquivo ou dado pessoal é logado/enviado.
+- Matching não foi relaxado: o parser já aceita descrições equivalentes
+  SEM KIT/S/KIT/REBAIX pelo código exato/modelo compatível. Divergência objetiva
+  continua `DESCRIPTION_CONFLICT`. O card agora mostra **Lido na foto** e
+  **Catálogo oficial** e permite **Confirmar / corrigir código** explicitamente,
+  reutilizando `/resolve-code` read-only e o fluxo já existente de revisão.
+  Não remove impedimentos de quantidade/revisão visual nem cria Pedido/estoque.
+
+### Evidência reproduzível e limites
+
+```powershell
+node --experimental-strip-types --experimental-loader ./evals/assistant/node-alias-loader.mjs --test tests/assistant-photo-quality.test.mjs
+npm run test:assistant-camera
+node tests/assistant-camera-quality.visual.mjs
+```
+
+A fixture visual serve somente em `127.0.0.1:3088`, com React/componente reais,
+stream sintético por canvas e foto fictícia; não usa câmera humana, catálogo,
+Supabase, provider ou rede de negócio. Controles permitem rejeição/ausência/
+timeout, pagehide/background simulado, Activity e unmount. Artefatos são locais.
+Medição real **dessa fixture**, não Android/produção: vídeo 1920×1080;
+foto ImageCapture simulada 4032×3024 PNG, 263172 bytes; fallback canvas
+1920×1080 JPEG, 18098 bytes. `prepareSupplierOrderPhoto` manteve identidade
+do File; uma captura → um stream encerrado → uma URL criada/revogada.
+
+Fixture fictícia de sete códigos `1, 1H, 2, 9, 10RB, 10, 6`, quantidades
+`10, 1, 1, 5, 10, 6, 10` totaliza 43, todos identificados. Unknown/ambiguous,
+10R3 incerto, modelo diferente e quantidade ilegível continuam revisão.
+
+Continuação: 13 testes novos passaram. Suítes de mídia/foto/câmera/voz e
+regressões correlatas: 286 passed; Workspace/Activity/Back/Instant Navigation/
+layout/Attention UI: 159 passed; rotas de mídia: 22 passed. Attention:
+23 passed e a mesma falha preexistente na linha 646. Total **490 passed /
+1 preexisting failed**, sem contar reexecuções dos mesmos testes. TypeScript,
+ESLint zero warnings, diff-check, Webpack e build padrão Next passaram.
+Screenshots da câmera/preview em 320/375/768/1440: scrollWidth igual à largura,
+sem overflow. Console local sem errors/warnings. São emulação desktop e
+ImageCapture simulado, não evidência de câmera/hardware Android.
+
+[ImageCapture/takePhoto](https://developer.mozilla.org/en-US/docs/Web/API/ImageCapture/takePhoto)
+tem disponibilidade limitada: não presumir suporte em Safari/Firefox ou por
+existir constructor; o dispositivo/track ainda pode rejeitar. Chrome também
+não garante resolução fotográfica maior que a do vídeo. Fallback canvas mantém
+compatibilidade. Android/PWA físico, foco/exposição do hardware e qualidade OCR
+de um Pedido real precisam de validação humana; emulação não prova isso.

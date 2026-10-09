@@ -397,6 +397,7 @@ function SupplierOrderPhotoPreview({
           <div className="divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral">
             {block.lines.map((line, index) => {
               const hasCodeBlocker = line.blockingReasons.some((reason) => reason.startsWith("CODE_"));
+              const hasDescriptionConflict = line.blockingReasons.includes("DESCRIPTION_CONFLICT");
               const hasCatalogAmbiguity = line.blockingReasons.includes("CODE_AMBIGUOUS") &&
                 line.catalogOptions.length > 0;
               const canCreateDirectly = line.blockingReasons.includes("CODE_NOT_FOUND") &&
@@ -429,6 +430,12 @@ function SupplierOrderPhotoPreview({
                     {line.resolution === "IDENTIFIED" ? "ℹ" : "⚠"} {line.warning}
                   </p>
                 ) : null}
+                {hasDescriptionConflict ? (
+                  <dl className="mt-2 space-y-1 rounded-lg bg-amber-50 p-2 text-xs leading-5 text-amber-950">
+                    <div><dt className="inline font-bold">Lido na foto: </dt><dd className="inline break-words">{line.rawDescription ?? "Não identificado"}</dd></div>
+                    <div><dt className="inline font-bold">Catálogo oficial: </dt><dd className="inline break-words">{line.description ?? "Não identificado"}</dd></div>
+                  </dl>
+                ) : null}
                 {line.resolution === "NEEDS_REVIEW" && hasCatalogAmbiguity ? (
                   <fieldset className="mt-3 space-y-2">
                     <legend className="text-xs font-black text-text-primary">Definir produto</legend>
@@ -451,14 +458,14 @@ function SupplierOrderPhotoPreview({
                       ))}
                     </div>
                   </fieldset>
-                ) : line.resolution === "NEEDS_REVIEW" && hasCodeBlocker ? (
+                ) : line.resolution === "NEEDS_REVIEW" && (hasCodeBlocker || hasDescriptionConflict) ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" disabled={disabled || isSubmitting} onClick={(event) => {
                       triggerRef.current = event.currentTarget;
                       setDialogError(null);
                       setDialog({ mode: "correct", lineIndex: index, code: line.displayCode ?? line.rawCode ?? "", description: line.rawDescription ?? "" });
                     }} className="nk-focus min-h-10 rounded-xl border border-border-neutral px-3 text-xs font-black text-text-primary hover:bg-app-background disabled:opacity-50">
-                      Corrigir código
+                      {hasDescriptionConflict ? "Confirmar / corrigir código" : "Corrigir código"}
                     </button>
                     {canCreateDirectly ? (
                       <button type="button" disabled={disabled || isSubmitting} onClick={(event) => {
