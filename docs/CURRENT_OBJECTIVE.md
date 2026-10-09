@@ -1,5 +1,16 @@
 # Objetivo atual
 
+## NK-AI-OPENAI-001 — Issue #89
+
+Migração server-only de texto/router/foto para OpenAI, mantendo voz e contratos
+operacionais. Base `6379bcafb937653fdfc4cd8c5151367786a957a2`; branch
+`codex/nk-openai-migration`. Draft, sem merge nem alteração remota de banco/env.
+Conversão HEIC/HEIF em worker autorizada pelo usuário; prova local com HEVC real
+e orientação concluída. Gate restante: Preview real no HEAD entregue.
+Detalhes e limitações em [AI_MEDIA_PROVIDERS.md](./AI_MEDIA_PROVIDERS.md).
+
+## Registro anterior — NK-WEB-002A
+
 - **ID:** NK-WEB-002A
 - **Título:** Remotion foundation + demo de conversa da Assistente
 - **Prioridade:** alta
@@ -348,37 +359,13 @@ conseguir comprovar negociação, data e todas as linhas obrigatórias.
 
 ## Provider e modelo
 
-- **Provider atual:** Google Gemini Developer API via `@google/genai` e
-  Interactions API.
-- **Modelo atual padrão:** `gemini-3.7-flash`.
-- **Override do Assistente:** `GEMINI_ASSISTANT_MODEL`; use
-  `GEMINI_ASSISTANT_MODEL=gemini-3.6-flash` para rollback explícito e
-  independente do fluxo conversacional.
-- **Override da foto de Pedido:** `GEMINI_PHOTO_MODEL`; use
-  `GEMINI_PHOTO_MODEL=gemini-3.6-flash` para rollback explícito e independente
-  da extração multimodal.
-- **Chave server-side:** `GEMINI_API_KEY`.
-- **Configuração atual:** `store: false`, `tool_choice: none`, timeout e zero
-  retry automático; o Assistente envia texto e a foto de Pedido usa imagem
-  inline com `response_format` JSON estrito.
-- **Thinking level:** padrão do modelo (`medium` no Gemini 3.7 Flash); nenhum
-  orçamento de tokens ou nível de raciocínio foi alterado nesta migração.
-- **PROVIDER_RECOMMENDED:** Google Gemini Developer API no plano pago.
-- **MODEL_RECOMMENDED:** `gemini-3.7-flash`.
-- **WHY:** modelo GA já usado pelo projeto, multimodal, adequado a tarefas
-  visuais complexas e com structured output nativo; evita introduzir um segundo
-  provider antes de medir o dataset real.
-- **FALLBACK:** pedir nova foto/revisão humana. `gemini-3.5-flash-lite` pode ser
-  avaliado posteriormente como alternativa de custo para documentos fáceis,
-  mas não deve receber fallback automático sem comparação controlada.
-
-Fontes oficiais consultadas em 2026-08-12:
-
-- [modelos Gemini mais recentes](https://ai.google.dev/gemini-api/docs/latest-model);
-- [Gemini 3.7 Flash](https://ai.google.dev/gemini-api/docs/latest-model);
-- [entendimento de imagens](https://ai.google.dev/gemini-api/docs/image-understanding);
-- [preços da Gemini Developer API](https://ai.google.dev/gemini-api/docs/pricing);
-- [termos adicionais e tratamento de dados](https://ai.google.dev/gemini-api/terms).
+Atualizado por NK-AI-OPENAI-001 (#89): texto/router/foto usam OpenAI Responses,
+`gpt-6-luna` por padrão, server-only, store:false, reasoning:none e sem tools.
+Voz permanece OpenAI gpt-transcribe. Configuração e matriz de segurança em
+[AI_MEDIA_PROVIDERS.md](./AI_MEDIA_PROVIDERS.md). GEMINI_* remoto não foi alterado.
+HEIC/HEIF usa conversão server-only em worker autorizada pelo usuário, com
+caps/deadline e provas reais locais; empacotamento ainda exige Preview. Consultas determinísticas,
+contratos de propostas e writers não mudam.
 
 ## Contrato de extração multimodal
 

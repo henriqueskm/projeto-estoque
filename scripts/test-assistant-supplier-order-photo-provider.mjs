@@ -1,13 +1,14 @@
 import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import {
-  extractSupplierOrderPhotoWithGemini,
-  SupplierOrderPhotoProviderError,
-} from "../lib/ai/supplier-order-photo-gemini.ts";
+  extractSupplierOrderPhotoWithOpenAI,
+} from "../lib/ai/supplier-order-photo-openai.ts";
+
+import { OpenAIMediaProviderError } from "../lib/ai/openai-media-provider.ts";
 
 const imagePath = process.argv[2] ?? null;
 
-if (!process.env.GEMINI_API_KEY?.trim()) {
+if (!process.env.OPENAI_API_KEY?.trim()) {
   console.error("RESULT=configuration_error");
   process.exitCode = 2;
 } else {
@@ -27,24 +28,15 @@ if (!process.env.GEMINI_API_KEY?.trim()) {
   const startedAt = Date.now();
 
   try {
-    const result = await extractSupplierOrderPhotoWithGemini({ bytes, mimeType });
-    const lines = result.lines.map((line) => ({
-      code: line.rawCode,
-      quantity: line.quantity,
-      needsReview: line.needsReview,
-      hasWarning: Boolean(line.warning),
-    }));
+    const result = await extractSupplierOrderPhotoWithOpenAI({ bytes, mimeType });
     console.log(JSON.stringify({
       result: "success",
-      negotiationNumber: result.negotiationNumber,
-      orderDate: result.orderDate,
       lineCount: result.lines.length,
-      lines,
       documentWarningCount: result.documentWarnings.length,
       durationMs: Date.now() - startedAt,
     }));
   } catch (error) {
-    const providerError = error instanceof SupplierOrderPhotoProviderError ? error : null;
+    const providerError = error instanceof OpenAIMediaProviderError ? error : null;
     console.error(JSON.stringify({
       result: "provider_error",
       internalCode: providerError?.internalCode ?? "UNEXPECTED",

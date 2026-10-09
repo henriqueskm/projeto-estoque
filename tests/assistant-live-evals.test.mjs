@@ -261,7 +261,9 @@ test("runner live fica isolado de handlers, Supabase e ações operacionais", as
   ]) {
     assert.equal(runner.includes(forbidden), false, `${forbidden} não pode entrar no runner live.`);
   }
-  assert.equal(runner.includes('store: false'), true);
-  assert.equal(runner.includes('tool_choice: "none"'), true);
-  assert.equal(runner.includes("maxRetries: 0"), true);
+  assert.equal(runner.includes("requestAssistantResponse"), true);
+  const transport = await readFile(new URL("../lib/ai/openai-responses.ts", import.meta.url), "utf8");
+  assert.equal(transport.includes("store: false"), true);
+  assert.equal(transport.includes('reasoning: { effort: "none" }'), true);
+  assert.equal(transport.includes("tools:"), false);
 });

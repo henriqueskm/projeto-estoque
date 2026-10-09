@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { POST } from "../app/api/assistant/order-photo/interpret/route.ts";
+import { rainbowHEIC } from "./fixtures/heic-rainbow.mjs";
 
 const originalFetch = globalThis.fetch;
 const originalInfo = console.info; const originalWarn = console.warn;
@@ -28,7 +29,7 @@ test.beforeEach(() => {
   process.env.OPENAI_API_KEY = "mock-only"; delete process.env.GEMINI_API_KEY;
   globalThis.fetch = async url => {
     calls++; assert.equal(url, "https://api.openai.com/v1/responses");
-    return Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({
+    return Response.json({ status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: JSON.stringify({
       documentType: "supplier_order", negotiationNumber: "000123", orderDate: "2026-10-08",
       lines: [{ rawCode: "1H", rawDescription: "SERVO MBF-025", quantity: 3, needsReview: false, warning: null }], documentWarnings: [],
     }) }] }] });
@@ -47,13 +48,30 @@ function request({ invalid = false, origin = "https://nk.test" } = {}) {
   const body = new FormData(); body.append("image", new File([invalid ? new Uint8Array(32) : bytes], "sanitized.png", { type: "image/png" }));
   return new Request("https://nk.test/api/assistant/order-photo/interpret", { method: "POST", body, headers: { origin } });
 }
-test("foto rota: Gemini não configurado usa OpenAI e retorna preview canônico sem writer", async () => {
+test("foto rota: OpenAI primário e retorna preview canônico sem writer", async () => {
   const response = await POST(request());
   assert.equal(response.status, 200); assert.equal(calls, 1);
   const body = await response.json(); assert.equal(body.structuredBlock.totalQuantity, 3);
   assert.equal(body.structuredBlock.negotiationNumber, "000123");
-  assert.equal(logs[0][1].finalProvider, "openai");
+  assert.equal(logs.find(log => log[0] === "assistant_order_photo")[1].finalProvider, "openai");
   assert.doesNotMatch(JSON.stringify(logs), /SERVO MBF-025|000123|mock-only|base64|Authorization/);
+});
+test("foto rota: HEIC real vira JPEG em worker antes do REST e mantém preview", async () => {
+  const fetcher = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const requestBody = JSON.parse(options.body);
+    const image = requestBody.input[0].content.find(part => part.type === "input_image");
+    assert.ok(image.image_url.startsWith("data:image/jpeg;base64,"));
+    assert.equal(requestBody.store, false);
+    return fetcher(url, options);
+  };
+  const body = new FormData();
+  body.append("image", new File([rainbowHEIC], "public-fixture.heic", { type: "image/heic" }));
+  const response = await POST(new Request("https://nk.test/api/assistant/order-photo/interpret", {
+    method: "POST", body, headers: { origin: "https://nk.test" },
+  }));
+  assert.equal(response.status, 200); assert.equal(calls, 1);
+  assert.equal((await response.json()).structuredBlock.totalQuantity, 3);
 });
 for (const [label, setup, options, status] of [
   ["sessão", () => { user = null; }, {}, 401],
@@ -69,7 +87,7 @@ for (const stage of ["catalog", "order_lookup"]) {
   test(`foto rota: ${stage} falha sem repetir/fallback visual adicional`, async () => {
     if (stage === "catalog") globalThis.__mediaPhotoCatalogFails = true; else lookupFails = true;
     const response = await POST(request()); assert.equal(response.status, 502); assert.equal(calls, 1);
-    assert.equal(logs[0][1].stage, stage);
+    assert.equal(logs.find(log => log[0] === "assistant_order_photo")[1].stage, stage);
     assert.doesNotMatch(JSON.stringify(await response.json()), /private|OpenAI|Gemini|API|provider|quota/);
   });
 }

@@ -76,16 +76,18 @@
     "verify:vehicle-applications-source": "python scripts/verify_vehicle_applications_source.py"
   },
   "dependencies": {
-    "@google/genai": "^2.13.0",
     "@remotion/player": "4.0.512",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.6",
     "firebase": "^12.18.0",
     "firebase-admin": "^14.3.0",
+    "heic-decode": "2.1.0",
+    "libheif-js": "1.19.8",
     "next": "16.3.8",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "remotion": "4.0.512"
+    "remotion": "4.0.512",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@playwright/cli": "0.1.22",

@@ -17,6 +17,7 @@ import {
 } from "@/lib/ai/supplier-order-photo-media";
 import { loadSupplierOrderPhotoCatalog, SupplierOrderPhotoCatalogError } from "@/lib/assistant-supplier-order-photo-catalog";
 import { createClient } from "@/lib/supabase/server";
+import { SupplierOrderPhotoConversionError } from "@/lib/ai/supplier-order-photo-heic";
 
 const multipartOverheadAllowance = 64 * 1024;
 
@@ -151,6 +152,7 @@ export async function POST(request: Request) {
     });
     return response({ message: "Foto de Pedido analisada", structuredBlock: block }, 200);
   } catch (error) {
+    if (error instanceof SupplierOrderPhotoConversionError) return response({ error: error.message }, 415);
     const providerError = error instanceof SupplierOrderPhotoMediaError ? error : null;
     const routeError = error instanceof SupplierOrderPhotoRouteError ? error : null;
     console.warn("assistant_order_photo", {

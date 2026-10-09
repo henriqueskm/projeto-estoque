@@ -1,6 +1,7 @@
 import "server-only";
 
-import { GoogleGenAI, type Interactions } from "@google/genai";
+import { requestAssistantResponse, resolveAssistantModel } from "@/lib/ai/openai-responses";
+import { OpenAIMediaProviderError, resolveOpenAIMediaModel } from "@/lib/ai/openai-media-provider";
 import type {
   AssistantConversationContext,
   AssistantRecentConversationMessage,
@@ -12,13 +13,13 @@ import {
   isAssistantCapabilityId,
   type AssistantCapabilityId,
 } from "@/lib/ai/assistant-capabilities";
-import { diagnoseGeminiProviderError } from "@/lib/ai/gemini-provider-diagnostics";
+
 
 export const assistantSemanticRouterTimeoutMs = 12_000;
 export const assistantSemanticRouterMaximumLines = 12;
 export const assistantSemanticTargetMaximumLength = 120;
 
-const defaultAssistantModel = "gemini-3.7-flash";
+
 const maximumQuantity = 2_147_483_647;
 
 const queryKinds = [
@@ -142,17 +143,9 @@ export type AssistantSemanticRouterOutcome =
       model: string;
     };
 
-type SemanticRouterClient = {
-  interactions: {
-    create: (
-      request: Parameters<GoogleGenAI["interactions"]["create"]>[0],
-      options?: Parameters<GoogleGenAI["interactions"]["create"]>[1],
-    ) => Promise<{ output_text?: string | null }>;
-  };
-};
-
 type SemanticRouterDependencies = {
-  client?: SemanticRouterClient;
+  fetcher?: typeof fetch;
+  apiKey?: string;
   timeoutMs?: number;
 };
 
@@ -167,8 +160,9 @@ const actionLineSchema = {
   },
 } as const;
 
-const semanticRouterSchema = {
-  oneOf: [
+export const semanticRouterSchema = {
+  type: "object", additionalProperties: false, required: ["result"],
+  properties: { result: { anyOf: [
     {
       type: "object",
       additionalProperties: false,
@@ -179,7 +173,6 @@ const semanticRouterSchema = {
           type: "array",
           minItems: 1,
           maxItems: 4,
-          uniqueItems: true,
           items: { type: "string", enum: assistantCapabilityIds },
         },
       },
@@ -267,7 +260,7 @@ const semanticRouterSchema = {
         reason: { type: "string", enum: clarificationReasons },
       },
     },
-  ],
+  ] } },
 } as const;
 
 const semanticRouterInstructions = `Você é somente o roteador semântico da Assistente NK. Classifique a mensagem em um resultado do schema; não responda ao usuário e não execute ferramentas.
@@ -428,16 +421,7 @@ function buildSafeSemanticContext(
 }
 
 export function resolveAssistantSemanticRouterModel() {
-  return process.env.GEMINI_ASSISTANT_ROUTER_MODEL?.trim() ||
-    process.env.GEMINI_ASSISTANT_MODEL?.trim() ||
-    defaultAssistantModel;
-}
-
-class SemanticRouterDeadlineError extends Error {
-  constructor() {
-    super("Semantic router deadline exceeded");
-    this.name = "SemanticRouterDeadlineError";
-  }
+  return resolveOpenAIMediaModel(process.env.OPENAI_ASSISTANT_ROUTER_MODEL, resolveAssistantModel());
 }
 
 export async function routeAssistantMessageSemantically(
@@ -449,15 +433,12 @@ export async function routeAssistantMessageSemantically(
   dependencies: SemanticRouterDependencies = {},
 ): Promise<AssistantSemanticRouterOutcome> {
   const model = resolveAssistantSemanticRouterModel();
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!dependencies.client && !apiKey) {
+  const apiKey = dependencies.apiKey ?? process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
     return { status: "FALLBACK", reason: "CONFIGURATION", providerErrorCategory: null, model };
   }
 
-  const client = dependencies.client ?? new GoogleGenAI({ apiKey: apiKey! });
   const timeoutMs = Math.min(Math.max(dependencies.timeoutMs ?? assistantSemanticRouterTimeoutMs, 1), assistantSemanticRouterTimeoutMs);
-  const abortController = new AbortController();
-  let deadline: ReturnType<typeof setTimeout> | null = null;
   const safeContext = buildSafeSemanticContext(input.recentConversation, input.conversationContext);
   const prompt = JSON.stringify({
     currentMessage: redactSensitiveText(input.message, 2_000),
@@ -468,42 +449,12 @@ export async function routeAssistantMessageSemantically(
       availability,
     })),
   });
-  const interactionInput: Interactions.Step[] = [{
-    type: "user_input",
-    content: [{ type: "text", text: prompt }],
-  }];
-
   try {
-    const providerPromise = client.interactions.create(
-      {
-        model,
-        store: false,
-        system_instruction: semanticRouterInstructions,
-        input: interactionInput,
-        response_format: {
-          type: "text",
-          mime_type: "application/json",
-          schema: semanticRouterSchema,
-        },
-        generation_config: {
-          max_output_tokens: 600,
-          tool_choice: "none",
-        },
-      },
-      {
-        timeout: timeoutMs,
-        maxRetries: 0,
-        fetchOptions: { signal: abortController.signal },
-      },
-    );
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      deadline = setTimeout(() => {
-        abortController.abort();
-        reject(new SemanticRouterDeadlineError());
-      }, timeoutMs);
+    const output = await requestAssistantResponse({
+      model, apiKey, fetcher: dependencies.fetcher, budgetMs: timeoutMs,
+      instructions: semanticRouterInstructions, input: prompt, maxOutputTokens: 1_200,
+      format: { type: "json_schema", name: "assistant_semantic_result", strict: true, schema: semanticRouterSchema },
     });
-    const response = await Promise.race([providerPromise, timeoutPromise]);
-    const output = response.output_text?.trim();
     if (!output) {
       console.warn("assistant_semantic_router", { semanticMode: "fallback", fallbackReason: "EMPTY_OUTPUT", providerErrorCategory: null });
       return { status: "FALLBACK", reason: "EMPTY_OUTPUT", providerErrorCategory: null, model };
@@ -516,7 +467,8 @@ export async function routeAssistantMessageSemantically(
       console.warn("assistant_semantic_router", { semanticMode: "fallback", fallbackReason: "INVALID_JSON", providerErrorCategory: null });
       return { status: "FALLBACK", reason: "INVALID_JSON", providerErrorCategory: null, model };
     }
-    const result = parseAssistantSemanticResult(parsed);
+    const result = isRecord(parsed) && hasOnlyKeys(parsed, ["result"])
+      ? parseAssistantSemanticResult(parsed.result) : null;
     if (!result) {
       console.warn("assistant_semantic_router", { semanticMode: "fallback", fallbackReason: "SCHEMA_INVALID", providerErrorCategory: null });
       return { status: "FALLBACK", reason: "SCHEMA_INVALID", providerErrorCategory: null, model };
@@ -529,21 +481,17 @@ export async function routeAssistantMessageSemantically(
     });
     return { status: "ROUTED", result, model };
   } catch (error) {
-    const diagnosed = diagnoseGeminiProviderError(error);
-    const reason = diagnosed.internalCode === "PROVIDER_TIMEOUT" || error instanceof SemanticRouterDeadlineError
-      ? "TIMEOUT" as const
-      : "PROVIDER" as const;
-    const providerErrorCategory = error instanceof SemanticRouterDeadlineError
-      ? "PROVIDER_TIMEOUT"
-      : diagnosed.internalCode;
+    const code = error instanceof OpenAIMediaProviderError ? error.internalCode : "UNEXPECTED";
+    const reason: AssistantSemanticRouterFallbackReason = code === "PROVIDER_TIMEOUT" ? "TIMEOUT"
+      : code === "PROVIDER_EMPTY_OUTPUT" ? "EMPTY_OUTPUT"
+      : code === "PROVIDER_SCHEMA_INVALID" ? "SCHEMA_INVALID" : "PROVIDER";
+    const providerErrorCategory = code;
     console.warn("assistant_semantic_router", {
       semanticMode: "fallback",
       fallbackReason: reason,
       providerErrorCategory,
     });
     return { status: "FALLBACK", reason, providerErrorCategory, model };
-  } finally {
-    if (deadline) clearTimeout(deadline);
   }
 }
 
