@@ -5,6 +5,16 @@ export const assistantVoiceBitsPerSample = 16;
 export const assistantVoiceMaxDurationSeconds = 60;
 export const assistantVoiceMaxFileBytes = 2_100_000;
 export const assistantVoiceMaxTranscriptLength = 1_000;
+export const assistantVoiceClientTimeoutMs = 30_000;
+
+export function assistantVoiceUploadFormat(value: string) {
+  const mime = value.toLowerCase().replace(/\s|"/g, "");
+  if (mime === "audio/webm" || mime === "audio/webm;codecs=opus") return { mimeType: "audio/webm", extension: "webm" } as const;
+  if (mime === "audio/ogg" || mime === "audio/ogg;codecs=opus") return { mimeType: "audio/ogg", extension: "ogg" } as const;
+  if (mime === "audio/mp4" || mime === "audio/mp4;codecs=mp4a.40.2") return { mimeType: "audio/mp4", extension: "mp4" } as const;
+  if (mime === "audio/wav" || mime === "audio/x-wav") return { mimeType: "audio/wav", extension: "wav" } as const;
+  return null;
+}
 
 export type AssistantVoiceWavInfo = {
   channels: number;
@@ -23,6 +33,7 @@ function readsAscii(bytes: Uint8Array, offset: number, expected: string) {
 
 export function readAssistantVoiceWavInfo(
   bytes: Uint8Array,
+  requireCanonical = true,
 ): AssistantVoiceWavInfo | null {
   if (
     bytes.length < 44 ||
@@ -71,11 +82,13 @@ export function readAssistantVoiceWavInfo(
   if (!format || dataBytes === null) return null;
   if (
     format.audioFormat !== 1 ||
-    format.channels !== assistantVoiceChannels ||
-    format.sampleRate !== assistantVoiceSampleRate ||
-    format.bitsPerSample !== assistantVoiceBitsPerSample ||
-    format.blockAlign !== 2 ||
-    format.byteRate !== assistantVoiceSampleRate * 2 ||
+    ![1, 2].includes(format.channels) ||
+    format.sampleRate < 8_000 || format.sampleRate > 96_000 ||
+    ![8, 16, 24, 32].includes(format.bitsPerSample) ||
+    format.blockAlign !== format.channels * format.bitsPerSample / 8 ||
+    format.byteRate !== format.sampleRate * format.blockAlign ||
+    (requireCanonical && (format.channels !== assistantVoiceChannels ||
+      format.sampleRate !== assistantVoiceSampleRate || format.bitsPerSample !== assistantVoiceBitsPerSample)) ||
     dataBytes % format.blockAlign !== 0
   ) {
     return null;
@@ -110,4 +123,26 @@ export function appendAssistantVoiceTranscript(draft: string, transcript: string
   if (!currentDraft) return normalizedTranscript;
   if (!normalizedTranscript) return currentDraft;
   return `${currentDraft} ${normalizedTranscript}`;
+}
+
+export function validateAssistantVoiceAudio(mime: string, bytes: Uint8Array) {
+  const format = assistantVoiceUploadFormat(mime);
+  if (!format) return { ok: false as const, reason: "format" as const };
+  if (!bytes.length || bytes.length > assistantVoiceMaxFileBytes) return { ok: false as const, reason: "size" as const };
+  if (format.extension === "wav") {
+    const info = readAssistantVoiceWavInfo(bytes, false);
+    if (!info || !info.dataBytes) return { ok: false as const, reason: "format" as const };
+    if (info.durationSeconds > assistantVoiceMaxDurationSeconds) return { ok: false as const, reason: "duration" as const };
+  } else {
+    const valid = format.extension === "webm"
+      ? bytes.length >= 16 && [0x1a, 0x45, 0xdf, 0xa3].every((byte, index) => bytes[index] === byte)
+        && new TextDecoder().decode(bytes.slice(0, 1024)).includes("webm")
+      : format.extension === "ogg"
+        ? bytes.length >= 32 && readsAscii(bytes, 0, "OggS")
+          && new TextDecoder().decode(bytes.slice(0, 1024)).includes("OpusHead")
+        : bytes.length >= 16 && readsAscii(bytes, 4, "ftyp")
+          && new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0) >= 16;
+    if (!valid) return { ok: false as const, reason: "format" as const };
+  }
+  return { ok: true as const, format };
 }

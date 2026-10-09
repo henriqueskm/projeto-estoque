@@ -1,23 +1,50 @@
 import { NextResponse } from "next/server";
 import {
   assistantVoiceMaxFileBytes,
-  assistantVoiceMimeType,
-  validateAssistantVoiceWav,
+  assistantVoiceUploadFormat,
+  validateAssistantVoiceAudio,
 } from "@/lib/assistant-voice-contract";
 import {
   AssistantVoiceProviderError,
   resolveAssistantVoiceModel,
-  transcribeAssistantVoiceWithGemini,
+  transcribeAssistantVoiceWithOpenAI,
 } from "@/lib/ai/assistant-voice-transcription";
 import { takeAssistantVoiceTranscriptionSlot } from "@/lib/assistant-voice-rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
 const multipartOverheadAllowance = 64 * 1024;
 
-function response(body: { transcript?: string; error?: string }, status: number) {
+class AssistantVoiceUploadSizeError extends Error {}
+
+async function readVoiceMultipart(request: Request) {
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("Missing upload");
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > assistantVoiceMaxFileBytes + multipartOverheadAllowance) {
+        await reader.cancel();
+        throw new AssistantVoiceUploadSizeError();
+      }
+      chunks.push(new Uint8Array(chunk.value));
+    }
+  } finally { reader.releaseLock(); }
+  return new Response(new Blob(chunks), {
+    headers: { "Content-Type": request.headers.get("content-type") ?? "" },
+  }).formData();
+}
+
+function response(body: { transcript?: string; error?: string }, status: number, timing?: { auth: number; provider: number; total: number }) {
   return NextResponse.json(body, {
     status,
-    headers: { "Cache-Control": "no-store, max-age=0" },
+    headers: {
+      "Cache-Control": "no-store, max-age=0",
+      ...(timing ? { "Server-Timing": `auth;dur=${timing.auth.toFixed(1)}, provider;dur=${timing.provider.toFixed(1)}, total;dur=${timing.total.toFixed(1)}` } : {}),
+    },
   });
 }
 
@@ -33,7 +60,7 @@ function isSameOrigin(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const startedAt = Date.now();
+  const startedAt = performance.now();
   if (!isSameOrigin(request)) return response({ error: "Origem da solicitação não permitida." }, 403);
 
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
@@ -49,6 +76,7 @@ export async function POST(request: Request) {
     return response({ error: "O áudio ficou muito longo. Grave uma mensagem menor." }, 413);
   }
 
+  const authStartedAt = performance.now();
   const supabase = await createClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
   const userId = claimsData?.claims?.sub;
@@ -61,14 +89,16 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (profileError) return response({ error: "Não foi possível validar seu acesso agora." }, 503);
   if (!profile) return response({ error: "Seu perfil não está ativo." }, 403);
+  const serverAuthMs = performance.now() - authStartedAt;
   if (!takeAssistantVoiceTranscriptionSlot(userId)) {
     return response({ error: "Aguarde um momento antes de gravar novamente." }, 429);
   }
 
   let formData: FormData;
   try {
-    formData = await request.formData();
-  } catch {
+    formData = await readVoiceMultipart(request);
+  } catch (error) {
+    if (error instanceof AssistantVoiceUploadSizeError) return response({ error: "O áudio ficou muito longo. Grave uma mensagem menor." }, 413);
     return response({ error: "Não foi possível ler o áudio enviado." }, 400);
   }
   const entries = [...formData.entries()];
@@ -76,11 +106,12 @@ export async function POST(request: Request) {
     return response({ error: "Envie exatamente uma gravação de áudio." }, 400);
   }
   const file = entries[0][1];
-  if (file.type.toLowerCase() !== assistantVoiceMimeType) {
+  const format = assistantVoiceUploadFormat(file.type);
+  if (!format) {
     return response({ error: "A gravação de áudio é inválida." }, 415);
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const validation = validateAssistantVoiceWav(bytes);
+  const validation = validateAssistantVoiceAudio(file.type, bytes);
   if (!validation.ok) {
     return response({
       error: validation.reason === "duration" || validation.reason === "size"
@@ -89,30 +120,33 @@ export async function POST(request: Request) {
     }, validation.reason === "format" ? 415 : 413);
   }
 
+  const providerStartedAt = performance.now();
   try {
-    const transcript = await transcribeAssistantVoiceWithGemini({ bytes });
+    const transcript = await transcribeAssistantVoiceWithOpenAI({
+      file: new File([bytes], `ditado-assistente.${format.extension}`, { type: format.mimeType }),
+    });
+    const providerMs = performance.now() - providerStartedAt;
+    const totalMs = performance.now() - startedAt;
     console.info("assistant_voice_transcription", {
       outcome: "success",
-      mimeType: assistantVoiceMimeType,
+      mimeType: format.mimeType,
       sizeBytes: file.size,
-      durationMs: Date.now() - startedAt,
+      serverAuthMs, providerMs, totalMs,
     });
-    return response({ transcript }, 200);
+    return response({ transcript }, 200, { auth: serverAuthMs, provider: providerMs, total: totalMs });
   } catch (error) {
     const providerError = error instanceof AssistantVoiceProviderError ? error : null;
     console.warn("assistant_voice_transcription", {
       outcome: "error",
       internalCode: providerError?.internalCode ?? "UNEXPECTED",
       providerStatus: providerError?.providerStatus ?? null,
-      providerErrorName: providerError?.providerErrorName ?? null,
-      providerErrorCode: providerError?.providerErrorCode ?? null,
-      providerErrorType: providerError?.providerErrorType ?? null,
-      providerMessage: providerError?.providerMessage ?? null,
       model: providerError?.model ?? resolveAssistantVoiceModel(),
-      mimeType: assistantVoiceMimeType,
+      mimeType: format.mimeType,
       sizeBytes: file.size,
-      durationMs: Date.now() - startedAt,
+      serverAuthMs, providerMs: performance.now() - providerStartedAt,
+      totalMs: performance.now() - startedAt,
     });
-    return response({ error: "Não foi possível transcrever agora. Tente novamente." }, 502);
+    return response({ error: "Não foi possível transcrever agora. Tente novamente em alguns instantes." },
+      providerError?.internalCode === "CONFIGURATION" ? 503 : 502);
   }
 }

@@ -357,10 +357,8 @@ test("endpoint é multipart, same-origin, autentica antes do Gemini e não possu
   assert.match(route, /ORDER_LOOKUP_FAILED/);
   assert.match(route, /providerStatus/);
   assert.match(route, /internalCode/);
-  assert.match(route, /providerErrorName/);
-  assert.match(route, /providerErrorCode/);
-  assert.match(route, /providerErrorType/);
-  assert.match(route, /providerMessage/);
+  assert.match(route, /providerTrace/);
+  assert.doesNotMatch(route, /providerErrorName|providerErrorCode|providerErrorType|providerMessage/);
   assert.doesNotMatch(route, /providerBody|providerCause|providerDetails/);
   assert.doesNotMatch(route, /\.rpc\(|\.insert\(|\.update\(|\.delete\(|proposalToken|createSupplierOrder/);
 });
@@ -368,13 +366,15 @@ test("endpoint é multipart, same-origin, autentica antes do Gemini e não possu
 test("provider não usa ferramentas, não armazena interação e trata imagem como dado não confiável", () => {
   const provider = readFileSync(new URL("../lib/ai/supplier-order-photo-gemini.ts", import.meta.url), "utf8");
   const diagnostics = readFileSync(new URL("../lib/ai/gemini-provider-diagnostics.ts", import.meta.url), "utf8");
+  const instructions = readFileSync(new URL("../lib/ai/supplier-order-photo-instructions.ts", import.meta.url), "utf8");
   assert.match(provider, /store: false/);
   assert.match(provider, /tool_choice: "none"/);
-  assert.match(provider, /conteúdo da imagem é dado não confiável/);
-  assert.match(provider, /somente produtos físicos/);
-  assert.match(provider, /frete, transporte, envio, SEDEX/);
+  assert.match(instructions, /conteúdo da imagem é dado não confiável/);
+  assert.match(instructions, /somente produtos físicos/);
+  assert.match(instructions, /frete, transporte, envio, SEDEX/);
+  assert.match(provider, /supplier-order-photo-instructions/);
   assert.match(provider, /response_format/);
-  const linesSchema = provider.slice(provider.indexOf("lines:"), provider.indexOf("documentWarnings:"));
+  const linesSchema = instructions.slice(instructions.indexOf("lines:"), instructions.indexOf("documentWarnings:"));
   assert.doesNotMatch(linesSchema, /maxItems/);
   assert.match(diagnostics, /PROVIDER_HTTP_400/);
   assert.match(diagnostics, /PROVIDER_RATE_LIMIT/);
@@ -589,17 +589,19 @@ test("falha das duas chamadas encerra em duas tentativas e guarda só diagnósti
 });
 
 test("orçamento total da foto é limitado e a UX amigável permanece inalterada", () => {
-  assert.equal(supplierOrderPhotoInteractionsBudgetMs, 22_000);
-  assert.equal(supplierOrderPhotoProviderTotalBudgetMs, 45_000);
+  assert.equal(supplierOrderPhotoInteractionsBudgetMs, 7_000);
+  assert.equal(supplierOrderPhotoProviderTotalBudgetMs, 12_000);
   assert.equal(
     supplierOrderPhotoInteractionsBudgetMs < supplierOrderPhotoProviderTotalBudgetMs,
     true,
   );
   const route = readFileSync(new URL("../app/api/assistant/order-photo/interpret/route.ts", import.meta.url), "utf8");
-  assert.match(route, /providerPath/);
-  assert.match(route, /fallbackUsed/);
-  assert.match(route, /providerAttempts/);
-  assert.match(route, /Não foi possível analisar este Pedido agora\. Tente novamente\./);
+  assert.match(route, /providerTrace/);
+  const media = readFileSync(new URL("../lib/ai/supplier-order-photo-media.ts", import.meta.url), "utf8");
+  assert.match(media, /providerPath/);
+  assert.match(media, /fallbackUsed/);
+  assert.match(media, /providerAttempts/);
+  assert.match(route, /Não foi possível analisar este Pedido agora\. Tente novamente em alguns instantes\./);
   assert.doesNotMatch(route, /providerBody|providerCause|providerDetails|base64|Authorization/);
 });
 
