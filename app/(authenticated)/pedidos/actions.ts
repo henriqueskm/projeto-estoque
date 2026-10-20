@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { dispatchSafisaFullyReadyPush } from "@/lib/safisa-push-dispatch";
 import { createClient } from "@/lib/supabase/server";
+import { supplierOrderEditMatches } from "@/lib/supplier-order-edit-verification";
 import {
   supplierOrderStatuses,
   type CreateSupplierOrderInput,
@@ -886,6 +887,15 @@ export async function createSupplierOrder(
 export async function updateSupplierOrder(
   input: unknown,
 ): Promise<SupplierOrderActionResult> {
+  const startedAt = Date.now();
+  let stage: "auth" | "rpc" | "receipt" | "readback" = "auth";
+  // Whitelisted technical fields only; never log error.message or request data.
+  const logFailure = (code?: string) => console.warn("supplier_order_update_failed", {
+    route: "update_supplier_order", stage,
+    sqlstate: typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) ? code : null,
+    errorClass: code === "40001" ? "CONFLICT" : stage === "rpc" ? "RPC" : "VERIFICATION",
+    durationMs: Date.now() - startedAt,
+  });
   const normalized = normalizeOrderInput(input, "UPDATE");
 
   if ("ok" in normalized) {
@@ -900,11 +910,13 @@ export async function updateSupplierOrder(
     const context = await getAuthenticatedContext();
 
     if (!context) {
+      logFailure("42501");
       return actionError(
         "Sua sessão ou perfil ativo não está disponível. Entre novamente para continuar.",
       );
     }
 
+    stage = "rpc";
     const { data, error } = await context.supabase.rpc(
       "update_supplier_order",
       {
@@ -918,10 +930,33 @@ export async function updateSupplierOrder(
       },
     );
 
-    return error ? mapRpcError(error.code, error.message) : finishMutation(data);
+    if (error) {
+      logFailure(error.code);
+      return mapRpcError(error.code, error.message);
+    }
+    stage = "receipt";
+    const receipt = parseReceipt(data);
+    if (!receipt || receipt.supplierOrderId !== normalized.supplier_order_id
+      || receipt.negotiationNumber !== normalized.negotiation_number
+      || receipt.lineCount !== normalized.lines.length
+      || receipt.orderedQuantity !== normalized.lines.reduce((sum, line) => sum + line.quantity, 0)) {
+      logFailure();
+      return actionError("Não foi possível confirmar que todas as alterações foram salvas. O rascunho foi mantido. Tente novamente com os mesmos dados.");
+    }
+    stage = "readback";
+    const persisted = await context.supabase.from("supplier_orders")
+      .select("id, negotiation_number, order_date, notes, supplier_order_items(id, item_id, commercial_configuration_id, commercial_configuration_code_id, ordered_quantity, notes, position)")
+      .eq("id", normalized.supplier_order_id).maybeSingle();
+    if (persisted.error || !supplierOrderEditMatches(normalized, persisted.data)) {
+      logFailure(persisted.error?.code);
+      return actionError("Não foi possível confirmar as alterações na leitura do Pedido. O rascunho foi mantido; tente novamente com os mesmos dados ou reabra o Pedido atualizado.");
+    }
+    revalidatePath("/pedidos");
+    return { ok: true, receipt };
   } catch {
+    logFailure();
     return actionError(
-      "Não foi possível editar o pedido agora. Tente novamente.",
+      "Não foi possível confirmar a edição agora. O rascunho foi mantido. Tente novamente com os mesmos dados.",
     );
   }
 }

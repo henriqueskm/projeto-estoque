@@ -1,5 +1,7 @@
 "use client";
 
+import { buildSupplierOrderFormLines } from "@/lib/supplier-order-form-lines";
+
 import Link from "next/link";
 import { useWorkspaceScroll } from "@/components/workspace-state-provider";
 import { useSemanticWorkspaceState, useSemanticTransient } from "@/components/semantic-back-provider";
@@ -108,6 +110,7 @@ type DraftLine = {
   notes: string;
   pickedQuantity: number;
   stockedQuantity: number;
+  readyQuantity: number;
   cancelledQuantity: number;
   identityLocked: boolean;
 };
@@ -846,8 +849,10 @@ function OrderFormDialog({
       notes: item.notes ?? "",
       pickedQuantity: item.pickedQuantity,
       stockedQuantity: item.stockedQuantity,
+      readyQuantity: item.readyQuantity,
       cancelledQuantity: item.cancelledQuantity,
       identityLocked:
+        item.readyQuantity > 0 ||
         item.pickedQuantity > 0 ||
         item.stockedQuantity > 0 ||
         item.cancelledQuantity > 0 ||
@@ -863,6 +868,7 @@ function OrderFormDialog({
     Record<string, string>
   >({});
   const [error, setError] = useState<string | null>(null);
+  const [reloadRequired, setReloadRequired] = useState(false);
   const [isPending, startTransition] = useTransition();
   const runMutation = useRouteMutation(startTransition);
 
@@ -981,6 +987,7 @@ function OrderFormDialog({
   }
 
   function markChanged() {
+    if (reloadRequired) return;
     idempotencyKeyRef.current = null;
     setError(null);
   }
@@ -1030,6 +1037,7 @@ function OrderFormDialog({
         notes: "",
         pickedQuantity: 0,
         stockedQuantity: 0,
+        readyQuantity: 0,
         cancelledQuantity: 0,
         identityLocked: false,
       },
@@ -1084,6 +1092,7 @@ function OrderFormDialog({
         notes: "",
         pickedQuantity: 0,
         stockedQuantity: 0,
+        readyQuantity: 0,
         cancelledQuantity: 0,
         identityLocked: false,
       },
@@ -1091,53 +1100,12 @@ function OrderFormDialog({
   }
 
   function buildPayloadLines(): SupplierOrderLineInput[] | null {
-    const payloadLines: SupplierOrderLineInput[] = [];
-
-    for (const line of lines) {
-      const minimum = Math.max(
-        1,
-        line.pickedQuantity + line.cancelledQuantity,
-      );
-
-      if (
-        !Number.isInteger(line.quantity) ||
-        line.quantity < minimum ||
-        line.quantity > maximumInteger ||
-        line.notes.trim().length > 1_000
-      ) {
-        return null;
-      }
-
-      if (line.kind === "ITEM" && line.itemId) {
-        payloadLines.push({
-          ...(line.existingId ? { id: line.existingId } : {}),
-          kind: "ITEM",
-          item_id: line.itemId,
-          quantity: line.quantity,
-          notes: line.notes.trim() || null,
-        });
-      } else if (
-        line.kind === "COMMERCIAL_CONFIGURATION" &&
-        line.configurationId
-      ) {
-        payloadLines.push({
-          ...(line.existingId ? { id: line.existingId } : {}),
-          kind: "COMMERCIAL_CONFIGURATION",
-          commercial_configuration_id: line.configurationId,
-          commercial_configuration_code_id: line.commercialCodeId,
-          quantity: line.quantity,
-          notes: line.notes.trim() || null,
-        });
-      } else {
-        return null;
-      }
-    }
-
-    return payloadLines.length > 0 ? payloadLines : null;
+    return buildSupplierOrderFormLines(lines);
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isPending || reloadRequired) return;
     setError(null);
     const normalizedNumber = negotiationNumber.trim();
     const normalizedNotes = notes.trim();
@@ -1194,7 +1162,8 @@ function OrderFormDialog({
       if (!isCurrentVisit()) return;
       if (!result.ok) {
         if (result.stale) {
-          onStale(result.error);
+          setReloadRequired(true);
+          setError("Este Pedido mudou depois que foi aberto. Seu rascunho foi mantido. Reabra o Pedido atualizado antes de salvar; nenhuma alteração foi sobrescrita.");
           return;
         }
 
@@ -1323,6 +1292,7 @@ function OrderFormDialog({
                     const minimum = Math.max(
                       1,
                       line.pickedQuantity + line.cancelledQuantity,
+                      line.readyQuantity + line.cancelledQuantity,
                     );
 
                     return (
@@ -1440,6 +1410,7 @@ function OrderFormDialog({
                       const minimum = Math.max(
                         1,
                         line.pickedQuantity + line.cancelledQuantity,
+                        line.readyQuantity + line.cancelledQuantity,
                       );
 
                       return (
@@ -2116,6 +2087,12 @@ function OrderFormDialog({
               className="order-3 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900"
             >
               {error}
+              {mode === "EDIT" ? (
+                <button type="button" disabled={isPending} onClick={() => onStale("Pedido recarregado. Confira os dados antes de editar novamente.")}
+                  className="nk-focus mt-2 block min-h-11 rounded-lg border border-red-200 px-3 text-sm font-bold">
+                  Reabrir Pedido atualizado
+                </button>
+              ) : null}
             </p>
           ) : null}
         </div>
@@ -2131,7 +2108,7 @@ function OrderFormDialog({
           </button>
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isPending || reloadRequired}
             className="nk-focus min-h-12 rounded-xl bg-brand-charcoal px-5 text-sm font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-wait disabled:opacity-60"
           >
             {isPending
@@ -4473,6 +4450,7 @@ function ActiveSupplierOrdersWorkspace({
           onStale={(message) => {
             setEditingOrderId(null);
             setFeedback(message);
+            setDetailReloadKey((value) => value + 1);
             router.refresh();
           }}
           onSaved={(orderId, message) => {
