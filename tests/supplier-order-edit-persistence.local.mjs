@@ -67,7 +67,7 @@ function fails(action, pattern = /23514|22023/) {
   const before = state(); assert.throws(action, error => pattern.test(String(error.stderr)));
   assert.deepEqual(state(), before, "failed update must roll back header/lines/audit/stock");
 }
-const migration = readFileSync(new URL("../supabase/migrations/20261020125349_fix_supplier_order_edit_line_persistence.sql", import.meta.url), "utf8");
+const migration = readFileSync(new URL("../supabase/migrations/20261020132636_fix_supplier_order_edit_line_persistence.sql", import.meta.url), "utf8");
 before(() => {
   // Reinstall ONLY the old private function in the disposable target to make
   // the before/after reproduction repeatable, including a fresh connection.
