@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { updateSupplierOrder } from "../app/(authenticated)/pedidos/actions.ts";
 import { supplierOrderEditMatches } from "../lib/supplier-order-edit-verification.ts";
 import { buildSupplierOrderFormLines } from "../lib/supplier-order-form-lines.ts";
@@ -100,10 +101,22 @@ test("form preserves draft on stale/error, offers explicit reopen, and keeps rou
   assert.match(form, /item.readyQuantity > 0/); assert.match(form, /idempotencyKeyRef.current \?\? crypto.randomUUID/);
 });
 test("migration only replaces private writer; pre-edit delete scope and transactional persistence guard", () => {
-  const sql = readFileSync(new URL("../supabase/migrations/20261020125349_fix_supplier_order_edit_line_persistence.sql", import.meta.url), "utf8");
+  const sql = readFileSync(new URL("../supabase/migrations/20261020132636_fix_supplier_order_edit_line_persistence.sql", import.meta.url), "utf8");
   assert.match(sql, /existing_line.id = any\(v_existing_line_ids\)/);
   assert.ok(sql.indexOf("into v_existing_line_ids") < sql.indexOf("insert into public.supplier_order_items"));
   assert.ok(sql.indexOf("supplier_order_update_persistence_mismatch") < sql.indexOf("insert into public.supplier_order_events"));
   assert.match(sql, /errcode = '40001'/); assert.match(sql, /'ORDER_ITEMS_UPDATED'/);
   assert.doesNotMatch(sql, /disable trigger|session_replication_role|security definer|update public\.(?:stock_balances|configuration_stock_balances)|create or replace function public\./i);
+});
+test("Issue93: hotfix uses the already-applied version, without duplicate/old version or SQL edits", () => {
+  const directory = new URL("../supabase/migrations/", import.meta.url);
+  const files = readdirSync(directory).filter(name => name.endsWith(".sql"));
+  assert.equal(files.length, new Set(files.map(name => name.slice(0, 14))).size);
+  assert.deepEqual(files.filter(name => name.startsWith("20261020132636_")), ["20261020132636_fix_supplier_order_edit_line_persistence.sql"]);
+  // Historical version must be absent, not a second pending migration.
+  assert.equal(files.some(name => name.startsWith("20261020125349_")), false);
+  const sql = readFileSync(new URL("20261020132636_fix_supplier_order_edit_line_persistence.sql", directory), "utf8");
+  // Canonical Git bytes; also accepts Windows CRLF checkout conversion.
+  assert.equal(createHash("sha256").update(sql.replace(/\r\n/g, "\n")).digest("hex"),
+    "157d1b21831698a4849da354c8d402b32141920b0090abeeb1b8328a774752dc");
 });

@@ -21,7 +21,7 @@ foi criado/editado para investigar.
 
 ## Correção pequena e forward-only
 
-Migration: `20261020125349_fix_supplier_order_edit_line_persistence.sql`.
+Migration: `20261020132636_fix_supplier_order_edit_line_persistence.sql`.
 
 - Captura os IDs preexistentes **após** os locks atuais de Pedido/linhas.
 - DELETE fica restrito a esses IDs, mantendo remoção legítima de linha antiga
@@ -86,17 +86,44 @@ somente nesse alvo descartável para provar o defeito antes de aplicar o hotfix.
 
 Resultados finais e Preview no HEAD exato são registrados na Draft PR vinculada
 à Issue #91. Não somar reexecuções dos mesmos testes como testes adicionais.
-Smoke operacional de salvar em Preview/produção **não foi executado**: não há
+Na entrega original da #92, smoke operacional de salvar em Preview/produção
+**não foi executado pelo Builder**: não havia
 autorização para mutar Pedidos reais e o Preview usa o banco remoto, ainda sem
-a migration. Persistência pós-COMMIT/nova sessão está comprovada localmente;
+a migration naquele momento. Persistência pós-COMMIT/nova sessão foi comprovada localmente;
 não alegamos um save de navegador remoto ou hard reload autenticado com fixture
 remota. Nenhum dado foi inserido para fabricar essa evidência.
 
-**A correção de produção depende de revisão, autorização e aplicação coordenada
-da migration + deploy. Esta PR não aplica a migration nem faz merge.** O guard
-da aplicação detecta perda de linhas mesmo antes da migration, mas não substitui
-a correção SQL. Não há backfill/recuperação automática de alterações perdidas em
-edições anteriores; não modificamos os Pedidos existentes.
+Posteriormente, a migration foi aplicada com autorização, a #92 foi mergeada e
+o usuário confirmou a resolução do incidente #91. Não há backfill/recuperação
+automática de alterações perdidas em edições anteriores.
+
+## Issue #93 — alinhamento de histórico (20/10/2026)
+
+Base desta manutenção: main `82bfd2164279210b43f0465a38467d93af56e9bb`.
+O Supabase registrou a aplicação autorizada com versão **`20261020132636`** e
+nome descritivo `20261020125349_fix_supplier_order_edit_line_persistence`.
+O arquivo do Git usava a versão `20261020125349`. A única correção agora é o
+rename para `20261020132636_fix_supplier_order_edit_line_persistence.sql`, com
+conteúdo SQL byte a byte preservado. O name remoto permanece intacto.
+
+Comparação read-only das **44 versões remotas** com os **44 arquivos locais**:
+antes, somente esses dois timestamps diferiam; depois do rename, conjuntos
+iguais, zero versões duplicadas, zero versões locais pendentes. Todas as 43
+versões anteriores já correspondiam. SHA-256 antes/depois, tanto no checkout
+quanto no blob Git:
+`157d1b21831698a4849da354c8d402b32141920b0090abeeb1b8328a774752dc`.
+
+O [CLI compara somente timestamps](https://supabase.com/docs/reference/cli/supabase-migration-list),
+não o nome descritivo. Logo, esta migration já é reconhecida como aplicada e não
+fica pendente para reaplicação no fluxo normal por versões. Não duplicar o
+arquivo antigo nem forçar execução do SQL. Um ambiente novo ainda aplica o
+arquivo uma vez, como esperado; isso não significa reaplicação em produção.
+
+Não havia contexto linkado neste worktree; a conferência usou exclusivamente o
+MCP oficial `list_migrations`, sem criar link/puxar env. Não foram executados
+SQL, `db push`, `migration repair`, alteração de histórico remoto ou reexecução
+da migration nesta manutenção. Scripts de teste que filtram pelo sufixo
+`fix_supplier_order_edit_line_persistence` continuam compatíveis sem alteração.
 
 Zero migrations remotas. Zero alterações de estoque/saldo. Zero mutações de
 Pedidos/dados de negócio remotos. Zero alterações de env. Draft, sem auto-merge.
