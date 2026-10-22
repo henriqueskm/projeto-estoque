@@ -68,7 +68,7 @@ test("metadata post-commit verification allows genuine concurrent stock changes,
   assert.equal(catalogPostCommitMatches(r, { ...snapshot, code: "OTHER" }), false);
 });
 for (const itemType of ["SERVO", "INSTALLATION_KIT", "REPAIR_KIT", "LOOSE_PART"]) test(`${itemType} create button/form render fixed category, safe zero stock and cancel`, () => {
-  const button = renderToStaticMarkup(h(PhysicalCatalogCreateButton, { itemType, servoOptions: [] })); assert.match(button, /aria-label="Cadastrar/); assert.match(button, /size-11/);
+  const button = renderToStaticMarkup(h(PhysicalCatalogCreateButton, { servoOptions: [] })); assert.match(button, /Cadastrar produto/); assert.match(button, /min-h-11/);
   const form = renderToStaticMarkup(h(PhysicalCatalogDialog, { operation: "CREATE", itemType, onClose() {}, onSuccess() {} }));
   assert.match(form, /role="dialog"/); assert.match(form, /aria-modal="true"/); assert.match(form, /Cadastro sem movimentação/);
   assert.match(form, /Cancelar/); assert.match(form, /Revisar alteração/); assert.doesNotMatch(form, /type="number"/);
@@ -99,7 +99,8 @@ test("forward-only SQL composes canonical adjustment and preserves immutable phy
   assert.match(sql, /stock_balance_active_catalog_guard/); assert.match(sql, /enable row level security/);
   assert.doesNotMatch(sql, /delete from public\.|update public\.(stock_balances|supplier_order_items)|set item_type|set servo_id|set installation_kit_id/);
   const ui = read("app/(authenticated)/estoque/inventory-workspace.tsx");
-  assert.match(ui, /headerAction=\{<PhysicalCatalogCreateButton itemType=\{group\.itemType\}/);
+  assert.equal((ui.match(/<PhysicalCatalogCreateButton\b/g) ?? []).length, 1);
+  assert.doesNotMatch(ui, /headerAction|itemType=\{group\.itemType\}/);
   assert.match(ui, /onCatalogSuccess=\{handleCatalogSuccess\}/);
   assert.match(ui, /catalogFeedback \? <div role="status"/);
 });
