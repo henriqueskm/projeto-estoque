@@ -2,6 +2,7 @@ import "server-only";
 
 import { assessNewLoosePartCode } from "@/lib/catalog-code-policy";
 import type { InboundRequestLine } from "@/lib/inbound-types";
+import type { PhysicalCatalogRequest } from "@/lib/physical-catalog-management";
 import type { createClient } from "@/lib/supabase/server";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -19,7 +20,8 @@ type StockInboundWrite = {
   description: string | null;
 };
 
-export type CatalogWrite = CatalogOnlyLoosePartWrite | StockInboundWrite;
+type PhysicalCatalogWrite = { kind: "PHYSICAL_CATALOG"; request: PhysicalCatalogRequest; idempotencyKey: string };
+export type CatalogWrite = CatalogOnlyLoosePartWrite | StockInboundWrite | PhysicalCatalogWrite;
 
 export type CatalogWritePolicyErrorReason =
   | "CATALOG_READ_FAILED"
@@ -111,6 +113,10 @@ async function loadCatalogCodes(supabase: SupabaseClient) {
 }
 
 function loosePartsFromWrite(write: CatalogWrite) {
+  // The new idempotent catalog RPC must resolve replay BEFORE namespace checks:
+  // a successful CREATE retry necessarily encounters its own existing code.
+  // That RPC reuses the very same SQL namespace policy/locks/triggers.
+  if (write.kind === "PHYSICAL_CATALOG") return [];
   return write.kind === "CATALOG_ONLY_LOOSE_PART"
     ? [{ code: write.code }]
     : write.lines.flatMap((line) =>
@@ -198,6 +204,10 @@ export async function executeCatalogWrite(
   write: CatalogWrite,
 ) {
   await enforceCatalogWritePolicy(supabase, write);
+
+  if (write.kind === "PHYSICAL_CATALOG") return supabase.rpc("manage_physical_catalog", {
+    p_request: write.request, p_idempotency_key: write.idempotencyKey,
+  });
 
   if (write.kind === "CATALOG_ONLY_LOOSE_PART") {
     return supabase.rpc("create_loose_part", {
