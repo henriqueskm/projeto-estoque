@@ -14,10 +14,12 @@ import { notifyInventoryDataChanged } from "@/lib/inventory-ui-events";
 import { InventorySaleDialog } from "@/components/inventory-sale-dialog";
 import { useRouteMutationPending, useRouteTransientCleanup } from "@/components/route-transient-state";
 import { useSemanticTransient } from "@/components/semantic-back-provider";
+import { PhysicalCatalogDialog } from "@/components/physical-catalog-dialog";
 
 type InventoryRowActionsProps = {
   target: InventoryActionTarget;
   hasImage?: boolean;
+  onCatalogSuccess?: (message: string) => void;
 };
 
 type ActiveDialog =
@@ -26,11 +28,14 @@ type ActiveDialog =
   | "DISASSEMBLY"
   | "ADJUSTMENT"
   | "MINIMUM_STOCK"
+  | "CATALOG_EDIT"
+  | "CATALOG_ARCHIVE"
   | null;
 
 export function InventoryRowActions({
   target,
   hasImage = false,
+  onCatalogSuccess,
 }: InventoryRowActionsProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -224,6 +229,13 @@ export function InventoryRowActions({
               Venda
             </button>
 
+            {target.kind === "ITEM" ? <>
+              <button type="button" role="menuitem" onClick={() => openDialog("CATALOG_EDIT")}
+                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary hover:bg-app-background">Editar código/descrição</button>
+              <button type="button" role="menuitem" onClick={() => openDialog("CATALOG_ARCHIVE")}
+                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-red-700 hover:bg-red-50">Excluir produto</button>
+            </> : null}
+
             <button
               type="button"
               role="menuitem"
@@ -266,6 +278,15 @@ export function InventoryRowActions({
       {activeDialog === "SALE" ? (
         <InventorySaleDialog target={target} onClose={closeDialog} onStale={handleStaleAdjustment}
           onSuccess={(message) => { finishAction(message); router.refresh(); }} />
+      ) : null}
+
+      {target.kind === "ITEM" && (activeDialog === "CATALOG_EDIT" || activeDialog === "CATALOG_ARCHIVE") ? (
+        <PhysicalCatalogDialog operation={activeDialog === "CATALOG_EDIT" ? "EDIT" : "ARCHIVE"} itemId={target.itemId} onClose={closeDialog}
+          onSuccess={message => {
+            if (onCatalogSuccess) { notifyInventoryDataChanged(); setActiveDialog(null); onCatalogSuccess(message); }
+            else finishAction(message);
+            router.refresh();
+          }} />
       ) : null}
 
       {activeDialog === "ADJUSTMENT" ? (

@@ -17,6 +17,7 @@ import {
 import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { ChevronDownIcon, SearchIcon } from "@/components/icons";
 import { InventoryRowActions } from "@/components/inventory-row-actions";
+import { PhysicalCatalogCreateButton } from "@/components/physical-catalog-dialog";
 import { InventoryBundleTable } from "@/components/inventory-bundle-table";
 import { PurchaseRecommendationLauncher } from "@/components/purchase-recommendation-launcher";
 import { getServoFamilyLabel } from "@/lib/inventory-family";
@@ -274,6 +275,7 @@ function InventoryAccordion({
   isOpen,
   onToggle,
   title,
+  headerAction,
 }: {
   children: ReactNode;
   count: number;
@@ -282,12 +284,14 @@ function InventoryAccordion({
   isOpen: boolean;
   onToggle: () => void;
   title: string;
+  headerAction?: ReactNode;
 }) {
   const panelId = `${id}-panel`;
 
   return (
     <section className="rounded-xl border border-border-neutral bg-surface shadow-sm">
-      <h3>
+      <div className="flex items-center gap-1 pr-2">
+      <h3 className="min-w-0 flex-1">
         <button
           id={id}
           type="button"
@@ -318,6 +322,8 @@ function InventoryAccordion({
           </span>
         </button>
       </h3>
+      {headerAction}
+      </div>
       {isOpen ? (
         <div
           id={panelId}
@@ -335,9 +341,11 @@ function InventoryAccordion({
 function PhysicalTable({
   items,
   highlightedItemId,
+  onCatalogSuccess,
 }: {
   items: InventoryPhysicalItem[];
   highlightedItemId?: string;
+  onCatalogSuccess: (message: string) => void;
 }) {
   return (
     <div className="relative bg-surface">
@@ -436,6 +444,7 @@ function PhysicalTable({
               </td>
               <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
                 <InventoryRowActions
+                  onCatalogSuccess={onCatalogSuccess}
                   target={{
                     kind: "ITEM",
                     itemId: item.id,
@@ -611,6 +620,15 @@ export function InventoryWorkspace({
   initialTarget,
   isPurchaseRecommendationsInitiallyOpen = false,
 }: InventoryWorkspaceProps) {
+  // A row is unmounted after archive: success feedback belongs to the workspace.
+  const [catalogFeedback, setCatalogFeedback] = useState<string | null>(null);
+  // Activity tears down Effects too. Do not clear the receipt on a same-route
+  // semantic pop used solely to consume the just-completed dialog checkpoint.
+  useEffect(() => () => setCatalogFeedback(null), []);
+  function handleCatalogSuccess(message: string) {
+    setCatalogFeedback(message);
+    document.getElementById("physical-items-title")?.focus({ preventScroll: true });
+  }
   const targetedPhysicalItem =
     initialTarget?.kind === "item"
       ? inventory.physicalItems.find((item) => item.id === initialTarget.id)
@@ -1089,6 +1107,7 @@ export function InventoryWorkspace({
             </p>
             <h2
               id="physical-items-title"
+              tabIndex={-1}
               className="text-lg font-black text-text-primary sm:text-xl"
             >
               Itens avulsos
@@ -1111,6 +1130,9 @@ export function InventoryWorkspace({
                 title={group.title}
                 description={group.description}
                 count={group.items.length}
+                headerAction={<PhysicalCatalogCreateButton itemType={group.itemType}
+                  onCatalogSuccess={handleCatalogSuccess}
+                  servoOptions={inventory.physicalItems.filter(item => item.itemType === "SERVO").map(item => ({ id: item.id, code: item.code, description: item.description }))} />}
                 isOpen={isOpen}
                 onToggle={() =>
                   toggleSetValue(setOpenPhysicalGroups, group.itemType)
@@ -1118,6 +1140,7 @@ export function InventoryWorkspace({
               >
                 {group.items.length > 0 ? (
                   <PhysicalTable
+                    onCatalogSuccess={handleCatalogSuccess}
                     items={group.items}
                     highlightedItemId={
                       initialTarget?.kind === "item"
@@ -1194,6 +1217,9 @@ export function InventoryWorkspace({
           ) : null}
         </div>
       </section>
+      {catalogFeedback ? <div role="status" className="fixed right-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-3 z-[70] mx-auto flex max-w-md items-center justify-between gap-2 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm font-semibold text-emerald-950">
+        <span>{catalogFeedback}</span><button type="button" onClick={() => setCatalogFeedback(null)} aria-label="Fechar confirmação de catálogo" className="nk-focus min-h-11 shrink-0 rounded px-2 underline">Fechar</button>
+      </div> : null}
     </>
   );
 }
