@@ -275,7 +275,6 @@ function InventoryAccordion({
   isOpen,
   onToggle,
   title,
-  headerAction,
 }: {
   children: ReactNode;
   count: number;
@@ -284,14 +283,12 @@ function InventoryAccordion({
   isOpen: boolean;
   onToggle: () => void;
   title: string;
-  headerAction?: ReactNode;
 }) {
   const panelId = `${id}-panel`;
 
   return (
     <section className="rounded-xl border border-border-neutral bg-surface shadow-sm">
-      <div className="flex items-center gap-1 pr-2">
-      <h3 className="min-w-0 flex-1">
+      <h3 className="min-w-0">
         <button
           id={id}
           type="button"
@@ -322,8 +319,6 @@ function InventoryAccordion({
           </span>
         </button>
       </h3>
-      {headerAction}
-      </div>
       {isOpen ? (
         <div
           id={panelId}
@@ -1117,6 +1112,10 @@ export function InventoryWorkspace({
             {quantityFormatter.format(filteredPhysicalItems.length)} registros
           </span>
         </div>
+        <div className="mb-3">
+          <PhysicalCatalogCreateButton onCatalogSuccess={handleCatalogSuccess}
+            servoOptions={inventory.physicalItems.filter(item => item.itemType === "SERVO").map(item => ({ id: item.id, code: item.code, description: item.description }))} />
+        </div>
         <div className="space-y-2">
           {groupedPhysicalItems.map((group) => {
             const isOpen =
@@ -1130,9 +1129,6 @@ export function InventoryWorkspace({
                 title={group.title}
                 description={group.description}
                 count={group.items.length}
-                headerAction={<PhysicalCatalogCreateButton itemType={group.itemType}
-                  onCatalogSuccess={handleCatalogSuccess}
-                  servoOptions={inventory.physicalItems.filter(item => item.itemType === "SERVO").map(item => ({ id: item.id, code: item.code, description: item.description }))} />}
                 isOpen={isOpen}
                 onToggle={() =>
                   toggleSetValue(setOpenPhysicalGroups, group.itemType)

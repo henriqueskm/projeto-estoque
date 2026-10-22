@@ -38,7 +38,7 @@ type DialogBaseProps = {
 
 export function useAccessibleDialog(
   dialogRef: RefObject<HTMLDivElement | null>,
-  initialFocusRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>,
+  initialFocusRef: RefObject<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement | null>,
   isPending: boolean,
   onClose: () => void,
 ) {

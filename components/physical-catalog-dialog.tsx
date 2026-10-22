@@ -15,12 +15,13 @@ type Props = {
   operation: PhysicalCatalogRequest["operation"];
   itemId?: string; itemType?: PhysicalStockItemType; servoOptions?: ServoOption[];
   onClose: () => void; onSuccess: (message: string) => void;
+  onBack?: () => void;
 };
 const inputClass = "nk-focus min-h-11 w-full min-w-0 rounded-xl border border-border-neutral bg-surface px-3 py-2 text-base text-text-primary disabled:bg-app-background";
 const secondaryClass = "nk-focus min-h-11 rounded-xl border border-border-neutral px-4 py-2 text-sm font-bold text-text-primary hover:bg-app-background disabled:opacity-50";
 const dependencyLabels = { configurations: "configurações", recipes: "receitas de conjuntos", compatibilities: "compatibilidades", applications: "aplicações", pendingOrders: "Pedidos ativos ou pendentes" };
 
-export function PhysicalCatalogDialog({ operation, itemId, itemType, servoOptions = [], onClose, onSuccess }: Props) {
+export function PhysicalCatalogDialog({ operation, itemId, itemType, servoOptions = [], onClose, onSuccess, onBack }: Props) {
   const titleId = useId(), descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null), inputRef = useRef<HTMLInputElement>(null);
   const [snapshot, setSnapshot] = useState<PhysicalCatalogSnapshot | null>(null);
@@ -126,6 +127,7 @@ export function PhysicalCatalogDialog({ operation, itemId, itemType, servoOption
       {stale || (!loading && !snapshot && operation !== "CREATE") ? <button type="button" onClick={refreshPreview} disabled={locked} className={secondaryClass}>Atualizar prévia</button> : null}
       {uncertain ? <p className="text-sm text-amber-950">Os campos permanecem bloqueados. Verificar reutiliza a mesma chave e não duplica a operação.</p> : null}
       <div className="flex flex-wrap justify-end gap-2 border-t border-border-neutral pt-4">
+        {operation === "CREATE" && onBack && !review && !locked ? <button type="button" onClick={onBack} className={secondaryClass}>Voltar às categorias</button> : null}
         <button type="button" onClick={onClose} disabled={isPending} className={secondaryClass}>{uncertain ? "Fechar" : "Cancelar"}</button>
         {review && !locked ? <button type="button" onClick={() => { setReview(false); attempt.current = null; }} className={secondaryClass}>Voltar à edição</button> : null}
         <button type="submit" disabled={isPending || loading || blocked || stale || (operation !== "CREATE" && !snapshot)}
@@ -137,17 +139,47 @@ export function PhysicalCatalogDialog({ operation, itemId, itemType, servoOption
   </DialogFrame>;
 }
 
-export function PhysicalCatalogCreateButton({ itemType, servoOptions, onCatalogSuccess }: { itemType: PhysicalStockItemType; servoOptions: ServoOption[]; onCatalogSuccess?: (message: string) => void }) {
+const registrationCategories = [
+  { type: "SERVO", label: "Servo sem kit" },
+  { type: "INSTALLATION_KIT", label: "Kit de instalação" },
+  { type: "REPAIR_KIT", label: "Jogo de reparo" },
+  { type: "LOOSE_PART", label: "Peça avulsa" },
+] as const satisfies readonly { type: PhysicalStockItemType; label: string }[];
+
+export function PhysicalCatalogCategoryDialog({ onSelect, onClose }: {
+  onSelect: (itemType: PhysicalStockItemType) => void; onClose: () => void;
+}) {
+  const titleId = useId(), descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null), firstOption = useRef<HTMLButtonElement>(null);
+  useAccessibleDialog(dialogRef, firstOption, false, onClose);
+  return <DialogFrame dialogRef={dialogRef} titleId={titleId} descriptionId={descriptionId} title="Cadastrar produto" isPending={false} onClose={onClose}>
+    <div className="space-y-4 p-4 text-left sm:p-5">
+      <p id={descriptionId} className="text-sm text-text-muted">Qual categoria você deseja cadastrar? O produto começará com saldo zero.</p>
+      <div className="grid gap-2">
+        {registrationCategories.map((category, index) => <button key={category.type} ref={index === 0 ? firstOption : undefined} type="button"
+          onClick={() => onSelect(category.type)}
+          className="nk-focus min-h-14 w-full rounded-xl border border-border-neutral bg-surface px-4 py-3 text-left text-base font-bold text-text-primary hover:bg-app-background">
+          {category.label}
+        </button>)}
+      </div>
+      <div className="flex justify-end border-t border-border-neutral pt-4"><button type="button" onClick={onClose} className={secondaryClass}>Cancelar</button></div>
+    </div>
+  </DialogFrame>;
+}
+
+export function PhysicalCatalogCreateButton({ servoOptions, onCatalogSuccess }: { servoOptions: ServoOption[]; onCatalogSuccess?: (message: string) => void }) {
   const [open, setOpen] = useState(false), [feedback, setFeedback] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<PhysicalStockItemType | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const router = useRouter(), pending = useRouteMutationPending();
-  const close = useCallback(() => { setOpen(false); requestAnimationFrame(() => trigger.current?.focus()); }, []);
+  const close = useCallback(() => { setOpen(false); setSelectedType(null); requestAnimationFrame(() => trigger.current?.focus()); }, []);
   useSemanticTransient(open, close, pending);
-  useRouteTransientCleanup(() => { setOpen(false); setFeedback(null); }, open || !!feedback);
+  useRouteTransientCleanup(() => { setOpen(false); setSelectedType(null); setFeedback(null); }, open || !!feedback);
   return <>
-    <button ref={trigger} type="button" aria-label={`Cadastrar ${physicalCatalogLabels[itemType]}`} disabled={pending} onClick={() => setOpen(true)}
-      className="nk-focus inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-border-neutral bg-surface text-2xl font-bold text-text-primary hover:bg-app-background disabled:opacity-50"><span aria-hidden="true">+</span></button>
-    {open ? <PhysicalCatalogDialog operation="CREATE" itemType={itemType} servoOptions={servoOptions} onClose={close} onSuccess={message => {
+    <button ref={trigger} type="button" aria-haspopup="dialog" disabled={pending} onClick={() => { setSelectedType(null); setOpen(true); }}
+      className="nk-focus inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-brand-charcoal px-4 py-2 text-sm font-bold text-white hover:bg-brand-charcoal-soft disabled:opacity-50 sm:w-auto">Cadastrar produto</button>
+    {open && !selectedType ? <PhysicalCatalogCategoryDialog onSelect={setSelectedType} onClose={close} /> : null}
+    {open && selectedType ? <PhysicalCatalogDialog operation="CREATE" itemType={selectedType} servoOptions={servoOptions} onClose={close} onBack={() => setSelectedType(null)} onSuccess={message => {
       if (onCatalogSuccess) onCatalogSuccess(message); else setFeedback(message);
       close(); notifyInventoryDataChanged(); router.refresh();
     }} /> : null}

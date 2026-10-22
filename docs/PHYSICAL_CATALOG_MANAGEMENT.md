@@ -4,10 +4,35 @@ Base: `81a424d0080610cc0c2d0cfd8767f41740f8059b` (main atualizada).
 
 ## Escopo V1
 
-Na tela Estoque, `+` cadastra na categoria física selecionada e o menu de cada
+Na tela Estoque, o botão único **Cadastrar produto**, próximo a **Itens avulsos**,
+abre a escolha explícita da categoria e depois reutiliza o formulário de cadastro.
+Os cabeçalhos das categorias apenas expandem/recolhem seus grupos. O menu de cada
 item permite **Editar código/descrição** e **Excluir produto**. As quatro
 categorias são fixas: SERVO, INSTALLATION_KIT, REPAIR_KIT e LOOSE_PART.
 Não há reclassificação de categoria nem edição de modelo/subtipo existente.
+
+### Simplificação da interface — Issue #98
+
+- Nenhuma categoria vem pré-selecionada. As opções são Servo sem kit, Kit de
+  instalação, Jogo de reparo e Peça avulsa, com alvos de toque de 56 px.
+- **Voltar às categorias** permite refazer a escolha antes da revisão, sem enviar
+  dados. Durante confirmação pendente ou resultado incerto, essa troca não existe.
+- Back/Escape fecham o fluxo e devolvem foco ao botão inicial; Forward não
+  restaura o cadastro. O fluxo usa um único checkpoint transitório do Semantic
+  Back, com bloqueio de navegação durante a mutação e limpeza por Activity.
+- Os formulários, writers, edição, exclusão com saldo, idempotência e feedback
+  existentes permanecem iguais. Nenhuma migration ou mudança de backend na #98;
+  o alinhamento do histórico de migrations da #97 fica fora deste escopo.
+
+Validação da #98: 22 testes de cadastro/gerenciamento (7 novos), 98 de Estoque e
+Entrada/Saída e 169 de Workspace State, Semantic Back, Activity, Instant Navigation
+e layout. TypeScript, ESLint sem warnings, diff-check e builds Webpack/Next.
+Smoke em Chrome com componentes reais e fixture local sanitizada, sem Supabase:
+320×800, 375×812, 768×1024 e 1440×900, sem overflow horizontal; escolha das quatro
+categorias, volta/cancelamento, revisão sem submit, Tab/Shift+Tab, Escape, foco
+restaurado, Back/Forward e Activity preservando a busca sem reabrir o cadastro.
+Console da fixture sem errors/warnings. O ambiente permite browser integrado em
+vez do CLI; emulação/History API não comprovam gesto em Android/PWA físico.
 
 - Cadastro inicia com mínimo/saldo zero, sem balance row, lote ou movimento.
   SERVO exige modelo; cada tipo recebe seu subregistro correto. Compatibilidades
