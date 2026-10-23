@@ -5,6 +5,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import { CompatibleKitImages } from "@/components/compatible-kit-images";
 import { CommercialConfigurationImage } from "@/components/commercial-configuration-image";
 import { SafisaBulkPickupAction } from "@/components/safisa-bulk-pickup-dialog";
+import { SupplierOrderPhotoLineReviewDialog, SupplierOrderPhotoHeaderReviewDialog } from "@/components/assistant-photo-review-dialog";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
+import { useRouteTransientCleanup } from "@/components/route-transient-state";
 import { useSafisaPickupAlerts } from "@/components/safisa-pickup-alert-provider";
 import type {
   AssistantClarificationBlock,
@@ -53,7 +56,11 @@ import type {
   AssistantStatisticsBlock,
 } from "@/lib/assistant-types";
 import type { PurchaseRecommendationItem } from "@/lib/purchase-recommendation-types";
-import { updateSupplierOrderPhotoPreviewLine } from "@/lib/assistant-supplier-order-photo-preview";
+import {
+  updateSupplierOrderPhotoPreviewLine, confirmSupplierOrderPhotoVisualReview,
+  updateSupplierOrderPhotoPreviewQuantity, updateSupplierOrderPhotoPreviewHeader,
+  supplierOrderPhotoLineCanConfirmVisualReview, supplierOrderPhotoPreviewIsEditable,
+} from "@/lib/assistant-supplier-order-photo-preview";
 import {
   createSupplierOrderPhotoPrepareInputFromPreview,
   parseAssistantSupplierOrderPhotoCreateResultBlock,
@@ -131,7 +138,11 @@ function SupplierOrderPhotoPreview({
     block: AssistantSupplierOrderPhotoPreviewBlock | AssistantSupplierOrderPhotoCreateResultBlock,
   ) => void;
 }) {
-  const [dialog, setDialog] = useState<null | { mode: "correct" | "create"; lineIndex: number; code: string; description: string }>(null);
+  const [dialog, setDialog] = useState<null | { mode: "correct" | "create"; lineIndex: number; code: string; description: string; returnToReview?: boolean }>(null);
+  const [reviewLineIndex, setReviewLineIndex] = useState<number | null>(null);
+  const [headerReview, setHeaderReview] = useState(false);
+  const reviewTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const cardRef = useRef<HTMLElement>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -150,12 +161,33 @@ function SupplierOrderPhotoPreview({
   const createDialogTitleId = useId();
   const dialogMode = dialog?.mode;
   useDocumentScrollLock(Boolean(dialog || createProposal));
+  const catalogVisit = useRouteTransientCleanup(() => {
+    setDialog(null); setDialogError(null); setReviewLineIndex(null); setHeaderReview(false);
+    if (!createInFlightRef.current) setCreateProposal(null);
+  });
+  useSemanticTransient(Boolean(dialog), closeDialog, isSubmitting);
+  useSemanticTransient(Boolean(createProposal), closeCreateDialog, isConfirmingCreate);
+
+  function closeReview() {
+    setReviewLineIndex(null); setHeaderReview(false);
+    window.requestAnimationFrame(() => {
+      const target = reviewTriggerRef.current?.isConnected ? reviewTriggerRef.current : cardRef.current;
+      target?.focus({ preventScroll: true });
+    });
+  }
+
+  function openReview(index: number, trigger: HTMLButtonElement) {
+    if (disabled || isSubmitting || isPreparingCreate || !onUpdate || !supplierOrderPhotoPreviewIsEditable(block)) return;
+    reviewTriggerRef.current = trigger; setHeaderReview(false); setReviewLineIndex(index);
+  }
 
   useEffect(() => {
     if (!dialogMode) return;
     firstFieldRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !isSubmitting) {
+        event.preventDefault();
+        event.stopPropagation();
         setDialog(null);
         window.requestAnimationFrame(() => triggerRef.current?.focus());
       }
@@ -166,7 +198,9 @@ function SupplierOrderPhotoPreview({
         if (!controls?.length) return;
         const first = controls[0];
         const last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
+        if (!dialogRef.current?.contains(document.activeElement)) {
+          event.preventDefault(); (event.shiftKey ? last : first).focus();
+        } else if (event.shiftKey && document.activeElement === first) {
           event.preventDefault(); last.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
           event.preventDefault(); first.focus();
@@ -223,6 +257,7 @@ function SupplierOrderPhotoPreview({
       return;
     }
     submitInFlightRef.current = true;
+    const isCurrentVisit = catalogVisit.capture();
     setIsSubmitting(true);
     setDialogError(null);
     try {
@@ -237,6 +272,7 @@ function SupplierOrderPhotoPreview({
         body: JSON.stringify(dialog.mode === "correct" ? { code } : { code, description }),
       });
       const payload: unknown = await response.json().catch(() => null);
+      if (!isCurrentVisit()) return;
       const result = payload && typeof payload === "object" && !Array.isArray(payload)
         ? payload as Record<string, unknown> : null;
       if (!response.ok) throw new Error(typeof result?.error === "string" ? result.error : "Não foi possível concluir a operação.");
@@ -248,14 +284,17 @@ function SupplierOrderPhotoPreview({
       if (typeof result?.code !== "string" || typeof result.description !== "string") {
         throw new Error("Não foi possível validar o retorno do catálogo.");
       }
-      onUpdate(updateSupplierOrderPhotoPreviewLine(block, dialog.lineIndex, {
+      const updated = updateSupplierOrderPhotoPreviewLine(block, dialog.lineIndex, {
         code: result.code, description: result.description,
-      }));
+      });
+      onUpdate(updated);
       setNotice(dialog.mode === "create"
         ? `Peça avulsa ${result.created === false ? "já cadastrada" : "cadastrada"}. Estoque inicial: 0.`
         : `Cód. ${result.code} identificado no catálogo.`);
       setDialog(null);
-      window.requestAnimationFrame(() => triggerRef.current?.focus());
+      if (dialog.returnToReview && updated.lines[dialog.lineIndex]?.resolution === "NEEDS_REVIEW") {
+        setReviewLineIndex(dialog.lineIndex);
+      } else window.requestAnimationFrame(() => triggerRef.current?.focus());
     } catch (error) {
       setDialogError(error instanceof Error ? error.message : "Não foi possível concluir a operação.");
     } finally {
@@ -273,6 +312,7 @@ function SupplierOrderPhotoPreview({
     }
     createTriggerRef.current = trigger;
     createInFlightRef.current = true;
+    const isCurrentVisit = catalogVisit.capture();
     setIsPreparingCreate(true);
     setCreateError(null);
     try {
@@ -284,6 +324,7 @@ function SupplierOrderPhotoPreview({
         body: JSON.stringify(input),
       });
       const payload: unknown = await response.json().catch(() => null);
+      if (!isCurrentVisit()) return;
       const record = payload && typeof payload === "object" && !Array.isArray(payload)
         ? payload as Record<string, unknown> : null;
       const duplicate = parseAssistantSupplierOrderPhotoCreateResultBlock(record?.block);
@@ -355,9 +396,13 @@ function SupplierOrderPhotoPreview({
     UNREADABLE: "Foto ilegível",
     ERROR: "Análise indisponível",
   } as const;
+  const editable = supplierOrderPhotoPreviewIsEditable(block) && Boolean(onUpdate);
+  const pendingLineIndexes = block.lines.flatMap((line, index) =>
+    line.resolution !== "IDENTIFIED" || line.blockingReasons.length ? [index] : []);
+  const busy = disabled || isSubmitting || isPreparingCreate || isConfirmingCreate;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border-neutral bg-surface shadow-sm">
+    <section ref={cardRef} tabIndex={-1} className="overflow-hidden rounded-2xl border border-border-neutral bg-surface shadow-sm">
       <div className="border-b border-border-neutral bg-violet-50 px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
@@ -378,9 +423,16 @@ function SupplierOrderPhotoPreview({
           {block.banner}
         </div>
 
+        {editable && pendingLineIndexes.length > 0 ? <div className="rounded-xl bg-amber-50 p-3">
+          <p role="status" className="text-sm font-bold text-amber-950">{pendingLineIndexes.length === 1 ? "1 item precisa de revisão" : `${pendingLineIndexes.length} itens precisam de revisão`}</p>
+          <p className="mt-1 text-sm text-amber-950">Revise cada pendência para liberar a criação do Pedido.</p>
+          <button type="button" disabled={busy} onClick={event => openReview(pendingLineIndexes[0], event.currentTarget)}
+            className="nk-focus mt-2 min-h-11 w-full rounded-xl bg-brand-charcoal px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Revisar primeiro item pendente</button>
+        </div> : null}
+
         {(block.negotiationNumber || block.orderDate) ? (
           <div className="grid grid-cols-2 gap-2 rounded-xl bg-app-background p-3 text-sm">
-            <div>
+            <div className="min-w-0 [overflow-wrap:anywhere]">
               <span className="block text-[0.62rem] font-black tracking-wide text-text-muted uppercase">Pedido</span>
               <strong className="text-text-primary">{block.negotiationNumber ?? "Não identificado"}</strong>
             </div>
@@ -393,6 +445,14 @@ function SupplierOrderPhotoPreview({
           </div>
         ) : null}
 
+        {editable ? <button type="button" disabled={busy} onClick={event => {
+          reviewTriggerRef.current = event.currentTarget; setReviewLineIndex(null); setHeaderReview(true);
+        }} className="nk-focus min-h-11 rounded-xl border border-border-neutral px-3 py-2 text-sm font-bold text-text-primary hover:bg-app-background disabled:opacity-50">
+          {block.negotiationNumber && block.orderDate ? "Revisar número / data" : "Informar número / data"}
+        </button> : null}
+        {!editable && !block.existingOrder && ["UNREADABLE", "NOT_A_SUPPLIER_ORDER", "ERROR"].includes(block.state) ?
+          <p className="text-sm text-text-muted">Envie outra foto legível do Pedido para iniciar uma nova prévia.</p> : null}
+
         {block.lines.length ? (
           <div className="divide-y divide-border-neutral overflow-hidden rounded-xl border border-border-neutral">
             {block.lines.map((line, index) => {
@@ -403,7 +463,7 @@ function SupplierOrderPhotoPreview({
               const canCreateDirectly = line.blockingReasons.includes("CODE_NOT_FOUND") &&
                 !line.blockingReasons.includes("CODE_UNCERTAIN") && Boolean(line.rawCode);
               return (
-              <article key={`${line.rawCode ?? "unknown"}-${index}`} className="p-3">
+              <article key={`${line.rawCode ?? "unknown"}-${index}`} className="min-w-0 p-3 [overflow-wrap:anywhere]">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs font-black text-violet-800">
@@ -430,13 +490,16 @@ function SupplierOrderPhotoPreview({
                     {line.resolution === "IDENTIFIED" ? "ℹ" : "⚠"} {line.warning}
                   </p>
                 ) : null}
+                {editable && line.resolution === "NEEDS_REVIEW" ? <button type="button" disabled={busy}
+                  onClick={event => openReview(index, event.currentTarget)} aria-label={`Revisar item ${line.displayCode ?? line.rawCode ?? index + 1}`}
+                  className="nk-focus mt-3 min-h-11 w-full rounded-xl border border-border-neutral px-3 py-2 text-sm font-bold text-text-primary hover:bg-app-background disabled:opacity-50 sm:w-auto">Revisar item</button> : null}
                 {hasDescriptionConflict ? (
                   <dl className="mt-2 space-y-1 rounded-lg bg-amber-50 p-2 text-xs leading-5 text-amber-950">
                     <div><dt className="inline font-bold">Lido na foto: </dt><dd className="inline break-words">{line.rawDescription ?? "Não identificado"}</dd></div>
                     <div><dt className="inline font-bold">Catálogo oficial: </dt><dd className="inline break-words">{line.description ?? "Não identificado"}</dd></div>
                   </dl>
                 ) : null}
-                {line.resolution === "NEEDS_REVIEW" && hasCatalogAmbiguity ? (
+                {editable && line.resolution === "NEEDS_REVIEW" && hasCatalogAmbiguity ? (
                   <fieldset className="mt-3 space-y-2">
                     <legend className="text-xs font-black text-text-primary">Definir produto</legend>
                     <div className="grid gap-2">
@@ -444,11 +507,12 @@ function SupplierOrderPhotoPreview({
                         <button
                           key={`${option.code}-${option.description}`}
                           type="button"
-                          disabled={disabled || isSubmitting}
-                          onClick={() => {
-                            if (!onUpdate) return;
-                            onUpdate(updateSupplierOrderPhotoPreviewLine(block, index, option));
-                            setNotice(`Cód. ${option.code} definido para a linha da foto.`);
+                          disabled={busy}
+                          onClick={(event) => {
+                            if (!onUpdate || !editable) return;
+                            triggerRef.current = event.currentTarget;
+                            setDialogError(null);
+                            setDialog({ mode: "correct", lineIndex: index, code: option.code, description: option.description, returnToReview: true });
                           }}
                           className="nk-focus min-h-11 rounded-xl border border-border-neutral bg-surface px-3 py-2 text-left transition hover:border-violet-300 hover:bg-violet-50 disabled:opacity-50"
                         >
@@ -458,7 +522,7 @@ function SupplierOrderPhotoPreview({
                       ))}
                     </div>
                   </fieldset>
-                ) : line.resolution === "NEEDS_REVIEW" && (hasCodeBlocker || hasDescriptionConflict) ? (
+                ) : editable && line.resolution === "NEEDS_REVIEW" && (hasCodeBlocker || hasDescriptionConflict) ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" disabled={disabled || isSubmitting} onClick={(event) => {
                       triggerRef.current = event.currentTarget;
@@ -517,6 +581,33 @@ function SupplierOrderPhotoPreview({
           </div>
         ) : null}
       </div>
+      {reviewLineIndex !== null && block.lines[reviewLineIndex] && editable ? <SupplierOrderPhotoLineReviewDialog
+        line={block.lines[reviewLineIndex]}
+        canConfirmVisual={supplierOrderPhotoLineCanConfirmVisualReview(block, reviewLineIndex)}
+        onClose={closeReview}
+        onConfirm={() => {
+          const updated = confirmSupplierOrderPhotoVisualReview(block, reviewLineIndex);
+          if (updated === block) return;
+          onUpdate?.(updated); setNotice("Produto e quantidade revisados. Nenhum Pedido foi criado."); closeReview();
+        }}
+        onSaveQuantity={quantity => {
+          const updated = updateSupplierOrderPhotoPreviewQuantity(block, reviewLineIndex, quantity);
+          if (updated === block) return;
+          onUpdate?.(updated); setNotice("Quantidade revisada na prévia.");
+          if (updated.lines[reviewLineIndex].resolution === "IDENTIFIED") closeReview();
+        }}
+        onCorrect={() => {
+          const line = block.lines[reviewLineIndex];
+          setDialogError(null); setReviewLineIndex(null);
+          setDialog({ mode: "correct", lineIndex: reviewLineIndex, code: line.displayCode ?? line.rawCode ?? "", description: line.rawDescription ?? "", returnToReview: true });
+        }}
+      /> : null}
+      {headerReview && editable ? <SupplierOrderPhotoHeaderReviewDialog negotiationNumber={block.negotiationNumber} orderDate={block.orderDate} onClose={closeReview}
+        onSave={(number, date) => {
+          const updated = updateSupplierOrderPhotoPreviewHeader(block, number, date);
+          if (updated === block) return;
+          onUpdate?.(updated); setNotice("Dados revisados. A negociação será conferida novamente antes da criação."); closeReview();
+        }} /> : null}
       {dialog ? (
         <div className="fixed inset-0 z-[180] flex items-end justify-center bg-black/60 sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeDialog();
@@ -570,7 +661,7 @@ function SupplierOrderPhotoPreview({
             <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-app-background p-3 text-sm">
               <div>
                 <span className="block text-[0.62rem] font-black tracking-wide text-text-muted uppercase">Pedido</span>
-                <strong>{createProposal.negotiationNumber}</strong>
+                <strong className="[overflow-wrap:anywhere]">{createProposal.negotiationNumber}</strong>
               </div>
               <div>
                 <span className="block text-[0.62rem] font-black tracking-wide text-text-muted uppercase">Data</span>
