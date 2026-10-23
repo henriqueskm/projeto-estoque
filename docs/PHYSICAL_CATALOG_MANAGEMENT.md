@@ -50,9 +50,11 @@ vez do CLI; emulação/History API não comprovam gesto em Android/PWA físico.
 
 ## Banco / atomicidade / concorrência
 
-Migration nova: `20261022191356_physical_catalog_management.sql`.
-**Somente criada no Git e aplicada ao PostgreSQL descartável local. Não aplicada
-ao Supabase remoto.** Nenhuma migration histórica foi editada.
+Migration: `20261022200954_physical_catalog_management.sql` (nome alinhado na
+Issue #97 com a versão já aplicada em produção). O rollout autorizado posterior
+à PR #96 foi realizado fora da implementação original; não reaplicar seu SQL.
+Conteúdo preservado byte a byte, blob Git `6c28c343e9857476bea24f190f689580c5e3a3b3`.
+Nesta reconciliação não houve aplicação nem alteração remota.
 
 RPCs autenticadas:
 
