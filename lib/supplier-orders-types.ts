@@ -256,6 +256,8 @@ export type SupplierOrderReceipt = {
   pickupPercentage: number;
   status: SupplierOrderStatus;
   updatedAt: string;
+  isInHistory?: boolean;
+  closureKind?: SupplierOrderClosureKind | null;
   automaticStockEntry?: {
     supplierOrderStockEntryId: string;
     movementBatchId: string;

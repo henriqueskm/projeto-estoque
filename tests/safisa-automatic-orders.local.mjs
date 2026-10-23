@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { checkedPickupSql } from "./canonical-pickup-sql.local.mjs";
 
 const container = process.env.SAFISA_TEST_DB_CONTAINER ?? "supabase_db_nk_current_state_baseline";
 const windowsDocker = join(process.env.LOCALAPPDATA ?? "", "Programs", "DockerDesktop", "resources", "bin", "docker.exe");
@@ -18,6 +19,7 @@ const lineId = (suffix) => `00000000-0000-4000-8000-${String(950 + suffix).padSt
 const key = (suffix) => `00000000-0000-4000-8000-${String(990 + suffix).padStart(12, "0")}`;
 
 function psql(sql, { allowFailure = false } = {}) {
+  sql = checkedPickupSql(sql);
   try {
     return execFileSync(docker, ["exec", container, "psql", "-U", "postgres", "-d", "postgres", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-c", sql], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   } catch (error) {
@@ -38,7 +40,7 @@ function jsonFrom(output) {
 }
 function number(sql) { return Number(psql(sql).split(/\r?\n/).at(-1)); }
 function concurrentAuthenticated(userId, statement) {
-  const sql = `begin; select set_config('request.jwt.claim.sub', '${userId}', true); set local role authenticated; ${statement}; commit;`;
+  const sql = checkedPickupSql(`begin; select set_config('request.jwt.claim.sub', '${userId}', true); set local role authenticated; ${statement}; commit;`);
   return new Promise((resolve, reject) => {
     const child = spawn(docker, ["exec", container, "psql", "-U", "postgres", "-d", "postgres", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-c", sql], { windowsHide: true });
     let stdout = ""; let stderr = "";

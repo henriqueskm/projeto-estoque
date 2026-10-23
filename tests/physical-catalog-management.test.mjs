@@ -93,7 +93,7 @@ test("UI gates double submit, fresh preview, stale refresh, immutable uncertain 
   assert.doesNotMatch(ui, /\.from\(|\.rpc\(|popstate|localStorage|item_type.*select/);
 });
 test("forward-only SQL composes canonical adjustment and preserves immutable physical identity", () => {
-  const sql = read("supabase/migrations/20261022191356_physical_catalog_management.sql");
+  const sql = read("supabase/migrations/20261022200954_physical_catalog_management.sql");
   assert.match(sql, /private\.adjust_inventory_stock_checked\('ITEM'/); assert.match(sql, /set is_active = false/);
   assert.match(sql, /for no key update/); assert.match(sql, /where item_id = v_id for update/);
   assert.match(sql, /stock_balance_active_catalog_guard/); assert.match(sql, /enable row level security/);
