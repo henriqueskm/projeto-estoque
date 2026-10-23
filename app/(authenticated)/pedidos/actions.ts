@@ -48,6 +48,8 @@ type RpcReceipt = {
   pickup_percentage?: unknown;
   status?: unknown;
   updated_at?: unknown;
+  is_in_history?: unknown;
+  closure_kind?: unknown;
   supplier_order_stock_entry_id?: unknown;
   movement_batch_id?: unknown;
   stock_entry_line_count?: unknown;
@@ -476,6 +478,7 @@ function parseReceipt(data: unknown): SupplierOrderReceipt | null {
   );
   const pickupPercentage = Number(receipt.pickup_percentage);
   const automaticStockEntry = parseAutomaticStockEntry(receipt);
+  const hasClosure = receipt.is_in_history !== undefined || receipt.closure_kind !== undefined;
   const status: SupplierOrderStatus | null =
     typeof receipt.status === "string"
       ? (supplierOrderStatuses.find(
@@ -495,6 +498,9 @@ function parseReceipt(data: unknown): SupplierOrderReceipt | null {
     waitingStockQuantity === null ||
     !Number.isFinite(pickupPercentage) ||
     automaticStockEntry === null ||
+    (hasClosure && (typeof receipt.is_in_history !== "boolean" ||
+      ![null, "FINALIZED", "CANCELLED"].includes(receipt.closure_kind as null | string) ||
+      receipt.is_in_history !== (receipt.closure_kind !== null))) ||
     !status ||
     typeof receipt.updated_at !== "string" ||
     Number.isNaN(Date.parse(receipt.updated_at))
@@ -515,6 +521,8 @@ function parseReceipt(data: unknown): SupplierOrderReceipt | null {
     pickupPercentage,
     status,
     updatedAt: receipt.updated_at,
+    ...(hasClosure ? { isInHistory: receipt.is_in_history as boolean,
+      closureKind: receipt.closure_kind as SupplierOrderReceipt["closureKind"] } : {}),
     ...(automaticStockEntry ? { automaticStockEntry } : {}),
   };
 }
@@ -844,6 +852,9 @@ function finishMutation(data: unknown): SupplierOrderActionResult {
   }
 
   revalidatePath("/pedidos");
+  if (receipt.automaticStockEntry) {
+    ["/", "/estoque", "/entrada", "/saida", "/estatisticas", "/historico", "/relatorio-estoque"].forEach(path => revalidatePath(path));
+  }
   return { ok: true, receipt };
 }
 

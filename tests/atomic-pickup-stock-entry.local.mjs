@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { checkedPickupSql } from "./canonical-pickup-sql.local.mjs";
 
 const container = process.env.ATOMIC_PICKUP_TEST_DB_CONTAINER
   ?? "supabase_db_nk_current_state_baseline";
@@ -25,6 +26,7 @@ const lineId = (n) => `10000000-0000-4000-8002-${String(n).padStart(12, "0")}`;
 const key = (n) => `10000000-0000-4000-8003-${String(n).padStart(12, "0")}`;
 
 function psql(sql, { allowFailure = false } = {}) {
+  sql = checkedPickupSql(sql);
   try {
     return execFileSync(
       docker,
@@ -61,7 +63,7 @@ function asUserFailure(userId, statement, expected) {
 }
 
 function concurrentUser(userId, statement) {
-  const sql = `begin; select set_config('request.jwt.claim.sub', '${userId}', true); set local role authenticated; ${statement}; commit;`;
+  const sql = checkedPickupSql(`begin; select set_config('request.jwt.claim.sub', '${userId}', true); set local role authenticated; ${statement}; commit;`);
   return new Promise((resolve, reject) => {
     const child = spawn(
       docker,
@@ -269,6 +271,12 @@ let outcomes = await race(
   { userId: internal, sql: `select public.set_supplier_order_item_picked_quantity('${lineId(90)}', 2, null, '${key(10)}')` },
 );
 assert.ok(outcomes.some((outcome) => outcome.status === "fulfilled"));
+// Current checked writers can reject the older preview instead of silently
+// adopting a concurrent value. Explicitly refresh/retry that logical attempt.
+if (number(`select picked_quantity from public.supplier_order_items where id='${lineId(90)}'`) === 1) {
+  assert.ok(outcomes.some(outcome => outcome.status === "rejected" && /version_conflict|40001/.test(String(outcome.reason))));
+  asUser(internal, `select public.set_supplier_order_item_picked_quantity('${lineId(90)}', 2, null, '${key(10)}')`);
+}
 assert.equal(number(`select picked_quantity from public.supplier_order_items where id = '${lineId(90)}'`), 2);
 assert.equal(number(`select stocked_quantity from public.supplier_order_items where id = '${lineId(90)}'`), 2);
 
@@ -298,12 +306,14 @@ assert.equal(number(`select picked_quantity from public.supplier_order_items whe
 assert.equal(number(`select stocked_quantity from public.supplier_order_items where id = '${lineId(120)}'`), 1);
 assert.equal(number(`select count(*) from public.supplier_order_events where supplier_order_id = '${orderId(12)}' and event_type = 'STOCK_ENTRY_CREATED'`), 1);
 
-// L: finalization rules are unchanged and finalized backlog remains enterable.
+// L: last positive integral pickup now finalizes automatically; legacy backlog remains enterable.
 const order13Before = psql(`select updated_at from public.supplier_orders where id = '${orderId(13)}'`);
 asUserFailure(internal, `select public.finalize_supplier_order('${orderId(13)}', '${order13Before}'::timestamptz, null, '${key(16)}')`, /pickup|completed|retirada/i);
 asUser(internal, `select public.set_supplier_order_item_picked_quantity('${lineId(130)}', 1, null, '${key(17)}')`);
 const order13After = psql(`select updated_at from public.supplier_orders where id = '${orderId(13)}'`);
-asUser(internal, `select public.finalize_supplier_order('${orderId(13)}', '${order13After}'::timestamptz, null, '${key(18)}')`);
+assert.equal(number(`select count(*) from public.supplier_orders where id='${orderId(13)}' and finalized_at is not null`), 1);
+assert.equal(number(`select count(*) from public.supplier_order_events where supplier_order_id='${orderId(13)}' and event_type='ORDER_FINALIZED'`), 1);
+assert.ok(order13After);
 const order14Version = psql(`select updated_at from public.supplier_orders where id = '${orderId(14)}'`);
 asUser(internal, `select public.finalize_supplier_order('${orderId(14)}', '${order14Version}'::timestamptz, null, '${key(19)}')`);
 const finalizedBacklogVersion = psql(`select updated_at from public.supplier_orders where id = '${orderId(14)}'`);

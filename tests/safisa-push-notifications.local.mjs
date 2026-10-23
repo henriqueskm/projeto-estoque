@@ -48,8 +48,9 @@ function number(sql) {
 }
 
 console.log("ALVO CONFIRMADO: SUPABASE LOCAL DESCARTÁVEL");
-assert.match(container, /^supabase_db_nk_pr82_push[a-z0-9_]*$/);
-assert.equal(JSON.parse(run(docker, ["inspect", "-f", "{{json .Config.Labels}}", container], { encoding: "utf8" }))["nk.disposable"], "nk-pr82-push");
+assert.match(container, /^(?:supabase_db_nk_pr82_push[a-z0-9_]*|supabase_db_nk_issue100)$/);
+assert.equal(JSON.parse(run(docker, ["inspect", "-f", "{{json .Config.Labels}}", container], { encoding: "utf8" }))["nk.disposable"], container === "supabase_db_nk_issue100" ? "nk-issue100" : "nk-pr82-push");
+assert.equal(run(docker, ["inspect", "-f", "{{.HostConfig.NetworkMode}}", container], { encoding: "utf8" }).trim(), "none");
 assert.equal(psql("select current_database() = 'postgres'"), "t");
 assert.equal(psql("select to_regclass('public.push_subscriptions') is not null"), "t");
 assert.equal(psql("select to_regclass('public.push_notification_events') is not null"), "t");

@@ -8,8 +8,8 @@ const container = process.env.BULK_TEST_DB_CONTAINER ?? "supabase_db_nk_pr84_bul
 const binary = join(process.env.LOCALAPPDATA ?? "", "Programs/DockerDesktop/resources/bin/docker.exe");
 const docker = existsSync(binary) ? binary : "docker";
 const run = (...args) => execFileSync(docker, args, { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
-assert.match(container, /^supabase_db_nk_pr84_bulk(?:_[a-z0-9]+)?$/);
-assert.equal(JSON.parse(run("inspect", "-f", "{{json .Config.Labels}}", container))["nk.disposable"], "nk-pr84-bulk");
+assert.match(container, /^(?:supabase_db_nk_pr84_bulk(?:_[a-z0-9]+)?|supabase_db_nk_issue100)$/);
+assert.equal(JSON.parse(run("inspect", "-f", "{{json .Config.Labels}}", container))["nk.disposable"], container === "supabase_db_nk_issue100" ? "nk-issue100" : "nk-pr84-bulk");
 assert.equal(run("inspect", "-f", "{{.HostConfig.NetworkMode}}", container).trim(), "none");
 function sql(statement) { return run("exec", container, "psql", "-U", "postgres", "-d", "postgres", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-c", statement).trim(); }
 const uid = n => `84000000-0000-4000-8000-${String(n).padStart(12, "0")}`;

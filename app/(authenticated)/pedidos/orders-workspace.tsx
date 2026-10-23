@@ -61,6 +61,7 @@ import type {
   SupplierOrderItem,
   SupplierOrderMediaData,
   SupplierOrderLineInput,
+  SupplierOrderReceipt,
   SupplierOrderSearchData,
   SupplierOrderSummariesData,
   SupplierOrderStatus,
@@ -2133,7 +2134,7 @@ function ConfirmationDialog({
   kind: ConfirmationKind;
   onClose: () => void;
   onStale: (message: string) => void;
-  onSuccess: (message: string) => void;
+  onSuccess: (message: string, receipt: SupplierOrderReceipt) => void;
   order: SupplierOrderSummary;
 }) {
   const titleId = useId();
@@ -2229,6 +2230,7 @@ function ConfirmationDialog({
               : kind === "CANCEL"
                 ? "Pedido excluído das listas ativas e mantido no histórico."
                 : "Saldo restante excluído das listas ativas e mantido no histórico.",
+            receipt,
           );
         },
       });
@@ -2852,7 +2854,7 @@ function OrderDetailsDialog({
   items: SupplierOrderItem[];
   onClose: () => void;
   onEdit: () => void;
-  onFinalized: () => void;
+  onFinalized: (message?: string) => void;
   onMutated: (message: string) => void;
   onStale: (message: string) => void;
   order: SupplierOrderSummary;
@@ -2978,9 +2980,10 @@ function OrderDetailsDialog({
         order={order}
         onClose={() => setConfirmation(null)}
         onStale={onStale}
-        onSuccess={(message) => {
+        onSuccess={(message, receipt) => {
           setConfirmation(null);
-          onMutated(message);
+          if (receipt.closureKind === "FINALIZED") onFinalized(`${message} Pedido finalizado automaticamente e movido para o Histórico.`);
+          else onMutated(message);
         }}
       />
     );
@@ -3894,9 +3897,10 @@ function ActiveSupplierOrdersWorkspace({
     setFeedback(null);
     // selectedOrderId, filters, sort and scroll belong to Workspace State.
   });
+  const [finalizedOrderIds, setFinalizedOrderIds] = useState<Set<string>>(() => new Set());
   const detailState = useSupplierOrderDetail(
     selectedOrderId,
-    "active",
+    selectedOrderId && finalizedOrderIds.has(selectedOrderId) ? "history" : "active",
     detailReloadKey,
   );
   const [catalogState, setCatalogState] = useState<
@@ -4495,15 +4499,17 @@ function ActiveSupplierOrdersWorkspace({
           key={`${detailState.data.order.id}:${detailState.data.order.updatedAt}`}
           order={detailState.data.order}
           items={detailState.data.items}
+          readOnly={detailState.data.order.isInHistory}
           onClose={() => setSelectedOrderId(null)}
           onEdit={() => {
             loadCatalog();
             setEditingOrderId(detailState.data.order.id);
           }}
-          onFinalized={() => {
+          onFinalized={(message) => {
+            setFinalizedOrderIds(ids => new Set(ids).add(detailState.data.order.id));
             setSelectedOrderId(null);
             handleMutated(
-              "Pedido finalizado e movido para o Histórico.",
+              message ?? "Pedido finalizado e movido para o Histórico.",
             );
           }}
           onMutated={(message) =>
