@@ -104,6 +104,12 @@ begin
       message = 'The supplier-order line does not exist.';
   end if;
 
+  if v_order.finalized_at is not null then
+    raise exception using
+      errcode = '22023',
+      message = 'A finalized supplier order cannot be changed.';
+  end if;
+
   -- Lock every line before stock targets. Finalization reuses these locks.
   perform 1 from public.supplier_order_items
   where supplier_order_id = v_order.id order by id for update;
@@ -291,6 +297,12 @@ begin
     raise exception using
       errcode = '22023',
       message = 'The supplier order does not exist.';
+  end if;
+
+  if v_order.finalized_at is not null then
+    raise exception using
+      errcode = '22023',
+      message = 'A finalized supplier order cannot be changed.';
   end if;
 
   if v_order.cancelled_at is not null then

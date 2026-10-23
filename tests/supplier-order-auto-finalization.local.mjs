@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 // No host/URL/env database. All writes are inside this labelled disposable DB.
 const container = "supabase_db_nk_issue100";
@@ -26,12 +27,14 @@ const bulkRequest = () => auth("select public.preview_safisa_bulk_pickup()").ord
 const bulkSql = (r, key) => `select public.bulk_mark_supplier_orders_all_picked_checked(${q(r)},'${key}')`;
 const state = () => json(`select jsonb_build_object(
  'orders',(select jsonb_agg(o order by id) from public.supplier_orders o),
+ 'summaries',(select jsonb_agg(s order by id) from public.supplier_order_summaries s),
  'lines',(select jsonb_agg(i order by id) from public.supplier_order_items i),
  'balances',(select jsonb_agg(b order by item_id) from public.stock_balances b),
  'config',(select jsonb_agg(b order by configuration_id) from public.configuration_stock_balances b),
  'events',(select jsonb_agg(e order by id) from public.supplier_order_events e),
  'batches',(select jsonb_agg(b order by id) from public.movement_batches b),
  'moves',(select jsonb_agg(m order by id) from public.stock_movements m),
+ 'configMoves',(select jsonb_agg(m order by id) from public.configuration_stock_movements m),
  'entries',(select jsonb_agg(e order by id) from public.supplier_order_stock_entries e),
  'links',(select jsonb_agg(e order by id) from public.supplier_order_stock_entry_lines e),
  'bulk',(select jsonb_agg(e order by id) from public.supplier_order_bulk_pickup_operations e))`);
@@ -80,6 +83,44 @@ test("legacy COMPLETED active is not backfilled, even by a no-op pickup; manual 
   const id=seed(1,[{ordered:2,picked:2,stocked:0}]); auth(allSql(id)); assert.equal(summary(id).is_active_order,true); assert.equal(finalCount(id),0);
   auth(`select public.finalize_supplier_order('${id}','${summary(id).updated_at}',null,'${randomUUID()}')`);
   assert.equal(summary(id).is_in_history,true);
+});
+
+for (const closure of ["automatic", "manual"]) {
+  for (const kind of ["individual", "mark-all"]) test(`${closure} finalized order rejects a NEW ${kind} zero-delta pickup without changing any state`, () => {
+    const id = seed(1, [{ ordered: 3, picked: closure === "manual" ? 3 : 0, stocked: 0, config: true }]);
+    if (closure === "automatic") auth(allSql(id));
+    else auth(`select public.finalize_supplier_order('${id}','${summary(id).updated_at}',null,'${randomUUID()}')`);
+    assert.equal(summary(id).closure_kind, "FINALIZED");
+    const statement = kind === "individual" ? pickSql(id, 3, randomUUID()) : allSql(id);
+    rejects(statement, /22023[\s\S]*A finalized supplier order cannot be changed\./);
+    assert.equal(finalCount(id), 1);
+  });
+}
+
+test("mark-all original final pickup replays its exact receipt after closure, despite its old version", () => {
+  const id = seed(1, [{ ordered: 3 }]), statement = allSql(id), receipt = auth(statement);
+  assert.equal(receipt.closure_kind, "FINALIZED");
+  const before = state();
+  assert.deepEqual(auth(statement), { ...receipt, idempotent_replay: true });
+  assert.deepEqual(state(), before);
+});
+
+// Isolate the worker's own guard from the additional lifecycle check currently
+// supplied by the replay helper. Restore its original, idempotency-only contract
+// INSIDE a rolled-back local transaction; never change the installed helper.
+for (const kind of ["individual", "mark-all"]) test(`${kind} worker itself rejects finalized zero-delta pickup independently of the replay helper`, () => {
+  const id = seed(1, [{ ordered: 3 }]); auth(allSql(id));
+  const migration = readFileSync(new URL("../supabase/migrations/20260724165512_create_supplier_orders.sql", import.meta.url), "utf8");
+  const start = migration.indexOf("create function private.supplier_order_existing_result(");
+  assert.ok(start >= 0);
+  const replayOnly = migration.slice(start, migration.indexOf("$$;", start) + 3).replace("create function", "create or replace function");
+  const helperBefore = sql("select pg_get_functiondef('private.supplier_order_existing_result(uuid,uuid,text,jsonb)'::regprocedure)");
+  const before = state(), statement = kind === "individual" ? pickSql(id, 3, randomUUID()) : allSql(id);
+  assert.throws(() => sql(`begin; set local statement_timeout='6s'; ${replayOnly}
+    select set_config('request.jwt.claim.sub','${actor}',true); set local role authenticated;
+    ${statement}; rollback;`), e => /22023[\s\S]*A finalized supplier order cannot be changed\./.test(String(e.stderr)));
+  assert.deepEqual(state(), before);
+  assert.equal(sql("select pg_get_functiondef('private.supplier_order_existing_result(uuid,uuid,text,jsonb)'::regprocedure)"), helperBefore);
 });
 test("legacy stock backlog survives automatic close and remains enterable in History", () => {
   const id=seed(1,[{ordered:2,picked:2,stocked:0},{ordered:3}]); auth(allSql(id));

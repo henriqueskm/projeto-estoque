@@ -4,6 +4,8 @@ Base main: `adc99fb56fed77d0e29c1f61602ee428a2da1291`.
 Primeiro commit: reconciliação #97, descrita em `MIGRATION_HISTORY_ALIGNMENT.md`.
 Segundo: migration nova `20261023043855_auto_finalize_integral_supplier_order_pickup.sql`
 e integração mínima de receipt/feedback em Pedidos. Não aplicada remotamente.
+Terceiro: guardas defensivas P1 da revisão da PR #101, na mesma migration ainda
+não aplicada. Nenhum arquivo/histórico da #97 foi alterado por essa correção.
 
 ## Regra e ponto transacional
 
@@ -43,6 +45,34 @@ novamente. Eventos históricos nunca são atualizados para mudar seu resultado.
   Autoria continua derivada de `auth.uid()`/perfil nos wrappers existentes.
 - Não há novo lote de estoque para finalizar. Conservação de saldos e
   `before + change = after` permanecem nos movimentos oficiais.
+
+### P1 — nenhuma retirada nova após finalização
+
+Os dois workers canônicos verificam explicitamente `finalized_at` depois do
+lock do pai e antes de qualquer escrita, inclusive quando o delta é zero.
+Nova chave retorna `22023: A finalized supplier order cannot be changed.`
+A rejeição de cancelamento foi mantida. Wrappers, grants e helper de
+idempotência não foram alterados. Replay idêntico da retirada original retorna
+o receipt persistido **antes** dessa guarda, mesmo com a versão antiga.
+
+Evidência local: a fixture atual já possui uma proteção adicional de finalização
+em `supplier_order_existing_result`; com esse helper intacto, os quatro casos
+checked (automático/manual × individual/mark-all) já eram rejeitados antes do
+patch. Não foi demonstrada uma chamada checked vulnerável em produção.
+Para verificar a proteção **própria do worker**, dois testes reinstalam somente
+o contrato histórico de replay/idempotência, sem a checagem de lifecycle, dentro
+de uma transação local sempre revertida. Antes da correção, ambos falhavam por
+aceitar delta zero; depois, ambos rejeitam. O teste compara também a definição
+do helper antes/depois, garantindo sua restauração. Isso não muda o helper na
+migration nem no ambiente remoto.
+
+Os quatro casos checked com chave nova comparam snapshots integrais de Pedidos
+e suas views de histórico/versão, linhas, eventos, entradas/vínculos, lotes,
+movimentos físicos e de configuração, saldos e ledger bulk. Nada muda na
+rejeição. Replay individual e mark-all mantêm receipts e snapshots imutáveis;
+COMPLETED legado ainda ativo continua elegível à finalização manual.
+O source-contract permite somente as três integrações originais e as duas
+guardas novas; todos os demais statements dos workers continuam idênticos.
 
 ## Receipts, interface e navegação
 
@@ -84,7 +114,7 @@ catálogo sintético de seis produtos e aplica somente nele a migration nova.
 O histórico local de 45 versões é metadata de fixture; não é repair remoto.
 Não reutiliza/limpa a fonte nem copia usuários, Pedidos, saldos ou dados reais.
 
-`node --test tests/supplier-order-auto-finalization.local.mjs`: 18 cenários
+`node --test tests/supplier-order-auto-finalization.local.mjs`: 25 cenários
 reais de banco, incluindo 5 corridas de duas sessões. O teste prova overlap
 em `pg_stat_activity`, usa deadlines de 4–6 s e compara deadlocks antes/depois.
 Cobre autoria, 2+3 linhas, todos-prontos parcial, cancelamento, legado, backlog
@@ -110,18 +140,18 @@ Resultados em 2026-10-23:
 | Grupo | Resultado |
 | --- | --- |
 | Histórico de migrations | 2/2 |
-| Auto-finalização e stale actions | 16/16 (9 novos da #100) |
+| Auto-finalização e stale actions | 17/17 (10 novos da #100) |
 | Pedidos/Assistente/Safisa/push/Atomic contratos | 156/156 |
 | Bulk app | 18/18 |
 | Workspace/Activity/Semantic Back/Instant Navigation/UI/Inventory | 246/246 |
 | Catálogo físico (rename #97) | 22/22 |
-| SQL novo, banco real isolado | 18/18 |
+| SQL novo, banco real isolado | 25/25 (7 regressões adicionais P1) |
 | SQL bulk completo, incluindo corridas com Safisa | 27/27 |
 | Atomic pickup SQL | A–M + 3 corridas + rollback: PASS |
 | Safisa automatic lifecycle SQL | A–O + 4 corridas: PASS |
 | Safisa push SQL | Subscriptions/RLS, ITEM_READY, FULLY_READY, correção, replay, mark-all único push, worker/lease: PASS |
 
-Total Node test: **505 passed, 0 failed, 0 skipped**, além dos três harnesses
+Total Node test: **513 passed, 0 failed, 0 skipped**, além dos três harnesses
 SQL adicionais acima. TypeScript, ESLint com zero warnings nos arquivos alterados,
 diff-check, build Webpack e build padrão Next/Turbopack: PASS. Os warnings de
 Node experimental-loader/module-type e do stub Link em SSR não são novos

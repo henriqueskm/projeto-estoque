@@ -64,13 +64,26 @@ test("SQL composes post-stock finalizer, positive pickup only, strict eligibilit
     assert.ok(worker.indexOf("perform private.auto_finalize")<worker.indexOf("v_result := private.supplier_order_result"));
   }
 });
-test("canonical pickup workers retain every existing statement except the three integration additions",()=>{
+test("canonical pickup workers retain every existing statement except the three integrations and two finalized guards",()=>{
   const original=read("supabase/migrations/20260812023500_atomic_supplier_order_pickup_stock_entry.sql").replaceAll("\r\n","\n");
   const next=read("supabase/migrations/20261023043855_auto_finalize_integral_supplier_order_pickup.sql").replaceAll("\r\n","\n");
   const workers=source=>source.slice(source.indexOf("create or replace function private.set_supplier_order_item_picked_quantity("),source.indexOf("$$;",source.indexOf("create or replace function private.mark_supplier_order_all_picked("))+3).trim();
   const restored=workers(next)
+    .replaceAll("  if v_order.finalized_at is not null then\n    raise exception using\n      errcode = '22023',\n      message = 'A finalized supplier order cannot be changed.';\n  end if;\n\n","")
     .replace("  -- Lock every line before stock targets. Finalization reuses these locks.\n  perform 1 from public.supplier_order_items\n  where supplier_order_id = v_order.id order by id for update;\n\n","")
     .replace("  if v_delta > 0 then\n    perform private.auto_finalize_integral_supplier_order_pickup(v_order.id, p_user_id, p_user_name);\n  end if;\n\n","")
     .replace("  if v_added_picked_quantity > 0 then\n    perform private.auto_finalize_integral_supplier_order_pickup(p_supplier_order_id, p_user_id, p_user_name);\n  end if;\n\n","");
   assert.equal(restored,workers(original));
+});
+
+test("both canonical workers reject finalized orders after the parent lock, before writes, but after replay",()=>{
+  const sql=read("supabase/migrations/20261023043855_auto_finalize_integral_supplier_order_pickup.sql");
+  for(const name of ["set_supplier_order_item_picked_quantity","mark_supplier_order_all_picked"]){
+    const start=sql.indexOf(`create or replace function private.${name}(`), worker=sql.slice(start,sql.indexOf("$$;",start));
+    const replay=worker.indexOf("if v_existing_result is not null then"), lock=worker.indexOf("for update"), guard=worker.indexOf("if v_order.finalized_at is not null then");
+    assert.ok(replay>=0 && replay<lock && lock<guard, `${name}: replay -> parent lock -> finalized guard`);
+    assert.ok(guard<worker.indexOf("update public.supplier_order"), `${name}: finalized guard before any write`);
+    assert.match(worker,/if v_order\.cancelled_at is not null then/);
+    assert.match(worker,/errcode = '22023',\s*message = 'A finalized supplier order cannot be changed\.'/);
+  }
 });
