@@ -178,7 +178,18 @@ function Quantity({ value }: { value: number }) {
   );
 }
 
-function PhysicalStateBadge({ item }: { item: InventoryPhysicalItem }) {
+const compactBadgeClassName =
+  "inline-flex rounded-full px-2 py-0.5 text-[0.65rem] leading-4 font-bold sm:text-xs";
+const largeBadgeClassName =
+  "inline-flex rounded-full px-3 py-1 text-sm leading-5 font-black";
+
+function PhysicalStateBadge({
+  item,
+  large = false,
+}: {
+  item: InventoryPhysicalItem;
+  large?: boolean;
+}) {
   const details =
     item.looseQuantity === 0 && item.minimumStock === 0
       ? {
@@ -189,7 +200,7 @@ function PhysicalStateBadge({ item }: { item: InventoryPhysicalItem }) {
 
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] leading-4 font-bold sm:text-xs ${details.className}`}
+      className={`${large ? largeBadgeClassName : compactBadgeClassName} ${details.className}`}
     >
       {details.label}
     </span>
@@ -198,18 +209,232 @@ function PhysicalStateBadge({ item }: { item: InventoryPhysicalItem }) {
 
 function ConfigurationStateBadge({
   state,
+  large = false,
 }: {
   state: ConfigurationStockState;
+  large?: boolean;
 }) {
   const details = configurationStateDetails[state];
 
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] leading-4 font-bold sm:text-xs ${details.className}`}
+      className={`${large ? largeBadgeClassName : compactBadgeClassName} ${details.className}`}
     >
       {details.label}
     </span>
   );
+}
+
+// On phones each row becomes a readable card: code with its description, a
+// big labelled quantity and the situation in words. Desktop keeps the table.
+function physicalQuantityLabel(item: InventoryPhysicalItem) {
+  if (item.itemType === "SERVO") return "sem kit";
+  if (item.itemType === "INSTALLATION_KIT") return "avulsos";
+  return "em estoque";
+}
+
+function MobileCardQuantity({ value, label }: { value: number; label: string }) {
+  return (
+    <span className="shrink-0 text-right">
+      <span className="block font-mono text-2xl leading-7 font-black tabular-nums text-text-primary">
+        {quantityFormatter.format(value)}
+      </span>
+      <span className="block text-sm font-bold text-text-muted">{label}</span>
+    </span>
+  );
+}
+
+function mobileCardClassName(isHighlighted: boolean) {
+  return `scroll-mt-24 border-t border-border-neutral/70 px-3 py-3 first:border-t-0 ${
+    isHighlighted
+      ? "bg-brand-gold-soft/60 outline-2 outline-offset-[-2px] outline-brand-gold-dark"
+      : ""
+  }`;
+}
+
+function PhysicalCards({
+  items,
+  highlightedItemId,
+  onCatalogSuccess,
+}: {
+  items: InventoryPhysicalItem[];
+  highlightedItemId?: string;
+  onCatalogSuccess: (message: string) => void;
+}) {
+  return (
+    <ul className="bg-surface sm:hidden" aria-label="Itens">
+      {items.map((item) => (
+        <li
+          key={item.id}
+          id={`inventory-card-item-${item.id}`}
+          tabIndex={item.id === highlightedItemId ? -1 : undefined}
+          className={mobileCardClassName(item.id === highlightedItemId)}
+        >
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="flex flex-wrap items-center gap-2">
+                <span className="break-all font-mono text-lg font-black text-text-primary">
+                  {item.code}
+                </span>
+                {item.itemType === "INSTALLATION_KIT" ? (
+                  <CompatibleKitImages
+                    kitCode={item.code}
+                    options={item.compatibleKitImages}
+                  />
+                ) : null}
+              </p>
+              <p className="mt-0.5 break-words text-base leading-6 text-text-primary">
+                {item.description}
+              </p>
+            </div>
+            <MobileCardQuantity
+              value={item.looseQuantity}
+              label={physicalQuantityLabel(item)}
+            />
+          </div>
+          {item.itemType === "SERVO" ||
+          item.itemType === "INSTALLATION_KIT" ||
+          item.itemType === "LOOSE_PART" ||
+          item.embeddedQuantity ? (
+            <p className="mt-1 text-base leading-6 text-text-muted">
+              <PhysicalBalanceSummary item={item} />
+            </p>
+          ) : null}
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <PhysicalStateBadge item={item} large />
+              <span className="text-base font-bold text-text-muted">
+                mín. {quantityFormatter.format(item.minimumStock)}
+              </span>
+            </p>
+            <InventoryRowActions
+              onCatalogSuccess={onCatalogSuccess}
+              target={{
+                kind: "ITEM",
+                itemId: item.id,
+                code: item.code,
+                description: item.description,
+                itemType: item.itemType,
+                looseQuantity: item.looseQuantity,
+                mountedQuantity: item.mountedQuantity,
+                minimumStock: item.minimumStock,
+              }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ConfigurationCards({
+  configurations,
+  highlightedConfigurationId,
+}: {
+  configurations: InventoryCommercialConfiguration[];
+  highlightedConfigurationId?: string;
+}) {
+  return (
+    <ul className="bg-surface sm:hidden" aria-label="Servos com kit">
+      {configurations.map((configuration) => (
+        <li
+          key={configuration.id}
+          id={`inventory-card-configuration-${configuration.id}`}
+          tabIndex={
+            configuration.id === highlightedConfigurationId ? -1 : undefined
+          }
+          className={mobileCardClassName(
+            configuration.id === highlightedConfigurationId,
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="flex flex-wrap gap-x-2 gap-y-1" aria-label="Códigos comerciais">
+                {configuration.codes.length > 0 ? (
+                  configuration.codes.map((code) => (
+                    <span
+                      key={code}
+                      className="break-all font-mono text-lg font-black text-text-primary"
+                    >
+                      {code}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-base font-bold text-text-muted">
+                    Sem código comercial
+                  </span>
+                )}
+              </p>
+              <p className="mt-0.5 break-words text-base leading-6 text-text-primary">
+                {configuration.description}
+              </p>
+              <p className="mt-0.5 break-words text-base leading-6 text-text-muted">
+                Servo {configuration.servo.code} · Kit{" "}
+                {configuration.installationKit.code}
+              </p>
+              {configuration.hasAliases ? (
+                <p className="mt-0.5 text-sm font-bold text-violet-800">
+                  Saldo compartilhado
+                </p>
+              ) : null}
+            </div>
+            <MobileCardQuantity
+              value={configuration.assembledQuantity}
+              label="com kit"
+            />
+          </div>
+          {configuration.embeddedInBundlesQuantity ? (
+            <p className="mt-1 text-base leading-6 text-text-muted">
+              {configuration.assembledQuantity} livres ·{" "}
+              {configuration.embeddedInBundlesQuantity} em conjuntos · total
+              físico {configuration.totalPhysicalQuantity}
+            </p>
+          ) : null}
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <ConfigurationStateBadge state={configuration.state} large />
+              <span className="text-base font-bold text-text-muted">
+                mín. {quantityFormatter.format(configuration.minimumStock)}
+              </span>
+            </p>
+            <InventoryRowActions
+              target={configurationActionTarget(configuration)}
+              hasImage={configuration.hasImage}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function configurationActionTarget(
+  configuration: InventoryCommercialConfiguration,
+) {
+  return {
+    kind: "CONFIGURATION" as const,
+    configurationId: configuration.id,
+    commercialCodes: configuration.codes,
+    commercialAliases: configuration.aliases,
+    description: configuration.description,
+    isActive: configuration.isActive,
+    assembledQuantity: configuration.assembledQuantity,
+    minimumStock: configuration.minimumStock,
+    servo: {
+      id: configuration.servo.id,
+      code: configuration.servo.code,
+      description: configuration.servo.description,
+      isActive: configuration.servo.isActive,
+      looseQuantity: configuration.servo.looseQuantity,
+    },
+    installationKit: {
+      id: configuration.installationKit.id,
+      code: configuration.installationKit.code,
+      description: configuration.installationKit.description,
+      isActive: configuration.installationKit.isActive,
+      looseQuantity: configuration.installationKit.looseQuantity,
+    },
+  };
 }
 
 function CommercialCodeBadges({ codes }: { codes: string[] }) {
@@ -298,17 +523,17 @@ function InventoryAccordion({
           className="nk-focus flex min-h-14 w-full scroll-mt-24 items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-app-background sm:px-4"
         >
           <span className="min-w-0">
-            <span className="block text-sm font-black text-text-primary sm:text-base">
+            <span className="block text-lg font-black text-text-primary sm:text-base">
               {title}
             </span>
             {description ? (
-              <span className="mt-0.5 block truncate text-[0.68rem] font-semibold text-text-muted sm:text-xs">
+              <span className="mt-0.5 block text-sm font-semibold text-text-muted sm:truncate sm:text-xs">
                 {description}
               </span>
             ) : null}
           </span>
           <span className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full bg-brand-gold-soft px-2.5 py-1 text-xs font-black text-brand-charcoal">
+            <span className="rounded-full bg-brand-gold-soft px-2.5 py-1 text-sm font-black text-brand-charcoal sm:text-xs">
               {quantityFormatter.format(count)}
             </span>
             <ChevronDownIcon
@@ -343,7 +568,13 @@ function PhysicalTable({
   onCatalogSuccess: (message: string) => void;
 }) {
   return (
-    <div className="relative bg-surface">
+    <>
+    <PhysicalCards
+      items={items}
+      highlightedItemId={highlightedItemId}
+      onCatalogSuccess={onCatalogSuccess}
+    />
+    <div className="relative hidden bg-surface sm:block">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
           Itens avulsos, quantidades, estoque mínimo e ações disponíveis
@@ -457,6 +688,7 @@ function PhysicalTable({
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
@@ -468,7 +700,12 @@ function ConfigurationTable({
   highlightedConfigurationId?: string;
 }) {
   return (
-    <div className="relative bg-surface">
+    <>
+    <ConfigurationCards
+      configurations={configurations}
+      highlightedConfigurationId={highlightedConfigurationId}
+    />
+    <div className="relative hidden bg-surface sm:block">
       <table className="w-full table-fixed border-separate border-spacing-0 text-left">
         <caption className="sr-only">
           Servos com kit, saldos montados, estoque mínimo e ações disponíveis
@@ -556,31 +793,7 @@ function ConfigurationTable({
               </td>
               <td className="border-t border-border-neutral/70 px-1 py-2.5 text-center sm:px-3">
                 <InventoryRowActions
-                  target={{
-                    kind: "CONFIGURATION",
-                    configurationId: configuration.id,
-                    commercialCodes: configuration.codes,
-                    commercialAliases: configuration.aliases,
-                    description: configuration.description,
-                    isActive: configuration.isActive,
-                    assembledQuantity: configuration.assembledQuantity,
-                    minimumStock: configuration.minimumStock,
-                    servo: {
-                      id: configuration.servo.id,
-                      code: configuration.servo.code,
-                      description: configuration.servo.description,
-                      isActive: configuration.servo.isActive,
-                      looseQuantity: configuration.servo.looseQuantity,
-                    },
-                    installationKit: {
-                      id: configuration.installationKit.id,
-                      code: configuration.installationKit.code,
-                      description: configuration.installationKit.description,
-                      isActive: configuration.installationKit.isActive,
-                      looseQuantity:
-                        configuration.installationKit.looseQuantity,
-                    },
-                  }}
+                  target={configurationActionTarget(configuration)}
                   hasImage={configuration.hasImage}
                 />
               </td>
@@ -589,6 +802,7 @@ function ConfigurationTable({
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
@@ -676,11 +890,13 @@ export function InventoryWorkspace({
     }
 
     const frame = window.requestAnimationFrame(() => {
-      const rowId =
-        initialTarget.kind === "item"
-          ? `inventory-item-${initialTarget.id}`
-          : `inventory-configuration-${initialTarget.id}`;
-      const row = document.getElementById(rowId);
+      const kind =
+        initialTarget.kind === "item" ? "item" : "configuration";
+      // Phones show the card and desktop shows the table row: use the visible one.
+      const row = [
+        document.getElementById(`inventory-card-${kind}-${initialTarget.id}`),
+        document.getElementById(`inventory-${kind}-${initialTarget.id}`),
+      ].find((element) => element && element.getClientRects().length > 0);
 
       row?.scrollIntoView({ behavior: "smooth", block: "center" });
       row?.focus({ preventScroll: true });
@@ -892,6 +1108,35 @@ export function InventoryWorkspace({
       value: inventory.summary.loosePartTotal,
     },
   ];
+  const statusShortcuts = useMemo(() => {
+    const countFor = (filter: InventoryStatusFilter) =>
+      inventory.physicalItems.filter((item) =>
+        matchesStatus(item.looseQuantity, item.minimumStock, item.state, filter),
+      ).length +
+      inventory.configurations.filter((configuration) =>
+        matchesStatus(
+          configuration.assembledQuantity,
+          configuration.minimumStock,
+          configuration.state,
+          filter,
+        ),
+      ).length +
+      inventory.bundles.filter((bundle) =>
+        matchesStatus(bundle.readyQuantity, bundle.minimumStock, bundle.state, filter),
+      ).length;
+    const shortcuts: Array<{
+      filter: InventoryStatusFilter;
+      label: string;
+      count: number | null;
+    }> = [
+      { filter: "all", label: "Todos", count: null },
+      { filter: "attention", label: "Precisa de atenção", count: countFor("attention") },
+      { filter: "zero", label: "Zerados", count: countFor("zero") },
+      { filter: "low", label: "Baixos", count: countFor("low") },
+    ];
+
+    return shortcuts;
+  }, [inventory.bundles, inventory.configurations, inventory.physicalItems]);
   const totalResults =
     filteredPhysicalItems.length + filteredConfigurations.length + filteredBundles.length;
 
@@ -928,19 +1173,19 @@ export function InventoryWorkspace({
     <>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[0.68rem] font-black tracking-[0.16em] text-brand-gold-ink uppercase">
+          <p className="hidden text-[0.68rem] font-black tracking-[0.16em] text-brand-gold-ink uppercase sm:block">
             Consulta operacional
           </p>
-          <h1 className="text-2xl font-black tracking-tight text-text-primary sm:text-3xl">
+          <h1 className="text-3xl font-black tracking-tight text-text-primary">
             Estoque
           </h1>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Link href="/relatorio-estoque" prefetch={false} className="nk-focus inline-flex min-h-11 items-center rounded-xl border border-border-neutral bg-surface px-3 text-sm font-bold text-text-primary hover:bg-app-background">Relatório</Link>
+          <Link href="/relatorio-estoque" prefetch={false} className="nk-focus inline-flex min-h-12 items-center rounded-xl border border-border-neutral bg-surface px-4 text-base font-bold text-text-primary hover:bg-app-background sm:min-h-11 sm:px-3 sm:text-sm">Relatório</Link>
           <PurchaseRecommendationLauncher
             initiallyOpen={isPurchaseRecommendationsInitiallyOpen}
           />
-          <p className="text-right text-xs font-semibold text-text-muted sm:text-sm">
+          <p className="hidden text-right text-xs font-semibold text-text-muted sm:block sm:text-sm">
             {quantityFormatter.format(
               inventory.physicalCatalogCount +
                 inventory.configurationCatalogCount + inventory.bundles.length,
@@ -963,7 +1208,7 @@ export function InventoryWorkspace({
               onClick={() => openSummaryShortcut(summary.shortcut)}
               className="nk-focus flex min-h-14 cursor-pointer items-center justify-between gap-2 rounded-xl border border-border-neutral bg-surface px-3 py-2 text-left shadow-sm transition hover:bg-app-background"
             >
-              <span className="text-[0.68rem] leading-4 font-bold text-text-muted sm:text-xs">
+              <span className="text-base leading-5 font-bold text-text-muted sm:text-xs sm:leading-4">
                 {summary.label}
               </span>
               <span className="shrink-0 font-mono text-xl font-black tabular-nums text-text-primary sm:text-2xl">
@@ -997,7 +1242,7 @@ export function InventoryWorkspace({
                 type="button"
                 onClick={() => setQuery("")}
                 aria-label="Limpar pesquisa"
-                className="nk-focus absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-lg font-bold text-text-muted hover:bg-app-background"
+                className="nk-focus absolute top-1/2 right-1 flex size-10 -translate-y-1/2 items-center justify-center rounded-lg text-2xl font-bold text-text-muted hover:bg-app-background sm:right-2 sm:size-8 sm:text-lg"
               >
                 ×
               </button>
@@ -1009,7 +1254,7 @@ export function InventoryWorkspace({
             aria-expanded={areFiltersOpen}
             aria-controls="inventory-filter-panel"
             onClick={() => setAreFiltersOpen((current) => !current)}
-            className={`nk-focus inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-black transition sm:px-4 ${
+            className={`nk-focus hidden min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-black transition sm:inline-flex sm:px-4 ${
               hasActiveFilters
                 ? "border-brand-gold-dark bg-brand-gold-soft text-brand-charcoal"
                 : "border-border-neutral bg-surface text-text-primary hover:bg-app-background"
@@ -1026,13 +1271,63 @@ export function InventoryWorkspace({
           </button>
         </div>
 
+        {/* Phones: the common situations are big shortcuts; the rest stays under "Mais filtros". */}
+        <div className="sm:hidden">
+          <nav aria-label="Situação do estoque" className="mt-3 flex flex-wrap gap-2">
+            {statusShortcuts.map((shortcut) => {
+              const isActive = shortcut.filter === statusFilter;
+
+              return (
+                <button
+                  key={shortcut.filter}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => setStatusFilter(shortcut.filter)}
+                  className={`nk-focus inline-flex min-h-12 items-center gap-2 rounded-full border px-4 text-base font-bold transition ${
+                    isActive
+                      ? "border-brand-charcoal bg-brand-charcoal text-white"
+                      : "border-border-neutral bg-surface text-text-primary hover:bg-app-background"
+                  }`}
+                >
+                  {shortcut.label}
+                  {shortcut.count !== null ? (
+                    <span
+                      className={`font-mono tabular-nums ${isActive ? "text-white" : "text-text-muted"}`}
+                    >
+                      {quantityFormatter.format(shortcut.count)}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+          <button
+            type="button"
+            aria-expanded={areFiltersOpen}
+            aria-controls="inventory-filter-panel"
+            onClick={() => setAreFiltersOpen((current) => !current)}
+            className="nk-focus mt-3 flex min-h-12 w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-border-neutral bg-surface px-4 text-base font-bold text-text-primary"
+          >
+            <span>{areFiltersOpen ? "Menos filtros" : "Mais filtros"}</span>
+            <span className="text-sm text-text-muted">
+              {hasActiveFilters
+                ? `${(statusFilter !== "all" ? 1 : 0) + (sort !== "code" ? 1 : 0)} ${
+                    (statusFilter !== "all" ? 1 : 0) + (sort !== "code" ? 1 : 0) === 1
+                      ? "filtro ativo"
+                      : "filtros ativos"
+                  }`
+                : "Ordem, com estoque…"}
+            </span>
+          </button>
+        </div>
+
         {areFiltersOpen ? (
           <div
             id="inventory-filter-panel"
-            className="mt-2 grid gap-3 rounded-xl border border-border-neutral bg-surface p-3 shadow-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+            className="mt-2 grid gap-3 rounded-xl border border-border-neutral bg-surface p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end sm:p-3"
           >
             <label>
-              <span className="mb-1 block text-xs font-bold text-text-primary">
+              <span className="mb-1.5 block text-base font-bold text-text-primary sm:mb-1 sm:text-xs">
                 Situação
               </span>
               <select
@@ -1042,7 +1337,7 @@ export function InventoryWorkspace({
                     event.target.value as InventoryStatusFilter,
                   )
                 }
-                className="nk-field min-h-11 w-full rounded-lg border px-3 text-sm outline-none"
+                className="nk-field min-h-12 w-full rounded-lg border px-3 text-base outline-none sm:min-h-11 sm:text-sm"
               >
                 <option value="all">Todos</option>
                 <option value="with-stock">Somente com estoque</option>
@@ -1053,7 +1348,7 @@ export function InventoryWorkspace({
               </select>
             </label>
             <label>
-              <span className="mb-1 block text-xs font-bold text-text-primary">
+              <span className="mb-1.5 block text-base font-bold text-text-primary sm:mb-1 sm:text-xs">
                 Ordenar por
               </span>
               <select
@@ -1061,7 +1356,7 @@ export function InventoryWorkspace({
                 onChange={(event) =>
                   setSort(event.target.value as InventorySort)
                 }
-                className="nk-field min-h-11 w-full rounded-lg border px-3 text-sm outline-none"
+                className="nk-field min-h-12 w-full rounded-lg border px-3 text-base outline-none sm:min-h-11 sm:text-sm"
               >
                 <option value="code">Código</option>
                 <option value="description">Descrição ou modelo</option>
@@ -1075,7 +1370,7 @@ export function InventoryWorkspace({
                 setSort("code");
               }}
               disabled={!hasActiveFilters}
-              className="nk-focus min-h-11 rounded-lg border border-border-neutral px-4 text-sm font-bold text-text-primary transition hover:bg-app-background disabled:cursor-not-allowed disabled:opacity-50"
+              className="nk-focus min-h-12 rounded-lg border border-border-neutral px-4 text-base font-bold text-text-primary transition hover:bg-app-background disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-11 sm:text-sm"
             >
               Limpar filtros
             </button>
@@ -1088,7 +1383,7 @@ export function InventoryWorkspace({
           <p className="font-black text-text-primary">
             Nenhum resultado encontrado.
           </p>
-          <p className="mt-1 text-sm text-text-muted">
+          <p className="mt-1 text-base text-text-muted sm:text-sm">
             Ajuste a pesquisa ou limpe os filtros.
           </p>
         </div>
@@ -1097,7 +1392,7 @@ export function InventoryWorkspace({
       <section className="mt-5" aria-labelledby="physical-items-title">
         <div className="mb-2 flex items-end justify-between gap-3">
           <div>
-            <p className="text-[0.65rem] font-black tracking-[0.14em] text-brand-gold-ink uppercase">
+            <p className="hidden text-[0.65rem] font-black tracking-[0.14em] text-brand-gold-ink uppercase sm:block">
               Catálogo físico
             </p>
             <h2
@@ -1108,7 +1403,7 @@ export function InventoryWorkspace({
               Itens avulsos
             </h2>
           </div>
-          <span className="text-xs font-bold text-text-muted">
+          <span className="text-sm font-bold text-text-muted sm:text-xs">
             {quantityFormatter.format(filteredPhysicalItems.length)} registros
           </span>
         </div>
@@ -1145,7 +1440,7 @@ export function InventoryWorkspace({
                     }
                   />
                 ) : (
-                  <p className="px-4 py-5 text-sm text-text-muted">
+                  <p className="px-4 py-5 text-base text-text-muted sm:text-sm">
                     Nenhum cadastro neste grupo.
                   </p>
                 )}
@@ -1163,7 +1458,7 @@ export function InventoryWorkspace({
       <section className="mt-6 pb-8" aria-labelledby="configurations-title">
         <div className="mb-2 flex items-end justify-between gap-3">
           <div>
-            <p className="text-[0.65rem] font-black tracking-[0.14em] text-violet-800 uppercase">
+            <p className="hidden text-[0.65rem] font-black tracking-[0.14em] text-violet-800 uppercase sm:block">
               Saldo montado
             </p>
             <h2
@@ -1173,7 +1468,7 @@ export function InventoryWorkspace({
               Servos com kit e conjuntos
             </h2>
           </div>
-          <span className="text-right text-xs font-bold text-text-muted">
+          <span className="text-right text-sm font-bold text-text-muted sm:text-xs">
             {quantityFormatter.format(filteredConfigurations.length)}{" "}
             configurações · {quantityFormatter.format(filteredBundles.length)} conjuntos
           </span>

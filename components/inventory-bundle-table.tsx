@@ -23,7 +23,7 @@ export function InventoryBundleTable({
 }) {
   return (
     <div className="bg-surface p-3 sm:p-4">
-      <h4 className="mb-2 text-sm font-black text-text-primary">
+      <h4 className="mb-2 text-base font-black text-text-primary sm:text-sm">
         Conjuntos comerciais
       </h4>
       <ul className="space-y-3">
@@ -42,8 +42,8 @@ export function InventoryBundleTable({
                     Conjunto
                   </span>
                 </p>
-                <p className="mt-1 break-words text-sm font-bold">{bundle.description}</p>
-                <p className="mt-1 break-words text-xs text-text-muted">
+                <p className="mt-1 break-words text-base font-bold sm:text-sm">{bundle.description}</p>
+                <p className="mt-1 break-words text-base text-text-muted sm:text-xs">
                   Receita:{" "}
                   {bundle.recipe
                     .map(
@@ -70,22 +70,22 @@ export function InventoryBundleTable({
             </div>
             <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
               <div>
-                <dt className="text-xs text-text-muted">Saldo pronto</dt>
+                <dt className="text-sm text-text-muted sm:text-xs">Saldo pronto</dt>
                 <dd className="break-all font-mono text-lg font-black tabular-nums sm:text-xl">{bundle.readyQuantity}</dd>
               </div>
               <div>
-                <dt className="text-xs text-text-muted">Mínimo</dt>
+                <dt className="text-sm text-text-muted sm:text-xs">Mínimo</dt>
                 <dd className="break-all font-mono text-lg font-black tabular-nums sm:text-xl">{bundle.minimumStock}</dd>
               </div>
               <div>
-                <dt className="text-xs text-text-muted">Pode montar</dt>
+                <dt className="text-sm text-text-muted sm:text-xs">Pode montar</dt>
                 <dd className="break-all font-mono text-lg font-black tabular-nums sm:text-xl">
                   {bundle.maximumAssemblable}
                 </dd>
               </div>
             </dl>
             <span
-              className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-xs font-bold ${states[bundle.state].className}`}
+              className={`mt-2 inline-flex rounded-full px-3 py-1 text-sm font-bold sm:px-2 sm:py-0.5 sm:text-xs ${states[bundle.state].className}`}
             >
               {states[bundle.state].label}
             </span>
