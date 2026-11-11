@@ -175,7 +175,7 @@ export function InventoryRowActions({
           aria-expanded={isOpen}
           aria-controls={menuId}
           onClick={() => setIsOpen((current) => !current)}
-          className="nk-focus inline-flex size-11 items-center justify-center rounded-xl border border-border-neutral bg-surface text-xl font-black leading-none text-text-primary transition hover:border-brand-gold-dark hover:bg-brand-gold-soft"
+          className="nk-focus inline-flex size-12 items-center justify-center rounded-xl border sm:size-11 border-border-neutral bg-surface text-xl font-black leading-none text-text-primary transition hover:border-brand-gold-dark hover:bg-brand-gold-soft"
         >
           <span aria-hidden="true">⋯</span>
         </button>
@@ -187,7 +187,7 @@ export function InventoryRowActions({
             role="menu"
             aria-label={`Ações disponíveis para ${targetLabel}`}
             onKeyDown={handleMenuKeyDown}
-            className="absolute top-full right-0 z-30 mt-1 w-56 rounded-xl border border-border-neutral bg-surface p-1.5 shadow-xl"
+            className="absolute top-full right-0 z-30 mt-1 w-64 rounded-xl sm:w-56 border border-border-neutral bg-surface p-1.5 shadow-xl"
           >
             {target.kind === "CONFIGURATION" || target.kind === "BUNDLE" ? (
               <>
@@ -198,7 +198,7 @@ export function InventoryRowActions({
                   type="button"
                   role="menuitem"
                   onClick={() => openDialog("ASSEMBLY")}
-                  className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-emerald-800 transition hover:bg-emerald-50"
+                  className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-bold sm:min-h-11 sm:text-sm text-emerald-800 transition hover:bg-emerald-50"
                 >
                   Montar
                 </button>
@@ -206,7 +206,7 @@ export function InventoryRowActions({
                   type="button"
                   role="menuitem"
                   onClick={() => openDialog("DISASSEMBLY")}
-                  className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-violet-900 transition hover:bg-violet-50"
+                  className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-bold sm:min-h-11 sm:text-sm text-violet-900 transition hover:bg-violet-50"
                 >
                   Desmontar
                 </button>
@@ -224,23 +224,23 @@ export function InventoryRowActions({
               type="button"
               role="menuitem"
               onClick={() => openDialog("SALE")}
-              className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-red-700 transition hover:bg-red-50"
+              className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-bold sm:min-h-11 sm:text-sm text-red-700 transition hover:bg-red-50"
             >
               Venda
             </button>
 
             {target.kind === "ITEM" ? <>
               <button type="button" role="menuitem" onClick={() => openDialog("CATALOG_EDIT")}
-                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary hover:bg-app-background">Editar código/descrição</button>
+                className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-bold sm:min-h-11 sm:text-sm text-text-primary hover:bg-app-background">Editar código/descrição</button>
               <button type="button" role="menuitem" onClick={() => openDialog("CATALOG_ARCHIVE")}
-                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-red-700 hover:bg-red-50">Excluir produto</button>
+                className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-bold sm:min-h-11 sm:text-sm text-red-700 hover:bg-red-50">Excluir produto</button>
             </> : null}
 
             <button
               type="button"
               role="menuitem"
               onClick={() => openDialog("ADJUSTMENT")}
-              className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
+              className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-bold sm:min-h-11 sm:text-sm text-text-primary transition hover:bg-app-background"
             >
               Ajustar estoque
             </button>
@@ -249,7 +249,7 @@ export function InventoryRowActions({
               type="button"
               role="menuitem"
               onClick={() => openDialog("MINIMUM_STOCK")}
-              className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-text-primary transition hover:bg-app-background"
+              className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-bold sm:min-h-11 sm:text-sm text-text-primary transition hover:bg-app-background"
             >
               Alterar estoque mínimo
             </button> : null}
