@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ArrowLeftIcon,
-  ClockIcon,
   StockIcon,
 } from "@/components/icons";
 import { loadHistoryBatch } from "@/lib/history-data";
@@ -136,24 +135,24 @@ function QuantityFlow({
   return (
     <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-border-neutral/70 pt-4">
       <div className="rounded-xl bg-app-background px-2 py-3 text-center">
-        <dt className="text-[0.68rem] font-bold uppercase tracking-wide text-text-muted sm:text-xs">
-          Antes
+        <dt className="text-sm font-bold text-text-muted">
+          Tinha
         </dt>
         <dd className="mt-1 font-mono text-lg font-black tabular-nums text-text-primary">
           {formatQuantity(before)}
         </dd>
       </div>
       <div className={`rounded-xl px-2 py-3 text-center ${changeClassName}`}>
-        <dt className="text-[0.68rem] font-bold uppercase tracking-wide sm:text-xs">
-          Alteração
+        <dt className="text-sm font-bold">
+          Mudou
         </dt>
         <dd className="mt-1 font-mono text-lg font-black tabular-nums">
           {formatQuantityChange(change)}
         </dd>
       </div>
       <div className="rounded-xl bg-app-background px-2 py-3 text-center">
-        <dt className="text-[0.68rem] font-bold uppercase tracking-wide text-text-muted sm:text-xs">
-          Depois
+        <dt className="text-sm font-bold text-text-muted">
+          Ficou
         </dt>
         <dd className="mt-1 font-mono text-lg font-black tabular-nums text-text-primary">
           {formatQuantity(after)}
@@ -214,102 +213,119 @@ export default async function HistoryDetailPage({
         Voltar ao histórico
       </Link>
 
-      <section className="nk-industrial-grid relative mt-4 overflow-hidden rounded-3xl border border-brand-gold/25 bg-brand-charcoal px-5 py-7 text-white shadow-[0_22px_55px_-38px_rgba(23,29,33,0.95)] sm:px-8 sm:py-9">
-        <div
-          aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-1.5 bg-brand-gold"
-        />
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-xs font-black tracking-[0.2em] text-brand-gold uppercase">
-              Detalhes do lote
-            </p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">
-              {movementTypeLabels[batch.movementType]}
-            </h1>
-            <p className="mt-2 break-words text-sm leading-6 text-slate-200 sm:text-base">
-              {batch.description?.trim() || "Sem descrição"}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <span
-              className={`rounded-full px-3 py-1.5 text-xs font-black ${movementTypeStyles[batch.movementType]}`}
-            >
-              {movementTypeLabels[batch.movementType]}
-            </span>
-            <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-white">
-              {movementSourceLabels[batch.source]}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section className="nk-panel mt-5 p-4 sm:p-5" aria-labelledby="audit-title">
-        <div className="flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-brand-gold-soft text-brand-charcoal">
-            <ClockIcon className="size-5" />
-          </span>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-gold-ink">
-              Auditoria
-            </p>
-            <h2 id="audit-title" className="mt-1 text-lg font-black text-text-primary">
-              Identificação da operação
-            </h2>
-          </div>
-        </div>
-
-        <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl bg-app-background px-3 py-3">
-            <dt className="text-xs font-bold uppercase tracking-wide text-text-muted">
-              Data e horário
-            </dt>
-            <dd className="mt-1 font-semibold text-text-primary">
-              <time dateTime={batch.occurredAt}>
-                {formatDate(batch.occurredAt)}
-              </time>
-            </dd>
-          </div>
-          <div className="rounded-xl bg-app-background px-3 py-3">
-            <dt className="text-xs font-bold uppercase tracking-wide text-text-muted">
-              Usuário registrado
-            </dt>
-            <dd className="mt-1 break-words font-semibold text-text-primary">
-              {batch.userName?.trim() || "Usuário não identificado"}
-            </dd>
-          </div>
-          <div className="rounded-xl bg-app-background px-3 py-3 sm:col-span-2">
-            <dt className="text-xs font-bold uppercase tracking-wide text-text-muted">
-              Movement batch ID
-            </dt>
-            <dd className="mt-1 break-all font-mono text-sm font-bold text-text-primary">
-              {batch.id}
-            </dd>
-          </div>
-          <div className="rounded-xl bg-app-background px-3 py-3 sm:col-span-2">
-            <dt className="text-xs font-bold uppercase tracking-wide text-text-muted">
-              Descrição
-            </dt>
-            <dd className="mt-1 break-words font-semibold text-text-primary">
-              {batch.description?.trim() || "Sem descrição"}
-            </dd>
-          </div>
-        </dl>
-
+      <header className="mt-3">
+        <span
+          className={`inline-flex rounded-full px-3 py-1 text-sm font-black ${movementTypeStyles[batch.movementType]}`}
+        >
+          {movementTypeLabels[batch.movementType]}
+        </span>
+        <h1 className="mt-3 text-2xl font-black tracking-tight text-text-primary sm:text-3xl">
+          <time dateTime={batch.occurredAt}>{formatDate(batch.occurredAt)}</time>
+        </h1>
+        <p className="mt-1 text-base text-text-muted">
+          {batch.userName?.trim() || "Nome não cadastrado"}
+          {batch.source !== "MANUAL" ? ` · ${movementSourceLabels[batch.source]}` : ""}
+        </p>
+        {batch.description?.trim() ? (
+          <p className="mt-3 break-words rounded-xl bg-surface px-4 py-3 text-base leading-7 text-text-primary">
+            {batch.description.trim()}
+          </p>
+        ) : null}
         {batch.reversedBatchId ? (
-          <div className="mt-3 rounded-xl border border-brand-gold/50 bg-brand-gold-soft/50 px-3 py-3 text-sm leading-6 text-brand-charcoal">
-            Este lote está relacionado ao lote revertido{" "}
+          <p className="mt-3 text-base">
             <Link
               href={`/historico/${batch.reversedBatchId}`}
-              className="nk-focus break-all font-mono font-black underline decoration-2 underline-offset-2"
+              className="nk-focus font-bold text-brand-gold-ink underline decoration-2 underline-offset-2"
             >
-              {batch.reversedBatchId}
+              Ver a movimentação que foi desfeita
             </Link>
-            .
-          </div>
+          </p>
         ) : null}
+      </header>
+
+      <section className="mt-8" aria-labelledby="physical-impact-title">
+        <h2
+          id="physical-impact-title"
+          className="text-xl font-black text-text-primary"
+        >
+          O que mudou no estoque
+        </h2>
+
+        {batch.stockMovements.length === 0 ? (
+          batch.configurationMovements.length === 0 ? (
+            <div className="mt-3 rounded-2xl border border-dashed border-border-neutral bg-surface px-5 py-6 text-base leading-7 text-text-muted">
+              Nenhuma quantidade foi alterada.
+            </div>
+          ) : null
+        ) : (
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {batch.stockMovements.map((movement) => (
+              <article
+                key={movement.id}
+                className="min-w-0 rounded-2xl border border-border-neutral bg-surface p-4 shadow-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-lg font-black text-text-primary">
+                      {movement.item.code}
+                    </p>
+                    <p className="mt-1 break-words text-base leading-6 text-text-primary">
+                      {movement.item.description}
+                    </p>
+                  </div>
+                </div>
+                <QuantityFlow
+                  before={movement.quantityBefore}
+                  change={movement.quantityChange}
+                  after={movement.quantityAfter}
+                />
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
+      {batch.configurationMovements.length > 0 ? (
+      <section className="mt-6" aria-labelledby="configuration-impact-title">
+        <h2
+          id="configuration-impact-title"
+          className="text-lg font-black text-text-primary"
+        >
+          Servos com kit
+        </h2>
+
+          <div className="mt-3 grid gap-3">
+            {batch.configurationMovements.map((movement) => (
+              <article
+                key={movement.id}
+                className="min-w-0 rounded-2xl border border-violet-200 bg-surface p-4 shadow-sm sm:p-5"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <ConfigurationIdentity
+                      configuration={movement.configuration}
+                    />
+                  </div>
+                </div>
+                <QuantityFlow
+                  before={movement.quantityBefore}
+                  change={movement.quantityChange}
+                  after={movement.quantityAfter}
+                />
+              </article>
+            ))}
+          </div>
+      </section>
+      ) : null}
+
+      <details className="group mt-8 rounded-2xl border border-border-neutral bg-surface p-4">
+        <summary className="nk-focus flex min-h-12 cursor-pointer list-none items-center justify-between rounded-xl text-base font-bold text-text-primary">
+          Mais detalhes
+          <span aria-hidden="true" className="text-text-muted transition group-open:rotate-180">▾</span>
+        </summary>
+        <p className="mt-2 break-all text-sm text-text-muted">
+          Código da movimentação: <span className="font-mono">{batch.id}</span>
+        </p>
       <section
         className="mt-7"
         aria-labelledby="registered-request-title"
@@ -319,22 +335,19 @@ export default async function HistoryDetailPage({
             <StockIcon className="size-5" />
           </span>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-gold-ink">
-              Pedido original
-            </p>
             <h2
               id="registered-request-title"
-              className="mt-1 text-xl font-black text-text-primary"
+              className="text-lg font-black text-text-primary"
             >
-              Solicitação registrada
+              O que foi pedido
             </h2>
           </div>
         </div>
 
         {!hasRequestLines ? (
           <div className="mt-3 rounded-2xl border border-dashed border-border-neutral bg-surface px-5 py-6 text-sm leading-6 text-text-muted">
-            Este lote foi criado antes do registro detalhado da solicitação.
-            Consulte o impacto nos saldos abaixo.
+            Esta movimentação é antiga e não guardou o pedido detalhado.
+            Veja acima o que mudou no estoque.
           </div>
         ) : (
           <>
@@ -485,108 +498,9 @@ export default async function HistoryDetailPage({
         )}
       </section>
 
-      <section className="mt-8" aria-labelledby="physical-impact-title">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-gold-ink">
-            Saldos físicos
-          </p>
-          <h2
-            id="physical-impact-title"
-            className="mt-1 text-xl font-black text-text-primary"
-          >
-            Impacto nos itens separados
-          </h2>
-        </div>
-
-        {batch.stockMovements.length === 0 ? (
-          <div className="mt-3 rounded-2xl border border-dashed border-border-neutral bg-surface px-5 py-6 text-sm leading-6 text-text-muted">
-            Nenhum saldo de item separado foi alterado neste lote.
-          </div>
-        ) : (
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            {batch.stockMovements.map((movement) => (
-              <article
-                key={movement.id}
-                className="min-w-0 rounded-2xl border border-border-neutral bg-surface p-4 shadow-sm"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-mono text-lg font-black text-text-primary">
-                      {movement.item.code}
-                    </p>
-                    <p className="mt-1 break-words text-sm leading-6 font-semibold text-text-primary">
-                      {movement.item.description}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-app-background px-2.5 py-1 text-xs font-bold text-text-muted">
-                    {movement.item.typeLabel}
-                  </span>
-                </div>
-                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-brand-gold-ink">
-                  {movement.item.balanceLabel}
-                </p>
-                <QuantityFlow
-                  before={movement.quantityBefore}
-                  change={movement.quantityChange}
-                  after={movement.quantityAfter}
-                />
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="mt-8" aria-labelledby="configuration-impact-title">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-gold-ink">
-            Saldo compartilhado por configuração
-          </p>
-          <h2
-            id="configuration-impact-title"
-            className="mt-1 text-xl font-black text-text-primary"
-          >
-            Impacto nos Servos com kit
-          </h2>
-        </div>
-
-        {batch.configurationMovements.length === 0 ? (
-          <div className="mt-3 rounded-2xl border border-dashed border-border-neutral bg-surface px-5 py-6 text-sm leading-6 text-text-muted">
-            Nenhum saldo de Servo com kit foi alterado neste lote.
-          </div>
-        ) : (
-          <div className="mt-3 grid gap-3">
-            {batch.configurationMovements.map((movement) => (
-              <article
-                key={movement.id}
-                className="min-w-0 rounded-2xl border border-violet-200 bg-surface p-4 shadow-sm sm:p-5"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <ConfigurationIdentity
-                      configuration={movement.configuration}
-                    />
-                  </div>
-                  <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-black text-violet-900">
-                    Movimento {movement.sequence}
-                  </span>
-                </div>
-                <QuantityFlow
-                  before={movement.quantityBefore}
-                  change={movement.quantityChange}
-                  after={movement.quantityAfter}
-                />
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
       {batch.assemblyOperations.length > 0 ? (
         <section className="mt-8 pb-8" aria-labelledby="assembly-title">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-gold-ink">
-              Composição física
-            </p>
             <h2
               id="assembly-title"
               className="mt-1 text-xl font-black text-text-primary"
@@ -633,9 +547,9 @@ export default async function HistoryDetailPage({
             ))}
           </div>
         </section>
-      ) : (
-        <div className="pb-8" />
-      )}
+      ) : null}
+      </details>
+      <div className="pb-8" />
     </main>
   );
 }

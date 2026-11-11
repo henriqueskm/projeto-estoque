@@ -4,14 +4,15 @@ import { readFileSync } from "node:fs";
 import { createSemanticBackHistory, readSemanticMarker } from "../lib/semantic-back-history.ts";
 import { createRouteMutationGate } from "../lib/route-transient-state.ts";
 
-function browser(url = "/estoque", standalone = false, requestExit = () => {}, deferred = false) {
-  let index = 0; let counter = 0; let exitCount = 0; let popCount = 0; let exitOpen = false;
+function browser(url = "/estoque", standalone = false, deferred = false) {
+  let index = 0; let counter = 0; let exitCount = 0; let popCount = 0; let closed = false;
   const traversals = [];
   const pending = [];
   const stack = [{ url, state: { __NA: true, nextTree: "untouched" } }];
   function traverse(delta) {
     const target = index + delta;
-    if (target < 0 || target >= stack.length) return;
+    if (target < 0) { closed = true; return; } // Native Back on the first entry closes the installed app.
+    if (target >= stack.length) return;
     index = target;
     coordinator.pop(history.state);
   }
@@ -26,11 +27,11 @@ function browser(url = "/estoque", standalone = false, requestExit = () => {}, d
     },
   };
   const coordinator = createSemanticBackHistory({ history, href: () => stack[index].url, standalone: () => standalone,
-    exit: open => { exitOpen = open; if (open) exitCount += 1; }, beforePop: () => { popCount += 1; }, id: () => `entry-${++counter}`, requestExit });
+    exitBoundaryReached: () => { exitCount += 1; }, beforePop: () => { popCount += 1; }, id: () => `entry-${++counter}` });
   coordinator.ensure();
   return { coordinator, history, stack, traversals, back: () => history.go(-1), forward: () => history.go(1),
     flush: () => { while (pending.length) traverse(pending.shift()); },
-    get url() { return stack[index].url; }, get exitCount() { return exitCount; }, get exitOpen() { return exitOpen; }, get popCount() { return popCount; } };
+    get url() { return stack[index].url; }, get exitCount() { return exitCount; }, get closed() { return closed; }, get popCount() { return popCount; } };
 }
 function participant(browser, key, initial, restoreGuard = () => true) {
   let value = initial;
@@ -164,63 +165,37 @@ test("recommended list deep link adds a close checkpoint without default Home na
   b.back(); assert.equal(b.url, "/estoque"); b.forward(); assert.equal(b.url, "/estoque?view=purchase-recommendations");
 });
 
-test("direct order: first Back closes it; next Back opens standalone exit confirmation", () => {
+test("direct order: first Back closes it; next Back shows the exit hint; another Back closes the app", () => {
   const b = browser("/pedidos?order=real-order", true);
   b.coordinator.seedOrder("pedidos:active", "real-order", { selectedOrderId: "real-order", search: "kept" });
   const state = participant(b, "pedidos:active", { selectedOrderId: "real-order", search: "kept" });
   b.back(); assert.equal(state.value.selectedOrderId, null); assert.equal(b.url, "/pedidos"); assert.equal(b.exitCount, 0);
-  b.back(); assert.equal(b.url, "/pedidos"); assert.equal(b.exitCount, 1);
-  b.coordinator.continueInApp(); b.back(); assert.equal(b.exitCount, 2);
-  const length = b.stack.length; b.coordinator.leaveApp(); b.back(); assert.equal(b.exitCount, 2); assert.equal(b.stack.length, length);
+  b.back(); assert.equal(b.exitCount, 1); assert.equal(b.closed, false);
+  b.back(); assert.equal(b.closed, true);
 });
 
 test("ordinary browser has no sentinel/exit trap", () => {
-  const b = browser("/pedidos"); assert.equal(b.stack.length, 1); b.back(); assert.equal(b.exitCount, 0);
+  const b = browser("/pedidos"); assert.equal(b.stack.length, 1); b.back(); assert.equal(b.exitCount, 0); assert.equal(b.closed, true);
 });
 
-for (const refuses of [false, true]) {
-  test(`explicit standalone Exit attempts immediate closure; refusal=${refuses} keeps safe released fallback`, () => {
-    let attempts = 0;
-    const b = browser("/", true, () => { attempts += 1; if (refuses) throw Error("runtime refused"); });
-    const state = participant(b, "home", { search: "preserved" });
-    b.back(); assert.equal(b.exitOpen, true);
-    const length = b.stack.length, traversals = b.traversals.length;
-    b.coordinator.leaveApp();
-    assert.equal(attempts, 1, "attempt occurs synchronously in the explicit gesture");
-    assert.equal(b.exitOpen, false); assert.equal(b.url, "/");
-    assert.equal(b.traversals.length, traversals, "never blindly traverse older login history");
-    assert.equal(b.stack.length, length); assert.equal(state.value.search, "preserved");
-    b.back(); assert.equal(b.exitOpen, false); assert.equal(attempts, 1);
-  });
-}
-test("ordinary browser Exit does not attempt to close a normal tab", () => {
-  let attempts = 0; const b = browser("/", false, () => { attempts += 1; });
-  b.coordinator.leaveApp(); assert.equal(attempts, 0); assert.equal(b.url, "/");
-});
-
-test("standalone exit: Back cancels, another Back reopens, Continue/Escape and Exit keep a single boundary", () => {
-  const b = browser("/pedidos", true);
-  const state = participant(b, "pedidos:active", { search: "kept", statusFilter: "PARTIAL", selectedOrderId: null });
-  const original = structuredClone(state.value);
+test("standalone Home: Back shows the hint, the next Back really closes the app", () => {
+  const b = browser("/", true);
+  const state = participant(b, "home", { search: "preserved" });
   const length = b.stack.length;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    b.back(); assert.equal(b.exitOpen, true);
-    b.back(); assert.equal(b.exitOpen, false);
-    assert.equal(b.url, "/pedidos"); assert.deepEqual(state.value, original);
-    assert.equal(b.stack.length, length);
-  }
-  b.back(); assert.equal(b.exitOpen, true);
-  b.coordinator.continueInApp(); assert.equal(b.exitOpen, false);
-  b.back(); assert.equal(b.exitOpen, true, "Continue re-arms the same boundary");
+  b.back();
+  assert.equal(b.exitCount, 1); assert.equal(b.closed, false); assert.equal(b.url, "/");
+  assert.equal(b.popCount, 0, "landing on the boundary never restores/clears Workspace state");
+  assert.equal(state.value.search, "preserved"); assert.equal(b.stack.length, length);
+  b.back(); assert.equal(b.closed, true, "no forward bounce: the native Back leaves the app");
+  assert.deepEqual(b.traversals, [-1, -1]);
+});
+
+test("standalone boundary re-arms after navigating again and keeps a single boundary", () => {
+  const b = browser("/pedidos", true);
+  b.back(); assert.equal(b.exitCount, 1);
+  b.history.pushState(structuredClone(b.history.state), "", "/estoque"); b.coordinator.ensure();
+  b.back(); assert.equal(b.exitCount, 2); assert.equal(b.closed, false);
   assert.equal(b.stack.filter(entry => readSemanticMarker(entry.state)?.kind === "EXIT_BOUNDARY").length, 1);
-  assert.equal(b.popCount, 0, "exit attempts never restore/clear useful Workspace state");
-  assert.equal(b.traversals.length, 28, "each Back has only one bounded forward bounce");
-  const traversalsBeforeExit = b.traversals.length;
-  b.coordinator.leaveApp(); assert.equal(b.exitOpen, false);
-  assert.equal(b.traversals.length, traversalsBeforeExit, "Exit releases the guard without navigating to an older URL");
-  const attempts = b.exitCount;
-  b.back(); assert.equal(b.exitCount, attempts, "released boundary no longer traps Back");
-  assert.equal(b.stack.length, length);
 });
 
 test("StrictMode transient effect probe does not duplicate history", () => {
@@ -242,7 +217,7 @@ test("manual dialog close consumes its checkpoint but Activity departure never t
 
 for (const cleanupOrder of ["toggle-first", "animation-frame-first"]) {
   test(`same-tab drawer: delayed popstate and ${cleanupOrder} cleanup consume only the drawer checkpoint`, () => {
-    const b = browser("/", false, () => {}, true);
+    const b = browser("/", false, true);
     b.history.pushState({ __NA: true, nextTree: "stock" }, "", "/estoque"); b.coordinator.ensure();
     const state = participant(b, "estoque", { query: "MBF015", statusFilter: "all", openPhysicalGroups: [] });
     state.change({ ...state.value, statusFilter: "low", openPhysicalGroups: ["SERVO"] });
@@ -265,7 +240,7 @@ for (const cleanupOrder of ["toggle-first", "animation-frame-first"]) {
 }
 
 test("a drawer reopened on a consumed Forward checkpoint gets a fresh consumable identity", () => {
-  const b = browser("/estoque", false, () => {}, true);
+  const b = browser("/estoque", false, true);
   const first = b.coordinator.openTransient("drawer", () => {}, () => false);
   b.coordinator.retireTransient(first, true); b.flush();
   b.forward(); b.flush();
@@ -364,12 +339,10 @@ test("route departure is registered centrally using the existing Workspace navig
 test("source integration leaves Workspace v1 and all transactional writers untouched", () => {
   const read = path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
   const hook = read("components/semantic-back-provider.tsx");
-  assert.match(hook, /isStandaloneMode/); assert.match(hook, /useLayoutEffect/); assert.match(hook, /aria-modal="true"/);
-  assert.match(hook, /nk-exit-title/); assert.match(hook, /event.key === "Escape"/); assert.match(hook, /event.key === "Tab"/);
-  assert.match(hook, /event.key === "Escape"\) \{ event.preventDefault\(\); onContinue\(\);/);
-  assert.match(hook, /onContinue=\{\(\) => coordinator.continueInApp\(\)\}/);
+  assert.match(hook, /isStandaloneMode/); assert.match(hook, /useLayoutEffect/);
+  assert.match(hook, /Toque em voltar de novo para sair/); assert.match(hook, /role="status"/);
   assert.doesNotMatch(hook, /window.confirm|about:blank|router.refresh|\.rpc\(/);
-  assert.equal((hook.match(/window.close\(\)/g) ?? []).length, 1, "only the explicit Exit gesture owns best-effort closing");
+  assert.doesNotMatch(hook, /window.close\(\)/, "installed Chrome apps ignore window.close; never offer a button that cannot close");
   assert.equal((hook.match(/addEventListener\("popstate"/g) ?? []).length, 1);
   for (const mode of ["entrada", "saida"]) {
     const flow = read(`app/(authenticated)/${mode}/${mode === "entrada" ? "inbound" : "outbound"}-entry-flow.tsx`);

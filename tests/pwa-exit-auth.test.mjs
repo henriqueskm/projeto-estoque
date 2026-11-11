@@ -87,10 +87,10 @@ test("explicit logout still signs out locally and goes to login; never cleans pu
   const source = readFileSync(new URL("../app/auth/actions.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /push-subscriptions|prepareForLogout|unregister|disable_push_subscription/);
 });
-test("exit implementation has no auth/push/storage cleanup or programmatic navigation", () => {
+test("exit boundary has no auth/push/storage cleanup or programmatic navigation", () => {
   const source = readFileSync(new URL("../lib/semantic-back-history.ts", import.meta.url), "utf8");
-  const leave = source.slice(source.indexOf("leaveApp()"), source.indexOf("dispose()"));
-  assert.doesNotMatch(leave, /history\.go|signOut|localStorage|sessionStorage|fetch\(|location\s*=/);
-  assert.match(leave, /if \(standalone\(\)\)[\s\S]*requestExit\(\)/);
-  assert.match(readFileSync(new URL("../components/semantic-back-provider.tsx", import.meta.url), "utf8"), /requestExit: \(\) => window.close\(\)/);
+  const boundary = source.slice(source.indexOf('marker?.kind === "EXIT_BOUNDARY"'), source.indexOf("beforePop();", source.indexOf('marker?.kind === "EXIT_BOUNDARY"')));
+  assert.match(boundary, /exitBoundaryReached\(\)/);
+  assert.doesNotMatch(boundary, /history\.go|signOut|localStorage|sessionStorage|fetch\(|location\s*=/);
+  assert.doesNotMatch(readFileSync(new URL("../components/semantic-back-provider.tsx", import.meta.url), "utf8"), /window\.close\(\)/);
 });

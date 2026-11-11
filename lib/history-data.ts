@@ -9,6 +9,7 @@ import {
   type HistoryAssemblyOperation,
   type HistoryBatchDetail,
   type HistoryBatchListItem,
+  type HistoryListLine,
   type HistoryConfiguration,
   type HistoryConfigurationMovement,
   type HistoryDetailResult,
@@ -452,6 +453,36 @@ export async function loadHistoryList(
     const assemblyByBatch = groupByBatch(
       (assemblyResult.data ?? []) as AssemblyOperationRow[],
     );
+    const inboundRows = (inboundResult.data ?? []) as InboundLineRow[];
+    const outboundRows = (outboundResult.data ?? []) as OutboundLineRow[];
+    const stockRows = (stockResult.data ?? []) as StockMovementRow[];
+    const configurationRows = (configurationResult.data ?? []) as ConfigurationMovementRow[];
+    const [itemsResult, codesResult, configurationCodesResult] = await Promise.all([
+      fetchItemsByIds(supabase, unique([
+        ...inboundRows.map((row) => row.item_id),
+        ...outboundRows.map((row) => row.item_id),
+        ...stockRows.map((row) => row.item_id),
+      ])),
+      fetchCodesByIds(supabase, unique([
+        ...inboundRows.map((row) => row.commercial_configuration_code_id),
+        ...outboundRows.map((row) => row.commercial_configuration_code_id),
+      ])),
+      fetchCodesByConfigurationIds(supabase, unique(configurationRows.map((row) => row.configuration_id))),
+    ]);
+
+    if (itemsResult.error || codesResult.error || configurationCodesResult.error) {
+      return {
+        data: null,
+        error: "Não foi possível carregar o histórico agora.",
+      };
+    }
+
+    const lookups: ListLineLookups = {
+      itemCodes: new Map(itemsResult.data.map((item) => [item.id, item.code])),
+      commercialCodes: new Map(codesResult.data.map((code) => [code.id, code.code])),
+      configurationCodes: firstCodeByConfiguration(configurationCodesResult.data),
+    };
+
     const listItems: HistoryBatchListItem[] = batches.map((batch) => ({
       id: batch.id,
       movementType: batch.movement_type,
@@ -466,6 +497,13 @@ export async function loadHistoryList(
         stockByBatch.get(batch.id) ?? [],
         configurationByBatch.get(batch.id) ?? [],
         assemblyByBatch.get(batch.id) ?? [],
+      ),
+      lines: buildListLines(
+        lookups,
+        inboundByBatch.get(batch.id) ?? [],
+        outboundByBatch.get(batch.id) ?? [],
+        stockByBatch.get(batch.id) ?? [],
+        configurationByBatch.get(batch.id) ?? [],
       ),
     }));
 
@@ -487,6 +525,59 @@ export async function loadHistoryList(
       error: "Não foi possível carregar o histórico agora.",
     };
   }
+}
+
+type ListLineLookups = {
+  itemCodes: Map<string, string>;
+  commercialCodes: Map<string, string>;
+  configurationCodes: Map<string, string>;
+};
+
+function firstCodeByConfiguration(codes: CommercialCodeRow[]) {
+  const result = new Map<string, string>();
+
+  [...codes]
+    .sort((first, second) => compareCodes(first.code, second.code))
+    .forEach((code) => {
+      if (!result.has(code.configuration_id)) {
+        result.set(code.configuration_id, code.code);
+      }
+    });
+
+  return result;
+}
+
+function buildListLines(
+  lookups: ListLineLookups,
+  inboundLines: InboundLineRow[],
+  outboundLines: OutboundLineRow[],
+  stockMovements: StockMovementRow[],
+  configurationMovements: ConfigurationMovementRow[],
+): HistoryListLine[] {
+  const requestCode = (line: InboundLineRow) =>
+    (line.item_id && lookups.itemCodes.get(line.item_id)) ||
+    (line.commercial_configuration_code_id &&
+      lookups.commercialCodes.get(line.commercial_configuration_code_id)) ||
+    "Item";
+
+  // Entrada/Saída show what the user asked for, not the internal composition.
+  if (inboundLines.length > 0 || outboundLines.length > 0) {
+    return [...inboundLines, ...outboundLines].map((line) => ({
+      code: requestCode(line),
+      quantity: line.quantity,
+    }));
+  }
+
+  return [
+    ...configurationMovements.map((movement) => ({
+      code: lookups.configurationCodes.get(movement.configuration_id) ?? "Servo com kit",
+      quantity: movement.quantity_change,
+    })),
+    ...stockMovements.map((movement) => ({
+      code: lookups.itemCodes.get(movement.item_id) ?? "Item",
+      quantity: movement.quantity_change,
+    })),
+  ].filter((line) => line.quantity !== 0);
 }
 
 function unique(values: Array<string | null | undefined>) {

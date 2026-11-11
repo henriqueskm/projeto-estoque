@@ -19,10 +19,11 @@ export function readSemanticMarker(state: unknown): Marker | null {
   return marker.version === 1 && typeof marker.id === "string" && typeof marker.route === "string"
     && typeof marker.kind === "string" && typeof marker.key === "string" ? marker : null;
 }
-export function createSemanticBackHistory({ history, href, standalone, exit, beforePop, id, requestExit = () => {}, internalDocumentNavigation = () => false }: {
+export function createSemanticBackHistory({ history, href, standalone, exitBoundaryReached, beforePop, id, internalDocumentNavigation = () => false }: {
   history: HistoryPort; href: () => string; standalone: () => boolean;
-  exit: (open: boolean) => void; beforePop: () => void; id: () => string;
-  requestExit?: () => void;
+  // Called when Back lands on the first app entry. The next native Back
+  // closes the installed app; scripts cannot close it (window.close is ignored).
+  exitBoundaryReached: () => void; beforePop: () => void; id: () => string;
   internalDocumentNavigation?: () => boolean;
 }) {
   const entries = new Map<string, Entry>();
@@ -30,9 +31,6 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
   const transient = new Map<string, { close: () => void; blocked: () => boolean }>();
   let current: Entry | null = null;
   let initialized = false;
-  let released = false;
-  let returningFromBoundary = false;
-  let exitOpen = false;
   let returningFromBlocked = false;
   let guarded = false;
   const pathname = () => href().split(/[?#]/)[0];
@@ -156,41 +154,22 @@ export function createSemanticBackHistory({ history, href, standalone, exit, bef
     pop(state: unknown) {
       const marker = readSemanticMarker(state);
       if (returningFromBlocked) { returningFromBlocked = false; return; }
-      if (returningFromBoundary) {
-        returningFromBoundary = false;
-        if (marker) current = entries.get(marker.id) ?? null;
-        // Back while the exit dialog is open means Continue. Both attempts
-        // bounce to the existing entry, without a new sentinel or state restore.
-        exitOpen = !exitOpen;
-        exit(exitOpen);
-        return;
-      }
       const activeTransient = current && transient.get(current.marker.id);
       if (activeTransient?.blocked()) { returningFromBlocked = true; history.go(1); return; }
       if (activeTransient) {
         transient.delete(current!.marker.id);
         activeTransient.close();
       }
-      if (marker?.kind === "EXIT_BOUNDARY" && !released && standalone()) {
-        returningFromBoundary = true;
-        history.go(1); // Reuse the existing guard; never push a sentinel loop.
+      if (marker?.kind === "EXIT_BOUNDARY" && standalone()) {
+        // Stay on the boundary (same URL as launch, no restore). The user's
+        // next native Back leaves the app; any navigation re-arms it.
+        current = entries.get(marker.id) ?? current;
+        exitBoundaryReached();
         return;
       }
       beforePop();
       current = marker ? entries.get(marker.id) ?? null : null;
       if (current) restore(current); // TRANSIENT forward restores only safe state.
-    },
-    continueInApp() { released = false; exitOpen = false; exit(false); },
-    leaveApp() {
-      released = true;
-      exitOpen = false;
-      exit(false);
-      // Attempt closing synchronously in the explicit button gesture. A runtime
-      // can refuse; retain the released guard without traversing an older URL.
-      // In particular, exit must never become a visit to pre-auth /login.
-      if (standalone()) {
-        try { requestExit(); } catch { /* Native Back remains unguarded. */ }
-      }
     },
     dispose() { entries.clear(); participants.clear(); transient.clear(); },
   };

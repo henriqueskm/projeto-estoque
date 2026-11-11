@@ -70,7 +70,7 @@ test("actual CompactQuantityControl preserves bounds, callbacks and disabled for
   }
 });
 
-test("History disclosure is collapsed without filters, expanded with filters, desktop form stays available", () => {
+test("History: rare filters folded without filters, expanded with filters, on every screen size", () => {
   for (const activeCount of [0, 1, 6]) {
     const state = [];
     let hookIndex = 0;
@@ -84,11 +84,11 @@ test("History disclosure is collapsed without filters, expanded with filters, de
     let tree = HistoryFilterDisclosure({ activeCount, children: "server GET form" });
     const [toggle] = elements(tree, "button");
     assert.equal(toggle.props["aria-expanded"], activeCount > 0);
-    assert.match(toggle.props.className, /md:hidden/);
-    assert.ok(text(tree).includes(activeCount ? `${activeCount} filtro` : "Nenhum filtro ativo"));
+    assert.doesNotMatch(toggle.props.className, /md:hidden/);
+    assert.ok(text(tree).includes(activeCount ? `${activeCount} filtro` : "Mais filtros"));
     const panel = elements(tree, "div")[0];
     assert.equal(panel.props.id, toggle.props["aria-controls"]);
-    assert.equal(panel.props.className, activeCount ? "block" : "hidden md:block");
+    assert.equal(panel.props.className, activeCount ? "block" : "hidden");
     toggle.props.onClick();
     hookIndex = 0;
     tree = HistoryFilterDisclosure({ activeCount, children: "server GET form" });
@@ -96,11 +96,10 @@ test("History disclosure is collapsed without filters, expanded with filters, de
   }
   const page = read("app/(authenticated)/historico/page.tsx");
   assert.doesNotMatch(page, /^"use client"/);
-  assert.match(page, /key=\{createHistoryHref\(filters, 1\)\} activeCount=\{activeFilterCount\}/);
+  assert.match(page, /key=\{createHistoryHref\(filters, 1\)\} activeCount=\{advancedFilterCount\}/);
   for (const name of ["tipo", "origem", "dataInicial", "dataFinal", "usuario", "busca"]) assert.ok(page.includes(`name="${name}"`));
-  assert.match(page, /action="\/historico"\s+method="get"/);
-  assert.match(page, /flex-col items-start gap-3 min-\[430px\]:flex-row/);
-  assert.match(page, /overflow-wrap:anywhere.*min-\[430px\]:text-3xl sm:text-4xl/);
+  assert.match(page, /action="\/historico" method="get"/);
+  for (const label of ["Todos", "Entradas", "Saídas", "Ajustes", "Hoje", "Ontem", "Mais antigas"]) assert.ok(page.includes(label), label);
 });
 
 for (const [flow, id] of [["entrada/inbound", "inbound"], ["saida/outbound", "outbound"]]) {

@@ -209,9 +209,9 @@ export function InventoryAdjustmentDialog({
       return;
     }
 
-    if (!normalizedReason || normalizedReason.length > maximumReasonLength) {
+    if (normalizedReason.length > maximumReasonLength) {
       setError(
-        `Informe um motivo com até ${maximumReasonLength} caracteres.`,
+        `A observação deve ter no máximo ${maximumReasonLength} caracteres.`,
       );
       return;
     }
@@ -329,24 +329,21 @@ export function InventoryAdjustmentDialog({
 
         <label className="block">
           <span className="mb-1.5 block text-sm font-bold text-text-primary">
-            Motivo
+            Observação{" "}
+            <span className="font-semibold text-text-muted">(opcional)</span>
           </span>
-          <textarea
-            required
+          <input
+            type="text"
             maxLength={maximumReasonLength}
-            rows={3}
             disabled={isPending}
             value={reason}
             onChange={(event) => {
               setReason(event.target.value);
               renewIdempotencyKey();
             }}
-            placeholder="Ex.: divergência encontrada na contagem física"
-            className="nk-field w-full resize-y rounded-xl border px-3 py-3 text-base outline-none"
+            placeholder="Ex.: contagem do estoque"
+            className="nk-field min-h-12 w-full rounded-xl border px-3 text-base outline-none"
           />
-          <span className="mt-1 block text-right text-xs text-text-muted">
-            {reason.length}/{maximumReasonLength}
-          </span>
         </label>
 
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 font-semibold text-amber-950">

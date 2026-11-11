@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
 import {
   canUseServiceWorker,
   isIosDevice,
@@ -45,6 +46,7 @@ export function PwaInstallPrompt() {
     setInstallEvent(null);
     setInstallMode(null);
   }, []);
+  useSemanticTransient(Boolean(installMode), dismissForSession, isInstalling);
 
   useEffect(() => {
     if (canUseServiceWorker()) {

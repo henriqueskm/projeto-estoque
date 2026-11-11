@@ -11,6 +11,7 @@ import { BellIcon, CloseIcon } from "@/components/icons";
 import { useSafisaPickupAlerts } from "@/components/safisa-pickup-alert-provider";
 import { PushNotificationControl } from "@/components/push-notification-control";
 import { SafisaBulkPickupAction } from "@/components/safisa-bulk-pickup-dialog";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
 
 const quantityFormatter = new Intl.NumberFormat("pt-BR");
 
@@ -37,6 +38,7 @@ export function SafisaPickupAlertBell({
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  useSemanticTransient(isOpen, () => setIsOpen(false));
 
   useEffect(() => {
     if (!isOpen) return;

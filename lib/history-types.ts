@@ -67,6 +67,13 @@ export type HistoryFilters = {
   dateRangeAdjusted: boolean;
 };
 
+// What moved, in plain words: "MBF-025" with +10 / -2. Signed for adjustments
+// and internal moves; inbound/outbound use the requested quantity.
+export type HistoryListLine = {
+  code: string;
+  quantity: number;
+};
+
 export type HistoryBatchListItem = {
   id: string;
   movementType: MovementType;
@@ -76,6 +83,7 @@ export type HistoryBatchListItem = {
   reversedBatchId: string | null;
   occurredAt: string;
   summary: string;
+  lines: HistoryListLine[];
 };
 
 export type HistoryPagination = {
