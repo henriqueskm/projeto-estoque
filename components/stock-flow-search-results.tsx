@@ -40,7 +40,7 @@ export function StockFlowSearchResults<T extends StockFlowSearchOption>({ option
                     commercialCodes={[option.code, ...option.aliases]} configurationId={option.configurationId}
                     hasImage={option.hasImage} compact triggerVariant="text-link" /> : null}
                 </div>
-                <div className="max-w-24 shrink-0 text-right">
+                <div className="max-w-24 shrink-0 pr-1 text-right sm:pr-0">
                   <span className="block text-sm text-text-muted sm:text-[0.65rem]">{option.kind === "ITEM" ? "Saldo" : option.kind === "COMMERCIAL_CODE" ? "Montado" : "Pronto"}</span>
                   <span className="block break-all font-mono text-xl font-extrabold tabular-nums sm:text-base text-text-primary">{numberFormatter.format(stockFlowSearchBalance(option))}</span>
                 </div>

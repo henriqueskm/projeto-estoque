@@ -1193,8 +1193,7 @@ test("shared Add button stays readable without icons, nowrap and clean selected 
     assert.match(html, /min-h-12 w-12/);
     assert.match(html, /sm:min-h-11/);
     assert.match(html, /whitespace-nowrap/);
-    assert.match(html, /-mx-2/);
-    assert.match(html, /sm:mx-0/);
+    assert.doesNotMatch(html, /-mx-2/);
     assert.match(html, /sm:w-auto sm:px-3/);
     assert.match(html, /aria-hidden="true" class="text-xl leading-none sm:hidden"/);
     assert.match(html, /aria-hidden="true" class="hidden sm:inline"/);
