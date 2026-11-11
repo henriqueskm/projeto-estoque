@@ -2140,7 +2140,6 @@ function ConfirmationDialog({
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
-  const reasonInputRef = useRef<HTMLTextAreaElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
   const attemptSequenceRef = useRef(0);
@@ -2157,12 +2156,8 @@ function ConfirmationDialog({
         ? "Excluir pedido"
         : "Excluir saldo restante";
 
-  useAccessibleDialog(
-    dialogRef,
-    isCancellation ? reasonInputRef : confirmButtonRef,
-    isPending,
-    onClose,
-  );
+  // Focus the confirm button: the note is optional, so no keyboard pops up.
+  useAccessibleDialog(dialogRef, confirmButtonRef, isPending, onClose);
 
   useEffect(
     () => () => {
@@ -2175,11 +2170,8 @@ function ConfirmationDialog({
     setError(null);
     const normalizedReason = reason.trim();
 
-    if (
-      isCancellation &&
-      (normalizedReason.length < 3 || normalizedReason.length > 500)
-    ) {
-      setError("Informe um motivo entre 3 e 500 caracteres.");
+    if (isCancellation && normalizedReason.length > 500) {
+      setError("A observação deve ter no máximo 500 caracteres.");
       return;
     }
 
@@ -2271,14 +2263,12 @@ function ConfirmationDialog({
 
         {isCancellation ? (
           <label className="mt-4 block">
-            <span className="mb-1.5 block text-xs font-black tracking-wide text-text-primary uppercase">
-              Motivo da exclusão
+            <span className="mb-1.5 block text-sm font-bold text-text-primary">
+              Observação{" "}
+              <span className="font-semibold text-text-muted">(opcional)</span>
             </span>
             <textarea
-              ref={reasonInputRef}
-              rows={4}
-              required
-              minLength={3}
+              rows={2}
               maxLength={500}
               disabled={isPending}
               value={reason}

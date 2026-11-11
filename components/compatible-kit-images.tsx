@@ -12,6 +12,7 @@ import { CommercialConfigurationImage } from "@/components/commercial-configurat
 import { EyeIcon } from "@/components/icons";
 import type { CompatibleKitImageOption } from "@/lib/compatible-kit-images";
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
 
 type CompatibleKitImagesProps = {
   kitCode: string;
@@ -43,6 +44,7 @@ export function CompatibleKitImages({
     setIsOpen(false);
     window.requestAnimationFrame(() => triggerRef.current?.focus());
   }, []);
+  useSemanticTransient(isOpen, closeSelector);
 
   useEffect(() => {
     if (!isOpen) {

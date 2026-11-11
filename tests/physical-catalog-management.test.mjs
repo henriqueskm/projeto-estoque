@@ -30,7 +30,8 @@ test("snapshot validates identity, fixed type, balance, dependencies and concurr
 });
 test("create/edit/archive input validation; category is never mutable", () => {
   assert.equal(validatePhysicalCatalogRequest(request), null);
-  for (const bad of [{ ...request, expectedQuantity: -1 }, { ...request, reason: "" }, { ...request, expectedVersion: "bad" }, { operation: "CREATE", itemType: "SERVO", code: "X", description: "X", reason: "X" }, { operation: "CREATE", itemType: "__proto__", code: "X", description: "X", reason: "X" }]) assert.equal(typeof validatePhysicalCatalogRequest(bad), "string");
+  assert.equal(validatePhysicalCatalogRequest({ ...request, reason: "" }), null, "the note is optional for the user");
+  for (const bad of [{ ...request, expectedQuantity: -1 }, { ...request, reason: "x".repeat(501) }, { ...request, expectedVersion: "bad" }, { operation: "CREATE", itemType: "SERVO", code: "X", description: "X", reason: "X" }, { operation: "CREATE", itemType: "__proto__", code: "X", description: "X", reason: "X" }]) assert.equal(typeof validatePhysicalCatalogRequest(bad), "string");
 });
 test("successful archive requires canonical RPC AND fresh post-commit inactive/zero verification", async () => {
   const result = await managePhysicalCatalog(request, key); assert.equal(result.ok, true);

@@ -15,6 +15,7 @@ import {
   runAssistantCameraRequest,
 } from "@/lib/assistant-camera-lifecycle";
 import { captureAssistantCameraPhoto } from "@/lib/assistant-camera-photo";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
 
 type CameraState = "starting" | "live" | "capturing" | "preview" | "paused" | "fallback";
 
@@ -162,6 +163,7 @@ export function AssistantCameraCapture({
     clearPreview();
     onClose();
   }, [clearPreview, invalidateCameraWork, onClose]);
+  useSemanticTransient(isOpen, closeCamera);
 
   useEffect(() => {
     if (!isOpen) {

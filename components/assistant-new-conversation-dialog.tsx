@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
+import { useSemanticTransient } from "@/components/semantic-back-provider";
 
 export function AssistantNewConversationDialog({
   isOpen,
@@ -18,6 +19,7 @@ export function AssistantNewConversationDialog({
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   useDocumentScrollLock(isOpen);
+  useSemanticTransient(isOpen, onCancel);
 
   useEffect(() => {
     if (!isOpen) {

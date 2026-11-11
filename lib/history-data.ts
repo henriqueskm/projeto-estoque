@@ -9,6 +9,7 @@ import {
   type HistoryAssemblyOperation,
   type HistoryBatchDetail,
   type HistoryBatchListItem,
+  type HistoryListLine,
   type HistoryConfiguration,
   type HistoryConfigurationMovement,
   type HistoryDetailResult,
@@ -452,6 +453,77 @@ export async function loadHistoryList(
     const assemblyByBatch = groupByBatch(
       (assemblyResult.data ?? []) as AssemblyOperationRow[],
     );
+    const inboundRows = (inboundResult.data ?? []) as InboundLineRow[];
+    const outboundRows = (outboundResult.data ?? []) as OutboundLineRow[];
+    const stockRows = (stockResult.data ?? []) as StockMovementRow[];
+    const configurationRows = (configurationResult.data ?? []) as ConfigurationMovementRow[];
+    const [itemsResult, codesResult, configurationCodesResult] = await Promise.all([
+      fetchItemsByIds(supabase, unique([
+        ...inboundRows.map((row) => row.item_id),
+        ...outboundRows.map((row) => row.item_id),
+        ...stockRows.map((row) => row.item_id),
+      ])),
+      fetchCodesByIds(supabase, unique([
+        ...inboundRows.map((row) => row.commercial_configuration_code_id),
+        ...outboundRows.map((row) => row.commercial_configuration_code_id),
+      ])),
+      fetchCodesByConfigurationIds(supabase, unique(configurationRows.map((row) => row.configuration_id))),
+    ]);
+
+    if (itemsResult.error || codesResult.error || configurationCodesResult.error) {
+      return {
+        data: null,
+        error: "Não foi possível carregar o histórico agora.",
+      };
+    }
+
+    const configurationsResult = await fetchConfigurationsByIds(supabase, unique([
+      ...codesResult.data.map((code) => code.configuration_id),
+      ...configurationRows.map((row) => row.configuration_id),
+    ]));
+
+    if (configurationsResult.error) {
+      return {
+        data: null,
+        error: "Não foi possível carregar o histórico agora.",
+      };
+    }
+
+    // Same fallback as the detail page: "<servo description> + <kit code>".
+    const itemById = new Map(itemsResult.data.map((item) => [item.id, item]));
+    const missingComponentIds = unique(
+      configurationsResult.data
+        .filter((configuration) => !configuration.description?.trim())
+        .flatMap((configuration) => [configuration.servo_id, configuration.installation_kit_id])
+        .filter((id) => !itemById.has(id)),
+    );
+    const componentsResult = await fetchItemsByIds(supabase, missingComponentIds);
+
+    if (componentsResult.error) {
+      return {
+        data: null,
+        error: "Não foi possível carregar o histórico agora.",
+      };
+    }
+
+    componentsResult.data.forEach((item) => itemById.set(item.id, item));
+    const configurationDescriptions = new Map(
+      configurationsResult.data.map((configuration) => [
+        configuration.id,
+        configuration.description?.trim() ||
+          [itemById.get(configuration.servo_id)?.description, itemById.get(configuration.installation_kit_id)?.code]
+            .filter(Boolean)
+            .join(" + "),
+      ]),
+    );
+
+    const lookups: ListLineLookups = {
+      items: itemById,
+      commercialCodes: new Map(codesResult.data.map((code) => [code.id, code])),
+      configurationCodes: firstCodeByConfiguration(configurationCodesResult.data),
+      configurationDescriptions,
+    };
+
     const listItems: HistoryBatchListItem[] = batches.map((batch) => ({
       id: batch.id,
       movementType: batch.movement_type,
@@ -466,6 +538,13 @@ export async function loadHistoryList(
         stockByBatch.get(batch.id) ?? [],
         configurationByBatch.get(batch.id) ?? [],
         assemblyByBatch.get(batch.id) ?? [],
+      ),
+      lines: buildListLines(
+        lookups,
+        inboundByBatch.get(batch.id) ?? [],
+        outboundByBatch.get(batch.id) ?? [],
+        stockByBatch.get(batch.id) ?? [],
+        configurationByBatch.get(batch.id) ?? [],
       ),
     }));
 
@@ -487,6 +566,66 @@ export async function loadHistoryList(
       error: "Não foi possível carregar o histórico agora.",
     };
   }
+}
+
+type ListLineLookups = {
+  items: Map<string, ItemRow>;
+  commercialCodes: Map<string, CommercialCodeRow>;
+  configurationCodes: Map<string, string>;
+  configurationDescriptions: Map<string, string>;
+};
+
+function firstCodeByConfiguration(codes: CommercialCodeRow[]) {
+  const result = new Map<string, string>();
+
+  [...codes]
+    .sort((first, second) => compareCodes(first.code, second.code))
+    .forEach((code) => {
+      if (!result.has(code.configuration_id)) {
+        result.set(code.configuration_id, code.code);
+      }
+    });
+
+  return result;
+}
+
+function buildListLines(
+  lookups: ListLineLookups,
+  inboundLines: InboundLineRow[],
+  outboundLines: OutboundLineRow[],
+  stockMovements: StockMovementRow[],
+  configurationMovements: ConfigurationMovementRow[],
+): HistoryListLine[] {
+  const itemLine = (itemId: string, quantity: number) => {
+    const item = lookups.items.get(itemId);
+    return { code: item?.code ?? "Item", description: item?.description ?? "", quantity };
+  };
+  const configurationLine = (configurationId: string, code: string | undefined, quantity: number) => ({
+    code: code ?? lookups.configurationCodes.get(configurationId) ?? "Servo com kit",
+    description: lookups.configurationDescriptions.get(configurationId) ?? "",
+    quantity,
+  });
+  const requestLine = (line: InboundLineRow) => {
+    if (line.item_id) return itemLine(line.item_id, line.quantity);
+    const code = line.commercial_configuration_code_id
+      ? lookups.commercialCodes.get(line.commercial_configuration_code_id)
+      : undefined;
+    return code
+      ? configurationLine(code.configuration_id, code.code, line.quantity)
+      : { code: "Item", description: "", quantity: line.quantity };
+  };
+
+  // Entrada/Saída show what the user asked for, not the internal composition.
+  if (inboundLines.length > 0 || outboundLines.length > 0) {
+    return [...inboundLines, ...outboundLines].map(requestLine);
+  }
+
+  return [
+    ...configurationMovements.map((movement) =>
+      configurationLine(movement.configuration_id, undefined, movement.quantity_change),
+    ),
+    ...stockMovements.map((movement) => itemLine(movement.item_id, movement.quantity_change)),
+  ].filter((line) => line.quantity !== 0);
 }
 
 function unique(values: Array<string | null | undefined>) {

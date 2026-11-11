@@ -115,7 +115,7 @@ export function PhysicalCatalogDialog({ operation, itemId, itemType, servoOption
               {servo.code} — {servo.description}</label>)}</div>
           </div> : null}
         </fieldset> : null}
-        <label className="block text-sm font-bold">Motivo<input ref={operation === "ARCHIVE" ? inputRef : undefined} value={reason} onChange={e => setReason(e.target.value)} maxLength={500} required disabled={locked || review} className={inputClass} /></label>
+        <label className="block text-sm font-bold">Observação <span className="font-semibold text-text-muted">(opcional)</span><input ref={operation === "ARCHIVE" ? inputRef : undefined} value={reason} onChange={e => setReason(e.target.value)} maxLength={500} disabled={locked || review} className={inputClass} /></label>
         {review ? <div role="status" className="break-words rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
           <p className="font-bold">Confira antes de confirmar</p>
           {operation === "ARCHIVE" ? <p>{snapshot?.code}: saldo livre {snapshot?.quantity} → 0. O produto deixará de aparecer nas buscas operacionais.</p>

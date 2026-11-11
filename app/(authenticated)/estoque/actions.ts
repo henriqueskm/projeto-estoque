@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const maximumInteger = 2_147_483_647;
 const maximumReasonLength = 500;
+const defaultAdjustmentReason = "Ajuste por contagem";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -413,11 +414,12 @@ export async function adjustInventoryStock(
     return adjustmentError("Revise os dados informados para o ajuste.");
   }
 
-  const reason = request.reason.trim();
+  // Optional for the user: an empty reason is audited with a plain default.
+  const reason = request.reason.trim() || defaultAdjustmentReason;
 
-  if (!reason || reason.length > maximumReasonLength) {
+  if (reason.length > maximumReasonLength) {
     return adjustmentError(
-      `Informe um motivo com até ${maximumReasonLength} caracteres.`,
+      `A observação deve ter no máximo ${maximumReasonLength} caracteres.`,
     );
   }
 

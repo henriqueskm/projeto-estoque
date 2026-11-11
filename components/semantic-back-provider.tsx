@@ -5,7 +5,6 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import { createSemanticBackHistory, type SemanticBackHistory, type SemanticValue } from "@/lib/semantic-back-history";
 import { isStandaloneMode } from "@/lib/pwa-capabilities";
-import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 import { useWorkspaceState } from "@/components/workspace-state-provider";
 import type { WorkspaceData } from "@/lib/workspace-state";
 
@@ -22,35 +21,18 @@ function HistoryRouteTracker() {
   return null;
 }
 
-function ExitDialog({ onContinue, onExit }: { onContinue: () => void; onExit: () => void }) {
-  const continueRef = useRef<HTMLButtonElement>(null);
-  const exitRef = useRef<HTMLButtonElement>(null);
-  useDocumentScrollLock();
-  useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    continueRef.current?.focus();
-    return () => { previous?.focus({ preventScroll: true }); };
-  }, []);
-  return createPortal(<div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/65 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" role="dialog" aria-modal="true" aria-labelledby="nk-exit-title" aria-describedby="nk-exit-description" onKeyDown={event => {
-    if (event.key === "Escape") { event.preventDefault(); onContinue(); }
-    if (event.key === "Tab") {
-      event.preventDefault();
-      (document.activeElement === continueRef.current ? exitRef : continueRef).current?.focus();
-    }
-  }}>
-    <section className="w-full max-w-sm rounded-2xl border border-border-neutral bg-surface p-5 shadow-xl">
-      <h2 id="nk-exit-title" className="text-xl font-black text-text-primary">Sair do Negócios K?</h2>
-      <p id="nk-exit-description" className="mt-2 text-sm text-text-muted">Você está prestes a fechar o aplicativo.</p>
-      <div className="mt-5 flex flex-wrap gap-2">
-        <button ref={continueRef} type="button" onClick={onContinue} className="nk-focus min-h-11 flex-1 rounded-xl bg-brand-charcoal px-3 font-bold text-white">Continuar no app</button>
-        <button ref={exitRef} type="button" onClick={onExit} className="nk-focus min-h-11 rounded-xl border border-border-neutral px-4 font-bold text-text-primary">Sair</button>
-      </div>
-    </section>
+const exitHintDurationMs = 3000;
+
+function ExitHint() {
+  return createPortal(<div className="pointer-events-none fixed inset-x-0 bottom-0 z-[150] flex justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+    <p role="status" className="max-w-sm rounded-2xl bg-brand-charcoal px-5 py-4 text-center text-base font-bold text-white shadow-xl">
+      Toque em voltar de novo para sair
+    </p>
   </div>, document.body);
 }
 
 export function SemanticBackProvider({ children }: { children: ReactNode }) {
-  const [exitOpen, setExitOpen] = useState(false);
+  const [exitHintVisible, setExitHintVisible] = useState(false);
   const [coordinator] = useState(() => createSemanticBackHistory({
     history: {
       get state() { return window.history.state; },
@@ -63,12 +45,15 @@ export function SemanticBackProvider({ children }: { children: ReactNode }) {
       const previous = new URL(document.referrer);
       return previous.origin === window.location.origin && ["/", "/estoque", "/relatorio-estoque", "/entrada", "/saida", "/pedidos", "/historico", "/estatisticas", "/aplicacoes", "/minha-conta"].some(route => previous.pathname === route || (route !== "/" && previous.pathname.startsWith(`${route}/`)));
     },
-    exit: open => setExitOpen(open),
-    // Best effort only: some installed runtimes allow close, others ignore it.
-    // Never substitute Auth sign-out or a blind history traversal for closing.
-    requestExit: () => window.close(),
+    // Installed Chrome apps ignore scripted closing; the next native Back closes the app.
+    exitBoundaryReached: () => setExitHintVisible(true),
     beforePop: () => window.dispatchEvent(new Event("nk:semantic:before-pop")),
   }));
+  useEffect(() => {
+    if (!exitHintVisible) return;
+    const timer = window.setTimeout(() => setExitHintVisible(false), exitHintDurationMs);
+    return () => window.clearTimeout(timer);
+  }, [exitHintVisible]);
   useEffect(() => {
     coordinator.ensure();
     const pop = (event: PopStateEvent) => coordinator.pop(event.state);
@@ -83,7 +68,7 @@ export function SemanticBackProvider({ children }: { children: ReactNode }) {
   return <SemanticContext.Provider value={coordinator}>
     <Suspense fallback={null}><HistoryRouteTracker /></Suspense>
     {children}
-    {exitOpen ? <ExitDialog onContinue={() => coordinator.continueInApp()} onExit={() => coordinator.leaveApp()} /> : null}
+    {exitHintVisible ? <ExitHint /> : null}
   </SemanticContext.Provider>;
 }
 

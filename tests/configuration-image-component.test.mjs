@@ -56,6 +56,7 @@ function harness(file, props, imports = {}) {
     if (specifier === "@/lib/use-document-scroll-lock") return { useDocumentScrollLock() {} };
     if (specifier === "@/lib/configuration-image-resource") return { createConfigurationImageResource };
     if (specifier === "@/lib/photo-performance-audit") return { recordPhotoPerformance() {} };
+    if (specifier === "@/components/semantic-back-provider") return { useSemanticTransient() {} };
     throw Error(specifier);
   };
   const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");

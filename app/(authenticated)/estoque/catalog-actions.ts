@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { executeCatalogWrite } from "@/lib/catalog-writer";
 import { invalidateNkCatalog } from "@/lib/shared-catalog";
-import { catalogPostCommitMatches, catalogUuidPattern, parsePhysicalCatalogSnapshot, validatePhysicalCatalogRequest,
+import { catalogPostCommitMatches, catalogUuidPattern, parsePhysicalCatalogSnapshot, validatePhysicalCatalogRequest, withDefaultPhysicalCatalogReason,
   type PhysicalCatalogRequest, type PhysicalCatalogResult, type PhysicalCatalogReceipt } from "@/lib/physical-catalog-management";
 
 async function context() {
@@ -24,12 +24,13 @@ export async function loadPhysicalCatalogPreview(itemId: string) {
     return snapshot ? { ok: true as const, snapshot } : { ok: false as const, error: "Não foi possível carregar a prévia. Tente novamente." };
   } catch { return { ok: false as const, error: "Não foi possível carregar a prévia. Tente novamente." }; }
 }
-export async function managePhysicalCatalog(request: PhysicalCatalogRequest, idempotencyKey: string): Promise<PhysicalCatalogResult> {
-  const invalid = validatePhysicalCatalogRequest(request);
+export async function managePhysicalCatalog(input: PhysicalCatalogRequest, idempotencyKey: string): Promise<PhysicalCatalogResult> {
+  const invalid = validatePhysicalCatalogRequest(input);
   if (invalid || !catalogUuidPattern.test(idempotencyKey)) return { ok: false, error: invalid ?? "Tentativa inválida." };
   try {
     const supabase = await context();
     if (!supabase) return { ok: false, error: "Entre novamente com um perfil interno ativo." };
+    const request = withDefaultPhysicalCatalogReason(input);
     const { data, error } = await executeCatalogWrite(supabase, { kind: "PHYSICAL_CATALOG", request, idempotencyKey });
     if (error) {
       if (error.code === "40001") return { ok: false, stale: true, error: "O produto ou saldo mudou. Atualize a prévia antes de confirmar." };

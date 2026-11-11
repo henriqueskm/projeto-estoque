@@ -31,9 +31,15 @@ export function parsePhysicalCatalogSnapshot(value: unknown): PhysicalCatalogSna
     && typeof v.version === "string" && /^[0-9a-f]{32}$/.test(v.version)
     && v.dependencies && dependencyKeys.every(k => Number.isSafeInteger(v.dependencies[k]) && v.dependencies[k] >= 0) ? v : null;
 }
+// The reason is optional for the user; an empty one is stored with a plain default.
+const defaultPhysicalCatalogReasons = { CREATE: "Novo cadastro", EDIT: "Correção de cadastro", ARCHIVE: "Produto excluído" } as const;
+export function withDefaultPhysicalCatalogReason<T extends PhysicalCatalogRequest>(request: T): T {
+  const reason = typeof request.reason === "string" ? request.reason.trim() : "";
+  return { ...request, reason: reason || defaultPhysicalCatalogReasons[request.operation] };
+}
 export function validatePhysicalCatalogRequest(request: PhysicalCatalogRequest): string | null {
   if (!request || !["CREATE", "EDIT", "ARCHIVE"].includes(request.operation)) return "Operação inválida.";
-  if (typeof request.reason !== "string" || !request.reason.trim() || request.reason.trim().length > 500) return "Informe um motivo com até 500 caracteres.";
+  if (typeof request.reason !== "string" || request.reason.trim().length > 500) return "A observação deve ter no máximo 500 caracteres.";
   if (request.operation !== "ARCHIVE" && (!getCatalogCodeWriteIdentity(request.code) || typeof request.description !== "string" || !request.description.trim() || request.description.trim().length > 500)) return "Confira código e descrição (até 500 caracteres).";
   if (request.operation === "CREATE") {
     if (!Object.hasOwn(physicalCatalogLabels, request.itemType)) return "Categoria inválida.";

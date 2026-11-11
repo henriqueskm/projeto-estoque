@@ -1118,10 +1118,14 @@ async function cancelSupplierOrderWithRpc(
   }
 
   const request = input as Record<string, unknown>;
+  // Optional for the user: an empty note is audited with a plain default.
   const cancellationNote =
-    typeof request.cancellation_note === "string"
+    (typeof request.cancellation_note === "string"
       ? request.cancellation_note.trim()
-      : "";
+      : "") ||
+    (rpcName === "cancel_supplier_order_checked"
+      ? "Pedido excluído"
+      : "Saldo restante excluído");
 
   if (
     !hasOnlyFields(request, [
@@ -1131,14 +1135,13 @@ async function cancelSupplierOrderWithRpc(
       "idempotency_key",
     ]) ||
     !isUuid(request.supplier_order_id) ||
-    cancellationNote.length < 3 ||
     cancellationNote.length > maximumOperationDescriptionLength ||
     typeof request.expected_updated_at !== "string" ||
     Number.isNaN(Date.parse(request.expected_updated_at)) ||
     !isUuid(request.idempotency_key)
   ) {
     return actionError(
-      `Informe um motivo entre 3 e ${maximumOperationDescriptionLength} caracteres.`,
+      `A observação deve ter no máximo ${maximumOperationDescriptionLength} caracteres.`,
     );
   }
 
