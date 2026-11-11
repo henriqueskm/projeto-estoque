@@ -24,13 +24,13 @@ export default async function OutboundPage() {
           <OutboundIcon className="size-6" />
         </span>
         <div className="min-w-0">
-          <p className="text-[0.68rem] font-black tracking-[0.16em] text-brand-gold-ink uppercase sm:text-xs">
+          <p className="hidden text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase sm:block">
             Estoque
           </p>
           <h1 className="text-2xl font-black tracking-tight text-text-primary sm:text-3xl">
             Saída manual
           </h1>
-          <p className="mt-1 max-w-2xl text-sm font-semibold text-text-muted">
+          <p className="mt-1 max-w-2xl text-base font-semibold text-text-muted sm:text-sm">
             Selecione itens, confira os saldos e revise antes de confirmar.
           </p>
         </div>

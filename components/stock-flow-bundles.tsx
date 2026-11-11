@@ -60,7 +60,7 @@ export function StockFlowBundleReview({
   return (
     <section className="mt-6 rounded-2xl border border-border-neutral p-4">
       <h3 className="font-black">Conjuntos prontos</h3>
-      <p className="mt-1 text-sm text-text-muted">
+      <p className="mt-1 text-base text-text-muted sm:text-sm">
         {direction === "INBOUND"
           ? "Recebimento de conjunto já pronto."
           : "Saída somente do saldo pronto."}{" "}
@@ -75,7 +75,7 @@ export function StockFlowBundleReview({
           <p className="font-bold">
             {line.requestedCodes.join(", ")} — {line.option.description}
           </p>
-          <dl className="mt-2 grid grid-cols-3 gap-3 text-sm">
+          <dl className="mt-2 grid grid-cols-3 gap-3 text-base sm:text-sm">
             <div>
               <dt>Saldo pronto atual</dt>
               <dd className="font-black">{line.currentBalance}</dd>
