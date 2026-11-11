@@ -205,8 +205,9 @@ test("wide order dialogs stay proportionate and render a compact operational tab
   assert.match(detail, /sm:grid-cols-\[minmax\(5rem,0\.72fr\)_minmax\(0,3fr\)_minmax\(4rem,0\.55fr\)_minmax\(4\.75rem,0\.68fr\)\]/);
   assert.match(detail, /hidden gap-x-2 border-b border-brand-charcoal\/15 bg-brand-charcoal[^"]*sm:grid /);
   assert.match(detail, /grid grid-cols-\[minmax\(0,1fr\)_auto\]/);
-  assert.match(detail, /pedidos\s*<\/span>/);
-  assert.match(detail, /retirados\s*<\/span>/);
+  assert.match(detail, /"pedido" : "pedidos"/);
+  assert.match(detail, /"retirado" : "retirados"/);
+  assert.equal((detail.match(/w-\[4\.75rem\] text-left/g) ?? []).length, 2, "same-width labels align both numbers");
 });
 
 test("order detail keeps pickup state readable while exposing only the global pickup action", () => {

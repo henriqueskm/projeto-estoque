@@ -235,7 +235,7 @@ function OrderItemImageCode({
   }
 
   return (
-    <span className="pt-0.5 font-mono text-xs font-black text-text-primary sm:text-sm">
+    <span className="pt-0.5 font-mono text-lg font-black text-text-primary sm:text-sm">
       {code}
     </span>
   );
@@ -3578,15 +3578,16 @@ function OrderDetailsDialog({
                       </p>
                     ) : null}
                   </div>
-                  <div role="cell" className="col-start-2 row-start-1 text-right font-mono text-lg font-black text-text-primary sm:col-start-auto sm:row-start-auto sm:text-sm">
+                  <div role="cell" className="col-start-2 row-start-1 flex items-baseline justify-end gap-1.5 text-right font-mono text-lg font-black text-text-primary sm:col-start-auto sm:row-start-auto sm:block sm:text-sm">
                     {quantityFormatter.format(item.orderedQuantity)}
-                    <span className="ml-1 font-sans text-sm font-bold text-text-muted sm:hidden">
-                      pedidos
+                    {/* Same-width labels keep both numbers in one column on phones. */}
+                    <span className="w-[4.75rem] text-left font-sans text-sm font-bold text-text-muted sm:hidden">
+                      {item.orderedQuantity === 1 ? "pedido" : "pedidos"}
                     </span>
                   </div>
                   <div
                     role="cell"
-                    className={`col-start-2 row-start-2 flex items-start justify-end gap-1 self-start text-right font-mono text-lg font-black sm:col-start-auto sm:row-start-auto sm:items-center sm:self-auto sm:text-sm ${
+                    className={`col-start-2 row-start-2 flex items-baseline justify-end gap-1.5 self-start text-right font-mono text-lg font-black sm:col-start-auto sm:row-start-auto sm:items-center sm:gap-1 sm:self-auto sm:text-sm ${
                       fullyPicked
                         ? "text-emerald-800"
                         : partiallyPicked
@@ -3594,10 +3595,10 @@ function OrderDetailsDialog({
                           : "text-text-muted/65"
                     }`}
                   >
-                    {fullyPicked ? <CheckIcon aria-hidden="true" className="mt-1.5 size-4 shrink-0 sm:mt-0 sm:size-3.5" /> : null}
+                    {fullyPicked ? <CheckIcon aria-hidden="true" className="size-4 shrink-0 self-center sm:size-3.5" /> : null}
                     {quantityFormatter.format(item.pickedQuantity)}
-                    <span className="font-sans text-sm leading-7 font-bold sm:hidden">
-                      retirados
+                    <span className="w-[4.75rem] text-left font-sans text-sm font-bold sm:hidden">
+                      {item.pickedQuantity === 1 ? "retirado" : "retirados"}
                     </span>
                   </div>
                   {item.readyWaitingPickupQuantity > 0 ? (
