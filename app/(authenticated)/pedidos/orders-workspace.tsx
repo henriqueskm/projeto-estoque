@@ -327,9 +327,11 @@ function compactItemTypeLabel(
 
 function StatusBadge({
   compact = false,
+  large = false,
   status,
 }: {
   compact?: boolean;
+  large?: boolean;
   status: SupplierOrderStatus;
 }) {
   const details = statusDetails[status];
@@ -337,7 +339,9 @@ function StatusBadge({
   return (
     <span
       className={`inline-flex rounded-full border font-black ${
-        compact
+        large
+          ? "px-3 py-1 text-sm"
+          : compact
           ? "px-1.5 py-0.5 text-[0.62rem]"
           : "px-2.5 py-1 text-xs"
       } ${details.className}`}
@@ -347,7 +351,13 @@ function StatusBadge({
   );
 }
 
-function SafisaPickupBadge({ order }: { order: SupplierOrderSummary }) {
+function SafisaPickupBadge({
+  order,
+  large = false,
+}: {
+  order: SupplierOrderSummary;
+  large?: boolean;
+}) {
   const kind = getSafisaPickupAlertKind({
     orderedQuantity: order.orderedQuantity,
     cancelledQuantity: order.cancelledQuantity,
@@ -359,7 +369,9 @@ function SafisaPickupBadge({ order }: { order: SupplierOrderSummary }) {
 
   return (
     <span
-      className={`inline-flex rounded-full border px-1.5 py-0.5 text-[0.58rem] font-black ${
+      className={`inline-flex rounded-full border font-black ${
+        large ? "px-3 py-1 text-sm" : "px-1.5 py-0.5 text-[0.58rem]"
+      } ${
         kind === "FULLY_READY"
           ? "border-emerald-200 bg-emerald-50 text-emerald-900"
           : "border-sky-200 bg-sky-50 text-sky-900"
@@ -375,9 +387,11 @@ function SafisaPickupBadge({ order }: { order: SupplierOrderSummary }) {
 function ClosureBadge({
   closureKind,
   compact = false,
+  large = false,
 }: {
   closureKind: SupplierOrderClosureKind | null;
   compact?: boolean;
+  large?: boolean;
 }) {
   const finalized = closureKind === "FINALIZED";
   const cancelled = closureKind === "CANCELLED";
@@ -385,7 +399,9 @@ function ClosureBadge({
   return (
     <span
       className={`inline-flex rounded-full border font-black ${
-        compact
+        large
+          ? "px-3 py-1 text-sm"
+          : compact
           ? "px-1.5 py-0.5 text-[0.62rem]"
           : "px-2.5 py-1 text-xs"
       } ${
@@ -418,7 +434,7 @@ function OrdersViewTabs({ view }: { view: SupplierOrderView }) {
             key={tab.value}
             href={tab.href}
             aria-current={active ? "page" : undefined}
-            className={`nk-focus flex min-h-11 items-center justify-center rounded-lg px-3 text-center text-sm font-black transition ${
+            className={`nk-focus flex min-h-12 items-center justify-center rounded-lg px-3 text-center text-base font-black transition sm:min-h-11 sm:text-sm ${
               active
                 ? "bg-brand-charcoal text-white shadow-sm"
                 : "text-text-muted hover:bg-app-background hover:text-text-primary"
@@ -429,47 +445,6 @@ function OrdersViewTabs({ view }: { view: SupplierOrderView }) {
         );
       })}
     </nav>
-  );
-}
-
-function MobileOrderSituation({ order }: { order: SupplierOrderSummary }) {
-  const percentage = Math.max(0, Math.min(100, order.pickupPercentage));
-
-  return (
-    <div className="min-w-0">
-      <div className="flex flex-wrap items-center gap-1">
-        <StatusBadge status={order.status} compact />
-        <SafisaPickupBadge order={order} />
-      </div>
-      <p className="mt-1 text-[0.68rem] leading-tight font-black text-text-primary">
-        {quantityFormatter.format(order.pickedQuantity)}/
-        {quantityFormatter.format(order.orderedQuantity)}
-        {order.status === "CANCELLED" ? " retirado" : ""}
-      </p>
-      <div
-        className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={order.orderedQuantity}
-        aria-valuenow={order.pickedQuantity}
-        aria-label={`Retirada do pedido ${order.negotiationNumber}`}
-      >
-        <span
-          className="block h-full rounded-full bg-emerald-600"
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      {order.cancelledQuantity > 0 ? (
-        <p className="mt-1 text-[0.58rem] leading-tight font-bold text-red-800">
-          {quantityFormatter.format(order.cancelledQuantity)} cancelado
-        </p>
-      ) : null}
-      {order.status === "COMPLETED" && order.isActiveOrder ? (
-        <p className="mt-1 text-[0.58rem] leading-tight font-bold text-emerald-800">
-          Aguardando finalização
-        </p>
-      ) : null}
-    </div>
   );
 }
 
@@ -515,6 +490,201 @@ function PickupProgress({
           {quantityFormatter.format(order.cancelledQuantity)} cancelados
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function dayOffsetDateValue(offsetDays: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function friendlyOrderDate(value: string) {
+  if (value === dayOffsetDateValue(0)) return "Hoje";
+  if (value === dayOffsetDateValue(-1)) return "Ontem";
+  return formatCompactOrderDate(value);
+}
+
+// Phones get one readable card per order; desktop keeps the tables.
+function OrderMobileCards({
+  orders,
+  view,
+  onOpen,
+}: {
+  orders: SupplierOrderSummary[];
+  view: SupplierOrderView;
+  onOpen: (orderId: string) => void;
+}) {
+  return (
+    <ul className="space-y-3 sm:hidden" aria-label="Pedidos">
+      {orders.map((order) => {
+        const percentage = Math.max(0, Math.min(100, order.pickupPercentage));
+
+        return (
+          <li key={order.id}>
+            <button
+              type="button"
+              aria-label={
+                view === "history"
+                  ? `Abrir pedido ${order.negotiationNumber} no histórico`
+                  : `Abrir pedido ${order.negotiationNumber}`
+              }
+              onClick={() => onOpen(order.id)}
+              className="nk-focus block w-full min-w-0 rounded-2xl border border-border-neutral bg-surface p-4 text-left shadow-sm transition hover:border-brand-gold-dark"
+            >
+              <span className="flex items-start justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-text-muted">
+                    Pedido
+                  </span>
+                  <span className="block [overflow-wrap:anywhere] font-mono text-xl leading-7 font-black text-text-primary">
+                    {order.negotiationNumber}
+                  </span>
+                </span>
+                <span className="shrink-0 text-base font-bold text-text-muted tabular-nums">
+                  {friendlyOrderDate(order.orderDate)}
+                </span>
+              </span>
+
+              <span className="mt-2 flex flex-wrap items-center gap-2">
+                {view === "history" ? (
+                  <ClosureBadge closureKind={order.closureKind} large />
+                ) : (
+                  <StatusBadge status={order.status} large />
+                )}
+                {view === "active" ? (
+                  <SafisaPickupBadge order={order} large />
+                ) : null}
+              </span>
+
+              <span className="mt-3 flex items-baseline justify-between gap-3">
+                <span className="text-lg font-black text-text-primary">
+                  <span className="font-mono tabular-nums">
+                    {quantityFormatter.format(order.pickedQuantity)}
+                  </span>{" "}
+                  de{" "}
+                  <span className="font-mono tabular-nums">
+                    {quantityFormatter.format(order.orderedQuantity)}
+                  </span>{" "}
+                  retirados
+                </span>
+                <span className="text-base font-bold text-text-muted tabular-nums">
+                  {quantityFormatter.format(Math.round(percentage))}%
+                </span>
+              </span>
+              <span
+                className="mt-1.5 block h-2.5 overflow-hidden rounded-full bg-slate-200"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={order.orderedQuantity}
+                aria-valuenow={order.pickedQuantity}
+                aria-label={`Retirada do pedido ${order.negotiationNumber}`}
+              >
+                <span
+                  className="block h-full rounded-full bg-emerald-600"
+                  style={{ width: `${percentage}%` }}
+                />
+              </span>
+
+              <span className="mt-2 block space-y-0.5 text-base leading-6">
+                <span className="block text-text-muted">
+                  {formatCount(order.lineCount, "item", "itens")}
+                </span>
+                {order.cancelledQuantity > 0 ? (
+                  <span className="block font-bold text-red-800">
+                    {formatCount(order.cancelledQuantity, "cancelado", "cancelados")}
+                  </span>
+                ) : null}
+                {view === "active" &&
+                order.status === "COMPLETED" &&
+                order.isActiveOrder ? (
+                  <span className="block font-bold text-emerald-800">
+                    Aguardando finalização
+                  </span>
+                ) : null}
+                {order.waitingStockQuantity > 0 ? (
+                  <span className="block font-bold text-amber-900">
+                    {quantityFormatter.format(order.waitingStockQuantity)}{" "}
+                    aguardando entrada no estoque
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// Phones: the common situations are big shortcuts; period and order stay
+// under "Mais filtros", like the stock History screen.
+function MobileOrderShortcuts<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  filtersOpen,
+  onToggleFilters,
+  controlsId,
+  extraFilterCount,
+}: {
+  label: string;
+  options: Array<{ value: T; label: string; count?: number }>;
+  value: T;
+  onChange: (value: T) => void;
+  filtersOpen: boolean;
+  onToggleFilters: () => void;
+  controlsId: string;
+  extraFilterCount: number;
+}) {
+  return (
+    <div className="sm:hidden">
+      <nav aria-label={label} className="mt-3 flex flex-wrap gap-2">
+        {options.map((option) => {
+          const isActive = option.value === value;
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => onChange(option.value)}
+              className={`nk-focus inline-flex min-h-12 items-center gap-2 rounded-full border px-4 text-base font-bold transition ${
+                isActive
+                  ? "border-brand-charcoal bg-brand-charcoal text-white"
+                  : "border-border-neutral bg-white text-text-primary hover:bg-app-background"
+              }`}
+            >
+              {option.label}
+              {option.count !== undefined ? (
+                <span
+                  className={`font-mono tabular-nums ${isActive ? "text-white" : "text-text-muted"}`}
+                >
+                  {quantityFormatter.format(option.count)}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
+      <button
+        type="button"
+        aria-expanded={filtersOpen}
+        aria-controls={controlsId}
+        onClick={onToggleFilters}
+        className="nk-focus mt-3 flex min-h-12 w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-border-neutral bg-white px-4 text-base font-bold text-text-primary"
+      >
+        <span>{filtersOpen ? "Menos filtros" : "Mais filtros"}</span>
+        <span className="text-sm text-text-muted">
+          {extraFilterCount > 0
+            ? `${extraFilterCount} ${extraFilterCount === 1 ? "filtro ativo" : "filtros ativos"}`
+            : "Período, ordem…"}
+        </span>
+      </button>
     </div>
   );
 }
@@ -3101,7 +3271,7 @@ function OrderDetailsDialog({
           aria-controls={headerActionsMenuId}
           disabled={isPending}
           onClick={() => setHeaderActionsOpen((current) => !current)}
-          className="nk-focus inline-flex size-10 items-center justify-center rounded-xl border border-white/20 text-2xl leading-none font-black text-white transition hover:border-brand-gold hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="nk-focus inline-flex size-12 items-center justify-center rounded-xl border border-white/20 text-2xl leading-none font-black text-white transition hover:border-brand-gold hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
           ⋮
         </button>
@@ -3123,7 +3293,7 @@ function OrderDetailsDialog({
                   closeHeaderActions(false);
                   onEdit();
                 }}
-                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black transition hover:bg-app-background disabled:opacity-50"
+                className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-black transition hover:bg-app-background disabled:opacity-50"
               >
                 Editar pedido
               </button>
@@ -3138,7 +3308,7 @@ function OrderDetailsDialog({
                   closeHeaderActions(false);
                   setConfirmation("CANCEL");
                 }}
-                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
               >
                 Excluir pedido
               </button>
@@ -3157,7 +3327,7 @@ function OrderDetailsDialog({
                   closeHeaderActions(false);
                   setConfirmation("CANCEL_REMAINING");
                 }}
-                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
               >
                 Excluir saldo restante
               </button>
@@ -3176,7 +3346,7 @@ function OrderDetailsDialog({
                   closeHeaderActions(false);
                   setFinalizing(true);
                 }}
-                className="nk-focus flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-black text-emerald-800 transition hover:bg-emerald-50 disabled:opacity-50"
+                className="nk-focus flex min-h-12 w-full items-center rounded-lg px-3 text-left text-base font-black text-emerald-800 transition hover:bg-emerald-50 disabled:opacity-50"
               >
                 Finalizar pedido
               </button>
@@ -3206,7 +3376,7 @@ function OrderDetailsDialog({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <p
               id={descriptionId}
-              className="text-sm font-black text-brand-gold-ink"
+              className="text-base font-black text-brand-gold-ink sm:text-sm"
             >
               {formatOrderDate(order.orderDate)}
             </p>
@@ -3237,7 +3407,7 @@ function OrderDetailsDialog({
               >
                 Progresso da retirada
               </h3>
-              <p className="mt-0.5 text-sm font-black text-text-primary sm:text-base">
+              <p className="mt-0.5 text-lg font-black text-text-primary sm:text-base">
                 <span className="font-mono">
                   {quantityFormatter.format(order.pickedQuantity)}
                 </span>{" "}
@@ -3271,18 +3441,18 @@ function OrderDetailsDialog({
             />
           </div>
           {order.waitingPickupQuantity > 0 ? (
-            <p className="mt-1.5 text-xs font-bold text-amber-900">
+            <p className="mt-1.5 text-base font-bold text-amber-900 sm:text-xs">
               Faltam {quantityFormatter.format(order.waitingPickupQuantity)} unidade(s).
             </p>
           ) : null}
           {order.cancelledQuantity > 0 ? (
-            <p className="mt-1 text-xs font-bold text-red-800">
+            <p className="mt-1 text-base font-bold text-red-800 sm:text-xs">
               {quantityFormatter.format(order.cancelledQuantity)} unidades
               canceladas.
             </p>
           ) : null}
           {order.readyWaitingPickupQuantity > 0 ? (
-            <p className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-emerald-800">
+            <p className="mt-1 inline-flex items-center gap-1 text-base font-bold text-emerald-800 sm:text-xs">
               <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-600" />
               Pronto aguardando retirada: {" "}
               {quantityFormatter.format(order.readyWaitingPickupQuantity)}
@@ -3336,17 +3506,17 @@ function OrderDetailsDialog({
         >
           <div className="flex items-end justify-between gap-3">
             <div>
-              <p className="text-[0.64rem] font-black tracking-[0.15em] text-brand-gold-ink uppercase">
+              <p className="hidden text-[0.64rem] font-black tracking-[0.15em] text-brand-gold-ink uppercase sm:block">
                 Ordem de produção
               </p>
               <h3
                 id={`${titleId}-items`}
-                className="text-base font-black text-text-primary sm:text-lg"
+                className="text-lg font-black text-text-primary"
               >
                 Descrição dos Produtos
               </h3>
             </div>
-            <span className="font-mono text-xs font-black text-text-muted">
+            <span className="font-mono text-base font-black text-text-muted sm:text-xs">
               {items.length} {items.length === 1 ? "item" : "itens"}
             </span>
           </div>
@@ -3358,7 +3528,7 @@ function OrderDetailsDialog({
           >
             <div
               role="row"
-              className="grid grid-cols-[minmax(3.25rem,0.72fr)_minmax(0,2.8fr)_minmax(2.5rem,0.5fr)_minmax(3.4rem,0.68fr)] gap-x-2 border-b border-brand-charcoal/15 bg-brand-charcoal px-2.5 py-2 text-[0.6rem] font-black tracking-[0.08em] text-white uppercase sm:grid-cols-[minmax(5rem,0.72fr)_minmax(0,3fr)_minmax(4rem,0.55fr)_minmax(4.75rem,0.68fr)] sm:px-3 sm:text-[0.66rem]"
+              className="hidden gap-x-2 border-b border-brand-charcoal/15 bg-brand-charcoal px-2.5 py-2 text-[0.6rem] font-black tracking-[0.08em] text-white uppercase sm:grid sm:grid-cols-[minmax(5rem,0.72fr)_minmax(0,3fr)_minmax(4rem,0.55fr)_minmax(4.75rem,0.68fr)] sm:px-3 sm:text-[0.66rem]"
             >
               <span role="columnheader">Cód.</span>
               <span role="columnheader">Descrição dos Produtos</span>
@@ -3381,19 +3551,19 @@ function OrderDetailsDialog({
                   data-pickup-state={
                     fullyPicked ? "complete" : partiallyPicked ? "partial" : "pending"
                   }
-                  className={`grid grid-cols-[minmax(3.25rem,0.72fr)_minmax(0,2.8fr)_minmax(2.5rem,0.5fr)_minmax(3.4rem,0.68fr)] gap-x-2 border-b border-border-neutral px-2.5 py-2.5 last:border-b-0 sm:grid-cols-[minmax(5rem,0.72fr)_minmax(0,3fr)_minmax(4rem,0.55fr)_minmax(4.75rem,0.68fr)] sm:px-3 ${
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-border-neutral px-3 py-3 last:border-b-0 sm:gap-x-2 sm:grid-cols-[minmax(5rem,0.72fr)_minmax(0,3fr)_minmax(4rem,0.55fr)_minmax(4.75rem,0.68fr)] sm:py-2.5 ${
                     fullyPicked ? "bg-emerald-50/55" : "bg-white"
                   }`}
                 >
-                  <div role="cell" className="min-w-0 self-start text-xs font-black text-brand-gold-ink sm:text-sm">
+                  <div role="cell" className="col-start-1 row-start-1 min-w-0 self-start text-lg font-black text-brand-gold-ink sm:col-start-auto sm:row-start-auto sm:text-sm">
                     <OrderItemImageCode
                       code={code}
                       imageUrl={item.imageUrl}
                       compatibleKitImages={item.compatibleKitImages}
                     />
                   </div>
-                  <div role="cell" className="min-w-0">
-                    <p className="break-words text-xs leading-4 font-bold text-text-primary sm:text-sm sm:leading-5">
+                  <div role="cell" className="col-start-1 row-start-2 min-w-0 sm:col-start-auto sm:row-start-auto">
+                    <p className="break-words text-base leading-6 font-bold text-text-primary sm:text-sm sm:leading-5">
                       {item.descriptionSnapshot}
                       {item.modelSnapshot &&
                       !normalizeSearch(item.descriptionSnapshot).includes(
@@ -3403,17 +3573,20 @@ function OrderDetailsDialog({
                         : ""}
                     </p>
                     {item.notes ? (
-                      <p className="mt-0.5 break-words text-[0.68rem] leading-4 font-semibold text-text-muted sm:text-xs">
+                      <p className="mt-0.5 break-words text-base leading-6 font-semibold text-text-muted sm:text-xs sm:leading-4">
                         Obs.: {item.notes}
                       </p>
                     ) : null}
                   </div>
-                  <div role="cell" className="text-right font-mono text-xs font-black text-text-primary sm:text-sm">
+                  <div role="cell" className="col-start-2 row-start-1 text-right font-mono text-lg font-black text-text-primary sm:col-start-auto sm:row-start-auto sm:text-sm">
                     {quantityFormatter.format(item.orderedQuantity)}
+                    <span className="ml-1 font-sans text-sm font-bold text-text-muted sm:hidden">
+                      pedidos
+                    </span>
                   </div>
                   <div
                     role="cell"
-                    className={`flex items-center justify-end gap-1 text-right font-mono text-xs font-black sm:text-sm ${
+                    className={`col-start-2 row-start-2 flex items-start justify-end gap-1 self-start text-right font-mono text-lg font-black sm:col-start-auto sm:row-start-auto sm:items-center sm:self-auto sm:text-sm ${
                       fullyPicked
                         ? "text-emerald-800"
                         : partiallyPicked
@@ -3421,22 +3594,25 @@ function OrderDetailsDialog({
                           : "text-text-muted/65"
                     }`}
                   >
-                    {fullyPicked ? <CheckIcon aria-hidden="true" className="size-3.5 shrink-0" /> : null}
+                    {fullyPicked ? <CheckIcon aria-hidden="true" className="mt-1.5 size-4 shrink-0 sm:mt-0 sm:size-3.5" /> : null}
                     {quantityFormatter.format(item.pickedQuantity)}
+                    <span className="font-sans text-sm leading-7 font-bold sm:hidden">
+                      retirados
+                    </span>
                   </div>
                   {item.readyWaitingPickupQuantity > 0 ? (
-                    <p className="col-start-2 col-end-5 mt-1 inline-flex items-center gap-1 text-[0.68rem] leading-4 font-bold text-emerald-800 sm:text-xs">
+                    <p className="col-start-1 col-end-3 mt-1 inline-flex items-center gap-1 text-base leading-6 font-bold text-emerald-800 sm:col-start-2 sm:col-end-5 sm:text-xs sm:leading-4">
                       <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-emerald-600" />
                       Pronto para retirar: {quantityFormatter.format(item.readyWaitingPickupQuantity)}
                     </p>
                   ) : null}
                   {item.cancelledQuantity > 0 ? (
-                    <p className="col-start-2 col-end-5 mt-1 text-[0.68rem] font-bold text-red-800 sm:text-xs">
+                    <p className="col-start-1 col-end-3 mt-1 text-base font-bold text-red-800 sm:col-start-2 sm:col-end-5 sm:text-xs">
                       Cancelado: {quantityFormatter.format(item.cancelledQuantity)}
                     </p>
                   ) : null}
                   {item.waitingStockQuantity > 0 ? (
-                    <p className="col-start-2 col-end-5 mt-1 text-[0.68rem] font-bold text-amber-900 sm:text-xs">
+                    <p className="col-start-1 col-end-3 mt-1 text-base font-bold text-amber-900 sm:col-start-2 sm:col-end-5 sm:text-xs">
                       Pendente antigo de entrada: {quantityFormatter.format(item.waitingStockQuantity)}
                     </p>
                   ) : null}
@@ -3489,7 +3665,7 @@ function OrderDetailsDialog({
                   type="button"
                   disabled={isPending}
                   onClick={() => setConfirmation("MARK_ALL")}
-                  className="nk-focus inline-flex min-h-10 min-w-0 items-center justify-center gap-2 rounded-xl border border-brand-charcoal bg-brand-charcoal px-3 text-center text-xs leading-tight font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300 disabled:text-slate-600 sm:px-4 sm:text-sm"
+                  className="nk-focus inline-flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-xl border border-brand-charcoal bg-brand-charcoal px-3 text-center text-sm leading-tight font-black text-white transition hover:bg-brand-charcoal-soft disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300 disabled:text-slate-600 sm:min-h-10 sm:px-4 sm:text-sm"
                 >
                   <PickupReadyIcon className="size-4 shrink-0 text-emerald-300" />
                   Retirar prontos
@@ -3502,7 +3678,7 @@ function OrderDetailsDialog({
                   onClick={() => {
                     setStockEntryOpen(true);
                   }}
-                  className="nk-focus min-h-10 min-w-0 rounded-xl border border-brand-charcoal/25 bg-white px-3 text-center text-xs leading-tight font-black text-text-primary transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/35 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 sm:px-4 sm:text-sm"
+                  className="nk-focus min-h-12 min-w-0 rounded-xl border border-brand-charcoal/25 bg-white px-3 text-center text-sm leading-tight font-black text-text-primary transition hover:border-brand-gold-dark hover:bg-brand-gold-soft/35 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 sm:min-h-10 sm:px-4 sm:text-sm"
                 >
                   Dar entrada no estoque
                 </button>
@@ -4067,7 +4243,7 @@ function ActiveSupplierOrdersWorkspace({
       <OrdersViewTabs view="active" />
 
       <section
-        className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 lg:grid-cols-4"
+        className="mt-3 hidden grid-cols-2 gap-2 sm:mt-4 sm:grid lg:grid-cols-4"
         aria-label="Indicadores de pedidos"
       >
         {[
@@ -4108,7 +4284,7 @@ function ActiveSupplierOrdersWorkspace({
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Pesquisar pedido, item ou código..."
-              className="nk-focus h-12 w-full rounded-xl border border-border-neutral bg-white pr-3 pl-10 text-sm font-semibold text-text-primary"
+              className="nk-focus h-12 w-full rounded-xl border border-border-neutral bg-white pr-3 pl-10 text-base font-semibold text-text-primary sm:text-sm"
             />
           </label>
           <button
@@ -4116,7 +4292,7 @@ function ActiveSupplierOrdersWorkspace({
             aria-expanded={filtersOpen}
             aria-controls="supplier-order-filters"
             onClick={() => setFiltersOpen((current) => !current)}
-            className="nk-focus inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border-neutral bg-white px-4 text-sm font-black text-text-primary transition hover:bg-app-background"
+            className="nk-focus hidden min-h-12 items-center justify-center gap-2 rounded-xl border border-border-neutral bg-white px-4 text-sm font-black text-text-primary transition hover:bg-app-background sm:inline-flex"
           >
             Filtros
             {activeFilterCount > 0 ? (
@@ -4127,8 +4303,24 @@ function ActiveSupplierOrdersWorkspace({
           </button>
         </div>
 
+        <MobileOrderShortcuts
+          label="Situação dos pedidos"
+          options={[
+            { value: "ALL" as StatusFilter, label: "Todos" },
+            { value: "PENDING" as StatusFilter, label: "Pendentes", count: indicators.pending },
+            { value: "PARTIAL" as StatusFilter, label: "Parciais", count: indicators.partial },
+            { value: "COMPLETED" as StatusFilter, label: "Concluídos", count: indicators.completed },
+          ]}
+          value={statusFilter}
+          onChange={setStatusFilter}
+          filtersOpen={filtersOpen}
+          onToggleFilters={() => setFiltersOpen((current) => !current)}
+          controlsId="supplier-order-filters"
+          extraFilterCount={periodFilter !== "ALL" ? 1 : 0}
+        />
+
         {isSearching ? (
-          <p role="status" className="mt-2 text-xs font-semibold text-text-muted">
+          <p role="status" className="mt-2 text-base font-semibold text-text-muted sm:text-xs">
             Pesquisando nos itens dos pedidos…
           </p>
         ) : null}
@@ -4138,7 +4330,7 @@ function ActiveSupplierOrdersWorkspace({
             id="supplier-order-filters"
             className="mt-3 grid gap-3 border-t border-border-neutral pt-3 lg:grid-cols-[1fr_auto_auto]"
           >
-            <div>
+            <div className="hidden sm:block">
               <p className="mb-1.5 text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
                 Status
               </p>
@@ -4166,7 +4358,7 @@ function ActiveSupplierOrdersWorkspace({
               </div>
             </div>
             <label>
-              <span className="mb-1.5 block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+              <span className="mb-1.5 block text-base font-bold text-text-primary sm:text-[0.65rem] sm:font-black sm:tracking-wide sm:text-text-muted sm:uppercase">
                 Período
               </span>
               <select
@@ -4174,7 +4366,7 @@ function ActiveSupplierOrdersWorkspace({
                 onChange={(event) =>
                   setPeriodFilter(event.target.value as PeriodFilter)
                 }
-                className="nk-focus h-11 w-full rounded-xl border border-border-neutral bg-white px-3 text-sm font-bold text-text-primary lg:w-48"
+                className="nk-focus h-12 w-full rounded-xl border border-border-neutral bg-white px-3 text-base font-bold text-text-primary sm:h-11 sm:text-sm lg:w-48"
               >
                 <option value="ALL">Todos os períodos</option>
                 <option value="7">Últimos 7 dias</option>
@@ -4184,7 +4376,7 @@ function ActiveSupplierOrdersWorkspace({
               </select>
             </label>
             <label>
-              <span className="mb-1.5 block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+              <span className="mb-1.5 block text-base font-bold text-text-primary sm:text-[0.65rem] sm:font-black sm:tracking-wide sm:text-text-muted sm:uppercase">
                 Ordenação
               </span>
               <select
@@ -4192,7 +4384,7 @@ function ActiveSupplierOrdersWorkspace({
                 onChange={(event) =>
                   setSort(event.target.value as OrderSort)
                 }
-                className="nk-focus h-11 w-full rounded-xl border border-border-neutral bg-white px-3 text-sm font-bold text-text-primary lg:w-44"
+                className="nk-focus h-12 w-full rounded-xl border border-border-neutral bg-white px-3 text-base font-bold text-text-primary sm:h-11 sm:text-sm lg:w-44"
               >
                 <option value="RECENT">Mais recentes</option>
                 <option value="OLDEST">Mais antigos</option>
@@ -4237,72 +4429,15 @@ function ActiveSupplierOrdersWorkspace({
               setStatusFilter("ALL");
               setPeriodFilter("ALL");
             }}
-            className="nk-focus mt-3 min-h-11 rounded-xl border border-border-neutral px-4 text-sm font-black text-text-primary"
+            className="nk-focus mt-3 min-h-12 rounded-xl border border-border-neutral px-4 text-base font-black text-text-primary sm:min-h-11 sm:text-sm"
           >
             Limpar filtros
           </button>
         </section>
       ) : (
-        <div className="mt-3 max-w-full overflow-hidden rounded-2xl border border-border-neutral bg-surface sm:mt-4 sm:overflow-x-auto">
-            <table className="w-full table-fixed border-collapse text-left sm:hidden">
-              <colgroup>
-                <col className="w-[19%]" />
-                <col className="w-[29%]" />
-                <col className="w-[16%]" />
-                <col className="w-[36%]" />
-              </colgroup>
-              <thead className="bg-brand-charcoal text-white">
-                <tr>
-                  {["Data", "Pedido", "Itens", "Situação"].map((heading) => (
-                    <th
-                      key={heading}
-                      scope="col"
-                      className="px-1.5 py-2 text-[0.62rem] font-black tracking-wide uppercase"
-                    >
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrders.map((order) => (
-                  <tr
-                    key={order.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Abrir pedido ${order.negotiationNumber}`}
-                    onClick={() => openOrder(order.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openOrder(order.id);
-                      }
-                    }}
-                    className="nk-focus cursor-pointer border-t border-border-neutral align-top transition hover:bg-brand-gold-soft/30 focus:bg-brand-gold-soft/30"
-                  >
-                    <td className="whitespace-nowrap px-1.5 py-2.5 text-[0.68rem] font-bold text-text-primary">
-                      {formatCompactOrderDate(order.orderDate)}
-                    </td>
-                    <td className="px-1.5 py-2.5">
-                      <span className="line-clamp-2 [overflow-wrap:anywhere] font-mono text-xs leading-4 font-black text-text-primary">
-                        {order.negotiationNumber}
-                      </span>
-                    </td>
-                    <td className="px-1.5 py-2.5 text-xs text-text-primary">
-                      <strong>
-                        {quantityFormatter.format(order.orderedQuantity)} un.
-                      </strong>
-                      <span className="mt-0.5 block text-[0.6rem] leading-tight font-semibold text-text-muted">
-                        {formatCount(order.lineCount, "tipo", "tipos")}
-                      </span>
-                    </td>
-                    <td className="px-1.5 py-2">
-                      <MobileOrderSituation order={order} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          <OrderMobileCards orders={filteredOrders} view="active" onOpen={openOrder} />
+        <div className="mt-3 hidden max-w-full overflow-hidden rounded-2xl border border-border-neutral bg-surface sm:mt-4 sm:block sm:overflow-x-auto">
 
             <table className="hidden w-full min-w-[680px] border-collapse text-left sm:table">
               <thead className="bg-brand-charcoal text-white">
@@ -4395,6 +4530,7 @@ function ActiveSupplierOrdersWorkspace({
               </tbody>
             </table>
           </div>
+        </>
       )}
 
       {creatingOrder && catalogState.status === "ready" ? (
@@ -4678,7 +4814,7 @@ function HistorySupplierOrdersWorkspace({
       <OrdersViewTabs view="history" />
 
       <section
-        className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 lg:grid-cols-4"
+        className="mt-3 hidden grid-cols-2 gap-2 sm:mt-4 sm:grid lg:grid-cols-4"
         aria-label="Indicadores do histórico filtrado"
       >
         {[
@@ -4719,7 +4855,7 @@ function HistorySupplierOrdersWorkspace({
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Pesquisar pedido, item, modelo ou código..."
-              className="nk-focus h-12 w-full rounded-xl border border-border-neutral bg-white pr-3 pl-10 text-sm font-semibold text-text-primary"
+              className="nk-focus h-12 w-full rounded-xl border border-border-neutral bg-white pr-3 pl-10 text-base font-semibold text-text-primary sm:text-sm"
             />
           </label>
           <button
@@ -4727,7 +4863,7 @@ function HistorySupplierOrdersWorkspace({
             aria-expanded={filtersOpen}
             aria-controls="supplier-order-history-filters"
             onClick={() => setFiltersOpen((current) => !current)}
-            className="nk-focus inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border-neutral bg-white px-4 text-sm font-black text-text-primary transition hover:bg-app-background"
+            className="nk-focus hidden min-h-12 items-center justify-center gap-2 rounded-xl border border-border-neutral bg-white px-4 text-sm font-black text-text-primary transition hover:bg-app-background sm:inline-flex"
           >
             Filtros
             {activeFilterCount > 0 ? (
@@ -4738,8 +4874,24 @@ function HistorySupplierOrdersWorkspace({
           </button>
         </div>
 
+        <MobileOrderShortcuts
+          label="Encerramento dos pedidos"
+          options={[
+            { value: "ALL" as HistoryClosureFilter, label: "Todos" },
+            { value: "FINALIZED" as HistoryClosureFilter, label: "Finalizados" },
+            { value: "CANCELLED" as HistoryClosureFilter, label: "Cancelados" },
+            { value: "WAITING_STOCK" as HistoryClosureFilter, label: "Aguardando estoque" },
+          ]}
+          value={closureFilter}
+          onChange={setClosureFilter}
+          filtersOpen={filtersOpen}
+          onToggleFilters={() => setFiltersOpen((current) => !current)}
+          controlsId="supplier-order-history-filters"
+          extraFilterCount={periodFilter !== "ALL" ? 1 : 0}
+        />
+
         {isSearching ? (
-          <p role="status" className="mt-2 text-xs font-semibold text-text-muted">
+          <p role="status" className="mt-2 text-base font-semibold text-text-muted sm:text-xs">
             Pesquisando nos itens dos pedidos…
           </p>
         ) : null}
@@ -4749,7 +4901,7 @@ function HistorySupplierOrdersWorkspace({
             id="supplier-order-history-filters"
             className="mt-3 grid gap-3 border-t border-border-neutral pt-3 lg:grid-cols-[1fr_auto_auto]"
           >
-            <div>
+            <div className="hidden sm:block">
               <p className="mb-1.5 text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
                 Encerramento
               </p>
@@ -4779,7 +4931,7 @@ function HistorySupplierOrdersWorkspace({
               </div>
             </div>
             <label>
-              <span className="mb-1.5 block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+              <span className="mb-1.5 block text-base font-bold text-text-primary sm:text-[0.65rem] sm:font-black sm:tracking-wide sm:text-text-muted sm:uppercase">
                 Período de encerramento
               </span>
               <select
@@ -4787,7 +4939,7 @@ function HistorySupplierOrdersWorkspace({
                 onChange={(event) =>
                   setPeriodFilter(event.target.value as PeriodFilter)
                 }
-                className="nk-focus h-11 w-full rounded-xl border border-border-neutral bg-white px-3 text-sm font-bold text-text-primary lg:w-48"
+                className="nk-focus h-12 w-full rounded-xl border border-border-neutral bg-white px-3 text-base font-bold text-text-primary sm:h-11 sm:text-sm lg:w-48"
               >
                 <option value="ALL">Todos os períodos</option>
                 <option value="7">Últimos 7 dias</option>
@@ -4797,7 +4949,7 @@ function HistorySupplierOrdersWorkspace({
               </select>
             </label>
             <label>
-              <span className="mb-1.5 block text-[0.65rem] font-black tracking-wide text-text-muted uppercase">
+              <span className="mb-1.5 block text-base font-bold text-text-primary sm:text-[0.65rem] sm:font-black sm:tracking-wide sm:text-text-muted sm:uppercase">
                 Ordenação
               </span>
               <select
@@ -4805,7 +4957,7 @@ function HistorySupplierOrdersWorkspace({
                 onChange={(event) =>
                   setSort(event.target.value as HistorySort)
                 }
-                className="nk-focus h-11 w-full rounded-xl border border-border-neutral bg-white px-3 text-sm font-bold text-text-primary lg:w-52"
+                className="nk-focus h-12 w-full rounded-xl border border-border-neutral bg-white px-3 text-base font-bold text-text-primary sm:h-11 sm:text-sm lg:w-52"
               >
                 <option value="CLOSED_RECENT">
                   Encerrados recentemente
@@ -4841,77 +4993,15 @@ function HistorySupplierOrdersWorkspace({
               setClosureFilter("ALL");
               setPeriodFilter("ALL");
             }}
-            className="nk-focus mt-3 min-h-11 rounded-xl border border-border-neutral px-4 text-sm font-black text-text-primary"
+            className="nk-focus mt-3 min-h-12 rounded-xl border border-border-neutral px-4 text-base font-black text-text-primary sm:min-h-11 sm:text-sm"
           >
             Limpar filtros
           </button>
         </section>
       ) : (
-        <div className="mt-3 max-w-full overflow-hidden rounded-2xl border border-border-neutral bg-surface sm:mt-4 sm:overflow-x-auto">
-          <table className="w-full table-fixed border-collapse text-left sm:hidden">
-            <colgroup>
-              <col className="w-[20%]" />
-              <col className="w-[27%]" />
-              <col className="w-[25%]" />
-              <col className="w-[28%]" />
-            </colgroup>
-            <thead className="bg-brand-charcoal text-white">
-              <tr>
-                {["Data", "Pedido", "Situação", "Estoque"].map((heading) => (
-                  <th
-                    key={heading}
-                    scope="col"
-                    className="px-1.5 py-2 text-[0.6rem] font-black tracking-wide uppercase"
-                  >
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredOrders.map((order) => (
-                <tr
-                  key={order.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Abrir pedido ${order.negotiationNumber} no histórico`}
-                  onClick={() => openOrder(order.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openOrder(order.id);
-                    }
-                  }}
-                  className="nk-focus cursor-pointer border-t border-border-neutral align-top transition hover:bg-brand-gold-soft/30 focus:bg-brand-gold-soft/30"
-                >
-                  <td className="whitespace-nowrap px-1.5 py-3 text-[0.65rem] font-bold text-text-primary">
-                    {formatCompactOrderDate(order.orderDate)}
-                  </td>
-                  <td className="px-1.5 py-3">
-                    <span className="line-clamp-2 [overflow-wrap:anywhere] font-mono text-xs leading-4 font-black text-text-primary">
-                      {order.negotiationNumber}
-                    </span>
-                    <span className="mt-0.5 block text-[0.58rem] font-semibold text-text-muted">
-                      {quantityFormatter.format(order.orderedQuantity)} un.
-                    </span>
-                  </td>
-                  <td className="px-1.5 py-3">
-                    <ClosureBadge
-                      closureKind={order.closureKind}
-                      compact
-                    />
-                  </td>
-                  <td className="px-1.5 py-3 text-[0.62rem] leading-4 font-bold text-text-primary">
-                    {order.waitingStockQuantity > 0
-                      ? `${quantityFormatter.format(order.waitingStockQuantity)} para entrada`
-                      : order.pickedQuantity > 0
-                        ? "Concluído"
-                        : "Não aplicável"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <>
+          <OrderMobileCards orders={filteredOrders} view="history" onOpen={openOrder} />
+        <div className="mt-3 hidden max-w-full overflow-hidden rounded-2xl border border-border-neutral bg-surface sm:mt-4 sm:block sm:overflow-x-auto">
 
           <table className="hidden w-full min-w-[760px] border-collapse text-left sm:table">
             <thead className="bg-brand-charcoal text-white">
@@ -4981,6 +5071,7 @@ function HistorySupplierOrdersWorkspace({
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {selectedOrderId && detailState.status === "loading" ? (
