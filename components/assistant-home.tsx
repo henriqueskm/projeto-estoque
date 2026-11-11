@@ -33,6 +33,7 @@ import { AssistantRestoredMediaControl } from "@/components/assistant-restored-m
 import { AssistantStructuredBlockView } from "@/components/assistant-structured-block";
 import { BrandMark } from "@/components/brand-mark";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
+import { PushNotificationPrompt } from "@/components/push-notification-prompt";
 import { useAuthenticatedProfile } from "@/components/authenticated-profile-provider";
 import {
   AssistantPhotoPreparationError,
@@ -179,6 +180,7 @@ export function AssistantHome({
   const [attachment, setAttachment] = useState<LocalAttachment | null>(null);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
+  const [isInstallPromptOpen, setIsInstallPromptOpen] = useState(false);
   const [isVoiceBusy, setIsVoiceBusy] = useState(false);
   const [isNewConversationDialogOpen, setIsNewConversationDialogOpen] =
     useState(false);
@@ -1815,7 +1817,8 @@ export function AssistantHome({
           window.requestAnimationFrame(() => galleryInputRef.current?.click());
         }}
       />
-      <PwaInstallPrompt />
+      <PwaInstallPrompt onOpenChange={setIsInstallPromptOpen} />
+      <PushNotificationPrompt blocked={isInstallPromptOpen} />
     </main>
   );
 }

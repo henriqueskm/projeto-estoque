@@ -29,7 +29,11 @@ type InstallMode = "browser" | "ios" | null;
 
 const sessionDismissalKey = "negocios-k:pwa-install-dismissed";
 
-export function PwaInstallPrompt() {
+export function PwaInstallPrompt({
+  onOpenChange,
+}: {
+  onOpenChange?: (isOpen: boolean) => void;
+} = {}) {
   const [installEvent, setInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [installMode, setInstallMode] = useState<InstallMode>(null);
@@ -47,6 +51,11 @@ export function PwaInstallPrompt() {
     setInstallMode(null);
   }, []);
   useSemanticTransient(Boolean(installMode), dismissForSession, isInstalling);
+
+  // Lets other entry prompts wait until this one is closed.
+  useEffect(() => {
+    onOpenChange?.(Boolean(installMode));
+  }, [installMode, onOpenChange]);
 
   useEffect(() => {
     if (canUseServiceWorker()) {
