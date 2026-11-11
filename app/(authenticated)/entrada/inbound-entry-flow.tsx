@@ -15,6 +15,7 @@ import {
 import { StockFlowBundleReview } from "@/components/stock-flow-bundles";
 import { StockFlowSearchResults } from "@/components/stock-flow-search-results";
 import { StockFlowCartShortcut } from "@/components/stock-flow-cart-shortcut";
+import { StockFlowBalanceChange, StockFlowQuantityStepper } from "@/components/stock-flow-balance-change";
 import { dismissSearchKeyboard } from "@/lib/search-input";
 import { assessNewLoosePartCode } from "@/lib/catalog-code-policy";
 import {
@@ -97,15 +98,15 @@ function Summary({
   return (
     <div className="grid grid-cols-2 gap-3">
       <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
-        <p className="text-xs font-black tracking-wide text-text-muted uppercase">
-          Linhas distintas
+        <p className="text-sm font-black text-text-muted sm:text-xs sm:tracking-wide sm:uppercase">
+          Itens diferentes
         </p>
         <p className="mt-1 text-2xl font-black text-text-primary">
           {numberFormatter.format(distinctLines)}
         </p>
       </div>
       <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
-        <p className="text-xs font-black tracking-wide text-text-muted uppercase">
+        <p className="text-sm font-black text-text-muted sm:text-xs sm:tracking-wide sm:uppercase">
           Total de unidades
         </p>
         <p className="mt-1 text-2xl font-black text-text-primary">
@@ -522,7 +523,7 @@ export function InboundEntryFlow({
           }}
           aria-expanded={isNewLoosePartOpen}
           aria-controls="new-loose-part-form"
-          className="nk-focus inline-flex min-h-11 items-center justify-center rounded-xl border border-border-neutral px-3 text-sm font-bold text-text-primary transition hover:bg-app-background"
+          className="nk-focus inline-flex min-h-12 items-center justify-center rounded-xl border border-border-neutral px-4 text-base font-bold text-text-primary transition hover:bg-app-background sm:min-h-11 sm:px-3 sm:text-sm"
         >
           Nova peça avulsa
         </button>
@@ -532,7 +533,7 @@ export function InboundEntryFlow({
             <div>
               <label
                 htmlFor="new-loose-part-code"
-                className="block text-sm font-black text-text-primary"
+                className="block text-base font-black text-text-primary sm:text-sm"
               >
                 Código
               </label>
@@ -551,7 +552,7 @@ export function InboundEntryFlow({
             <div>
               <label
                 htmlFor="new-loose-part-description"
-                className="block text-sm font-black text-text-primary"
+                className="block text-base font-black text-text-primary sm:text-sm"
               >
                 Descrição
               </label>
@@ -570,7 +571,7 @@ export function InboundEntryFlow({
             <div>
               <label
                 htmlFor="new-loose-part-quantity"
-                className="block text-sm font-black text-text-primary"
+                className="block text-base font-black text-text-primary sm:text-sm"
               >
                 Quantidade
               </label>
@@ -590,7 +591,7 @@ export function InboundEntryFlow({
                 className="nk-field mt-2 min-h-12 w-full rounded-xl border px-4 text-base font-black outline-none transition"
               />
             </div>
-            <p className="text-xs font-semibold text-text-muted">
+            <p className="text-sm font-semibold text-text-muted sm:text-xs">
               O cadastro e a entrada só serão efetivados juntos após a
               confirmação. Se o código já existir, o banco validará o tipo e
               a descrição antes de reutilizá-lo.
@@ -606,7 +607,7 @@ export function InboundEntryFlow({
             <button
               type="button"
               onClick={addNewLoosePart}
-              className="nk-focus inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-charcoal px-4 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
+              className="nk-focus inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-charcoal px-4 text-base font-black text-white transition hover:bg-brand-charcoal-soft sm:text-sm"
             >
               Adicionar à entrada
             </button>
@@ -633,7 +634,13 @@ export function InboundEntryFlow({
           criado.
         </p>
 
-        <div className="mt-6 rounded-2xl border border-border-neutral bg-app-background p-4 sm:p-5">
+        <Link
+          href={`/historico/${receipt.movementBatchId}`}
+          className="nk-focus mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-border-neutral bg-surface px-4 text-base font-black text-text-primary transition hover:bg-app-background sm:hidden"
+        >
+          Ver no Histórico
+        </Link>
+        <div className="mt-6 hidden rounded-2xl border border-border-neutral bg-app-background p-4 sm:block sm:p-5">
           <p className="text-xs font-black tracking-wide text-text-muted uppercase">
             ID do lote
           </p>
@@ -644,15 +651,15 @@ export function InboundEntryFlow({
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
-            <p className="text-xs font-black tracking-wide text-text-muted uppercase">
-              Linhas processadas
+            <p className="text-sm font-black text-text-muted sm:text-xs sm:tracking-wide sm:uppercase">
+              Itens processados
             </p>
             <p className="mt-1 text-2xl font-black text-text-primary">
               {numberFormatter.format(receipt.linesProcessed)}
             </p>
           </div>
           <div className="rounded-2xl border border-border-neutral bg-app-background p-4">
-            <p className="text-xs font-black tracking-wide text-text-muted uppercase">
+            <p className="text-sm font-black text-text-muted sm:text-xs sm:tracking-wide sm:uppercase">
               Unidades informadas
             </p>
             <p className="mt-1 text-2xl font-black text-text-primary">
@@ -660,7 +667,7 @@ export function InboundEntryFlow({
             </p>
           </div>
           <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
-            <p className="text-xs font-black tracking-wide text-violet-800 uppercase">
+            <p className="text-sm font-black text-violet-800 sm:text-xs sm:tracking-wide sm:uppercase">
               Servos com kit
             </p>
             <p className="mt-1 text-2xl font-black text-violet-950">
@@ -668,7 +675,7 @@ export function InboundEntryFlow({
             </p>
           </div>
         </div>
-        <p className="mt-3 text-xs font-semibold text-text-muted">
+        <p className="mt-3 text-sm font-semibold text-text-muted sm:text-xs">
           “Unidades informadas” soma as quantidades das linhas. Cada Servo com kit
           comercial conta como uma unidade, não como dois componentes.
         </p>
@@ -677,13 +684,13 @@ export function InboundEntryFlow({
           <button
             type="button"
             onClick={startNewEntry}
-            className="nk-focus inline-flex min-h-14 items-center justify-center rounded-2xl bg-brand-charcoal px-5 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
+            className="nk-focus inline-flex min-h-14 items-center justify-center rounded-2xl bg-brand-charcoal px-5 text-base font-black text-white transition hover:bg-brand-charcoal-soft sm:text-sm"
           >
             Nova entrada
           </button>
           <Link
             href="/"
-            className="nk-focus inline-flex min-h-14 items-center justify-center rounded-2xl border border-border-neutral bg-surface px-5 text-sm font-black text-text-primary transition hover:bg-app-background"
+            className="nk-focus inline-flex min-h-14 items-center justify-center rounded-2xl border border-border-neutral bg-surface px-5 text-base font-black text-text-primary transition hover:bg-app-background sm:text-sm"
           >
             Voltar para o início
           </Link>
@@ -707,13 +714,13 @@ export function InboundEntryFlow({
         </div>
 
         <div className="rounded-3xl border border-border-neutral bg-surface p-5 shadow-sm sm:p-7">
-          <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
+          <p className="hidden text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase sm:block">
             Etapa 2 de 2
           </p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight text-text-primary">
+          <h2 className="text-2xl font-black tracking-tight text-text-primary sm:mt-1">
             Revise a entrada
           </h2>
-          <p className="mt-2 text-sm font-semibold text-text-muted">
+          <p className="mt-2 text-base font-semibold text-text-muted sm:text-sm">
             Esta é uma previsão. O banco validará novamente os dados ao
             selecionar “Confirmar entrada”.
           </p>
@@ -742,26 +749,33 @@ export function InboundEntryFlow({
                         <p className="mt-2 font-mono text-xl font-black text-text-primary">
                           {line.option.code}
                         </p>
-                        <p className="mt-1 text-sm font-semibold text-text-muted">
+                        <p className="mt-1 text-base font-semibold text-text-muted sm:text-sm">
                           {line.option.description}
                         </p>
                         {line.option.kind === "NEW_LOOSE_PART" ? (
-                          <p className="mt-2 text-xs font-bold text-emerald-800">
+                          <p className="mt-2 text-sm font-bold text-emerald-800 sm:text-xs">
                             O item e o subtipo de peça avulsa serão criados na
                             mesma transação desta entrada.
                           </p>
                         ) : null}
                       </div>
                       <div className="rounded-xl bg-emerald-900 px-3 py-2 text-right text-white">
-                        <p className="text-[0.65rem] font-black tracking-wide text-emerald-200 uppercase">
+                        <p className="text-xs font-black tracking-wide text-emerald-200 uppercase sm:text-[0.65rem]">
                           Receber
                         </p>
-                        <p className="text-xl font-black">
-                          {numberFormatter.format(line.receivedQuantity)}
+                        <p className="text-2xl font-black sm:text-xl">
+                          +{numberFormatter.format(line.receivedQuantity)}
                         </p>
                       </div>
                     </div>
-                    <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+                    <StockFlowBalanceChange
+                      label={`${getPhysicalBalanceLabel(line.option.itemType)} no estoque`}
+                      current={line.option.balance}
+                      predicted={line.predictedBalance}
+                      isValid={line.isValid}
+                      tone="inbound"
+                    />
+                    <dl className="mt-4 hidden grid-cols-3 gap-2 text-center sm:grid">
                       <div className="rounded-xl bg-surface p-3">
                         <dt className="text-[0.65rem] font-black text-text-muted uppercase">
                           {getPhysicalBalanceLabel(line.option.itemType)} atual
@@ -820,20 +834,20 @@ export function InboundEntryFlow({
                         <p className="mt-2 font-mono text-2xl font-black text-violet-950">
                           {line.option.code}
                         </p>
-                        <p className="mt-1 text-sm font-semibold text-text-muted">
+                        <p className="mt-1 text-base font-semibold text-text-muted sm:text-sm">
                           {line.option.description}
                         </p>
                       </div>
                       <div className="rounded-xl bg-violet-950 px-3 py-2 text-right text-white">
-                        <p className="text-[0.65rem] font-black tracking-wide text-violet-200 uppercase">
+                        <p className="text-xs font-black tracking-wide text-violet-200 uppercase sm:text-[0.65rem]">
                           Receber
                         </p>
-                        <p className="text-xl font-black">
-                          {numberFormatter.format(line.receivedQuantity)}
+                        <p className="text-2xl font-black sm:text-xl">
+                          +{numberFormatter.format(line.receivedQuantity)}
                         </p>
                       </div>
                     </div>
-                    <ul className="mt-4 space-y-1 rounded-xl bg-surface p-3 text-sm font-semibold text-text-muted">
+                    <ul className="mt-4 space-y-1 rounded-xl bg-surface p-3 text-base font-semibold text-text-muted sm:text-sm">
                       <li>
                         Contém servo{" "}
                         <strong className="text-text-primary">
@@ -863,18 +877,25 @@ export function InboundEntryFlow({
                         : "border-red-300 bg-red-50"
                     }`}
                   >
-                    <p className="text-xs font-black tracking-wide text-violet-800 uppercase">
+                    <p className="text-sm font-black text-violet-800 sm:text-xs sm:tracking-wide sm:uppercase">
                       Servos com kit — impacto consolidado
                     </p>
                     <p className="mt-1 font-mono text-lg font-black text-violet-950">
                       {impact.requestedCodes.join(" + ")}
                     </p>
-                    <p className="mt-1 text-xs font-semibold text-text-muted">
+                    <p className="mt-1 text-base font-semibold text-text-muted sm:text-xs">
                       {impact.requestedCodes.length > 1
                         ? "Os aliases selecionados compartilham o mesmo saldo montado."
                         : "Saldo atual e previsto dos Servos com kit."}
                     </p>
-                    <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <StockFlowBalanceChange
+                      label="Montados"
+                      current={impact.currentBalance}
+                      predicted={impact.predictedBalance}
+                      isValid={impact.isValid}
+                      tone="configuration"
+                    />
+                    <dl className="mt-3 hidden grid-cols-3 gap-2 text-center sm:grid">
                       <div className="rounded-xl bg-surface p-2.5">
                         <dt className="text-[0.6rem] font-black text-text-muted uppercase">
                           Atual
@@ -910,7 +931,7 @@ export function InboundEntryFlow({
                 ))}
               </div>
 
-              <div className="mt-4 rounded-2xl border border-violet-300 bg-violet-100/70 p-4 text-sm font-bold text-violet-950">
+              <div className="mt-4 rounded-2xl border border-violet-300 bg-violet-100/70 p-4 text-base font-bold text-violet-950 sm:text-sm">
                 Os Servos com kit serão registrados como já montados. Os
                 componentes não serão adicionados ao estoque separado.
               </div>
@@ -921,7 +942,7 @@ export function InboundEntryFlow({
             <p className="text-xs font-black tracking-wide text-text-muted uppercase">
               Descrição
             </p>
-            <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-text-primary">
+            <p className="mt-2 whitespace-pre-wrap text-base font-semibold text-text-primary sm:text-sm">
               {description.trim() || "Sem descrição"}
             </p>
           </div>
@@ -962,7 +983,7 @@ export function InboundEntryFlow({
               type="button"
               onClick={returnToEditing}
               disabled={isPending}
-              className="nk-focus order-2 inline-flex min-h-14 items-center justify-center rounded-2xl border border-border-neutral bg-surface px-5 text-sm font-black text-text-primary transition hover:bg-app-background disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"
+              className="nk-focus order-2 inline-flex min-h-14 items-center justify-center rounded-2xl border border-border-neutral bg-surface px-5 text-base font-black text-text-primary transition hover:bg-app-background disabled:cursor-not-allowed disabled:opacity-50 sm:order-1 sm:text-sm"
             >
               Voltar e corrigir
             </button>
@@ -1006,13 +1027,13 @@ export function InboundEntryFlow({
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
         <div className="min-w-0 sm:rounded-3xl sm:border sm:border-border-neutral sm:bg-surface sm:p-6 sm:shadow-sm">
-          <div>
+          <div className="hidden sm:block">
             <h2 className="text-xl font-black text-text-primary">
               Selecione peças ou Servos com kit
             </h2>
           </div>
 
-          <div className="mt-3 px-1 text-xs leading-5 font-semibold text-text-muted sm:mt-5 sm:rounded-2xl sm:border sm:border-brand-gold/40 sm:bg-brand-gold-soft/55 sm:p-4 sm:text-sm sm:font-bold sm:text-brand-charcoal">
+          <div className="px-1 text-base leading-6 font-semibold text-text-muted sm:mt-5 sm:leading-5 sm:rounded-2xl sm:border sm:border-brand-gold/40 sm:bg-brand-gold-soft/55 sm:p-4 sm:text-sm sm:font-bold sm:text-brand-charcoal">
             Use o código comercial quando o Servo chegar com kit. Se
             as peças chegarem separadas, adicione os códigos físicos.
           </div>
@@ -1020,7 +1041,7 @@ export function InboundEntryFlow({
           <div className="mt-4 sm:mt-5">
             <label
               htmlFor="inbound-search"
-              className="block text-sm font-black text-text-primary"
+              className="block text-base font-black text-text-primary sm:text-sm"
             >
               Pesquisar itens
             </label>
@@ -1043,22 +1064,22 @@ export function InboundEntryFlow({
           </div>
 
           {renderNewLoosePartForm()}
-          <StockFlowCartShortcut count={lines.length} headingId="inbound-cart-title" />
           {workspace.reconciliationNotice ? <p role="status" className="mb-3 text-sm font-bold text-amber-900">Um item salvo neste rascunho não está mais disponível e foi removido. Revise os itens antes de confirmar.</p> : null}
           <StockFlowSearchResults options={searchOptions} search={search} selectedKeys={selectedKeys} onAdd={addOption} />
+          <StockFlowCartShortcut count={lines.length} headingId="inbound-cart-title" />
         </div>
 
         <div className="min-w-0 rounded-3xl border border-border-neutral bg-surface p-4 shadow-sm sm:p-6 lg:sticky lg:top-24">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase">
+              <p className="hidden text-xs font-black tracking-[0.16em] text-brand-gold-ink uppercase sm:block">
                 Entrada atual
               </p>
-              <h2 id="inbound-cart-title" tabIndex={-1} className="nk-focus mt-1 scroll-mt-20 text-xl font-black text-text-primary">
-                Linhas e quantidades
+              <h2 id="inbound-cart-title" tabIndex={-1} className="nk-focus scroll-mt-20 text-xl font-black text-text-primary sm:mt-1">
+                Itens da entrada
               </h2>
             </div>
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800">
+            <span className="hidden size-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800 sm:flex">
               <InboundIcon className="size-6" />
             </span>
           </div>
@@ -1066,7 +1087,7 @@ export function InboundEntryFlow({
           {lines.length === 0 ? (
             <div className="mt-5 rounded-2xl border border-dashed border-border-neutral bg-app-background p-6 text-center">
               <h3 className="font-black text-text-primary">Carrinho vazio</h3>
-              <p className="mt-1 text-sm font-semibold text-text-muted">
+              <p className="mt-1 text-base font-semibold text-text-muted sm:text-sm">
                 Adicione itens separados ou Servos com kit para continuar.
               </p>
             </div>
@@ -1091,10 +1112,10 @@ export function InboundEntryFlow({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <OptionBadge option={line.option} />
-                        <p className="mt-2 font-mono text-lg font-black text-text-primary">
+                        <p className="mt-2 font-mono text-xl font-black text-text-primary sm:text-lg">
                           {line.option.code}
                         </p>
-                        <p className="mt-0.5 line-clamp-2 text-xs font-bold text-text-muted">
+                        <p className="mt-0.5 line-clamp-2 text-base font-semibold text-text-muted sm:text-xs sm:font-bold">
                           {line.option.description}
                         </p>
                       </div>
@@ -1102,7 +1123,7 @@ export function InboundEntryFlow({
                         type="button"
                         onClick={() => removeLine(key)}
                         aria-label={`Remover ${line.option.code}`}
-                        className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-800 transition hover:bg-red-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-red-200"
+                        className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-red-200 sm:size-11 bg-red-50 text-red-800 transition hover:bg-red-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-red-200"
                       >
                         <TrashIcon className="size-5" />
                       </button>
@@ -1110,10 +1131,16 @@ export function InboundEntryFlow({
 
                     <label
                       htmlFor={controlId}
-                      className="mt-4 block text-xs font-black tracking-wide text-text-muted uppercase"
+                      className="mt-4 block text-sm font-black text-text-muted sm:text-xs sm:tracking-wide sm:uppercase"
                     >
-                      Quantidade
+                      Quantidade que entra
                     </label>
+                    <StockFlowQuantityStepper
+                      code={line.option.code}
+                      quantity={parseQuantity(line.quantity)}
+                      maximum={maximumQuantity}
+                      onChange={(value) => changeQuantity(key, value)}
+                    >
                     <input
                       id={controlId}
                       type="number"
@@ -1131,12 +1158,13 @@ export function InboundEntryFlow({
                           ? `${controlId}-error`
                           : undefined
                       }
-                      className="nk-field mt-2 min-h-12 w-full rounded-xl border px-4 text-base font-black outline-none transition aria-invalid:border-red-600 aria-invalid:ring-3 aria-invalid:ring-red-100"
+                      className="nk-field min-h-12 w-full min-w-0 flex-1 rounded-xl border px-3 text-center font-mono text-xl font-black outline-none transition sm:text-base aria-invalid:border-red-600 aria-invalid:ring-3 aria-invalid:ring-red-100"
                     />
+                    </StockFlowQuantityStepper>
                     {quantityIsInvalid ? (
                       <p
                         id={`${controlId}-error`}
-                        className="mt-2 text-xs font-bold text-red-800"
+                        className="mt-2 text-base font-bold text-red-800 sm:text-xs"
                       >
                         Informe um número inteiro maior que zero.
                       </p>
@@ -1149,7 +1177,7 @@ export function InboundEntryFlow({
 
           <label
             htmlFor="inbound-description"
-            className="mt-5 block text-sm font-black text-text-primary"
+            className="mt-5 block text-base font-black text-text-primary sm:text-sm"
           >
             Descrição{" "}
             <span className="font-semibold text-text-muted">(opcional)</span>
@@ -1159,7 +1187,7 @@ export function InboundEntryFlow({
             value={description}
             onChange={(event) => changeDescription(event.target.value)}
             maxLength={maximumDescriptionLength}
-            rows={3}
+            rows={2}
             placeholder="Ex.: recebimento do fornecedor"
             className="nk-field mt-2 w-full resize-y rounded-2xl border px-4 py-3 text-base font-semibold outline-none transition placeholder:text-text-muted"
           />
@@ -1187,11 +1215,11 @@ export function InboundEntryFlow({
           <button
             type="button"
             onClick={reviewEntry}
-            className="nk-focus mt-5 inline-flex min-h-14 w-full items-center justify-center rounded-2xl bg-brand-charcoal px-5 text-sm font-black text-white transition hover:bg-brand-charcoal-soft"
+            className="nk-focus mt-5 inline-flex min-h-14 w-full items-center justify-center rounded-2xl bg-brand-charcoal px-5 text-base font-black text-white transition hover:bg-brand-charcoal-soft sm:text-sm"
           >
             Revisar entrada
           </button>
-          <p className="mt-3 text-center text-xs font-bold text-text-muted">
+          <p className="mt-3 text-center text-sm font-bold text-text-muted sm:text-xs">
             Revisar não movimenta o estoque.
           </p>
         </div>

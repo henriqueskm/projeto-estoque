@@ -17,13 +17,13 @@ export function StockFlowSearchResults<T extends StockFlowSearchOption>({ option
   onAdd: (option: T) => void;
 }) {
   const { results, total } = useMemo(() => buildStockFlowSearchResults(options, search), [options, search]);
-  if (!search.trim()) return <p className="mt-3 text-sm text-text-muted">Digite um código, modelo ou descrição para encontrar um item.</p>;
+  if (!search.trim()) return <p className="mt-3 text-base text-text-muted sm:text-sm">Digite um código, modelo ou descrição para encontrar um item.</p>;
   return (
     <section className="mt-4 min-w-0" aria-label="Resultados da pesquisa">
-      <p aria-live="polite" className="mb-2 text-xs font-semibold text-text-muted">
+      <p aria-live="polite" className="mb-2 text-sm font-semibold text-text-muted sm:text-xs">
         {total > results.length ? `Mostrando ${results.length} de ${total} resultados. Refine a pesquisa.` : `${total} ${total === 1 ? "resultado encontrado" : "resultados encontrados"}`}
       </p>
-      {total === 0 ? <p className="py-3 text-sm text-text-muted">Nenhum resultado. Tente outro código, modelo ou descrição.</p> : (
+      {total === 0 ? <p className="py-3 text-base text-text-muted sm:text-sm">Nenhum resultado. Tente outro código, modelo ou descrição.</p> : (
         <ul className="divide-y divide-border-neutral" aria-label="Itens encontrados">
           {results.map((option) => {
             const key = stockFlowSearchKey(option);
@@ -32,17 +32,17 @@ export function StockFlowSearchResults<T extends StockFlowSearchOption>({ option
               <li key={key} className="flex min-w-0 items-center gap-3 py-3" data-stock-flow-result={key}>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className="break-all font-mono text-sm font-black text-text-primary sm:text-base">{option.code}</span>
-                    <span className="text-[0.65rem] font-semibold text-text-muted sm:text-xs">{stockFlowSearchCategory(option)}</span>
+                    <span className="break-all font-mono text-lg font-black text-text-primary sm:text-base">{option.code}</span>
+                    <span className="text-sm font-semibold text-text-muted sm:text-xs">{stockFlowSearchCategory(option)}</span>
                   </div>
-                  <p className="mt-0.5 line-clamp-2 break-words text-xs leading-4 text-text-primary sm:text-sm sm:leading-5">{option.description}</p>
+                  <p className="mt-0.5 line-clamp-2 break-words text-base leading-6 text-text-primary sm:text-sm sm:leading-5">{option.description}</p>
                   {option.kind === "COMMERCIAL_CODE" && option.hasImage ? <CommercialConfigurationImage
                     commercialCodes={[option.code, ...option.aliases]} configurationId={option.configurationId}
                     hasImage={option.hasImage} compact triggerVariant="text-link" /> : null}
                 </div>
                 <div className="max-w-24 shrink-0 text-right">
-                  <span className="block text-[0.65rem] text-text-muted">{option.kind === "ITEM" ? "Saldo" : option.kind === "COMMERCIAL_CODE" ? "Montado" : "Pronto"}</span>
-                  <span className="block break-all font-mono text-base font-extrabold tabular-nums text-text-primary">{numberFormatter.format(stockFlowSearchBalance(option))}</span>
+                  <span className="block text-sm text-text-muted sm:text-[0.65rem]">{option.kind === "ITEM" ? "Saldo" : option.kind === "COMMERCIAL_CODE" ? "Montado" : "Pronto"}</span>
+                  <span className="block break-all font-mono text-xl font-extrabold tabular-nums sm:text-base text-text-primary">{numberFormatter.format(stockFlowSearchBalance(option))}</span>
                 </div>
                 <StockFlowAddButton isSelected={selectedKeys.has(key)} onAdd={() => onAdd(option)} label={`Adicionar ${noun} ${option.code}`} />
               </li>

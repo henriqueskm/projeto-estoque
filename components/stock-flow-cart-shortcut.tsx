@@ -25,7 +25,7 @@ export function StockFlowCartShortcut({
       type="button"
       aria-controls={headingId}
       onClick={() => focusStockFlowCart(document.getElementById(headingId))}
-      className="nk-focus mt-3 inline-flex min-h-11 items-center rounded-xl border border-brand-gold-dark bg-brand-gold-soft px-3 text-sm font-bold text-brand-charcoal lg:hidden"
+      className="nk-focus sticky bottom-3 z-10 mt-3 flex min-h-13 w-full items-center justify-center rounded-2xl border border-brand-gold-dark bg-brand-gold-soft px-4 text-base font-black text-brand-charcoal shadow-lg shadow-brand-charcoal/15 sm:static sm:inline-flex sm:min-h-11 sm:w-auto sm:rounded-xl sm:px-3 sm:text-sm sm:font-bold sm:shadow-none lg:hidden"
     >
       Ver carrinho ({count})
     </button>
