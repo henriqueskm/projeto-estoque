@@ -71,6 +71,7 @@ export type HistoryFilters = {
 // and internal moves; inbound/outbound use the requested quantity.
 export type HistoryListLine = {
   code: string;
+  description: string;
   quantity: number;
 };
 

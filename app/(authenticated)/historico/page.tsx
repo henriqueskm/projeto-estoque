@@ -129,7 +129,7 @@ function MovedLines({ batch }: { batch: HistoryBatchListItem }) {
         const isPositive = quantity > 0;
 
         return (
-          <li key={`${line.code}-${index}`} className="flex min-w-0 items-baseline gap-3">
+          <li key={`${line.code}-${index}`} className="flex min-w-0 items-start gap-3">
             <span
               className={`w-16 shrink-0 text-right font-mono text-lg font-black tabular-nums ${
                 isPositive ? "text-emerald-800" : "text-red-800"
@@ -138,8 +138,15 @@ function MovedLines({ batch }: { batch: HistoryBatchListItem }) {
               {isPositive ? "+" : "−"}
               {quantityFormatter.format(Math.abs(quantity))}
             </span>
-            <span className="min-w-0 break-all font-mono text-lg font-black text-text-primary">
-              {line.code}
+            <span className="min-w-0">
+              <span className="block break-all font-mono text-lg font-black text-text-primary">
+                {line.code}
+              </span>
+              {line.description ? (
+                <span className="block break-words text-base leading-6 text-text-muted">
+                  {line.description}
+                </span>
+              ) : null}
             </span>
           </li>
         );

@@ -477,10 +477,51 @@ export async function loadHistoryList(
       };
     }
 
+    const configurationsResult = await fetchConfigurationsByIds(supabase, unique([
+      ...codesResult.data.map((code) => code.configuration_id),
+      ...configurationRows.map((row) => row.configuration_id),
+    ]));
+
+    if (configurationsResult.error) {
+      return {
+        data: null,
+        error: "Não foi possível carregar o histórico agora.",
+      };
+    }
+
+    // Same fallback as the detail page: "<servo description> + <kit code>".
+    const itemById = new Map(itemsResult.data.map((item) => [item.id, item]));
+    const missingComponentIds = unique(
+      configurationsResult.data
+        .filter((configuration) => !configuration.description?.trim())
+        .flatMap((configuration) => [configuration.servo_id, configuration.installation_kit_id])
+        .filter((id) => !itemById.has(id)),
+    );
+    const componentsResult = await fetchItemsByIds(supabase, missingComponentIds);
+
+    if (componentsResult.error) {
+      return {
+        data: null,
+        error: "Não foi possível carregar o histórico agora.",
+      };
+    }
+
+    componentsResult.data.forEach((item) => itemById.set(item.id, item));
+    const configurationDescriptions = new Map(
+      configurationsResult.data.map((configuration) => [
+        configuration.id,
+        configuration.description?.trim() ||
+          [itemById.get(configuration.servo_id)?.description, itemById.get(configuration.installation_kit_id)?.code]
+            .filter(Boolean)
+            .join(" + "),
+      ]),
+    );
+
     const lookups: ListLineLookups = {
-      itemCodes: new Map(itemsResult.data.map((item) => [item.id, item.code])),
-      commercialCodes: new Map(codesResult.data.map((code) => [code.id, code.code])),
+      items: itemById,
+      commercialCodes: new Map(codesResult.data.map((code) => [code.id, code])),
       configurationCodes: firstCodeByConfiguration(configurationCodesResult.data),
+      configurationDescriptions,
     };
 
     const listItems: HistoryBatchListItem[] = batches.map((batch) => ({
@@ -528,9 +569,10 @@ export async function loadHistoryList(
 }
 
 type ListLineLookups = {
-  itemCodes: Map<string, string>;
-  commercialCodes: Map<string, string>;
+  items: Map<string, ItemRow>;
+  commercialCodes: Map<string, CommercialCodeRow>;
   configurationCodes: Map<string, string>;
+  configurationDescriptions: Map<string, string>;
 };
 
 function firstCodeByConfiguration(codes: CommercialCodeRow[]) {
@@ -554,29 +596,35 @@ function buildListLines(
   stockMovements: StockMovementRow[],
   configurationMovements: ConfigurationMovementRow[],
 ): HistoryListLine[] {
-  const requestCode = (line: InboundLineRow) =>
-    (line.item_id && lookups.itemCodes.get(line.item_id)) ||
-    (line.commercial_configuration_code_id &&
-      lookups.commercialCodes.get(line.commercial_configuration_code_id)) ||
-    "Item";
+  const itemLine = (itemId: string, quantity: number) => {
+    const item = lookups.items.get(itemId);
+    return { code: item?.code ?? "Item", description: item?.description ?? "", quantity };
+  };
+  const configurationLine = (configurationId: string, code: string | undefined, quantity: number) => ({
+    code: code ?? lookups.configurationCodes.get(configurationId) ?? "Servo com kit",
+    description: lookups.configurationDescriptions.get(configurationId) ?? "",
+    quantity,
+  });
+  const requestLine = (line: InboundLineRow) => {
+    if (line.item_id) return itemLine(line.item_id, line.quantity);
+    const code = line.commercial_configuration_code_id
+      ? lookups.commercialCodes.get(line.commercial_configuration_code_id)
+      : undefined;
+    return code
+      ? configurationLine(code.configuration_id, code.code, line.quantity)
+      : { code: "Item", description: "", quantity: line.quantity };
+  };
 
   // Entrada/Saída show what the user asked for, not the internal composition.
   if (inboundLines.length > 0 || outboundLines.length > 0) {
-    return [...inboundLines, ...outboundLines].map((line) => ({
-      code: requestCode(line),
-      quantity: line.quantity,
-    }));
+    return [...inboundLines, ...outboundLines].map(requestLine);
   }
 
   return [
-    ...configurationMovements.map((movement) => ({
-      code: lookups.configurationCodes.get(movement.configuration_id) ?? "Servo com kit",
-      quantity: movement.quantity_change,
-    })),
-    ...stockMovements.map((movement) => ({
-      code: lookups.itemCodes.get(movement.item_id) ?? "Item",
-      quantity: movement.quantity_change,
-    })),
+    ...configurationMovements.map((movement) =>
+      configurationLine(movement.configuration_id, undefined, movement.quantity_change),
+    ),
+    ...stockMovements.map((movement) => itemLine(movement.item_id, movement.quantity_change)),
   ].filter((line) => line.quantity !== 0);
 }
 
